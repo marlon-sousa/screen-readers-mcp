@@ -11,9 +11,9 @@ addon_info = AddonInfo(
 	addon_summary=_("NVDA MCP Bridge"),
 	# Translators: Long description for this add-on in add-on store.
 	addon_description=_(
-		"""Test-automation bridge for NVDA. Lets an AI agent functionally test NVDA add-ons: it drives NVDA with keyboard gestures and reads back what NVDA would speak and braille.
+		"""A bridge that lets an AI agent drive NVDA: send keyboard gestures, read back what NVDA would speak and braille, and introspect its state. Its first use is functional testing of NVDA add-ons, but the same primitives support a wider range of agent-driven NVDA workflows.
 
-The add-on is inert until a test session connects: it never swaps your synthesizer or installs hooks with side effects while idle, so it is safe to leave permanently installed. Pair it with the nvda-mcp server (see the add-on documentation for setup)."""
+The add-on is inert until a session connects: it never swaps your synthesizer or installs hooks with side effects while idle, so it is safe to leave permanently installed. Pair it with the nvda-mcp server (see the add-on documentation for setup)."""
 	),
 	# Translators: what's new text for this add-on version shown in add-on store.
 	addon_changelog=_("""First release."""),

@@ -1,13 +1,14 @@
 # ${addon_summary} ${addon_version}
 
-Test-automation bridge for NVDA. It lets an AI agent (via the **nvda-mcp**
-server) functionally test NVDA add-ons: drive NVDA with keyboard gestures and
-read back what NVDA would speak and braille — replacing manual functional
-testing.
+A bridge that lets an AI agent **drive NVDA** (via the **nvda-mcp** server):
+send keyboard gestures, read back what NVDA would speak and braille, and
+introspect its state. The first use is **functional testing of NVDA add-ons** —
+replacing manual testing — but the same primitives support a wider range of
+agent-driven NVDA workflows.
 
-The add-on is **inert until a test session connects**. While idle it never
-swaps your synthesizer and installs no hooks with side effects, so it is safe
-to leave permanently installed.
+The add-on is **inert until a session connects**. While idle it never swaps
+your synthesizer and installs no hooks with side effects, so it is safe to
+leave permanently installed.
 
 - Minimum NVDA version: ${addon_minimumNVDAVersion}
 - Last tested NVDA version: ${addon_lastTestedNVDAVersion}
