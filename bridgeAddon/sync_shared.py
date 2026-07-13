@@ -20,7 +20,7 @@ DEST = _HERE / "addon" / "globalPlugins" / "nvdaMcpBridge" / "protocol.py"
 
 _HEADER = (
 	"# AUTO-GENERATED COPY -- do not edit.\n"
-	"# Source of truth: shared/nvda_mcp_wire/protocol.py (run bridge/sync_shared.py).\n"
+	"# Source of truth: shared/nvda_mcp_wire/protocol.py (run bridgeAddon/sync_shared.py).\n"
 )
 
 

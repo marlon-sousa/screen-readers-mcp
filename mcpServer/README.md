@@ -10,15 +10,15 @@ Status: **skeleton** (milestone 4 builds the FastMCP app and the v1 tools).
 ## Dev workflow
 
 ```
-uv run --directory server nvda-mcp      # run the server (once implemented)
-uv run --directory server pytest        # tests (no NVDA required; fake bridge)
-uv run --directory server pyright       # strict type-check
+uv run --directory mcpServer nvda-mcp   # run the server (once implemented)
+uv run --directory mcpServer pytest     # tests (no NVDA required; fake bridge)
+uv run --directory mcpServer pyright    # strict type-check
 ```
 
 Wire into Claude Code from source:
 
 ```
-claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\server nvda-mcp
+claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\mcpServer nvda-mcp
 ```
 
 The shared wire contract lives in the sibling `shared/` package

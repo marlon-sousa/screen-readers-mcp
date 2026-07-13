@@ -1,10 +1,14 @@
 # nvda-mcp
 
-An MCP server that lets an AI agent **functionally test NVDA add-ons**: drive
-NVDA with keyboard gestures, read back what NVDA speaks (and brailles), and
-introspect focus state — replacing manual functional testing.
+An MCP server that lets an AI agent **drive NVDA**: send keyboard gestures,
+read back what NVDA speaks (and brailles), and introspect its state. The first
+use case is **functional testing of NVDA add-ons** — replacing manual testing —
+but the same primitives support a wider range of agent-driven NVDA workflows.
 
-See [PLAN.md](PLAN.md) for the full design, decisions and milestones.
+See [specs/0001-agent-driven-nvda-over-mcp.md](specs/0001-agent-driven-nvda-over-mcp.md)
+for the full design, decisions and milestones. Design specs live in
+[specs/](specs/), numbered RFC-style (`NNNN-title.md`); new features add a new
+spec alongside.
 
 ## Architecture
 
@@ -12,10 +16,10 @@ See [PLAN.md](PLAN.md) for the full design, decisions and milestones.
 MCP client (Claude Code, ...)
    │  MCP over stdio
    ▼
-nvda-mcp server            — Python package (server/), official mcp SDK / FastMCP
+nvda-mcp server            — Python package (mcpServer/), official mcp SDK / FastMCP
    │  JSON lines over TCP, 127.0.0.1 only
    ▼
-nvdaMcpBridge              — NVDA add-on (bridge/): global plugin + spy synth
+nvdaMcpBridge              — NVDA add-on (bridgeAddon/): global plugin + spy synth
 ```
 
 The server survives NVDA restarts (restarting NVDA is itself a test operation),
@@ -27,8 +31,9 @@ the two halves are split and meet only at the loopback socket.
 | Path | What |
 |---|---|
 | [shared/](shared/) | Canonical **stdlib-only** JSON-lines wire protocol (`nvda-mcp-wire`), shared verbatim by both halves and unit-tested once. |
-| [server/](server/) | The MCP server (`nvda-mcp`): MCP tool call → bridge command → result. |
-| [bridge/](bridge/) | The NVDA add-on (`nvdaMcpBridge`), built with scons. Its build copies `shared/`'s protocol module in, so bridge and server can never drift. |
+| [mcpServer/](mcpServer/) | The MCP server (`nvda-mcp`): MCP tool call → bridge command → result. |
+| [bridgeAddon/](bridgeAddon/) | The NVDA add-on (`nvdaMcpBridge`), built with scons. Its build copies `shared/`'s protocol module in, so bridge and server can never drift. |
+| [specs/](specs/) | Numbered design specs (RFC-style). |
 
 ## Development
 
@@ -41,23 +46,23 @@ uv run --directory shared pytest
 uv run --directory shared pyright
 
 # Server (no NVDA needed; tests use a fake bridge)
-uv run --directory server pytest
-uv run --directory server pyright
+uv run --directory mcpServer pytest
+uv run --directory mcpServer pyright
 
-# Bridge (type-checks against the NVDA source checkout)
-python bridge/sync_shared.py
-uv run --directory bridge pyright   # or: cd bridge && scons   to build the .nvda-addon
+# Bridge add-on (type-checks against the NVDA source checkout)
+py -3.13 bridgeAddon/sync_shared.py
+uv run --directory bridgeAddon pyright   # or: cd bridgeAddon && scons   to build the .nvda-addon
 ```
 
 Wire the server into Claude Code from source:
 
 ```sh
-claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\server nvda-mcp
+claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\mcpServer nvda-mcp
 ```
 
 ## Status
 
-Implemented per milestone (see [PLAN.md](PLAN.md)):
+Implemented per milestone (see [the spec](specs/0001-agent-driven-nvda-over-mcp.md)):
 
 - [x] **Session A — foundation**: repo layout, shared wire protocol + tests, tooling/CI.
 - [ ] Session B — bridge core logic (buffer, session state machine, framing, transcript).

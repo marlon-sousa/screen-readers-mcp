@@ -1,8 +1,11 @@
-# nvda-mcp — Plan
+# RFC 0001 — Agent-driven NVDA over MCP
 
-MCP server that lets an AI agent functionally test NVDA addons: drive NVDA with
-keyboard gestures, read back what NVDA speaks (and brailles), and introspect
-focus state — replacing manual functional testing.
+MCP server that lets an AI agent **drive NVDA**: send keyboard gestures, read
+back what NVDA speaks (and brailles), and introspect its state. These are
+general-purpose primitives for agent-driven NVDA workflows; the **first use
+case that motivates this spec is functional testing of NVDA add-ons** —
+replacing manual functional testing — and the milestones below build toward it.
+Later specs (`specs/NNNN-*.md`) cover further use cases and features.
 
 ## Constraints and decisions (agreed)
 
@@ -41,7 +44,7 @@ stdio server. Mirrors the architecture of NVDA's own system tests
 (`../nvda/tests/system/libraries/SystemTestSpy/`) and the integrated remote
 client (`../nvda/source/_remoteClient/`).
 
-## Component 1: `bridge/` — the NVDA addon
+## Component 1: `bridgeAddon/` — the NVDA addon
 
 Addon name `nvdaMcpBridge`, scaffolded from `C:\projects\AddonTemplate`
 (sconstruct + buildVars.py + manifest.ini.tpl). Use the sconstruct variant
@@ -186,7 +189,7 @@ Commands (v1): `hello`, `ping`, `pressGesture`, `getSpeech` (since index),
 `waitForSpeechToFinish`, `getBraille` (since index), `getFocusInfo`,
 `getState`, `getConfig`, `setConfig`, `bye`.
 
-## Component 2: `server/` — the MCP server
+## Component 2: `mcpServer/` — the MCP server
 
 Python ≥ 3.11 package `nvda-mcp`, official `mcp` SDK, FastMCP, stdio
 transport. Thin translator: MCP tool call → bridge command → result. Owns the
@@ -216,11 +219,12 @@ MCP tools (v1):
 
 ```
 nvda-mcp/
-  PLAN.md
-  bridge/           # NVDA addon, scaffolded from AddonTemplate:
+  specs/            # Numbered design specs (this file is 0001)
+  shared/           # Canonical stdlib-only wire protocol (nvda-mcp-wire)
+  bridgeAddon/      # NVDA addon, scaffolded from AddonTemplate:
                     #   sconstruct (TimerForNVDA variant), buildVars.py,
                     #   manifest.ini.tpl, README.tpl.md, addon/...
-  server/           # Python package: pyproject.toml, src/nvda_mcp/
+  mcpServer/        # Python package: pyproject.toml, src/nvda_mcp/
 ```
 
 ## Testing & typing strategy
@@ -325,7 +329,7 @@ Tests accompany each milestone rather than arriving at the end.
    meet only at the TCP socket.
 
    Dev workflow (us) stays source-based:
-   `claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\server nvda-mcp`
+   `claude mcp add --scope user nvda -- uv run --directory C:\projects\nvda-mcp\mcpServer nvda-mcp`
    (edits picked up next launch); optional committed `.mcp.json` in addon
    repos for per-project discovery.
 

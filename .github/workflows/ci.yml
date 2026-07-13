@@ -23,7 +23,7 @@ jobs:
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: server
+        working-directory: mcpServer
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -49,8 +49,8 @@ jobs:
           fetch-depth: 1
       - uses: astral-sh/setup-uv@v5
       - name: Sync shared wire module into addon
-        working-directory: nvda-mcp/bridge
+        working-directory: nvda-mcp/bridgeAddon
         run: python sync_shared.py
       - name: Pyright
-        working-directory: nvda-mcp/bridge
+        working-directory: nvda-mcp/bridgeAddon
         run: uv run --python 3.13 --with pyright pyright
