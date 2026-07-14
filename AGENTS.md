@@ -45,7 +45,9 @@ learn it once.
                   # via a module-level __getattr__, so importing the package
                   # does NOT import NVDA (tests import the domain directly).
   domain/         # PURE core: no NVDA / no MCP SDK / no sockets. Headless-tested.
-    ports.py      #   the abstract interfaces (abc.ABC + @abstractmethod)
+    ports/        #   the abstract interfaces, ONE PORT PER FILE (abc.ABC +
+                  #   @abstractmethod); a port's own DTO lives in its file;
+                  #   __init__.py re-exports them all
     <controller>.py    #   the state machine / translator
     ...           #   pure value objects + logic
   adapters/       # the ONLY place NVDA / the MCP SDK / the OS / real IO lives
@@ -62,7 +64,9 @@ adapters hold the FastMCP/stdio server and the real TCP bridge client.
 
 Rules that keep this honest:
 
-- **Ports are `abc.ABC`s with `@abstractmethod`** (not `Protocol`): an
+- **Ports are `abc.ABC`s with `@abstractmethod`** (not `Protocol`), **one port
+  per file** under `domain/ports/` (its DTO, e.g. `AdapterSet`, in the same
+  file; `__init__.py` re-exports so callers do `from ..ports import X`): an
   incomplete adapter fails at construction, and the interface itself can't be
   instantiated. The domain depends only on ports; adapters subclass and
   implement them; **`wiring.py` is the only place that knows both.**
