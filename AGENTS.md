@@ -3,6 +3,9 @@
 Operating manual for anyone (human or agent) developing this repo. For *what
 we're building and why*, read the design specs in [`specs/`](specs/) — start
 with [`0001-agent-driven-nvda-over-mcp.md`](specs/0001-agent-driven-nvda-over-mcp.md).
+For *what to do now*, read [`ROADMAP.md`](ROADMAP.md) — the status board; its
+first non-Done entry is the next step, and its Spec field says whether that
+step is a spec conversation or implementation.
 
 ## What this is
 
@@ -11,13 +14,13 @@ keyboard gestures, read back what NVDA speaks/brailles, and introspect its
 state. First use case: functional testing of NVDA add-ons; the primitives are
 general.
 
-```
-MCP client (Claude Code, ...)        │ MCP over stdio
-        ▼
-mcpServer/   nvda-mcp Python package  │ JSON-lines over TCP, 127.0.0.1 only
-        ▼
-bridgeAddon/ nvdaMcpBridge NVDA addon (global plugin + spy synth driver)
-```
+The chain, top to bottom — each item talks only to the next:
+
+1. An MCP client (Claude Code, …) speaks MCP over stdio to the server.
+2. `mcpServer/` — the `nvda-mcp` Python package — speaks JSON lines over TCP,
+   127.0.0.1 only, to the bridge.
+3. `bridgeAddon/` — the `nvdaMcpBridge` NVDA addon (global plugin + spy synth
+   driver) — drives NVDA itself.
 
 The two halves are separate processes and meet **only at the loopback socket**,
 so the server survives NVDA restarts and NVDA's embedded Python never hosts the
@@ -281,6 +284,14 @@ make the port pointless for testing.
    headlessly. Only `nvdaMcpBridge/adapters/` may import `speech`,
    `synthDriverHandler`, `inputCore`, `config`, `api`, `braille`, … If you
    reach for an NVDA import in the domain, you're on the wrong side of a port.
+6. **Decided means decided.** Items marked **Decided** — in this file,
+   ROADMAP.md, or a spec's agreed sections — are settled. Do not relitigate
+   them silently; to change one, propose it explicitly and update the doc in
+   the same PR that implements the change.
+7. **All documentation and communication must be screen-reader friendly:** no
+   ASCII-art diagrams, no box-drawing flowcharts. Prose, numbered lists,
+   headings, and tables only. (Indented path listings in code blocks are fine;
+   arrows-and-pipes drawings are not.)
 
 ## Dev commands
 
@@ -310,13 +321,35 @@ House style follows the NVDA addon convention: **tab indentation**, ruff line
 length 110 (`W191`/tab warnings from a default editor ruff are expected and
 ignored via per-package config).
 
-## Workflow
+## Workflow — **Decided**
 
-Built in **modular sessions**, one PR each, so context stays small and fresh
-sessions cold-start cheaply. Merge order follows dependencies: **A (foundation)
-→ then B (bridge core) and D (server) in parallel → C (bridge↔NVDA) → E
-(introspection + real-world) → F (packaging)**. Each session only needs the
-merged code + the spec + this file. See the spec's Milestones section.
+Built in **modular sessions** of one or more short PRs, so context stays small
+and fresh sessions cold-start cheaply. Merge order follows dependencies: **A
+(foundation) → then B (bridge core) and D (server) in parallel → C
+(bridge↔NVDA) → E (introspection + real-world) → F (packaging)**. Each session
+only needs the merged code + its spec + this file.
+
+[`ROADMAP.md`](ROADMAP.md) is the status board and owns execution state:
+
+- **Spec before code.** Every board entry is implemented against a spec agreed
+  in conversation first. Planning artifacts (specs, roadmap updates, design
+  decisions) are approved in conversation and land directly on main;
+  implementation goes through a PR that references its spec and is judged
+  against it. If implementation forces a spec amendment, the amendment rides
+  in the implementing PR.
+- **The implementing PR flips its own ROADMAP.md entry to Done**, so the board
+  is correct on main the moment the PR merges — no separate bookkeeping
+  commit.
+- **Lanes:** bridge (lane 1) and server (lane 2) may run in parallel — at most
+  one open PR per lane.
+- **Manual live-NVDA checklists live in the implementing PR's body as
+  checkboxes** — one item per check; findings written inline on the unchecked
+  item (NVDA version, expected vs observed). There is no separate findings
+  document; findings that require changes become iteration entries in
+  ROADMAP.md. The `no unchecked checkboxes` CI job
+  (`.github/workflows/checklist.yml`) fails while the PR body has an unchecked
+  box, so an unfinished checklist cannot merge once that job is in the
+  required status checks.
 
 ## Gotchas learned the hard way
 
