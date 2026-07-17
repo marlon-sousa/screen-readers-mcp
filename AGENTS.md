@@ -339,11 +339,13 @@ only needs the merged code + its spec + this file.
 [`ROADMAP.md`](ROADMAP.md) is the status board and owns execution state:
 
 - **Spec before code.** Every board entry is implemented against a spec agreed
-  in conversation first. Planning artifacts (specs, roadmap updates, design
-  decisions) are approved in conversation and land directly on main;
-  implementation goes through a PR that references its spec and is judged
-  against it. If implementation forces a spec amendment, the amendment rides
-  in the implementing PR.
+  in conversation first. The spec is written on the implementing PR's branch
+  and merges with the PR — it does not land on main separately. Code on that
+  branch starts only after the spec is approved in conversation; the PR is
+  judged against its spec. If implementation forces a spec amendment, the
+  amendment rides in the same PR. (Process-level doc changes — this file,
+  ROADMAP.md's rules — are still approved in conversation and may land
+  directly on main.)
 - **The implementing PR flips its own ROADMAP.md entry to Done**, so the board
   is correct on main the moment the PR merges — no separate bookkeeping
   commit.
