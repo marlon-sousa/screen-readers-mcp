@@ -55,8 +55,10 @@ real-world → **F** packaging. Each board entry belongs to one session.
 4. **Done** — B, headless foundation + buffer entities; drops the NVDA source
    dependency (pyright ignore list for the NVDA edge). Spec: RFC 0001. Merged
    as PR #5 (2026-07-15).
-5. **In review** — B, MessageChannel port + JSON-lines adapter. Spec: RFC 0001
-   (grandfathered). PR #6.
+5. **Done** — B, MessageChannel port + JSON-lines adapter: the Session's
+   whole-message I/O seam, framing behind the Transport adapter seam. Spec:
+   [0002-bridge-message-channel.md](specs/0002-bridge-message-channel.md)
+   (retroactive, rides in the PR). Merged as PR #6 (2026-07-17).
 6. **In review** — B, Transcript port + file transcript stack. Spec: RFC 0001
    (grandfathered). PR #7.
 7. B, session controller: `Session` (handshake, dispatch, heartbeat +
