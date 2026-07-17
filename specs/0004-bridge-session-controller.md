@@ -77,105 +77,103 @@ One file per port; a port's DTO / signalling types live in its file. All are
    str) -> None`, blocking until NVDA has processed the gesture. Raises
    **GestureError** (same file) for an unknown/rejected id.
 
-## The Session controller
+## The Session controller and its command handlers
 
-`domain/controllers/session.py` — **Session**, plus its two companion types in
-the same file: **SessionConfig** (frozen dataclass: `nvda_version: str`,
-`heartbeat_timeout: float = 30.0`, `inactivity_timeout: float = 120.0`) and
-**TeardownReason** (plain `enum.Enum`, per AGENTS.md: `CLIENT_BYE`,
-`CHANNEL_CLOSED`, `HEARTBEAT_TIMEOUT`, `INACTIVITY_TIMEOUT`,
-`HANDSHAKE_FAILED`, `EXTERNAL` — the last used by session C for plugin
-terminate and the panic gesture).
+**Amended during 7a implementation (rides in the PR, per process).** The first
+cut had one `Session` class holding both the lifecycle *and* a flat dispatch
+table of `_handle_*` methods. In conversation we agreed to split dispatch out:
+each command becomes a small controller (a **`CommandHandler`**), the Session
+becomes a thin dispatcher, and the two poll loops collapse into one. This
+section describes the delivered shape; the invariants (handshake strictness,
+the watchdogs, restore-on-every-path) are unchanged — only their housing is.
+The full rule set is now **Decided** in AGENTS.md ("Command handlers").
 
-Constructed by `wiring.py` with only ports and config: `MessageChannel`,
-`Transcript`, `Clock`, `AdapterFactory`, `SessionConfig`. It builds the buffer
-entities itself (entities are domain; controllers drive them). `run()`
-executes the whole session on the caller's thread (session C's accept loop).
+### Lifecycle — `domain/controllers/session.py`
 
-### Handshake
+**Session** owns only the lifecycle. Companion `SessionConfig` (frozen: 
+`nvda_version`, `heartbeat_timeout = 30.0`, `inactivity_timeout = 120.0`) rides
+in the same file; **TeardownReason** (plain `enum.Enum`: `CLIENT_BYE`,
+`CHANNEL_CLOSED`, `HEARTBEAT_TIMEOUT`, `INACTIVITY_TIMEOUT`, `HANDSHAKE_FAILED`,
+`EXTERNAL`) moved to its own `teardown_reason.py` to break an import cycle.
+Constructed with ports/config only — `MessageChannel`, `Transcript`, `Clock`,
+`SessionConfig`, and the **command registry** — it no longer knows the
+`AdapterFactory` (that lives in the hello handler). It builds one
+**`SessionContext`** (the per-session bundle handed to every handler, with the
+one lifecycle capability `close(reason)` wired to `request_teardown`). `run()`
+executes on the caller's thread.
 
-1. The first message must arrive before `heartbeat_timeout` and be a valid
-   `Request` whose `cmd` is `hello` with valid `HelloParams`. Anything else —
-   timeout, closed channel, garbage, wrong command, bad params — sends an
-   error response when a reply is possible and tears down with
-   `HANDSHAKE_FAILED`. Strict on purpose: unlike mid-session garbage, nothing
-   is invested yet, and a peer that cannot say `hello` is not our client.
-2. `protocolVersion` mismatch → error response naming both versions (the
-   self-explanatory pairing error RFC 0001 requires), teardown. The factory is
-   never called.
-3. On a valid `hello`: open the transcript, `factory.build(mode)`, create
-   `SpeechBuffer(clock, exact_finish=(mode is SILENT))` and
-   `BrailleBuffer(clock)`, wire `speech_buffer.set_observer(transcript.speech)`,
-   start both sources. Read `synth = current_synth()` (the user's real synth,
-   reported in either mode) and log `transcript.session_opened(mode, synth)`.
-   In **silent** mode only, then `real = swap_to_spy()` and
-   `transcript.synth_swapped(real)` — so the transcript reads `SESSION OPEN`
-   before `SYNTH SWAP`. Finally reply
-   `HelloResult(protocolVersion, nvda_version, mode, synth, transcript.path)`.
+**One dispatch loop** — `while self._reason is None:` over a `_State`
+(`PRE_HELLO` / `ESTABLISHED`). Each turn: absorb any external teardown request;
+`read_message()`; a `TIMEOUT` just checks the deadlines and polls again;
+`ChannelClosed` → `CHANNEL_CLOSED`; an unreadable line is `HANDSHAKE_FAILED`
+pre-hello or a transcript note when established. A message is parsed, dispatched,
+and the deadlines re-checked. Every exit sets `self._reason`; nothing else ends
+the loop.
 
-### Main loop and watchdogs
+- **Watchdogs.** Any inbound message resets the heartbeat; only a command with
+  `resets_inactivity` (everything but `ping`) resets inactivity. A lull → 
+  `HANDSHAKE_FAILED` pre-hello, else `HEARTBEAT_TIMEOUT`; command silence when
+  established → `INACTIVITY_TIMEOUT`. `request_teardown(reason)` is thread-safe
+  (session C's plugin terminate / panic gesture).
+- **Dispatch mechanics.** Look the command up in the registry. Pre-hello only a
+  handler with `available_before_hello` (just `hello`) is accepted; anything
+  else ends the handshake. Established, an unknown command or a duplicate
+  `hello` is an error reply and the session survives. The Session validates
+  nothing command-specific: it calls `handler.execute(ctx, request)`, wraps the
+  returned wire result in a `Response(id, result)`, and turns any raise
+  (`CommandError`, `protocol.ValidationError`, `GestureError`, or an unexpected
+  exception) into an error `Response` — which, pre-hello, also ends the
+  handshake (so a version mismatch or bad `hello` params fails cleanly).
 
-The loop calls `read_message()`; the channel's poll timeout guarantees
-control returns regularly. On every wakeup (message, `TIMEOUT`, or error) the
-Session checks its deadlines against `clock.monotonic()`:
+### Command handlers — `domain/controllers/commands/`
 
-- **Heartbeat**: any inbound message resets it. No message for
-  `heartbeat_timeout` → teardown `HEARTBEAT_TIMEOUT`.
-- **Command inactivity**: any command **except `ping`** resets it. Nothing but
-  pings for `inactivity_timeout` → teardown `INACTIVITY_TIMEOUT` (heartbeat
-  proves the harness process is alive, not that the agent is still testing —
-  RFC 0001).
-- **External close**: `request_teardown(reason)` is thread-safe and may be
-  called from any thread; the loop honors it at the next wakeup. This is the
-  seam session C's plugin `terminate` and panic gesture will use.
+One `CommandHandler` (`abc.ABC`) per wire command, one file each, mirrored by a
+test. `execute(ctx, request)` returns a wire result or raises. Coverage in 7a:
 
-Mid-session fault tolerance — the session survives everything that is not a
-deadline or a dead peer:
-
-- `ValidationError` from `read_message` (garbage bytes): if the raw payload
-  yields an `int` id, reply an error response to that id; otherwise
-  `transcript.note` it. Either way, carry on.
-- `ChannelClosed` → teardown `CHANNEL_CLOSED`.
-- A dispatch handler raising any exception → error response with the
-  exception's message; carry on.
-
-### Dispatch (v1 command coverage in this entry)
-
-Dispatch is a table keyed by `Command`; params are validated with `from_dict`
-(a `ValidationError` becomes an error response, session survives).
-
-| Command | Behaviour |
+| Handler | Behaviour |
 |---|---|
-| `ping` | `AckResult`. Resets heartbeat only. |
-| `echo` | `EchoResult` carrying the request's payload unchanged. (PR 7b.) |
-| `pressGesture` | For each gesture in order: `transcript.gesture(id)`, then `sender.press(id)`. First `GestureError` aborts the remainder; the error response names the failing id. Success → `AckResult`. |
-| `getSpeech` / `getLastSpeech` / `getNextSpeechIndex` / `waitForSpeech` / `waitForSpeechToFinish` | Delegate to `SpeechBuffer`; results in the corresponding wire dataclasses. |
-| `getBraille` | Delegates to `BrailleBuffer`. |
-| `bye` | `AckResult` (written before closing), then teardown `CLIENT_BYE`. |
-| `hello` (again) | Error response ("session already established"); session survives. |
-| `getFocusInfo` / `getState` / `getConfig` / `setConfig` | Error response ("not implemented in this bridge yet") — their ports arrive with session E. On the wire they behave exactly like any command error, so a newer server degrades cleanly. |
-| anything else | Error response ("unknown command"). |
+| `ping` | `AckResult`; `resets_inactivity = False`. |
+| `echo` | `EchoResult` echoing the payload. (PR 7b.) |
+| `pressGesture` | `transcript.gesture(id)` then `ctx.adapter_set.gesture_sender.press(id)`, in order; the first `GestureError` propagates (aborting the rest) and the Session names the id in the error reply. |
+| `getSpeech` / `getLastSpeech` / `getNextSpeechIndex` / `waitForSpeech` / `waitForSpeechToFinish` | Delegate to `ctx.speech_buffer`. |
+| `getBraille` | Delegates to `ctx.braille_buffer`. |
+| `bye` | `ctx.close(CLIENT_BYE)`, return `AckResult` — the Session writes the ack, then honours teardown at the next loop check. |
+| `hello` | The bootstrap command (`available_before_hello`); see below. |
+| `getFocusInfo` / `getState` / `getConfig` / `setConfig` | One shared `NotImplementedHandler` raising `CommandError` — ports arrive in session E; on the wire a clean command error, distinct from "unknown". |
 
-Wait-style commands (`waitForSpeech`, `waitForSpeechToFinish`) block the
-session thread for at most their own timeout; that is fine because those
-timeouts (seconds) are far below the watchdog windows, the triggering command
-already reset the inactivity clock, and queued pings are drained immediately
-after the wait — the heartbeat clock only compares receive times.
+Wait-style handlers block the session thread for at most their own timeout —
+far below the watchdog windows, and the command already reset inactivity, so a
+wait can never trip a deadline.
+
+**`hello` (`commands/hello.py`) — the bootstrap.** Wired with the
+`AdapterFactory` and NVDA version. On a `protocolVersion` mismatch it raises
+`CommandError` *before* touching anything (the factory is never called). Else:
+open the transcript, `factory.build(mode)` and install the `AdapterSet` on the
+context immediately (so teardown can restore even if a later step raises), make
+the buffers (`exact_finish = mode is SILENT`), wire
+`speech.set_observer(transcript.speech)`, start both sources, read
+`current_synth()`, log `session_opened`, and — silent only — `swap_to_spy()` +
+`synth_swapped` (so the transcript reads `SESSION OPEN` before `SYNTH SWAP`).
+Returns `HelloResult(protocolVersion, nvda_version, mode, synth, path)`; a
+successful pre-hello dispatch transitions the Session to `ESTABLISHED`.
+
+### The registry — `commands/registry.py`
+
+`build_command_registry(factory, nvda_version) -> dict[str, CommandHandler]`:
+an explicit hand-written map, read top to bottom (no container, no
+auto-registration — Decided). Handlers are stateless singletons; per-session
+state is the `SessionContext`. `hello` is constructed with the factory and
+version; everything else is dependency-free.
 
 ### Teardown — the invariant
 
-One private `_teardown(reason)` executed exactly once, in `finally`, on every
-exit path. Steps run in order, **each individually guarded** so a failure in
-one never skips the rest — in particular, `synth_swapper.restore()` is
-attempted no matter what precedes or follows it, and a raising transcript or
-channel can never block it:
-
-1. stop speech source; 2. stop braille source; 3. `restore()` — always,
-unconditionally (idempotent by contract); 4. `transcript.synth_restored` (only
-if a swap happened) and `transcript.session_closed(reason)`; 5. close the
-channel. If teardown happens before `hello` completed, steps for things never
-built are naturally skipped (no factory products exist yet) — but whatever
-does exist is torn down.
+One `_teardown` runs exactly once, in `finally`, on every exit path, reading the
+context. Each step is individually guarded: if `ctx.adapters` exists, stop
+speech source, stop braille source, `restore()` (unconditional, idempotent);
+then, if `ctx.swapped_real` is set, `transcript.synth_restored`; then
+`transcript.session_closed(reason)`; then close the channel. A raising
+transcript or a failing restore can never stop the channel close, and teardown
+before `hello` built anything naturally skips the missing pieces.
 
 ## Wiring
 
@@ -224,10 +222,26 @@ time (the same moment the real factory binds the spy synth to it).
 
 ### Unit tests (PR 7a)
 
-`tests/unit/domain/controllers/test_session.py` uses a **builder helper**
-(`run_session(...)` with per-test overrides), not fixtures — every test
-scripts a different scenario (AGENTS.md fixture policy, which names this very
-case).
+The dispatch split makes the tests split the same way — this is the payoff, not
+an afterthought:
+
+- `tests/unit/domain/controllers/test_session.py` tests only the **lifecycle +
+  dispatch mechanics**: handshake, the two watchdogs, teardown's
+  restore-on-every-path, and the mechanics (unknown command, a handler raising,
+  the pre-hello gate, `resets_inactivity`). Mechanics use `FakeCommandHandler`
+  registries so they don't depend on any real command; lifecycle uses the real
+  registry with a `FakeAdapterFactory`. It uses a **builder helper**
+  (`run_session(...)`), not fixtures, per AGENTS.md.
+- `tests/unit/domain/controllers/commands/test_*.py` — one per handler, each
+  exercising `execute` against a **hand-built `SessionContext` with no Session
+  and no run loop**. `tests/support/context.py` (a new non-fake support
+  package) builds the context from fakes; `test_registry.py` guards that every
+  wire command is registered and that the two policy flags sit on exactly the
+  right handlers; `test_session_context.py` covers `close` delegation and the
+  assert-before-install accessors.
+- New fake: `tests/fakes/command_handler.py` — **FakeCommandHandler** (canned
+  result or raise; settable policy flags), the double the dispatcher mechanics
+  test against.
 
 ### Wire-level scenario (PR 7b) — the headless bridge recipe
 
@@ -259,9 +273,13 @@ roughly a thousand-plus lines and two distinct review concerns. That breaks
 the house rule (short PRs: one component + its ports + tests), so the entry
 ships as two, sequential in lane 1:
 
-- **PR 7a — the component**: the five ports, `Session` (+`SessionConfig`,
-  `TeardownReason`), the seven fakes, `test_session.py`. One reviewable
-  question: *is the controller correct against its ports?*
+- **PR 7a — the component**: the five ports, `Session` + `SessionConfig` +
+  `TeardownReason`, the **command-handler layer** (the `CommandHandler` ABC,
+  `SessionContext`, the registry, and one handler per v1 command), the fakes,
+  and the split test suite (dispatcher/lifecycle + per-handler). One reviewable
+  question: *is the controller correct against its ports?* (The command-handler
+  decomposition was adopted mid-7a; see "The Session controller and its command
+  handlers".)
 - **PR 7b — the surface**: `echo` (shared protocol + tests + sync),
   `wiring.py`, `LoopbackTransport`, `test_wiring.py`, the wire-level scenario
   module, and the AGENTS.md integration-tests wording amendment. One
@@ -311,7 +329,11 @@ PR 7a:
     channel from closing. The fake swapper proves call order and idempotent
     double-restore.
 11. `request_teardown` from another thread ends the loop with its reason.
-12. pyright strict is clean; nothing imports NVDA; nothing joins the ignore
+12. Each command handler is exercised through `execute` against a hand-built
+    `SessionContext` with **no Session and no run loop**; the registry test
+    proves every wire command is registered and that `available_before_hello` /
+    `resets_inactivity` sit on exactly `hello` / `ping`.
+13. pyright strict is clean; nothing imports NVDA; nothing joins the ignore
     list.
 
 PR 7b:
@@ -323,7 +345,7 @@ PR 7b:
 15. The wire scenario passes end to end on a thread: handshake, echo,
     scripted gesture → speech read-back, `bye` with restore — through real
     framing, no socket, no NVDA.
-16. Criterion 12 holds for the new files too.
+16. Criterion 13 (pyright strict, no NVDA imports) holds for the new files too.
 
 No manual NVDA checklist: neither PR has an NVDA-facing surface. (Session C's
 checklist will exercise this controller against live NVDA.)
