@@ -74,9 +74,13 @@ ports.
                   # controller its ports. Stays PURE so it is type-checked.
 ```
 
-Bridge (`bridgeAddon/addon/globalPlugins/nvdaMcpBridge/`):
-`domain/controllers/session.py`; entities `speech_buffer.py` /
-`braille_buffer.py`; adapters `json_lines_channel.py`, `file_transcript.py`,
+Bridge (`bridgeAddon/addon/globalPlugins/nvdaMcpBridge/`): the Session
+lifecycle in `domain/controllers/session.py` (+ `teardown_reason.py`), the
+per-command handlers under `domain/controllers/commands/` (see "Command
+handlers" below); entities `speech_buffer.py` / `braille_buffer.py`; ports
+`adapter_factory.py` (+ `AdapterSet`), `speech_source.py`, `braille_source.py`,
+`synth_swapper.py`, `gesture_sender.py`, plus `clock.py`, `message_channel.py`,
+`transcript.py`; adapters `json_lines_channel.py`, `file_transcript.py`,
 `text_file_writer.py`, `real_clock.py`, with `nvda_*.py` + `socket_transport.py`
 in session C. `protocol.py` (the synced shared wire module) sits at the package
 root, and `plugin.py` is the NVDA edge. Server (session D): `domain/` holds the
@@ -143,6 +147,51 @@ Rules that keep this honest:
   live-NVDA integration tests. Keep edge files thin — real logic belongs in the
   checked domain.
 
+## Command handlers — the dispatch layer — **Decided**
+
+The `Session` is a controller, but it does two jobs and delegates one. Session
+**lifecycle** — the handshake, the heartbeat/inactivity watchdogs, and the
+teardown that restores the synth on every path — stays in
+`domain/controllers/session.py`. Per-command work lives in
+`domain/controllers/commands/`, one **`CommandHandler`** (an `abc.ABC`) per wire
+command, one file each, mirrored one-for-one by a test. This keeps the Session
+small and lets a command be added or tested in isolation.
+
+- **A handler is a controller.** It orchestrates one use case over
+  ports/entities and returns a wire result, or **raises** to fail it — a
+  `CommandError` for its own errors, a `protocol.ValidationError` for bad
+  params, `GestureError` from the port. The Session centralises everything
+  else: it wraps the result in a `Response` with the request id, turns any
+  raise into an error reply, and owns the watchdog bookkeeping. Handlers never
+  touch the channel, the loop, or teardown.
+- **Handlers see only a `SessionContext`, never the Session.** The context
+  (`commands/session_context.py`) is the per-session bundle — clock,
+  transcript, the speech/braille buffers, the `AdapterSet` — plus exactly one
+  lifecycle capability, `close(reason)`. A command that must end the session
+  (`bye`, and session C's panic path) calls `close`; it cannot reach lifecycle
+  internals. Because a handler needs only a hand-built context, it is
+  unit-tested with **no Session and no run loop** (`tests/support/context.py`
+  builds one from fakes).
+- **The registry is an explicit map, not a container.**
+  `commands/registry.py`'s `build_command_registry(...)` is a hand-written
+  `command → handler` dict, read top to bottom — the same reason `wiring.py` is
+  explicit (no DI container, no decorator auto-registration). Handlers are
+  stateless singletons; the per-session state is the context passed to
+  `execute`. **`hello` is the exception:** it is the bootstrap command that
+  *builds* the session, so it is wired with the `AdapterFactory` and the NVDA
+  version and populates the context — the Session no longer knows the factory
+  at all.
+- **Dispatch policy is declared on the handler, not special-cased in the
+  loop.** `resets_inactivity` (false only for `ping`) and
+  `available_before_hello` (true only for `hello`) are class attributes the
+  dispatcher reads, so the one loop needs no `if cmd == ...`.
+- **One dispatch loop.** The Session runs a single `while self._reason is None:`
+  loop over a pre-hello/established state: pre-hello only `hello` is accepted
+  and any failure ends the handshake; established, the session is tolerant (an
+  error reply, keep going). A `TIMEOUT` sets no reason and polls again; every
+  real exit sets the reason. (This replaced the two poll loops the first cut
+  had.)
+
 ## Testing
 
 The domain is pure, so it is unit-tested headlessly under desktop Python with
@@ -175,12 +224,16 @@ through a minimal stub subclass, while each buffer tests only what it adds.)
 | No test file | Why |
 |---|---|
 | `domain/ports/*.py` | ABCs — no behaviour to test. |
+| `domain/controllers/commands/command_handler.py` | The handler ABC + `CommandError` — an interface, like a port. (`session_context.py` and `registry.py` DO carry behaviour and are tested.) |
 | leaf adapters (`real_clock.py`, `text_file_writer.py`, `socket_transport.py`) | They make no decisions; there is nothing `open()` doesn't already guarantee. If you are adding a test here, you have put a decision in a leaf — move it up. |
 | `plugin.py` | The NVDA edge. Covered by the integration tests, not units. |
 
 **Fakes mirror the ports they stand in for**, same one-class-per-file rule and
 no re-export facade: `tests/fakes/clock.py` ↔ `domain/ports/clock.py`, imported
-as `from fakes.clock import FakeClock`.
+as `from fakes.clock import FakeClock`. Test scaffolding that is **not** a port
+double — builders, helpers — lives in a sibling `tests/support/` package
+(`from support.context import make_context`), so `fakes/` stays exactly the port
+doubles and nothing else.
 
 **`tests/integration/` is named after the USE CASE, not the file** — these prove
 a whole scenario end to end (e.g. `test_silent_session_restores_synth.py`),
