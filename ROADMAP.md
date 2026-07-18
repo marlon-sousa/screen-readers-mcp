@@ -46,6 +46,9 @@ The sessions come from
 foundation → **B** bridge core (headless) → **C** bridge↔NVDA (needs live
 NVDA) → **D** MCP server (headless; parallel to B/C) → **E** introspection +
 real-world → **F** packaging. Each board entry belongs to one session.
+[Spec 0005](specs/0005-multi-reader-direction.md) (the multi-reader direction
+RFC, agreed 2026-07-18) added one cross-cutting wire entry to lane 1 (entry 8,
+a headless B follow-up) and amended the scope of entries 9 and 12.
 
 ## Status board — lane 1: bridge
 
@@ -81,33 +84,52 @@ real-world → **F** packaging. Each board entry belongs to one session.
      command + `EchoHandler`, `wiring.py` (`build_session`), `LoopbackTransport`,
      and the headless wire-level scenario — the integration surface lane 2
      tests against.
-8. C, bridge↔NVDA: real NVDA adapters (`adapters/nvda_*.py`),
+8. B follow-up (headless; added by
+   [spec 0005](specs/0005-multi-reader-direction.md)), wire: the published
+   contract — `hello` announces `reader` (name + version) and `capabilities`,
+   a `COMMAND_SHAPES` table in `protocol.py`, a JSON Schema generated from the
+   dataclasses (`specs/wire/v1/schema.json`) with a CI drift gate, and the
+   hand-written prose semantics doc (`specs/wire/v1/protocol.md`). Spec:
+   [0006-wire-published-contract.md](specs/0006-wire-published-contract.md)
+   (rides in the implementing PR's branch, awaiting agreement).
+9. C, bridge↔NVDA: real NVDA adapters (`adapters/nvda_*.py`),
    `synthDrivers/nvdaMcpSpy.py`, `socket_transport.py` + accept loop, plugin
-   wiring, panic gesture, scons build. Needs live NVDA with Marlon at the
-   keyboard; results recorded as a checklist in the PR body. Spec: none yet →
-   specify first. Scope sketch: RFC 0001 milestones 1–3; the fail-safe synth
-   restoration design (config name swap, `pre_configSave` guard,
-   `getSynthInstance` patch) is already **Decided** in RFC 0001.
+   wiring, panic gesture, scons build. Real adapters supply the live
+   `reader`/`capabilities` values for the `hello` fields entry 8 adds. Needs
+   live NVDA with Marlon at the keyboard; results recorded as a checklist in
+   the PR body. Spec: none yet → specify first. Scope sketch: RFC 0001
+   milestones 1–3; the fail-safe synth restoration design (config name swap,
+   `pre_configSave` guard, `getSynthInstance` patch) is already **Decided** in
+   RFC 0001.
 
 ## Status board — lane 2: server (headless; may run parallel to lane 1)
 
-9. D, MCP server: FastMCP/stdio adapter, v1 MCP tools, `BridgeClient` port,
-   unit tests against a fake bridge + in-memory MCP client tests. Spec: none
-   yet → specify first. Scope sketch: RFC 0001 component 2 + milestone 4; same
-   hexagonal organization as the bridge (AGENTS.md), and the restructure
-   adopts the `tests/unit/` mirror layout.
+10. D, MCP server: FastMCP/stdio adapter, v1 MCP tools, `BridgeClient` port,
+    unit tests against a fake bridge + in-memory MCP client tests. Spec: none
+    yet → specify first. Scope sketch: RFC 0001 component 2 + milestone 4;
+    same hexagonal organization as the bridge (AGENTS.md), and the restructure
+    adopts the `tests/unit/` mirror layout. The spec must encode the
+    reader-agnostic chassis principles of
+    [spec 0005](specs/0005-multi-reader-direction.md) (no reader conditionals;
+    reader identity surfaced; reader vocabulary as opaque data; bridge
+    endpoint as composition-root config).
 
 ## Convergence (requires C and D both Done)
 
-10. E, introspection + real-world: focus/braille/config tools; end-to-end run
+11. E, introspection + real-world: focus/braille/config tools; end-to-end run
     against EnhancedFindDialog with Claude Code as the MCP client. Needs live
     NVDA. Spec: none yet → specify when unblocked. Scope sketch: RFC 0001
     milestones 5–6. The live-NVDA integration tests here are what prove each
     real adapter behaves like its fake — findings spawn iteration entries
     (E.1, E.2, …) in this board.
-11. F, packaging/release: scons `.nvda-addon` artifact, PyInstaller zip for
-    the server, GitHub release workflow. Spec: none yet → specify when
-    reached. Scope sketch: RFC 0001 milestone 7.
+12. F, packaging/release: scons `.nvda-addon` artifact, server distribution,
+    GitHub release workflow. Spec: none yet → specify when reached. Scope
+    sketch: RFC 0001 milestone 7, plus the decision list from
+    [spec 0005](specs/0005-multi-reader-direction.md): server implementation
+    language (Python + PyInstaller vs a Go port judged against the published
+    wire contract), umbrella Windows installer vs per-channel-only
+    distribution (NVDA add-on store stays canonical for the add-on), and an
+    `.mcpb` bundle for Claude Desktop users.
 
 ## Principles — **Decided**
 

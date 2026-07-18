@@ -14,6 +14,14 @@ keyboard gestures, read back what NVDA speaks/brailles, and introspect its
 state. First use case: functional testing of NVDA add-ons; the primitives are
 general.
 
+Direction ([spec 0005](specs/0005-multi-reader-direction.md), **Decided**):
+the server is a **reader-agnostic chassis** — NVDA is the first bridge, not
+the identity. A "bridge" is whatever implements the wire contract for one
+screen reader (JAWS and TalkBack sketches live in the spec). The server core
+never special-cases a reader; reader identity is announced by `hello` and
+surfaced, reader vocabulary rides through as opaque data, and the repo stays
+a monorepo until a second bridge is real.
+
 The chain, top to bottom — each item talks only to the next:
 
 1. An MCP client (Claude Code, …) speaks MCP over stdio to the server.
