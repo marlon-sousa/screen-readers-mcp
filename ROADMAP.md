@@ -101,10 +101,12 @@ a headless B follow-up) and amended the scope of entries 9 and 12.
    observable status (stopped / listening on endpoint / session active) — the
    seam entry 9.1's control dialog drives — not a fire-and-forget loop
    (agreed 2026-07-18). Needs live NVDA with Marlon at the keyboard; results
-   recorded as a checklist in the PR body. Spec: none yet → specify first.
-   Scope sketch: RFC 0001 milestones 1–3; the fail-safe synth restoration
-   design (config name swap, `pre_configSave` guard, `getSynthInstance`
-   patch) is already **Decided** in RFC 0001.
+   recorded as a checklist in the PR body. Spec:
+   [0007-bridge-nvda-edge.md](specs/0007-bridge-nvda-edge.md) (rides on
+   branch `entry-9-bridge-nvda`, awaiting agreement; two PRs — 9a headless
+   connection stack, 9b NVDA edge). Scope sketch: RFC 0001 milestones 1–3;
+   the fail-safe synth restoration design (config name swap, `pre_configSave`
+   guard, `getSynthInstance` patch) is already **Decided** in RFC 0001.
 9.1. C follow-up, bridge control UI + connection config (agreed 2026-07-18):
    an NVDA menu → Tools entry opening a bridge dialog — connection-mode combo
    (Local: named pipe; Remote: TCP/IP, **greyed out** — see below), status
