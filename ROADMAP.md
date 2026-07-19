@@ -96,12 +96,30 @@ a headless B follow-up) and amended the scope of entries 9 and 12.
 9. C, bridge↔NVDA: real NVDA adapters (`adapters/nvda_*.py`),
    `synthDrivers/nvdaMcpSpy.py`, `socket_transport.py` + accept loop, plugin
    wiring, panic gesture, scons build. Real adapters supply the live
-   `reader`/`capabilities` values for the `hello` fields entry 8 adds. Needs
-   live NVDA with Marlon at the keyboard; results recorded as a checklist in
-   the PR body. Spec: none yet → specify first. Scope sketch: RFC 0001
-   milestones 1–3; the fail-safe synth restoration design (config name swap,
-   `pre_configSave` guard, `getSynthInstance` patch) is already **Decided** in
-   RFC 0001.
+   `reader`/`capabilities` values for the `hello` fields entry 8 adds. The
+   listener must be designed as a **start/stop lifecycle controller** with
+   observable status (stopped / listening on endpoint / session active) — the
+   seam entry 9.1's control dialog drives — not a fire-and-forget loop
+   (agreed 2026-07-18). Needs live NVDA with Marlon at the keyboard; results
+   recorded as a checklist in the PR body. Spec: none yet → specify first.
+   Scope sketch: RFC 0001 milestones 1–3; the fail-safe synth restoration
+   design (config name swap, `pre_configSave` guard, `getSynthInstance`
+   patch) is already **Decided** in RFC 0001.
+9.1. C follow-up, bridge control UI + connection config (agreed 2026-07-18):
+   an NVDA menu → Tools entry opening a bridge dialog — connection-mode combo
+   (Local: named pipe; Remote: TCP/IP, **greyed out** — see below), status
+   indicator showing the accepting endpoint, Start/Stop buttons driving entry
+   9's lifecycle controller, and an auto-start checkbox — all persisted to
+   NVDA config. Adds the named-pipe transport leaf (ctypes, stdlib-only)
+   behind the existing Transport seam; loopback TCP stays available as a
+   config-only compat path (no UI) until the server dials pipes, then
+   retires. The wire spec's transport section (`specs/wire/v1/protocol.md`
+   §1) is amended in this PR. **Remote TCP is deferred — Decided**: it is
+   remote keystroke injection (`pressGesture`) and config write (`setConfig`),
+   so enabling it is a future entry with its own security spec (explicit
+   warning + bridge-generated access token presented in `hello`); until then
+   the combo shows it disabled. Needs live NVDA (GUI checklist). Spec: none
+   yet → specify first, after entry 9's spec.
 
 ## Status board — lane 2: server (headless; may run parallel to lane 1)
 
@@ -113,7 +131,9 @@ a headless B follow-up) and amended the scope of entries 9 and 12.
     reader-agnostic chassis principles of
     [spec 0005](specs/0005-multi-reader-direction.md) (no reader conditionals;
     reader identity surfaced; reader vocabulary as opaque data; bridge
-    endpoint as composition-root config).
+    endpoint as composition-root config). Once entry 9.1 lands, a small
+    lane-2 follow-up teaches the `BridgeClient` endpoint config to dial the
+    named pipe as well as TCP.
 
 ## Convergence (requires C and D both Done)
 
