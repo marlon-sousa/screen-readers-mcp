@@ -10,6 +10,23 @@
 # The invariant this file exists to keep (AGENTS.md #3): a crashed harness must
 # never leave a blind user mute. So restore() is idempotent and unconditional.
 #
+# THREAD AFFINITY -- learned from a live-NVDA finding (9c). NVDA loads/unloads
+# synths on its MAIN thread; the Session runs on the bridge's server thread. If
+# we call setSynth from the server thread while NVDA handles a config-profile
+# switch on the main thread (app profiles switch on focus change -- frequent),
+# the two race and NVDA is left holding a dead synth: MUTE, even though the
+# config name is correct. So every NVDA mutation here runs on the main thread,
+# the same way NvdaGestureSender marshals gesture injection:
+#   * swap_to_spy is BLOCKING (hello must know NVDA went silent before capture
+#     starts, so there is no audio blip); it is only ever called from the server
+#     thread with the main thread free, so it cannot deadlock.
+#   * restore is FIRE-AND-FORGET (CallAfter, no wait). It must be safe from every
+#     teardown trigger -- including panic/terminate, which run ON the main thread
+#     and join the server thread -- and a blocking marshal there would deadlock
+#     (main waits for server, server waits for main). Fire-and-forget means the
+#     server thread never waits on the main thread, and the restore still runs on
+#     the main thread, serialized with NVDA's own profile-switch synth handling.
+#
 # Why three layers, not just setSynth (learned from reading 2026.1 source):
 # synthDriverHandler reloads config["speech"]["synth"] on every
 # post_configProfileSwitch, and profile switches are frequent. So swapping alone
@@ -26,13 +43,59 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+import threading
+from typing import Any, Callable, TypeVar
 
 import config
 import synthDriverHandler
+import wx
 
 from ..domain.ports.synth_swapper import SynthSwapper
 from . import spy_sink
+
+_T = TypeVar("_T")
+
+#: How long a blocking marshal to the main thread waits before giving up. Only
+#: the reads/swap block, and only when the main thread is momentarily busy.
+_MAIN_THREAD_TIMEOUT: float = 10.0
+
+
+def _run_on_main(func: Callable[[], _T], *, block: bool) -> _T | None:
+	"""Run ``func`` on NVDA's wx main thread and return its result.
+
+	Already on the main thread: run inline. Otherwise ``CallAfter`` it -- blocking
+	on completion when ``block`` (reads and swap, which need the result / ordering),
+	or fire-and-forget when not (restore, so a main-thread teardown trigger like
+	panic/terminate cannot deadlock). Because CallAfter is FIFO, a blocking read
+	queued after a fire-and-forget restore still observes the post-restore state.
+	"""
+	if wx.IsMainThread():
+		return func()
+	if not block:
+		try:
+			wx.CallAfter(func)
+		except Exception:
+			# wx is gone (NVDA shutting down): the on-disk config already names
+			# the real synth, so the next start is correct regardless.
+			pass
+		return None
+	done = threading.Event()
+	box: dict[str, Any] = {}
+
+	def runner() -> None:
+		try:
+			box["value"] = func()
+		except BaseException as exc:  # surfaced to the caller below
+			box["error"] = exc
+		finally:
+			done.set()
+
+	wx.CallAfter(runner)
+	if not done.wait(_MAIN_THREAD_TIMEOUT):
+		raise TimeoutError("timed out marshaling to NVDA's main thread")
+	if "error" in box:
+		raise box["error"]
+	return box.get("value")
 
 
 class NvdaSynthSwapper(SynthSwapper):
@@ -43,13 +106,29 @@ class NvdaSynthSwapper(SynthSwapper):
 		self._orig_get_synth_instance: Callable[..., Any] | None = None
 
 	def current_synth(self) -> str:
+		# Marshalled (blocking) so it reads NVDA's synth on the main thread and,
+		# via CallAfter's FIFO order, observes any just-scheduled restore first.
+		return _run_on_main(self._current_synth_body, block=True) or ""
+
+	@staticmethod
+	def _current_synth_body() -> str:
 		synth = synthDriverHandler.getSynth()
 		return synth.name if synth is not None else ""
 
 	def swap_to_spy(self) -> str:
 		real = self.current_synth()
 		self._real_synth = real
+		_run_on_main(self._swap_body, block=True)
+		return real
 
+	def restore(self) -> None:
+		# Fire-and-forget onto the main thread; the body's own guard makes it a
+		# no-op if nothing was swapped, so double calls are harmless.
+		_run_on_main(self._restore_body, block=False)
+
+	# -- bodies (always run on the main thread) ------------------------------
+
+	def _swap_body(self) -> None:
 		# Layer 3 first: patch getSynthInstance BEFORE setSynth, so the load below
 		# (and any concurrent profile switch) already resolves to the spy.
 		self._orig_get_synth_instance = synthDriverHandler.getSynthInstance
@@ -63,9 +142,8 @@ class NvdaSynthSwapper(SynthSwapper):
 		# Layer 2: keep the spy out of any config the user saves mid-session.
 		config.pre_configSave.register(self._on_pre_config_save)
 		config.post_configSave.register(self._on_post_config_save)
-		return real
 
-	def restore(self) -> None:
+	def _restore_body(self) -> None:
 		if self._real_synth is None:
 			return  # nothing was swapped; idempotent no-op
 		real = self._real_synth
