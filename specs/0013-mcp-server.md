@@ -487,6 +487,13 @@ precedent. Lane 2 keeps at most one open PR at a time.
 
 - **10a** — the module, the generated wire types, and the bridge client: it can
   dial a bridge and complete a handshake, proven headlessly. No MCP surface.
+  **Itself delivered as five sequential PRs** (amended 2026-07-22, after the
+  first cut came to ~6,000 lines): (1) the module, the generated wire binding and
+  the Go CI job; (2) the `mcpServer/` deletion, which must follow (1) because the
+  `server` job has to be repointed at Go before the directory it names
+  disappears; (3) the domain — ports, entities and their fakes; (4) the bridge
+  client and its transport leaves; (5) discovery, config, wiring and the entry
+  point. Each is green on its own; the deliverables below are unchanged.
 - **10b** — the MCP surface: the discovery and connect tools, the capability
   gate, the per-capability tools, the info resource, the agent-driven
   connection lifecycle.
@@ -789,6 +796,47 @@ scheme, and a `server/README.md`.
 
 Flip ROADMAP entry 10 to Done; AGENTS.md's server paragraph updated to describe
 the Go structure.
+
+## Delivery amendments — 10a
+
+The layout above is the reviewed one; these are the changes delivery forced,
+recorded here in the PR that makes them, each with its one-line why (workflow
+rule, "if the layout changes while coding, the amendment rides in the PR").
+
+1. **`SessionDialer.Dial` returns a `ReaderConnection`, not a bare
+   `ReaderSession`** — the caller also needs the live collaborators to serve
+   tool calls with, and a way to end the session. `ReaderConnection` carries the
+   session, the endpoint that answered, the six capability ports, and a
+   `SessionLifecycle` (`Ping` / `Bye` / `Close`). The capability ports being
+   **fields that are nil when unannounced** is what makes the gate structural,
+   which was the reason for splitting the ports in the first place.
+   `SessionLifecycle`, `SessionOptions` and `ReaderConnection` live in
+   `session_dialer.go` as the port's own signalling types, not in files of their
+   own.
+2. **Two entity files were added: `capture_mode.go` and `reader_log_level.go`** —
+   `connect_reader`'s two session parameters need domain types, because the
+   domain may not use the generated wire enums.
+3. **`tools/wiregen/` holds the generator** — under `tools/` rather than `cmd/`
+   so `cmd/` stays exactly the binaries we release. It emits one
+   `adapters/wire/wire.gen.go`; the hand-written `adapters/wire/doc.go` carries
+   the package's role header and the `go:generate` directive. Enum type names
+   are an explicit table in the generator (the schema spells its enums inline),
+   and an unnamed enum is a hard error rather than a silent fall-back to
+   `string`.
+4. **`SupportedVersions` is a function, not a `var`** — a package-level slice
+   variable would be package-level mutable state, which acceptance criterion 11
+   forbids. It is still a set in code, consulted by the handshake.
+5. **`tests/architecture/imports_test.go` is untagged** — it is acceptance
+   criterion 12's import-boundary test, and a boundary checked only when someone
+   remembers `-tags` is not checked. The tagged tiers are tagged because they are
+   slow or platform-bound; this one parses a few dozen files.
+6. **10a already carries a real-transport tier**, `tests/integration/`, behind
+   `//go:build integration`: the loopback-TCP scenarios everywhere, the
+   named-pipe ones additionally behind `windows`. The CI `server` job runs it,
+   so the leaves are exercised from this PR rather than from 10c.
+7. **`main.go` gained `--verbose`** (debug logging to stderr). Still no
+   `--capture-mode` and no `--reader-log-level`, for the reason the flag table
+   gives.
 
 ## Class/file layout summary
 

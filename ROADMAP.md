@@ -200,7 +200,12 @@ scheduled. Work now proceeds in lane 2.
       proven headlessly. No MCP surface. Carries spec 0013 and the 0005 and
       AGENTS.md amendments; deletes the Python `mcpServer/` scaffold and turns
       the CI `server` job into a Go one (job name unchanged — branch protection
-      matches literal names).
+      matches literal names). **Delivered as five sequential PRs** (the short-PR
+      principle applied to a 6,000-line first cut): the wire binding and the Go
+      CI job; the `mcpServer/` deletion; the domain; the bridge client;
+      discovery, config, wiring and the entry point. The deletion waits for the
+      first, because the `server` job must be repointed at Go before the
+      directory it names disappears.
     - **10b** — the MCP surface: `list_readers` / `connect_reader` /
       `disconnect_reader` / `status`, the capability-gated tool set, the
       `screenreader://info` resource, and the agent-initiated connection

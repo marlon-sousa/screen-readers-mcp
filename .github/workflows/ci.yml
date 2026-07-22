@@ -38,19 +38,53 @@ jobs:
           uv run --python 3.13 python -m nvda_mcp_wire.schema > ../specs/wire/v1/schema.json
           git diff --exit-code -- ../specs/wire/v1/schema.json
 
+  # Go since entry 10a (spec 0013). The JOB NAME is unchanged on purpose --
+  # branch protection matches required checks by the literal name, so the
+  # language change is invisible to the merge gate. The detail lives in the step
+  # names, which are free to change.
   server:
     name: server
     runs-on: windows-latest
     defaults:
       run:
-        working-directory: mcpServer
+        working-directory: server
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - name: Tests
-        run: uv run --python 3.13 pytest -q
-      - name: Pyright
-        run: uv run --python 3.13 pyright
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: server/go.sum
+      - name: Build
+        run: go build ./...
+      - name: Tests (unit)
+        run: go test ./...
+      # The headless and real-transport tiers: a fake bridge speaking real wire
+      # frames over a real loopback socket and a real named pipe. Opt-in by tag
+      # so the unit run above stays fast.
+      - name: Tests (integration, real transports)
+        run: go test -tags integration ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+      # Drift gate, mirroring the `shared` job's: the wire binding is GENERATED
+      # from the published schema, so regenerating it must leave the committed
+      # files byte-identical. This is what replaces the same-bytes guarantee the
+      # two Python halves used to get for free.
+      - name: Wire binding is up to date
+        shell: bash
+        run: |
+          go generate ./adapters/wire
+          git diff --exit-code -- adapters/wire
+      # The named-pipe leaf must compile OUT cleanly: a non-Windows server host
+      # is anticipated (a TalkBack or VoiceOver bridge), so this is a supported
+      # configuration and not just CI hygiene.
+      - name: Builds on Linux, without the pipe leaf
+        run: go build ./...
+        env:
+          GOOS: linux
 
   nvda-bridge:
     name: nvda-bridge
