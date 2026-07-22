@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import gui
+from gui import guiHelper
 import ui
 import wx
 from logHandler import log
@@ -142,8 +142,8 @@ class BridgeDialog(wx.Dialog):
 		self._server = server
 		self._config = config
 
-		# Hold a reference to the plugin for rebuild_server().
-		# The dialog itself does NOT own the server rebuild; plugin.py does.
+		# Hold a reference to the plugin for rebuild_server() and so we can
+		# always read the current server (rebuild_server creates a new one).
 		self._plugin: "GlobalPlugin | None" = None
 
 		self._build_ui()
@@ -161,69 +161,74 @@ class BridgeDialog(wx.Dialog):
 
 	def set_plugin(self, plugin: "GlobalPlugin") -> None:
 		"""Give the dialog a back-reference to the plugin so Start can call
-		``plugin.rebuild_server(mode)``. Set by ``_show_bridge_dialog``."""
+		``plugin.rebuild_server(mode)`` and the dialog always reads the
+		current server (rebuild_server replaces the instance)."""
 		self._plugin = plugin
+
+	# -- current server ---------------------------------------------------------
+
+	def _current_server(self) -> BridgeServer:
+		"""The plugin's current BridgeServer instance.
+
+		rebuild_server() creates a new BridgeServer and assigns it to
+		self._plugin._server, so the dialog's snapshot can become stale.
+		Always read through the plugin when available.
+		"""
+		if self._plugin is not None:
+			return self._plugin._server
+		return self._server
 
 	# -- UI construction --------------------------------------------------------
 
 	def _build_ui(self) -> None:
-		main_sizer = wx.BoxSizer(wx.VERTICAL)
+		main_helper = guiHelper.BoxSizerHelper(self, orientation=wx.VERTICAL)
 
-		# 1. Connection mode
-		# Translators: Label for the connection mode section in the NVDA MCP Bridge dialog.
-		conn_box = wx.StaticBox(self, label=_("Connection"))
-		conn_sizer = wx.StaticBoxSizer(conn_box, wx.VERTICAL)
-
-		# Translators: Label above the connection mode combo box.
-		combo_label = wx.StaticText(conn_box, label=_("Accept connections via:"))
-		conn_sizer.Add(combo_label, flag=wx.ALL, border=4)
-
+		# 1. Connection mode — use addLabeledControl so NVDA reads the combo
+		#    items when arrowing (the label is properly associated for a11y).
 		choices = [
 			# Translators: Connection mode option: local named pipe.
 			_("Local: named pipe (recommended)"),
 			# Translators: Connection mode option: local loopback TCP.
 			_("Local: loopback TCP"),
 		]
-		self._mode_combo = wx.Choice(conn_box, choices=choices)
+		# Translators: Label above the connection mode combo box.
+		self._mode_combo = main_helper.addLabeledControl(
+			_("Accept connections via:"), wx.Choice, choices=choices
+		)
 		self._mode_combo.Bind(wx.EVT_CHOICE, self._on_mode_changed)
-		conn_sizer.Add(self._mode_combo, flag=wx.EXPAND | wx.ALL, border=4)
-
-		main_sizer.Add(conn_sizer, flag=wx.EXPAND | wx.ALL, border=8)
 
 		# 2. Auto-start checkbox
 		# Translators: Checkbox in the bridge dialog to start the bridge automatically when NVDA loads.
-		self._auto_start_cb = wx.CheckBox(
-			self, label=_("Start bridge automatically when NVDA loads")
+		self._auto_start_cb = main_helper.addItem(
+			wx.CheckBox(self, label=_("Start bridge automatically when NVDA loads"))
 		)
 		self._auto_start_cb.Bind(wx.EVT_CHECKBOX, self._on_auto_start_changed)
-		main_sizer.Add(self._auto_start_cb, flag=wx.ALL, border=8)
 
 		# 3. Button row (Start, Stop, Close)
-		button_sizer = wx.BoxSizer(wx.HORIZONTAL)
+		button_helper = guiHelper.ButtonHelper(wx.HORIZONTAL)
 
 		# Translators: Button in the bridge dialog to start the server.
-		self._start_btn = wx.Button(self, label=_("&Start"))
+		self._start_btn = button_helper.addButton(self, label=_("&Start"))
 		self._start_btn.Bind(wx.EVT_BUTTON, self._on_start)
-		button_sizer.Add(self._start_btn, flag=wx.RIGHT, border=4)
 
 		# Translators: Button in the bridge dialog to stop the server.
-		self._stop_btn = wx.Button(self, label=_("St&op"))
+		self._stop_btn = button_helper.addButton(self, label=_("St&op"))
 		self._stop_btn.Bind(wx.EVT_BUTTON, self._on_stop)
-		button_sizer.Add(self._stop_btn, flag=wx.RIGHT, border=4)
 
 		# Translators: Button in the bridge dialog to close the dialog.
-		close_btn = wx.Button(self, label=_("&Close"))
+		close_btn = button_helper.addButton(self, label=_("&Close"))
 		close_btn.Bind(wx.EVT_BUTTON, self._on_close_button)
-		button_sizer.Add(close_btn)
 
-		main_sizer.Add(button_sizer, flag=wx.ALIGN_RIGHT | wx.ALL, border=8)
+		main_helper.addItem(button_helper)
 
 		# 4. Status bar — NVDA+End reads this, following the TimerForNVDA pattern.
 		self._status_bar = wx.StatusBar(self)
-		main_sizer.Add(self._status_bar, flag=wx.EXPAND)
+		main_helper.addItem(self._status_bar, flag=wx.EXPAND)
 
-		self.SetSizer(main_sizer)
+		main_sizer = wx.BoxSizer(wx.VERTICAL)
+		main_sizer.Add(main_helper.sizer, border=10, flag=wx.ALL)
 		main_sizer.Fit(self)
+		self.SetSizer(main_sizer)
 
 	# -- refresh ----------------------------------------------------------------
 
@@ -232,7 +237,8 @@ class BridgeDialog(wx.Dialog):
 
 		Called on every timer tick and after Start/Stop so the UI always reflects
 		the current state."""
-		status = self._server.status
+		server = self._current_server()
+		status = server.status
 		mode = self._config.get_connection_mode()
 
 		# Status bar: the text NVDA+End reads.
@@ -275,13 +281,15 @@ class BridgeDialog(wx.Dialog):
 				log.error("nvdaMcpBridge: could not start the bridge server", exc_info=True)
 				self._refresh()
 				return
+		# rebuild_server creates a new BridgeServer; sync our reference.
+		self._server = self._current_server()
 		self._refresh()
 		# Voice confirmation so the user hears the result without navigating.
 		# Translators: Announced after starting the bridge from the dialog.
 		wx.CallAfter(ui.message, _("Bridge started"))
 
 	def _on_stop(self, evt: wx.CommandEvent) -> None:
-		self._server.stop()
+		self._current_server().stop()
 		self._refresh()
 		# Voice confirmation so the user hears the result without navigating.
 		# Translators: Announced after stopping the bridge from the dialog.
