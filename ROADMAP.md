@@ -125,7 +125,7 @@ a headless B follow-up) and amended the scope of entries 9 and 12.
 9.1. C follow-up, bridge control UI + connection config (agreed 2026-07-18;
    split into 9.1a/9.1b 2026-07-21 — the transport leaf has no UI dependency,
    so it does not need to wait behind the dialog).
-   - **9.1a** — **Done (2026-07-21)**: the named-pipe transport leaf (ctypes,
+   - **9.1a** — **Done (PR #18, 2026-07-21)**: the named-pipe transport leaf (ctypes,
      stdlib-only) — `NamedPipeListener`/`NamedPipeTransport`, implementing the
      existing `Listener`/`Transport` seams exactly, so either can be handed to
      `BridgeServer` interchangeably with `TcpListener`/`SocketTransport`.
