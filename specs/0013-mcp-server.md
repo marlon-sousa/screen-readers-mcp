@@ -357,7 +357,9 @@ only the mechanics differ:
 |---|---|
 | Ports are `abc.ABC` with `@abstractmethod` | Ports are interfaces in `domain/ports/`, one per file. An incomplete adapter is caught at compile time by a `var _ ports.X = (*Impl)(nil)` assertion in the adapter's file — required, not optional. |
 | One class per file, no re-export facades | One interface/type per file; packages export directly, no facade packages. |
-| `tests/unit/` mirrors the source tree | Go's own convention *is* the mirror: `session.go` ↔ `session_test.go` beside it, one test file per source file. The intent (path answers "which test covers this?") is satisfied; a parallel tree would fight the toolchain. |
+| `tests/unit/` mirrors the source tree | Go's own convention *is* the mirror: `session.go` ↔ `session_test.go` beside it, one test file per source file. A parallel tree is not merely awkward but counterproductive — a Go test sees unexported identifiers only from inside its package's directory, so the layout would force every collaborator public to satisfy a directory. The rule's intent (the path answers "which test covers this?", and a test file covering its neighbours is visible on sight) survives intact. |
+| *(new — Go only)* | **Tests are `package foo_test` by default**, exercising the package through the surface production code uses; white-box `package foo` is allowed where an unexported helper genuinely deserves direct coverage, and the file header says why. A test that needs internals is first evidence that the decomposition is wrong. |
+| `tests/integration/` named after the use case | `server/tests/integration/` and `server/tests/conformance/`, still named after the use case, each behind a build tag (`//go:build integration`, `//go:build conformance`) so `go test ./...` stays fast and the Windows-only conformance run opts in explicitly. |
 | Fakes in `tests/fakes/`, one per port, subclassing the ABC | `fakes/`, one file per port, each with the compile-time assertion. Imported only by tests. |
 | Builders in `tests/support/` | `testsupport/`. |
 | `wiring.py` is the composition root | `wiring/wiring.go`, read top to bottom. No DI library, same reasoning. |
@@ -510,7 +512,10 @@ errors, EOF), plus builders. Each fake carries its compile-time assertion.
   `server`**, because branch protection matches required checks by literal job
   name (AGENTS.md gotcha). Steps: `go build ./...`, `go test ./...`, `go vet`,
   `staticcheck`, and the `adapters/wire` drift gate.
-- Update AGENTS.md's Layout table and Dev commands.
+- Update AGENTS.md's Layout table and Dev commands, and amend its Testing
+  section with the Go rendering of the mirror rule: tests beside their source,
+  `package foo_test` by default, `server/tests/<usecase>/` behind build tags for
+  the integration and conformance tiers.
 
 ## Deliverables — 10b: the MCP surface
 
@@ -613,11 +618,11 @@ domain.
 
 ### 18. Cross-language conformance job
 
-A `conformance` CI job on `windows-latest` that sets up both Go and Python,
-builds the server, starts the **real Python bridge** headlessly over a real
-named pipe, and drives it with the real server: handshake, a capability-gated
-tool list, one command per capability group, and a clean teardown. Repeated over
-loopback TCP.
+`server/tests/conformance/`, behind `//go:build conformance`, run by a
+`conformance` CI job on `windows-latest` that sets up both Go and Python, builds
+the server, starts the **real Python bridge** headlessly over a real named pipe,
+and drives it with the real server: handshake, a capability-gated tool list, one
+command per capability group, and a clean teardown. Repeated over loopback TCP.
 
 This is the guarantee that replaces same-bytes sharing, and it is exactly the
 second-implementation check 0005 wanted from a Go port: two independent
