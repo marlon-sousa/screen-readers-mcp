@@ -507,9 +507,24 @@ gate. No reader names appear in it, only capability strings.
 
 ### 15. `server/domain/controllers/tools/` — one controller per tool
 
-A `Tool` interface (`Name`, `Capability`, `InputSchema`, `Execute`) with one
-implementation per file, mirroring the bridge's one-handler-per-command
-decomposition. Each is stateless; per-call state arrives in a `ToolContext`
+A `Tool` interface (`Name`, `Capability`, `Description`, `InputSchema`,
+`Execute`) with one implementation per file, mirroring the bridge's
+one-handler-per-command decomposition (agreed 2026-07-22). Fifteen small files
+beat a table of struct literals because a tool file's real content is not its
+three-line body but its **description and parameter schema** — the agent-facing
+contract, and where this server's usability mostly lives.
+
+**`Execute` takes erased params and each tool declares its own JSON schema**
+— *not* typed input structs with SDK-generated schemas. Go's generic SDK path
+would derive schemas from per-tool structs, but a uniform domain `Tool`
+interface must erase those types, which would force a line of per-tool binding
+code into the MCP adapter and leave the tool list existing in two places, free
+to drift. With erased params the adapter has **zero per-tool code**, the
+registry is the single list, and the gate is a filter over it. The price is
+hand-written schemas, which are agent-facing text we would be hand-tuning
+anyway.
+
+Each is stateless; per-call state arrives in a `ToolContext`
 parameter object (the ports it may use, the current `ReaderSession`, the clock)
 — the direct analogue of the bridge's `SessionContext`.
 
