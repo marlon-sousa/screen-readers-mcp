@@ -71,32 +71,32 @@ class SimpleEventBus(EventBus):
 			tokens = list(self._by_type.get(event.type, ()))
 		# Call handlers outside the lock so a handler that emits back (or
 		# takes a long time) doesn't block other threads from subscribing.
-		dead: list[SubscriptionToken] = []
 		for token in tokens:
 			with self._lock:
 				entry = self._entries.get(token)
 			if entry is None:
-				dead.append(token)
+				self._remove_token(event.type, token)
 				continue
 			fn = _resolve(entry.weak_handler)
 			if fn is None:
-				dead.append(token)
 				with self._lock:
 					self._entries.pop(token, None)
+				self._remove_token(event.type, token)
 				continue
 			try:
 				fn(event)
 			except Exception:
 				pass
-		if dead:
-			with self._lock:
-				by_type = self._by_type.get(event.type)
-				if by_type is not None:
-					for t in dead:
-						try:
-							by_type.remove(t)
-						except ValueError:
-							pass
+
+	def _remove_token(self, event_type: BridgeEventType, token: SubscriptionToken) -> None:
+		"""Remove *token* from the per-type index. Safe to call when already absent."""
+		with self._lock:
+			by_type = self._by_type.get(event_type)
+			if by_type is not None:
+				try:
+					by_type.remove(token)
+				except ValueError:
+					pass
 
 
 #: Internal record for one subscription.
