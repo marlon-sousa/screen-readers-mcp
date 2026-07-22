@@ -394,9 +394,23 @@ One interface per file, all in domain vocabulary. Their DTOs live beside them
 | `clock.go` | port — time | `Now`, `Sleep`, injected everywhere; never `time.Sleep`. |
 | `log.go` | port — diagnostics | Keeps the domain away from `os.Stdout`. |
 
-Splitting by capability group (rather than one fat `BridgeClient`) mirrors the
-bridge's own port set and makes the gate's shape obvious. One adapter implements
-them all.
+Splitting by capability group rather than one fat `BridgeClient` (agreed
+2026-07-22) **amends ROADMAP entry 10's scope sketch**, which names a singular
+`BridgeClient` port; the wording is corrected in 10a. One adapter implements all
+seven. Three reasons, in increasing weight:
+
+1. It mirrors the bridge's own port set (`speech_source.py`,
+   `braille_source.py`, `gesture_sender.py`) — same shape, learn it once.
+2. Each tool controller declares exactly what it needs: `get_braille` takes a
+   `BrailleReader` and cannot reach gestures or config, so "which tools touch
+   config?" is answerable from the type signatures.
+3. **It makes the capability gate structural, not advisory.** A reader without
+   braille is expressible as a missing collaborator. With one fat port,
+   `BrailleSince` exists on the interface for every reader alive and the absence
+   survives only as a runtime check.
+
+The cost is accepted: seven fakes instead of one, and an interface set that a Go
+reviewer could call speculative given the single implementation.
 
 ### 3. `server/domain/entities/` — the pure model
 
