@@ -134,8 +134,8 @@ capability, not a fork of the contract.
 
 ### One live session at a time, and the agent opens it
 
-The server knows about **zero or more configured reader endpoints** and holds at
-most **one live bridge session**. Tools therefore take no target parameter, and
+The server knows about **one or more readers** — from its shipped defaults, a
+config file, or flags — and holds at most **one live bridge session**. Tools therefore take no target parameter, and
 the capability gate stays exact — it describes the one reader currently
 connected.
 
@@ -207,8 +207,8 @@ agent discovers what is available and opens a session when it wants one:
 1. Start, serve MCP immediately, advertise only the ungated tools:
    `list_readers`, `connect_reader`, `disconnect_reader`, `status`.
 2. `list_readers` reports the configured endpoints and, where it can be known
-   without connecting, whether a bridge is listening on each (see "Discovery"
-   below).
+   without connecting, whether a bridge is listening on each (see "The endpoint
+   set is deterministic" below).
 3. `connect_reader` dials the chosen endpoint and performs the handshake. On a
    successful `hello` the server verifies the protocol version, records identity
    and capabilities, and publishes the gated tools (the SDK emits
