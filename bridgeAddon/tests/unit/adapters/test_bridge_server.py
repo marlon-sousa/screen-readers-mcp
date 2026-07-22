@@ -21,6 +21,8 @@ from nvdaMcpBridge.adapters.bridge_server import BridgeServer, ServerState, Serv
 from nvdaMcpBridge.adapters.ports.transport import Transport
 from nvdaMcpBridge.domain.controllers.session import Session
 from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
+from nvdaMcpBridge.domain.entities.bridge_events import BridgeEvent, BridgeEventType
+from fakes.event_bus import FakeEventBus
 
 
 class RecordingFactory:
@@ -219,5 +221,90 @@ def test_a_session_fault_does_not_take_the_server_down() -> None:
 		listener.connect(FakeTransport())
 		_wait_until(lambda: len(made) == 2)
 		assert server.status.state is ServerState.LISTENING
+	finally:
+		server.stop()
+
+
+# -- event bus ----------------------------------------------------------------
+
+
+def _last_event(bus: FakeEventBus) -> BridgeEvent | None:
+	return bus.events[-1] if bus.events else None
+
+
+def test_emits_server_status_on_start() -> None:
+	bus = FakeEventBus()
+	listener = FakeListener(endpoint="127.0.0.1:8765")
+	server = BridgeServer(listener, RecordingFactory(), event_bus=bus)
+	server.start()
+	try:
+		evt = _last_event(bus)
+		assert evt is not None
+		assert evt.type is BridgeEventType.SERVER_STATUS
+		assert evt.payload.state is ServerState.LISTENING
+		assert evt.payload.endpoint == "127.0.0.1:8765"
+	finally:
+		server.stop()
+
+
+def test_emits_server_status_on_stop() -> None:
+	bus = FakeEventBus()
+	server = BridgeServer(FakeListener(), RecordingFactory(), event_bus=bus)
+	server.start()
+	server.stop()
+	evt = _last_event(bus)
+	assert evt is not None
+	assert evt.type is BridgeEventType.SERVER_STATUS
+	assert evt.payload.state is ServerState.STOPPED
+
+
+def test_emits_server_status_when_client_connects() -> None:
+	bus = FakeEventBus()
+	listener = FakeListener()
+	server = BridgeServer(listener, RecordingFactory(), event_bus=bus)
+	server.start()
+	try:
+		listener.connect(FakeTransport())
+		_wait_until(lambda: any(
+			e.payload.state is ServerState.SESSION_ACTIVE for e in bus.events
+		))
+	finally:
+		server.stop()
+
+
+def test_emits_server_status_when_client_disconnects() -> None:
+	bus = FakeEventBus()
+	listener = FakeListener()
+	factory = RecordingFactory()
+	server = BridgeServer(listener, factory, event_bus=bus)
+	server.start()
+	try:
+		listener.connect(FakeTransport())
+		_wait_until(_in_state(server, ServerState.SESSION_ACTIVE))
+		factory.sessions[0].finish()
+		_wait_until(_in_state(server, ServerState.LISTENING))
+		assert any(
+			e.payload.state is ServerState.LISTENING for e in bus.events
+		)
+	finally:
+		server.stop()
+
+
+def test_start_with_new_listener_switches_transport() -> None:
+	bus = FakeEventBus()
+	pipe_listener = FakeListener(endpoint="pipe")
+	server = BridgeServer(pipe_listener, RecordingFactory(), event_bus=bus)
+	server.start()
+	try:
+		assert server.status.endpoint == "pipe"
+		assert pipe_listener.opened is True
+		server.stop()
+
+		# Start again with a different listener.
+		tcp_listener = FakeListener(endpoint="127.0.0.1:8765")
+		server.start(tcp_listener)
+		assert server.status.endpoint == "127.0.0.1:8765"
+		assert tcp_listener.opened is True
+		assert pipe_listener.closes >= 1  # old listener was closed
 	finally:
 		server.stop()
