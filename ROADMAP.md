@@ -180,19 +180,40 @@ scheduled. Work now proceeds in lane 2.
 
 ## Status board — lane 2: server (headless; may run parallel to lane 1)
 
-10. D, MCP server: FastMCP/stdio adapter, v1 MCP tools, `BridgeClient` port,
-    unit tests against a fake bridge + in-memory MCP client tests. Spec: none
-    yet → specify first. Scope sketch: RFC 0001 component 2 + milestone 4;
-    same hexagonal organization as the bridge (AGENTS.md), and the restructure
-    adopts the `tests/unit/` mirror layout. The spec must encode the
+10. D, MCP server — **in Go**, a statically linked binary speaking MCP over
+    stdio and JSON lines to one bridge. Spec:
+    [0013-mcp-server.md](specs/0013-mcp-server.md) (agreed 2026-07-22; rides in
+    10a's branch). Scope: RFC 0001 component 2 + milestone 4, encoding the
     reader-agnostic chassis principles of
     [spec 0005](specs/0005-multi-reader-direction.md) (no reader conditionals;
-    reader identity surfaced; reader vocabulary as opaque data; bridge
-    endpoint as composition-root config). Entry 9.1a made the named pipe the
-    bridge's default listener, so dialing **both** the pipe and loopback TCP
-    is in this entry's scope from the start (amended 2026-07-22, superseding
-    the earlier "small lane-2 follow-up" note) — the endpoint config the spec
-    designs must cover what the bridge actually listens on today.
+    reader identity surfaced; reader vocabulary as opaque data; bridge endpoint
+    as composition-root config). The language change **amends 0005's "the v1
+    server is Python"**, and the entry's original "`BridgeClient` port" wording
+    is amended to seven capability-group ports — both recorded in spec 0013,
+    both landing in 10a. Dialing **both** the pipe and loopback TCP is in scope
+    from the start (amended 2026-07-22, superseding the earlier "small lane-2
+    follow-up" note), and 0013 goes further: each reader declares every endpoint
+    its bridge is known to listen on, tried in order, so spec 0011's transport
+    toggle needs no configuration. Delivered as three sequential PRs:
+    - **10a** — the module, the generated wire binding, the layered endpoint
+      config, and the bridge client: dials a bridge and completes a handshake,
+      proven headlessly. No MCP surface. Carries spec 0013 and the 0005 and
+      AGENTS.md amendments; deletes the Python `mcpServer/` scaffold and turns
+      the CI `server` job into a Go one (job name unchanged — branch protection
+      matches literal names). **Delivered as five sequential PRs** (the short-PR
+      principle applied to a 6,000-line first cut): the wire binding and the Go
+      CI job; the `mcpServer/` deletion; the domain; the bridge client;
+      discovery, config, wiring and the entry point. The deletion waits for the
+      first, because the `server` job must be repointed at Go before the
+      directory it names disappears.
+    - **10b** — the MCP surface: `list_readers` / `connect_reader` /
+      `disconnect_reader` / `status`, the capability-gated tool set, the
+      `screenreader://info` resource, and the agent-initiated connection
+      lifecycle (no auto-connect, no backoff). Amends the wire prose with the
+      pipe naming convention.
+    - **10c** — the cross-language conformance job (`windows-latest`, the real
+      Python bridge over a real pipe and over TCP), release plumbing for the
+      `server-v*` tag, and the board flip.
 
 ## Convergence (requires C and D both Done)
 

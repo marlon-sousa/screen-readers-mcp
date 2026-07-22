@@ -25,11 +25,14 @@ a monorepo until a second bridge is real.
 The chain, top to bottom — each item talks only to the next:
 
 1. An MCP client (Claude Code, …) speaks MCP over stdio to the server.
-2. `mcpServer/` — the `nvda-mcp` Python package — speaks JSON lines to the
-   bridge over a **local endpoint**: a named pipe (`\\.\pipe\nvdaMcpBridge`) by
-   default, or loopback TCP (`127.0.0.1:8765`), chosen in the bridge's control
-   dialog ([spec 0010](specs/0010-named-pipe-transport.md),
-   [0011](specs/0011-bridge-control-ui.md)).
+2. `server/` — `screenreader-mcp`, a statically linked **Go** binary — speaks
+   JSON lines to the bridge over a **local endpoint**: a named pipe
+   (`\\.\pipe\nvdaMcpBridge`) by default, or loopback TCP (`127.0.0.1:8765`),
+   chosen in the bridge's control dialog
+   ([spec 0010](specs/0010-named-pipe-transport.md),
+   [0011](specs/0011-bridge-control-ui.md)). It never dials on its own: the
+   agent calls `connect_reader`, and the capability-gated tools appear on a
+   successful `hello` ([spec 0013](specs/0013-mcp-server.md)).
 3. `bridges/nvda/` — the `nvdaMcpBridge` NVDA addon (a global plugin) — drives
    NVDA itself. Silent capture registers a `filter_speechSequence` filter and
    **never swaps the synth**; the user's real synthesizer stays loaded, so a
@@ -50,7 +53,7 @@ own versions, so each releases on its own cadence
 | Dir | What | Host / Python |
 |---|---|---|
 | `shared/` | Canonical **stdlib-only** wire protocol (`nvda-mcp-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
-| `mcpServer/` | The MCP server (`nvda-mcp`): MCP tool → bridge command → result. FastMCP/stdio. | desktop CPython ≥3.11 |
+| `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
 
@@ -109,9 +112,18 @@ edge adapters, and the connection stack (`socket_transport.py`,
 package root, `plugin.py` is the NVDA edge, and `views/bridge_dialog.py` is the
 control UI — a **driving actor**, not an adapter: it consumes ports rather than
 implementing one (see [spec 0011](specs/0011-bridge-control-ui.md)).
-Server (session D): `domain/` holds the
-tool translator + a `BridgeClient` port; adapters hold the FastMCP/stdio server
-and the real TCP bridge client.
+Server (session D, [spec 0013](specs/0013-mcp-server.md)): same four roles, no
+`internal/` segment, so the trees line up (`nvdaMcpBridge/domain/ports/clock.py`
+↔ `server/domain/ports/clock.go`). `domain/ports/` holds seven capability-group
+ports (speech, braille, gestures, focus, state, config, plus the session dialer)
+rather than one fat `BridgeClient`, so a reader without braille is a *missing
+collaborator* and not a runtime check; `domain/controllers/tools/` holds one
+controller per MCP tool, mirroring the bridge's one-handler-per-command rule;
+`adapters/` holds the Go SDK stdio server, the JSON-lines bridge client with its
+transport leaves, and the pipe scan that reports whether a known endpoint is
+live. Go mechanics for the same rules: ports are interfaces with a
+`var _ ports.X = (*Impl)(nil)` assertion in each adapter, and the domain never
+imports `adapters/wire` or the MCP SDK.
 
 Rules that keep this honest:
 
@@ -235,8 +247,20 @@ tests/unit/domain/entities/test_speech_buffer.py
 ```
 
 The mirror applies per package, not just to the bridge:
-`shared/tests/unit/test_protocol.py` ↔ `nvda_mcp_wire/protocol.py`; the
-server adopts the same layout with its hexagonal restructure (session D).
+`shared/tests/unit/test_protocol.py` ↔ `nvda_mcp_wire/protocol.py`.
+
+**In Go the mirror is the language's own convention**, so the server renders the
+same rule differently ([spec 0013](specs/0013-mcp-server.md)): `session.go` ↔
+`session_test.go` **beside it**, one test file per source file. A parallel tree
+is not merely awkward there but counterproductive — a Go test sees unexported
+identifiers only from inside its package's directory, so the layout would force
+every collaborator public to satisfy a directory. Two Go-only rules come with
+it: tests are `package foo_test` by default (a test that needs internals is
+first evidence the decomposition is wrong; white-box is allowed where an
+unexported helper deserves direct coverage, and the header says why), and the
+scenario tiers live in `server/tests/<usecase>/` behind build tags
+(`//go:build integration`, `//go:build conformance`) so `go test ./...` stays
+fast and the Windows-only conformance run opts in explicitly.
 
 One test module per source module — **do not** let a test module cover its
 neighbours. (The rule earns its keep immediately: one `test_speech_buffer.py`
@@ -411,9 +435,10 @@ run` or `py -3.13`, never `python`.
 uv run --directory shared pytest
 uv run --directory shared pyright
 
-# MCP server (no NVDA needed; tests use a fake bridge)
-uv run --directory mcpServer pytest
-uv run --directory mcpServer pyright
+# MCP server (no NVDA needed; tests use a fake bridge). Go, not Python.
+go -C server build ./...
+go -C server test ./...          # unit tests; integration/conformance are tagged
+go -C server vet ./...
 
 # NVDA addon: copy the shared module in, then run headless tests + pyright.
 # No NVDA checkout needed — the domain is pure; the NVDA edge is in pyright's

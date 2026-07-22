@@ -111,18 +111,23 @@ the contract.
 
 ## Decided — server language and distribution
 
-- **The v1 server is Python** (session D as planned). The server is a thin
-  chassis, so the language choice is not load-bearing yet; switching to Go
-  now would forfeit the same-bytes drift guarantee, force the published
-  contract work to complete first, and split the toolchain during peak
-  protocol churn — while the bridge stays Python forever regardless.
-- **A Go port is the packaging-era option, decided at session F** with real
-  artifacts in hand: by then the contract is stable, the 7b wire scenario is
-  an executable conformance test, and an official MCP Go SDK exists. A Go
-  server would double as the first second-implementation stress test of the
-  published wire spec. The competing option is PyInstaller (roadmap F's
-  original sketch) with its known warts: artifact size, startup, antivirus
-  false positives.
+- ~~**The v1 server is Python** (session D as planned).~~ **Amended
+  2026-07-22 by [spec 0013](0013-mcp-server.md): the v1 server is Go.** The
+  original reasoning was that switching to Go would forfeit the same-bytes
+  drift guarantee, force the published contract work to complete first, and
+  split the toolchain during peak protocol churn. Two of those have since
+  resolved — entry 8 delivered the published contract, and the schema plus a
+  cross-language conformance job replace same-bytes sharing with something
+  stronger, since it proves two independent implementations agree rather than
+  that they share a file. The bridge stays Python forever regardless.
+- ~~**A Go port is the packaging-era option, decided at session F**~~ —
+  **decided at session D instead** (spec 0013). The preconditions it named all
+  arrived early: the contract is published, the 7b wire scenario is an
+  executable conformance recipe, and the official MCP Go SDK is past 1.0. The
+  competing option was PyInstaller (roadmap F's original sketch) with its known
+  warts — artifact size, startup, antivirus false positives — and it is now off
+  the table. Session F (entry 12b) keeps the remaining distribution questions:
+  `.mcpb`, umbrella installer, channels.
 - **Distribution is per-piece native channels, with an optional Windows
   umbrella installer.** The NVDA add-on's canonical channel is the NVDA
   add-on store (that is where updates come from; side-loading orphans it).
