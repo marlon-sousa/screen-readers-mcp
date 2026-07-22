@@ -18,7 +18,7 @@ The first use case is **functional testing of NVDA add-ons** — replacing the m
 
 ## Download
 
-Download the [NVDA MCP Bridge 0.1.0 addon](https://github.com/marlon-sousa/screen-readers-mcp/releases/download/0.1.0/nvdaMcpBridge-0.1.0.nvda-addon)
+Download the [NVDA MCP Bridge 0.1.0 addon](https://github.com/marlon-sousa/screen-readers-mcp/releases/download/nvda-bridge-v0.1.0/nvdaMcpBridge-0.1.0.nvda-addon)
 
 ## This add-on is only half of the system
 
@@ -28,7 +28,7 @@ The add-on does not talk to your AI agent directly. It listens on a local endpoi
 AI agent  ──MCP/stdio──>  nvda-mcp server  ──JSON lines──>  this add-on  ──>  NVDA
 ```
 
-The two halves share one versioned wire contract (protocol version 1). The `hello` handshake rejects a mismatched pair with a clear error rather than misbehaving, so always run the server build that pairs with this add-on version.
+The two halves share one versioned wire contract. What has to match is the **protocol version**, not the version numbers of the two programs: the `hello` handshake compares protocol versions and rejects a mismatch with a clear error rather than misbehaving. So any server build that speaks the same protocol version as this add-on will work with it, whatever its own version number happens to be. Each release states the protocol version it speaks.
 
 The split exists for a reason: the server must survive NVDA restarts, since restarting NVDA is itself a thing a test may want to do.
 
