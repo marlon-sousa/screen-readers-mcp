@@ -722,7 +722,7 @@ the Go structure.
   the server dials local endpoints only.
 - **`.mcpb` bundle, umbrella installer, `uvx`-style distribution** — [entry
   12b](../ROADMAP.md).
-- **Renaming `shared/` to `wire/python/`** — deferred cleanup.
+- **Relocating `shared/` under `bridges/`** — deferred cleanup.
 - **Live-NVDA end-to-end runs** — that is entry 11 (session E), which is what
   finally proves the whole chain against a real reader.
 
