@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import gui
+import ui
 import wx
 from logHandler import log
 
@@ -95,11 +96,12 @@ def _status_text(state: ServerState, mode: ConnectionMode, endpoint: str | None)
 
 # -- mode <-> combo index helpers -----------------------------------------------
 
-# The combo has three entries in this order.
+# The combo has two entries in this order. Remote TCP is deliberately absent
+# — it is defined in the enum for the future security entry, but unreachable
+# from the UI until that entry lands.
 _COMBO_ENTRIES: tuple[ConnectionMode, ...] = (
 	ConnectionMode.NAMED_PIPE,
 	ConnectionMode.LOOPBACK_TCP,
-	ConnectionMode.REMOTE_TCP,
 )
 
 
@@ -122,10 +124,10 @@ def _combo_index_to_mode(index: int) -> ConnectionMode:
 class BridgeDialog(wx.Dialog):
 	"""NVDA Tools → NVDA MCP Bridge… dialog.
 
-	Shows the current bridge status, lets the user change the connection mode,
-	start/stop the server, and toggle auto-start. Receives its dependencies
-	(BridgeServer, BridgeConfig) through constructor injection so plugin.py is
-	the composition root.
+	Shows the current bridge status in a status bar (NVDA+End reads it),
+	lets the user change the connection mode, start/stop the server, and
+	toggle auto-start. Receives its dependencies (BridgeServer, BridgeConfig)
+	through constructor injection so plugin.py is the composition root.
 	"""
 
 	def __init__(
@@ -167,15 +169,7 @@ class BridgeDialog(wx.Dialog):
 	def _build_ui(self) -> None:
 		main_sizer = wx.BoxSizer(wx.VERTICAL)
 
-		# 1. Status group
-		# Translators: Label for the bridge status section in the NVDA MCP Bridge dialog.
-		status_box = wx.StaticBox(self, label=_("Bridge status"))
-		status_sizer = wx.StaticBoxSizer(status_box, wx.VERTICAL)
-		self._status_label = wx.StaticText(status_box, label="")
-		status_sizer.Add(self._status_label, flag=wx.ALL, border=8)
-		main_sizer.Add(status_sizer, flag=wx.EXPAND | wx.ALL, border=8)
-
-		# 2. Connection mode
+		# 1. Connection mode
 		# Translators: Label for the connection mode section in the NVDA MCP Bridge dialog.
 		conn_box = wx.StaticBox(self, label=_("Connection"))
 		conn_sizer = wx.StaticBoxSizer(conn_box, wx.VERTICAL)
@@ -189,21 +183,14 @@ class BridgeDialog(wx.Dialog):
 			_("Local: named pipe (recommended)"),
 			# Translators: Connection mode option: local loopback TCP.
 			_("Local: loopback TCP"),
-			# Translators: Connection mode option: remote TCP (currently unavailable).
-			_("Remote: TCP/IP"),
 		]
 		self._mode_combo = wx.Choice(conn_box, choices=choices)
 		self._mode_combo.Bind(wx.EVT_CHOICE, self._on_mode_changed)
 		conn_sizer.Add(self._mode_combo, flag=wx.EXPAND | wx.ALL, border=4)
 
-		# The last valid combo index, so we can revert when the user picks
-		# remote TCP (which is shown but unreachable — NVDA's bundled
-		# wxPython has no per-item Enable). Initialised in _refresh().
-		self._last_valid_combo_index = 0
-
 		main_sizer.Add(conn_sizer, flag=wx.EXPAND | wx.ALL, border=8)
 
-		# 3. Auto-start checkbox
+		# 2. Auto-start checkbox
 		# Translators: Checkbox in the bridge dialog to start the bridge automatically when NVDA loads.
 		self._auto_start_cb = wx.CheckBox(
 			self, label=_("Start bridge automatically when NVDA loads")
@@ -211,7 +198,7 @@ class BridgeDialog(wx.Dialog):
 		self._auto_start_cb.Bind(wx.EVT_CHECKBOX, self._on_auto_start_changed)
 		main_sizer.Add(self._auto_start_cb, flag=wx.ALL, border=8)
 
-		# 4. Button row (Start, Stop, Close)
+		# 3. Button row (Start, Stop, Close)
 		button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
 		# Translators: Button in the bridge dialog to start the server.
@@ -231,6 +218,10 @@ class BridgeDialog(wx.Dialog):
 
 		main_sizer.Add(button_sizer, flag=wx.ALIGN_RIGHT | wx.ALL, border=8)
 
+		# 4. Status bar — NVDA+End reads this, following the TimerForNVDA pattern.
+		self._status_bar = wx.StatusBar(self)
+		main_sizer.Add(self._status_bar, flag=wx.EXPAND)
+
 		self.SetSizer(main_sizer)
 		main_sizer.Fit(self)
 
@@ -244,18 +235,14 @@ class BridgeDialog(wx.Dialog):
 		status = self._server.status
 		mode = self._config.get_connection_mode()
 
-		# Status label
-		self._status_label.SetLabel(_status_text(status.state, mode, status.endpoint))
+		# Status bar: the text NVDA+End reads.
+		self._status_bar.SetStatusText(_status_text(status.state, mode, status.endpoint))
 
 		# Combo: show the persisted mode. Freeze the whole combo while a session
 		# is active — the transport cannot change under a live connection.
-		# Remote TCP is shown but unreachable: _on_mode_changed rejects it
-		# (NVDA's bundled wxPython lacks per-item Enable, so we bounce back).
 		active = status.state is ServerState.SESSION_ACTIVE
-		combo_index = _mode_to_combo_index(mode)
-		self._mode_combo.SetSelection(combo_index)
+		self._mode_combo.SetSelection(_mode_to_combo_index(mode))
 		self._mode_combo.Enable(not active)
-		self._last_valid_combo_index = combo_index
 
 		# Buttons: Start enabled only when stopped; Stop enabled otherwise.
 		stopped = status.state is ServerState.STOPPED
@@ -274,12 +261,7 @@ class BridgeDialog(wx.Dialog):
 		# The combo records the user's *preference*; the actual listener rebuild
 		# and server restart happen only when Start is pressed. This avoids
 		# tearing down a running session because the user browsed the combo.
-		# Remote TCP is shown but unreachable — revert to the last valid entry
-		# (NVDA's bundled wxPython has no per-item Enable, so we bounce back).
-		if _combo_index_to_mode(self._mode_combo.GetSelection()) is ConnectionMode.REMOTE_TCP:
-			self._mode_combo.SetSelection(self._last_valid_combo_index)
-			return
-		self._last_valid_combo_index = self._mode_combo.GetSelection()
+		pass
 
 	def _on_auto_start_changed(self, evt: wx.CommandEvent) -> None:
 		self._config.set_auto_start(self._auto_start_cb.GetValue())
@@ -291,11 +273,19 @@ class BridgeDialog(wx.Dialog):
 				self._plugin.rebuild_server(new_mode)
 			except Exception:
 				log.error("nvdaMcpBridge: could not start the bridge server", exc_info=True)
+				self._refresh()
+				return
 		self._refresh()
+		# Voice confirmation so the user hears the result without navigating.
+		# Translators: Announced after starting the bridge from the dialog.
+		wx.CallAfter(ui.message, _("Bridge started"))
 
 	def _on_stop(self, evt: wx.CommandEvent) -> None:
 		self._server.stop()
 		self._refresh()
+		# Voice confirmation so the user hears the result without navigating.
+		# Translators: Announced after stopping the bridge from the dialog.
+		wx.CallAfter(ui.message, _("Bridge stopped"))
 
 	def _on_close_button(self, evt: wx.CommandEvent) -> None:
 		# Close does NOT stop the server -- the bridge keeps running.

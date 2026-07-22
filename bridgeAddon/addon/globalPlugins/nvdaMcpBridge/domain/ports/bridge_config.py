@@ -37,7 +37,7 @@ class BridgeConfig(ABC):
 
 	@abstractmethod
 	def get_auto_start(self) -> bool:
-		"""Whether to auto-start the bridge on NVDA load. Default ``True``."""
+		"""Whether to auto-start the bridge on NVDA load. Default ``False``."""
 
 	@abstractmethod
 	def set_auto_start(self, value: bool) -> None:

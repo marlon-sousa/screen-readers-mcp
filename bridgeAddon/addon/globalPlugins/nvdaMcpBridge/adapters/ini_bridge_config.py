@@ -73,7 +73,7 @@ class IniBridgeConfig(BridgeConfig):
 
 	def get_auto_start(self) -> bool:
 		parser = self._read()
-		return parser.getboolean(_SECTION, _KEY_AUTO_START, fallback=True)
+		return parser.getboolean(_SECTION, _KEY_AUTO_START, fallback=False)
 
 	def set_auto_start(self, value: bool) -> None:
 		parser = self._read()
