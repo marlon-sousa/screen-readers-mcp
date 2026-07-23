@@ -1,8 +1,10 @@
 // screenreader-mcp tests -- the import boundaries.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: architecture test. Acceptance criterion 12: nothing under domain/
-// imports adapters/wire or the MCP SDK.
+// ROLE: architecture test. Two import boundaries that review would otherwise
+// have to hold on its own: acceptance criterion 12 -- nothing under domain/
+// imports adapters/wire or the MCP SDK -- and the rule that only tests may
+// import the fakes.
 //
 // DELIBERATELY NOT BEHIND A BUILD TAG, unlike its neighbours in tests/. The
 // tagged tiers are tagged because they are slow or platform-bound; this one
@@ -25,8 +27,13 @@ import (
 	"testing"
 )
 
-// domainRoot is the tree that must stay pure, relative to this test file.
-const domainRoot = "../../domain"
+// The trees these rules walk, relative to this test file. domainRoot is what
+// must stay pure; serverRoot is everything, for the rule about who may reach for
+// a test double.
+const (
+	domainRoot = "../../domain"
+	serverRoot = "../.."
+)
 
 // forbidden is what the domain may not reach for, with the reason attached to
 // each so a failure explains itself rather than just pointing.
@@ -77,6 +84,47 @@ func TestDomainImportsNoAdaptersAndNoSDK(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walking %s: %v", domainRoot, err)
+	}
+}
+
+// The test doubles are an importable package rather than _test.go files,
+// because a fake is needed by the tests of SEVERAL packages -- FakeClock serves
+// the bridge client, the handshake and the integration tier -- and a _test.go
+// file cannot be imported from another package.
+//
+// The price of that is a package nothing structurally stops production code from
+// importing. This is what stops it: a fake reaching the shipped binary would put
+// scripted behaviour behind a port at runtime, which is the one failure a test
+// double must never be able to cause.
+func TestOnlyTestsImportTheFakes(t *testing.T) {
+	fileSet := token.NewFileSet()
+	const fakesPackage = "screen-readers-mcp/server/fakes"
+
+	err := filepath.WalkDir(serverRoot, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		file, err := parser.ParseFile(fileSet, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imported := range file.Imports {
+			if strings.Contains(strings.Trim(imported.Path.Value, `"`), fakesPackage) {
+				t.Errorf(
+					"%s is not a test file and imports the fakes.\n"+
+						"Test doubles must never be reachable from the shipped binary; "+
+						"if production code needs this behaviour, it needs a real adapter.",
+					filepath.ToSlash(path),
+				)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", serverRoot, err)
 	}
 }
 
