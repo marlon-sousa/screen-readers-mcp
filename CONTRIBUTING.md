@@ -141,6 +141,21 @@ py -3.13 scripts/live_test.py ./server/screenreader-mcp.exe smoke
 If you hear the announcement, the whole chain is wired up. Which scenarios to run
 for a given change — and what each should show — is in that change's PR.
 
+### Driving it as Claude Code itself (the most faithful client)
+
+The driver stands in for an MCP client; the **real** client is an agent. To have
+Claude Code drive NVDA directly, register the built binary as an MCP server:
+
+```sh
+claude mcp add --scope local screenreader -- C:\path\to\server\screenreader-mcp.exe
+```
+
+Claude Code loads MCP servers at **startup**, so **restart it** after adding the
+server — only then do the `screenreader` tools appear. From that session, ask the
+agent to list readers, connect, and drive NVDA; the tools are the same ones the
+driver calls, so a PR's checklist reads the same either way. `claude mcp remove
+screenreader` undoes it.
+
 ## Opening a pull request
 
 - Branch off `main`. One component plus its ports and tests per PR; nothing lands
