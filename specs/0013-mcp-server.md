@@ -942,6 +942,21 @@ each with its one-line why, recorded in the PR that makes it (workflow rule).
    translates, and the regression test lives one tier down
    (`tests/integration`, Windows, a deliberately slow fake handler), because the
    subject is one leaf against the real OS and that run is minutes cheaper.
+9. **The release workflow runs on `windows-latest` and builds natively**, unlike
+   the bridge's, which is an Ubuntu job: spec 0012's rule is that the version is
+   verified *by running the built binary*, and a cross-compiled Windows binary
+   cannot be asked what version it is. Building where it runs is also what makes
+   "the artifact starts" part of what the check proves.
+10. **The release runs the conformance suite before publishing.** A server that
+    does not interoperate with the real bridge is precisely the artifact nobody
+    should be able to publish, and the tag is the last gate before a download URL
+    exists. The unit and integration suites run there too, mirroring the bridge
+    release's `pytest` step.
+11. **One asset, `screenreader-mcp-<version>-windows-amd64.exe`.** The only
+    bridge that exists runs inside NVDA, so Windows is the only host that matters
+    today; other targets, the `.mcpb` bundle and an umbrella installer stay with
+    entry 12b, which is what the deliverable's "release plumbing" was scoped
+    against.
 
 ## Class/file layout summary
 

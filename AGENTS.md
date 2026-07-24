@@ -112,18 +112,51 @@ edge adapters, and the connection stack (`socket_transport.py`,
 package root, `plugin.py` is the NVDA edge, and `views/bridge_dialog.py` is the
 control UI — a **driving actor**, not an adapter: it consumes ports rather than
 implementing one (see [spec 0011](specs/0011-bridge-control-ui.md)).
-Server (session D, [spec 0013](specs/0013-mcp-server.md)): same four roles, no
-`internal/` segment, so the trees line up (`nvdaMcpBridge/domain/ports/clock.py`
-↔ `server/domain/ports/clock.go`). `domain/ports/` holds seven capability-group
-ports (speech, braille, gestures, focus, state, config, plus the session dialer)
-rather than one fat `BridgeClient`, so a reader without braille is a *missing
-collaborator* and not a runtime check; `domain/controllers/tools/` holds one
-controller per MCP tool, mirroring the bridge's one-handler-per-command rule;
-`adapters/` holds the Go SDK stdio server, the JSON-lines bridge client with its
-transport leaves, and the pipe scan that reports whether a known endpoint is
-live. Go mechanics for the same rules: ports are interfaces with a
-`var _ ports.X = (*Impl)(nil)` assertion in each adapter, and the domain never
-imports `adapters/wire` or the MCP SDK.
+Server (session D, complete; [spec 0013](specs/0013-mcp-server.md)): same four
+roles, no `internal/` segment, so the trees line up
+(`nvdaMcpBridge/domain/ports/clock.py` ↔ `server/domain/ports/clock.go`). As
+built:
+
+- `domain/ports/` — one interface per file. Seven capability-group ports
+  (speech, braille, gestures, focus, state, config, plus `session_dialer.go`)
+  rather than one fat `BridgeClient`, so a reader without braille is a *missing
+  collaborator* rather than a runtime check: `Dial` returns a `ReaderConnection`
+  whose capability ports are **nil when unannounced**. Plus `endpoint_source.go`,
+  `endpoint_probe.go`, `tool_publisher.go` (how the domain publishes and retracts
+  tools without meeting the SDK), `clock.go` and `log.go`.
+- `domain/entities/` — `reader_session.go`, `capability.go`,
+  `connection_state.go`, `endpoint.go`, `configured_reader.go`,
+  `reader_listing.go`, and `tool_catalog.go`, which **is** the capability gate: a
+  pure table of capability in, tool names out, containing no reader's name.
+- `domain/controllers/connection.go` — the agent-driven session lifecycle (list,
+  connect, disconnect, loss detection, the heartbeat). It holds the only state in
+  the process, and it is an ordinary value owned by wiring.
+- `domain/controllers/tools/` — one controller per MCP tool (fifteen), mirroring
+  the bridge's one-handler-per-command rule, plus `registry.go` (the explicit
+  map, which also yields the catalog), `dispatcher.go` (one tool call as a use
+  case) and `tool_context.go` (the per-call parameter object, the analogue of the
+  bridge's `SessionContext`; its capability accessors are the only way to reach a
+  port, so a tool cannot forget to check). `Execute` takes **erased params** and
+  each tool declares its own JSON schema, which is what lets the MCP adapter have
+  zero per-tool code.
+- `adapters/` — `mcp/` (the go-sdk stdio server, the tool binding, the
+  `screenreader://info` resource, and the middleware backstop that answers a call
+  to a *retracted* tool with a capability error rather than "unknown tool"),
+  `bridge/` (the JSON-lines client holding every decision, the handshake, and the
+  TCP and named-pipe transport leaves), `discovery/` (the pipe scan), `wire/`
+  (generated from the published schema, imported only by `bridge/`), and the
+  clock and stderr-log leaves.
+- `tests/` — `architecture/` (untagged: the import boundaries, plus the rule that
+  the conformance tier may never substitute the fake bridge), `integration/`
+  (`//go:build integration`: the whole server against a Go fake bridge over real
+  transports) and `conformance/` (`//go:build conformance`, Windows CI: the built
+  binary over stdio against the **real Python bridge**).
+
+Go mechanics for the same rules: ports are interfaces with a
+`var _ ports.X = (*Impl)(nil)` assertion in each adapter; the domain never
+imports `adapters/wire` or the MCP SDK; and there is **no package-level mutable
+state anywhere in `server/`**, which is what keeps concurrent sessions a later
+map-plus-lookup rather than an unpicking of globals.
 
 Rules that keep this honest:
 
@@ -437,8 +470,16 @@ uv run --directory shared pyright
 
 # MCP server (no NVDA needed; tests use a fake bridge). Go, not Python.
 go -C server build ./...
-go -C server test ./...          # unit tests; integration/conformance are tagged
+go -C server test ./...                       # unit tests
+go -C server test -tags integration ./...     # whole server, real transports
 go -C server vet ./...
+go -C server generate ./adapters/wire         # regenerate the binding from the schema
+
+# Cross-language conformance: the built binary against the REAL Python bridge,
+# over a real named pipe and real loopback TCP. Windows; needs a Python 3.13 on
+# PATH (or CONFORMANCE_PYTHON set to one). It FAILS rather than skips if it
+# cannot reach the real bridge -- that is the whole point of the tier.
+go -C server test -tags conformance -count=1 ./tests/conformance/
 
 # NVDA addon: copy the shared module in, then run headless tests + pyright.
 # No NVDA checkout needed — the domain is pure; the NVDA edge is in pyright's

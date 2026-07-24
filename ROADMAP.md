@@ -180,8 +180,13 @@ scheduled. Work now proceeds in lane 2.
 
 ## Status board — lane 2: server (headless; may run parallel to lane 1)
 
-10. D, MCP server — **in Go**, a statically linked binary speaking MCP over
-    stdio and JSON lines to one bridge. Spec:
+**Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
+with lane 1 already complete, entry 11 (convergence — introspection and the
+real-world run against a live NVDA) is unblocked and is the next step.
+
+10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
+    2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
+    speaking MCP over stdio and JSON lines to one bridge. Spec:
     [0013-mcp-server.md](specs/0013-mcp-server.md) (agreed 2026-07-22; rides in
     10a's branch). Scope: RFC 0001 component 2 + milestone 4, encoding the
     reader-agnostic chassis principles of
@@ -195,7 +200,8 @@ scheduled. Work now proceeds in lane 2.
     follow-up" note), and 0013 goes further: each reader declares every endpoint
     its bridge is known to listen on, tried in order, so spec 0011's transport
     toggle needs no configuration. Delivered as three sequential PRs:
-    - **10a** — the module, the generated wire binding, the layered endpoint
+    - **10a** — **Done (PRs #29, #30, #31, #32, #33, 2026-07-22)**: the module,
+      the generated wire binding, the layered endpoint
       config, and the bridge client: dials a bridge and completes a handshake,
       proven headlessly. No MCP surface. Carries spec 0013 and the 0005 and
       AGENTS.md amendments; deletes the Python `mcpServer/` scaffold and turns
@@ -206,14 +212,25 @@ scheduled. Work now proceeds in lane 2.
       discovery, config, wiring and the entry point. The deletion waits for the
       first, because the `server` job must be repointed at Go before the
       directory it names disappears.
-    - **10b** — the MCP surface: `list_readers` / `connect_reader` /
+    - **10b** — **Done (PRs #34, #35, #36, 2026-07-23)**: the MCP surface:
+      `list_readers` / `connect_reader` /
       `disconnect_reader` / `status`, the capability-gated tool set, the
       `screenreader://info` resource, and the agent-initiated connection
       lifecycle (no auto-connect, no backoff). Amends the wire prose with the
       pipe naming convention.
-    - **10c** — the cross-language conformance job (`windows-latest`, the real
-      Python bridge over a real pipe and over TCP), release plumbing for the
-      `server-v*` tag, and the board flip.
+    - **10c** — **Done (PRs #37, #38, 2026-07-23)**: the cross-language
+      conformance job (`windows-latest`, the real Python bridge over a real pipe
+      and over TCP), release plumbing for the `server-v*` tag, and the board
+      flip. The conformance tier is the successor to the same-bytes drift
+      guarantee the two halves had while both were Python: it is the only place
+      where both implementations of `specs/wire/v1/` are real, so a bug in the
+      generated binding — invisible to every tier whose bridge is a Go fake
+      encoding with that same binding — has somewhere to surface. It found one
+      on its first run (the named-pipe leaf reporting an idle read as a lost
+      connection, so every command slower than one 50 ms poll failed over the
+      transport the add-on ships listening on). **The `conformance` job is a new
+      job name and is deliberately not in branch protection yet** — that is a
+      settings edit made after the job has reported once.
 
 ## Convergence (requires C and D both Done)
 
@@ -234,12 +251,15 @@ scheduled. Work now proceeds in lane 2.
       `.nvda-addon`), the path-filtered PR add-on build, and the PR comment
       linking it. `ci.yml`'s gate jobs stay unconditional and unchanged.
     - **12b** — server distribution. Spec: none yet → specify when reached.
-      Scope sketch: RFC 0001 milestone 7, plus the remaining decision list from
-      spec 0005: server implementation language (Python + PyInstaller vs a Go
-      port judged against the published wire contract), umbrella Windows
-      installer vs per-channel-only distribution (NVDA add-on store stays
-      canonical for the add-on), and an `.mcpb` bundle for Claude Desktop users.
-      The `server-v*` tag namespace is reserved by 12a.
+      Scope sketch: RFC 0001 milestone 7, plus what is left of spec 0005's
+      decision list: umbrella Windows installer vs per-channel-only distribution
+      (NVDA add-on store stays canonical for the add-on), an `.mcpb` bundle for
+      Claude Desktop users, and targets beyond Windows amd64. The
+      **implementation language is no longer open** — spec 0013 decided Go at
+      session D and PyInstaller is off the table — and entry 10c already delivered
+      the `server-v*` release path 12a reserved the namespace for: a tag builds
+      the binary, runs it to check its version against the tag, and publishes a
+      draft release.
 
 ## Principles — **Decided**
 

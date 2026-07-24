@@ -86,22 +86,29 @@ component and one set of release assets:
 | Tag | Releases |
 |---|---|
 | `nvda-bridge-v0.2.0` | `nvdaMcpBridge-0.2.0.nvda-addon` |
-| `server-v0.3.1` | the server distribution (entry 12b — not implemented yet) |
+| `server-v0.3.1` | `screenreader-mcp-0.3.1-windows-amd64.exe` |
+
+The two are independent on purpose: what has to match between the halves is the
+**wire protocol version**, never their own version numbers, so each releases on
+its own cadence and every release states the protocol it speaks.
 
 The version is **never written in the tag alone**: it lives in the component's
-own manifest (`bridges/nvda/buildVars.py` for the add-on) and the release
-workflow fails if the tag disagrees. Release notes come from
-`addon_changelog` in that same file. Tag only commits that are merged to `main`:
+own manifest — `bridges/nvda/buildVars.py` for the add-on,
+`server/version/version.go` for the server — and the release workflow fails if
+the tag disagrees. For the server it checks by **running the binary it just
+built** (`--version`), which also proves the artifact starts before it is
+published. Add-on release notes come from `addon_changelog` in that same file.
+Tag only commits that are merged to `main`:
 
 ```sh
 git tag -a nvda-bridge-v0.2.0 -m "Version 0.2.0"
 git push origin nvda-bridge-v0.2.0
 ```
 
-The workflow publishes a **draft** release — review it, then publish, then use
-the `submit-nvda-addon` skill for the store. Pull requests touching
-`bridges/nvda/` or `shared/` get the packaged add-on built and linked in a PR
-comment automatically.
+Each workflow publishes a **draft** release — review it, then publish; for the
+add-on, then use the `submit-nvda-addon` skill for the store. Pull requests
+touching `bridges/nvda/` or `shared/` get the packaged add-on built and linked in
+a PR comment automatically.
 
 Full rationale, including why the tag uses a dash rather than a slash and why
 the merge gates are not path-filtered:
