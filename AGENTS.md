@@ -490,6 +490,11 @@ uv run --directory bridges/nvda pyright
 cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
 ```
 
+Driving the whole stack against a **live NVDA** — build the add-on, start the
+bridge, and run a script standing in for the MCP client — is
+[`CONTRIBUTING.md`](CONTRIBUTING.md), "Setting up to test against a live NVDA".
+That is how every live-NVDA checklist in a PR body is executed.
+
 House style follows the NVDA addon convention: **tab indentation**, ruff line
 length 110 (`W191`/tab warnings from a default editor ruff are expected and
 ignored via per-package config).

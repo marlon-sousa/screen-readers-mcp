@@ -78,6 +78,10 @@ claude mcp add --scope user screenreader -- C:\projects\screen-readers-mcp\serve
 No arguments needed: the binary ships knowing where our bridges listen. Ask the
 agent to list readers, then to connect to one.
 
+To drive the whole stack against a **real, running NVDA** — build the add-on,
+start the bridge, and run a script that stands in for the MCP client — see
+[CONTRIBUTING.md](CONTRIBUTING.md), "Setting up to test against a live NVDA".
+
 ## Releasing
 
 Each component is released by its own **prefixed tag**, so one tag selects one
