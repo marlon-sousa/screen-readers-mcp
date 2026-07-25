@@ -43,6 +43,9 @@ class FakeTranscript(Transcript):
 	def gesture(self, gesture_id: str) -> None:
 		self._record("gesture", gesture_id)
 
+	def typed(self, length: int) -> None:
+		self._record("type", length)
+
 	def speech(self, text: str) -> None:
 		self._record("speech", text)
 

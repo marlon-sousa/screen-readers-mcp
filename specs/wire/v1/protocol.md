@@ -137,6 +137,7 @@ names one group:
 | `speech` | `getSpeech`, `getLastSpeech`, `getNextSpeechIndex`, `waitForSpeech`, `waitForSpeechToFinish` |
 | `braille` | `getBraille` |
 | `gestures` | `pressGesture` |
+| `typing` | `typeText` |
 | `focus` | `getFocusInfo` |
 | `state` | `getState` |
 | `config` | `getConfig`, `setConfig` |
@@ -149,8 +150,9 @@ Rules:
   beyond "ignore unknown fields".)
 - A command whose group is **not** in the announced set may be rejected with a
   normal error response. The NVDA bridge announces `speech`, `braille`,
-  `gestures` and `announce` today; `focus`, `state` and `config` are defined by
-  this contract and served by no bridge yet, so it does not announce them.
+  `gestures`, `typing` and `announce` today; `focus`, `state` and `config` are
+  defined by this contract and served by no bridge yet, so it does not announce
+  them.
 - `hello`, `ping`, `echo`, and `bye` are lifecycle/diagnostic commands and belong
   to no capability group; they are always available once the session permits them
   (§3).
@@ -173,6 +175,13 @@ means the command takes no parameters. Summary:
   `"escape"`), not an internal identifier. The reader-specific bridge maps it to
   a keypress; an NVDA bridge tolerates a legacy `"kb:"` inputCore prefix but the
   documented form is prefixless.
+- `typeText` `{ text }` → `{ ok: true }` — insert literal text at whatever
+  currently holds system focus, layout-independent Unicode injection rather
+  than a sequence of key commands. `text` is opaque content, routed without
+  interpretation exactly as a gesture id is; it does **not** interpret control
+  characters, newlines or Enter, and does not submit anything — compose that
+  from `typeText` and `pressGesture`. Mutates the reader's machine the same way
+  `pressGesture` does.
 - `getSpeech` `{ sinceIndex }` → `{ text, fromIndex, toIndex }` — captured speech
   since an index (§7).
 - `getLastSpeech` → `{ text, index }`.

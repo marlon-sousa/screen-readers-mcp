@@ -78,7 +78,7 @@ func TestDialEstablishesASessionFromHello(t *testing.T) {
 // collaborator, so there is nothing for a braille tool to be built from.
 func TestDialHandsOverOnlyTheAnnouncedCapabilities(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
-		Capabilities: []wire.Capability{wire.CapabilitySpeech, wire.CapabilityGestures},
+		Capabilities: []wire.Capability{wire.CapabilitySpeech, wire.CapabilityGestures, wire.CapabilityTyping},
 	})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:reader": fake})
 
@@ -92,6 +92,9 @@ func TestDialHandsOverOnlyTheAnnouncedCapabilities(t *testing.T) {
 	}
 	if connection.Gestures == nil {
 		t.Error("gestures were announced but no GestureSender was handed over")
+	}
+	if connection.Text == nil {
+		t.Error("typing was announced but no TextTyper was handed over")
 	}
 	if connection.Braille != nil {
 		t.Error("braille was NOT announced but a BrailleReader was handed over")

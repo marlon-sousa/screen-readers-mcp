@@ -22,6 +22,7 @@ from nvdaMcpBridge.domain.ports.adapter_factory import AdapterFactory, AdapterSe
 from .braille_source import FakeBrailleSource
 from .gesture_sender import FakeGestureSender
 from .speech_source import FakeSpeechSource
+from .text_typer import FakeTextTyper
 
 if TYPE_CHECKING:
 	from nvdaMcpBridge import protocol
@@ -35,10 +36,12 @@ class FakeAdapterFactory(AdapterFactory):
 		*,
 		reject: Sequence[str] | None = None,
 		speech: Mapping[str, Sequence[str]] | None = None,
+		type_fail_on: Sequence[str] | None = None,
 	) -> None:
 		self.speech_source = FakeSpeechSource()
 		self.braille_source = FakeBrailleSource()
 		self.gesture_sender = FakeGestureSender(self.speech_source, reject=reject, speech=speech)
+		self.text_typer = FakeTextTyper(fail_on=type_fail_on)
 		self.built_mode: protocol.CaptureMode | None = None
 
 	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
@@ -47,4 +50,5 @@ class FakeAdapterFactory(AdapterFactory):
 			speech_source=self.speech_source,
 			braille_source=self.braille_source,
 			gesture_sender=self.gesture_sender,
+			text_typer=self.text_typer,
 		)

@@ -126,6 +126,7 @@ var (
 	_ ports.StateInspector   = (*JSONLinesClient)(nil)
 	_ ports.ConfigAccessor   = (*JSONLinesClient)(nil)
 	_ ports.Announcer        = (*JSONLinesClient)(nil)
+	_ ports.TextTyper        = (*JSONLinesClient)(nil)
 	_ ports.SessionLifecycle = (*JSONLinesClient)(nil)
 )
 
@@ -204,6 +205,12 @@ func (c *JSONLinesClient) PressGestures(ids []string) error {
 	// The ids pass through untouched: gesture syntax is the reader's, and the
 	// server routes it without interpreting it.
 	return c.call(wire.CommandPressGesture, wire.PressGestureParams{Gestures: ids}, nil, DefaultCallTimeout)
+}
+
+func (c *JSONLinesClient) TypeText(text string) error {
+	// The text passes through untouched: it is opaque content, routed exactly
+	// as a gesture id is.
+	return c.call(wire.CommandTypeText, wire.TypeParams{Text: text}, nil, DefaultCallTimeout)
 }
 
 func (c *JSONLinesClient) Announce(text string) error {

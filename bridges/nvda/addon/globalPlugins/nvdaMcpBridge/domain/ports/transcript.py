@@ -37,6 +37,15 @@ class Transcript(ABC):
 	def gesture(self, gesture_id: str) -> None: ...
 
 	@abstractmethod
+	def typed(self, length: int) -> None:
+		"""Record that ``length`` characters were typed -- never the text itself.
+
+		``typeText`` is exactly how a secret would be entered (spec 0016), and
+		logging it verbatim would write the secret to disk. The length is all
+		the record carries.
+		"""
+
+	@abstractmethod
 	def speech(self, text: str) -> None: ...
 
 	@abstractmethod

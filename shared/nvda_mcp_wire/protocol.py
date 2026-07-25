@@ -57,6 +57,7 @@ __all__ = [
 	"EchoParams",
 	"EchoResult",
 	"PressGestureParams",
+	"TypeParams",
 	"GetSpeechParams",
 	"SpeechResult",
 	"LastSpeechResult",
@@ -143,6 +144,7 @@ class Capability(StrEnum):
 	STATE = "state"
 	CONFIG = "config"
 	ANNOUNCE = "announce"
+	TYPING = "typing"
 
 
 class Command(StrEnum):
@@ -156,6 +158,7 @@ class Command(StrEnum):
 	PING = "ping"
 	ECHO = "echo"
 	PRESS_GESTURE = "pressGesture"
+	TYPE_TEXT = "typeText"
 	GET_SPEECH = "getSpeech"
 	GET_LAST_SPEECH = "getLastSpeech"
 	GET_NEXT_SPEECH_INDEX = "getNextSpeechIndex"
@@ -428,6 +431,18 @@ class PressGestureParams:
 
 
 @dataclass
+class TypeParams:
+	"""Literal text to insert into whatever holds system focus.
+
+	``text`` is opaque content -- routed without interpretation, exactly as a
+	gesture id is. It is not a command: control characters, newlines and Enter
+	are not interpreted; the agent composes those with ``pressGesture``.
+	"""
+
+	text: str
+
+
+@dataclass
 class GetSpeechParams:
 	sinceIndex: int
 
@@ -577,6 +592,7 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.PING: CommandShape(None, AckResult),
 	Command.ECHO: CommandShape(EchoParams, EchoResult),
 	Command.PRESS_GESTURE: CommandShape(PressGestureParams, AckResult),
+	Command.TYPE_TEXT: CommandShape(TypeParams, AckResult),
 	Command.GET_SPEECH: CommandShape(GetSpeechParams, SpeechResult),
 	Command.GET_LAST_SPEECH: CommandShape(None, LastSpeechResult),
 	Command.GET_NEXT_SPEECH_INDEX: CommandShape(None, NextIndexResult),

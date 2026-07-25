@@ -44,6 +44,14 @@ class CommandHandler(ABC):
 	#: it True; every other command is rejected until the handshake completes.
 	available_before_hello: bool = False
 
+	#: Whether this command moves the user's machine (a keypress, typed text, a
+	#: config write) rather than only observing it. Set True on the handlers that
+	#: do (``PressGestureHandler``, ``TypeTextHandler``); an observe-only session
+	#: (spec 0017) refuses a mutating handler. The base default is False and the
+	#: failure mode of forgetting to opt in is "allowed", so a future mutating
+	#: command must set this deliberately.
+	mutates_reader: bool = False
+
 	@abstractmethod
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		"""Run the command and return its wire result, or raise to fail it."""

@@ -158,7 +158,7 @@ type node struct {
 var enumNames = map[string]string{
 	"live|silent":                "CaptureMode",
 	"debug|debugwarning|info|io": "LogLevel",
-	"announce|braille|config|focus|gestures|speech|state": "Capability",
+	"announce|braille|config|focus|gestures|speech|state|typing": "Capability",
 }
 
 // initialisms are the leading lowercase runs that are spelled all-caps in Go.

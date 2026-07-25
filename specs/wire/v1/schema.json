@@ -226,7 +226,8 @@
               "focus",
               "state",
               "config",
-              "announce"
+              "announce",
+              "typing"
             ]
           }
         },
@@ -428,6 +429,18 @@
       ],
       "additionalProperties": true
     },
+    "TypeParams": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "additionalProperties": true
+    },
     "WaitForSpeechParams": {
       "type": "object",
       "properties": {
@@ -529,6 +542,14 @@
     "pressGesture": {
       "params": {
         "$ref": "#/$defs/PressGestureParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AckResult"
+      }
+    },
+    "typeText": {
+      "params": {
+        "$ref": "#/$defs/TypeParams"
       },
       "result": {
         "$ref": "#/$defs/AckResult"
