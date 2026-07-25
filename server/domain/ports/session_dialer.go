@@ -106,6 +106,7 @@ type ReaderConnection struct {
 	State     StateInspector
 	Config    ConfigAccessor
 	Announcer Announcer
+	Text      TextTyper
 }
 
 // SessionDialer opens a session with one configured reader.

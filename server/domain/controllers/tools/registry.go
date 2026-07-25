@@ -49,6 +49,9 @@ func BuildRegistry() *Registry {
 		// Gated on `gestures`.
 		&PressGesture{},
 
+		// Gated on `typing`.
+		&TypeText{},
+
 		// Gated on `announce`.
 		&Announce{},
 

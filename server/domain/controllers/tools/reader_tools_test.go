@@ -304,6 +304,7 @@ func TestEveryGatedToolNamesTheCapabilityItNeeds(t *testing.T) {
 	}{
 		{&tools.GetBraille{}, entities.CapabilityBraille},
 		{&tools.PressGesture{}, entities.CapabilityGestures},
+		{&tools.TypeText{}, entities.CapabilityTyping},
 		{&tools.GetFocusInfo{}, entities.CapabilityFocus},
 		{&tools.GetState{}, entities.CapabilityState},
 		{&tools.GetConfig{}, entities.CapabilityConfig},

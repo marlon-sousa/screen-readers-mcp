@@ -67,6 +67,9 @@ class FileTranscript(Transcript):
 	def gesture(self, gesture_id: str) -> None:
 		self._line(f"GESTURE {gesture_id}")
 
+	def typed(self, length: int) -> None:
+		self._line(f"TYPE length={length}")
+
 	def speech(self, text: str) -> None:
 		self._line(f"SPEECH {text!r}")
 

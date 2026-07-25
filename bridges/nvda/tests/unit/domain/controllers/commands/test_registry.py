@@ -22,6 +22,7 @@ def test_announced_capabilities_are_only_what_is_served() -> None:
 		p.Capability.BRAILLE,
 		p.Capability.GESTURES,
 		p.Capability.ANNOUNCE,
+		p.Capability.TYPING,
 	)
 	unserved = {p.Capability.FOCUS, p.Capability.STATE, p.Capability.CONFIG}
 	assert unserved.isdisjoint(NVDA_CAPABILITIES)

@@ -37,6 +37,7 @@ type Connection struct {
 	State     *fakes.FakeStateInspector
 	Config    *fakes.FakeConfigAccessor
 	Announcer *fakes.FakeAnnouncer
+	Text      *fakes.FakeTextTyper
 }
 
 // NewConnection builds a session for a reader announcing exactly these
@@ -95,6 +96,10 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 		built.Announcer = fakes.NewFakeAnnouncer()
 		built.Connection.Announcer = built.Announcer
 	}
+	if set.Has(entities.CapabilityTyping) {
+		built.Text = fakes.NewFakeTextTyper()
+		built.Connection.Text = built.Text
+	}
 	return built
 }
 
@@ -104,6 +109,6 @@ func EveryCapability() []entities.Capability {
 	return []entities.Capability{
 		entities.CapabilitySpeech, entities.CapabilityBraille, entities.CapabilityGestures,
 		entities.CapabilityFocus, entities.CapabilityState, entities.CapabilityConfig,
-		entities.CapabilityAnnounce,
+		entities.CapabilityAnnounce, entities.CapabilityTyping,
 	}
 }

@@ -31,6 +31,7 @@ from .hello import HelloHandler
 from .not_implemented import NotImplementedHandler
 from .ping import PingHandler
 from .press_gesture import PressGestureHandler
+from .type_text import TypeTextHandler
 from .wait_for_speech import WaitForSpeechHandler
 from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
 
@@ -47,6 +48,7 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 	protocol.Capability.BRAILLE,
 	protocol.Capability.GESTURES,
 	protocol.Capability.ANNOUNCE,
+	protocol.Capability.TYPING,
 )
 
 
@@ -68,6 +70,7 @@ def build_command_registry(factory: AdapterFactory, nvda_version: str) -> dict[s
 		protocol.Command.PING: PingHandler(),
 		protocol.Command.ECHO: EchoHandler(),
 		protocol.Command.PRESS_GESTURE: PressGestureHandler(),
+		protocol.Command.TYPE_TEXT: TypeTextHandler(),
 		protocol.Command.GET_SPEECH: GetSpeechHandler(),
 		protocol.Command.GET_LAST_SPEECH: GetLastSpeechHandler(),
 		protocol.Command.GET_NEXT_SPEECH_INDEX: GetNextSpeechIndexHandler(),

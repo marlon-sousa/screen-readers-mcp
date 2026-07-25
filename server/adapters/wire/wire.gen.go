@@ -53,6 +53,7 @@ const (
 	CommandPing                  Command = "ping"
 	CommandEcho                  Command = "echo"
 	CommandPressGesture          Command = "pressGesture"
+	CommandTypeText              Command = "typeText"
 	CommandGetSpeech             Command = "getSpeech"
 	CommandGetLastSpeech         Command = "getLastSpeech"
 	CommandGetNextSpeechIndex    Command = "getNextSpeechIndex"
@@ -79,6 +80,7 @@ const (
 	CapabilityState    Capability = "state"
 	CapabilityConfig   Capability = "config"
 	CapabilityAnnounce Capability = "announce"
+	CapabilityTyping   Capability = "typing"
 )
 
 // CaptureMode is a closed value set in the wire contract.
@@ -235,6 +237,11 @@ type StateResult struct {
 	SpeechMode string  `json:"speechMode"`
 	SleepMode  bool    `json:"sleepMode"`
 	InputHelp  bool    `json:"inputHelp"`
+}
+
+// TypeParams is the wire shape of the same name.
+type TypeParams struct {
+	Text string `json:"text"`
 }
 
 // WaitForSpeechParams is the wire shape of the same name.

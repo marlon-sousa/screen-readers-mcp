@@ -138,6 +138,14 @@ func (c ToolContext) Announcer() (ports.Announcer, error) {
 	return c.Connection.Announcer, nil
 }
 
+// Text is the `typing` capability, or a structured error.
+func (c ToolContext) Text() (ports.TextTyper, error) {
+	if c.Connection == nil || c.Connection.Text == nil {
+		return nil, c.missing(entities.CapabilityTyping)
+	}
+	return c.Connection.Text, nil
+}
+
 // missing builds the error, naming the connected reader when there is one --
 // which is what tells "nothing is connected" apart from "this reader cannot do
 // that", two situations with entirely different remedies.

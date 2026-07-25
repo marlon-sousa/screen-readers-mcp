@@ -32,6 +32,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
@@ -49,6 +50,10 @@ const (
 	brailleCells  = "elements lst dlg"
 	fakeSynth     = "espeak"
 	announcedHint = "Taking over: I need a password."
+	// Punctuation and an accented character, deliberately: this is what
+	// KeyboardInputGesture.fromName cannot reach on every keyboard layout, and
+	// exactly the case spec 0019 exists for.
+	typedText = "café — 50%"
 )
 
 // ungatedTools is what a server with no session advertises; gatedTools is what
@@ -69,6 +74,7 @@ var (
 		"get_next_speech_index",     // speech
 		"get_speech",                // speech
 		"press_gesture",             // gestures
+		"type_text",                 // typing
 		"wait_for_speech",           // speech
 		"wait_for_speech_to_finish", // speech
 	}
@@ -104,6 +110,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseSpeech(t, harness)
 	exerciseBraille(t, harness)
 	exerciseAnnounce(t, harness)
+	exerciseTyping(t, harness)
 	assertStatusIsProvenOnTheWire(t, harness)
 	assertInfoDescribesTheSession(t, harness, session)
 
@@ -173,7 +180,7 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("log paths = %q / %q, want both reported", session.LogPath, session.ReaderLogPath)
 	}
 
-	want := []string{"announce", "braille", "gestures", "speech"}
+	want := []string{"announce", "braille", "gestures", "speech", "typing"}
 	got := slices.Clone(session.Capabilities)
 	slices.Sort(got)
 	if !slices.Equal(got, want) {
@@ -320,6 +327,27 @@ func exerciseAnnounce(t *testing.T, harness *testsupport.MCPHarness) {
 
 	if spoken.Announced != announcedHint {
 		t.Errorf("announce = %q, want the text echoed back unchanged", spoken.Announced)
+	}
+}
+
+// exerciseTyping is the `typing` capability group. There is no fake focus
+// state on the far side to read the text back through (this harness does not
+// announce `focus`), so what crosses this tier is what every other exercise
+// here proves: that TypeParams.text -- punctuation and a non-ASCII character
+// included -- reaches the real Python bridge's typeText handler intact and
+// comes back acknowledged, not mangled or rejected by either binding's JSON
+// encoding.
+func exerciseTyping(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	var typed struct {
+		Typed int `json:"typed"`
+	}
+	harness.Call(t, "type_text", map[string]any{"text": typedText}).Decode(t, &typed)
+
+	if want := utf8.RuneCountInString(typedText); typed.Typed != want {
+		t.Errorf("typed = %d, want %d (the rune count of %q surviving the round trip)",
+			typed.Typed, want, typedText)
 	}
 }
 

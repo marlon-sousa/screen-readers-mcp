@@ -25,6 +25,7 @@ from ... import protocol
 from .braille_source import BrailleSource
 from .gesture_sender import GestureSender
 from .speech_source import SpeechSource
+from .text_typer import TextTyper
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class AdapterSet:
 	speech_source: SpeechSource
 	braille_source: BrailleSource
 	gesture_sender: GestureSender
+	text_typer: TextTyper
 
 
 class AdapterFactory(ABC):

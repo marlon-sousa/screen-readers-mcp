@@ -242,6 +242,7 @@ def test_command_set_matches_plan_v1() -> None:
 		"ping",
 		"echo",
 		"pressGesture",
+		"typeText",
 		"getSpeech",
 		"getLastSpeech",
 		"getNextSpeechIndex",
@@ -308,6 +309,7 @@ def test_capabilities_cover_one_per_command_group() -> None:
 		"state",
 		"config",
 		"announce",
+		"typing",
 	}
 
 

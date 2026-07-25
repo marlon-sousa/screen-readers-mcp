@@ -22,6 +22,7 @@ from .nvda_braille_source import NvdaBrailleSource
 from .nvda_gesture_sender import NvdaGestureSender
 from .nvda_live_speech_source import NvdaLiveSpeechSource
 from .nvda_silent_speech_source import NvdaSilentSpeechSource
+from .nvda_text_typer import NvdaTextTyper
 
 
 class NvdaAdapterFactory(AdapterFactory):
@@ -34,4 +35,5 @@ class NvdaAdapterFactory(AdapterFactory):
 			speech_source=speech_source,
 			braille_source=NvdaBrailleSource(),
 			gesture_sender=NvdaGestureSender(),
+			text_typer=NvdaTextTyper(),
 		)
