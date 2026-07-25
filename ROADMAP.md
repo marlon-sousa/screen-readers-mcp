@@ -305,8 +305,30 @@ rather than before it.
         tester's **physical** keypresses, not the agent's. Fix: a pure
         `bare_key_name` helper strips the `kb:`/`kb(layout):` source prefix,
         headless-tested in `tests/unit/adapters/`; the NVDA-touching sender is
-        one line thinner. **Fix rides in this PR.** Needs a rebuilt add-on to
-        re-verify live (the desktop-driving run resumes from there).
+        one line thinner. **Fixed in PR #41 and verified live 2026-07-25** —
+        after the rebuild, agent-driven gestures drove the desktop end to end
+        (spec 0018 Part A).
+      - **E.2 — the gesture vocabulary is the reader's user-facing command
+        notation, not an internal id. Done (PR #41).** E.1's tolerated `kb:` is
+        NVDA inputCore's internal source-namespace, which no agent learns from
+        user-facing docs; a source-privileged session reached for it and hit the
+        bug, whereas an agent reading only the NVDA User Guide would have sent the
+        prefixless `NVDA+f7` and worked even pre-E.1. So the canonical vocabulary
+        is the User-Guide key-combo form (`NVDA+f7`, `control+l`, `escape`),
+        prefixless; the server routes it opaquely, the bridge maps it via
+        `fromName`, and a source prefix is reserved for future non-keyboard
+        vocabularies. Reworded `protocol.md` and the `press_gesture` tool
+        description; the bridge still tolerates a legacy `kb:`. Validated live in
+        both `live` and `silent` mode. Spec:
+        [0018-input-vocabulary.md](specs/0018-input-vocabulary.md), Part A.
+      - **E.3 — a `type` primitive for literal text** (lane 1 + lane 2). Gestures
+        are commands; typing a URL or phrase is content and needs its own command,
+        not one `pressGesture` per character (fragile: `VkKeyScanEx` fails for
+        off-layout characters). A new `typeText` command + `typing` capability,
+        injected via Win32 `SendInput` with `KEYEVENTF_UNICODE`, gated like
+        `pressGesture` and withheld under observe-only (0017). Spec:
+        [0018-input-vocabulary.md](specs/0018-input-vocabulary.md), Part B
+        (specified, awaiting review; rides in E.3's own PR).
 11.1. **E, bridge introspection** (lane 1). The four handlers behind
     `getFocusInfo` / `getState` / `getConfig` / `setConfig`, their ports and
     NVDA adapters, and re-widening `NVDA_CAPABILITIES` to announce `focus`,
