@@ -139,7 +139,7 @@ def scenario_smoke(server, console, checks, mode):
 
     info = server.resource("screenreader://info")
     checks.check("screenreader://info matches the handshake",
-                 info.get("reader", {}).get("name") == session.get("reader")
+                 info.get("reader") == session.get("reader")
                  and sorted(info.get("capabilities", [])) == sorted(caps),
                  detail=json.dumps(info))
 

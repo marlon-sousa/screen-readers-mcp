@@ -144,17 +144,37 @@ for a given change — and what each should show — is in that change's PR.
 ### Driving it as Claude Code itself (the most faithful client)
 
 The driver stands in for an MCP client; the **real** client is an agent. To have
-Claude Code drive NVDA directly, register the built binary as an MCP server:
+Claude Code drive NVDA directly, register the built binary as a project MCP
+server by creating a **`.mcp.json`** at the repo root:
 
-```sh
-claude mcp add --scope local screenreader -- C:\path\to\server\screenreader-mcp.exe
+```json
+{
+  "mcpServers": {
+    "screen-reader-testing": {
+      "command": "./server/screenreader-mcp.exe",
+      "args": []
+    }
+  }
+}
 ```
 
-Claude Code loads MCP servers at **startup**, so **restart it** after adding the
-server — only then do the `screenreader` tools appear. From that session, ask the
-agent to list readers, connect, and drive NVDA; the tools are the same ones the
-driver calls, so a PR's checklist reads the same either way. `claude mcp remove
-screenreader` undoes it.
+The command is **relative**, so it resolves to whatever binary you built in your
+own checkout — no per-machine path to edit. This file is **git-ignored on
+purpose**: it is yours, not the repo's, so it never clobbers a `.mcp.json` you
+already keep. If you already have one, **add the `screen-reader-testing` entry to
+your existing `mcpServers`** rather than replacing the file.
+
+Two things must be true before the tools appear:
+
+- You have **built the server binary** (step 1 above); the relative command only
+  resolves if `./server/screenreader-mcp.exe` exists in your checkout.
+- Claude Code loads project MCP servers at **startup** and asks you to **approve**
+  them, so **restart it**, then approve `screen-reader-testing` when prompted —
+  only then do the `mcp__screen-reader-testing__*` tools appear.
+
+From that session, ask the agent to list readers, connect, and drive NVDA; the
+tools are the same ones the driver calls, so a PR's checklist reads the same
+either way.
 
 ## Opening a pull request
 
