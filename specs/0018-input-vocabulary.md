@@ -97,99 +97,11 @@ gestures go through `VkKeyScanEx`, which fails for any character not on the
 *current* keyboard layout (`@`, `.`, accented letters). The well-worn split is
 Playwright's `press` (chord) vs `fill`/`type` (text); this adopts it.
 
-### Wire and capability
-
-- **New command** `typeText { text: string } → { ok: true }` — type the literal
-  text into whatever holds focus, blocking until it has been injected. `text`
-  passes through opaquely; it is content, not vocabulary, so there is nothing
-  reader-specific about it.
-- **New capability** `typing`, advertised in `hello`. The server gates the tool
-  on it exactly as `pressGesture` is gated on `gestures`: a bridge that does not
-  announce `typing` never gets the tool advertised.
-- **Observe-only (spec 0017) withholds it.** `typeText` moves the user's machine,
-  so its handler is `mutates_reader = True` and the server withholds the `typing`
-  port on an `observe` session — the same machinery that withholds `gestures`.
-
-### Bridge implementation
-
-Inject the text with Win32 **`SendInput` + `KEYEVENTF_UNICODE`**, one synthesized
-Unicode code unit per character. This is layout-independent and handles arbitrary
-characters, unlike routing each character through `KeyboardInputGesture`. It runs
-on NVDA's main thread and blocks until done, mirroring `NvdaGestureSender`'s
-`wx.CallAfter` + `Event` marshaling, so "the call returned" means "the text
-reached the focused control." Same focus contract as `pressGesture`: the agent
-focuses the field first (`control+l`), then `typeText`, then
-`pressGesture ["enter"]`.
-
-### Class/file layout
-
-**Shared**
-
-1. **`shared/nvda_mcp_wire/protocol.py`** — `TypeParams` (`text: str`), its entry
-   in `COMMAND_SHAPES`, and `Capability.TYPING`.
-
-**Bridge**
-
-2. **`domain/ports/text_typer.py`** — `TextTyper` port (`type_text(text: str)`)
-   and its `TypeError`-style failure, beside `gesture_sender.py`.
-3. **`domain/controllers/commands/type_text.py`** — `TypeTextHandler`, decodes
-   `TypeParams`, calls the port, logs a transcript `("type", text)` entry;
-   `mutates_reader = True`.
-4. **`domain/controllers/commands/registry.py`** — advertise `Capability.TYPING`
-   when the typer is present; register the handler.
-5. **`adapters/nvda_text_typer.py`** — the `SendInput`/`KEYEVENTF_UNICODE`
-   adapter (NVDA/ctypes; on pyright's ignore list, validated by the live
-   checklist).
-6. **`adapters/nvda_adapter_factory.py`** — build the `NvdaTextTyper`.
-7. **`domain/controllers/session.py`** — no new dispatch, but the observe gate
-   already refuses `mutates_reader` handlers, so `typeText` is covered for free.
-
-**Server**
-
-8. **`domain/entities/capability.go`** — the `typing` capability constant + its
-   handshake mapping, beside `gestures`.
-9. **`domain/ports/…`** + `ToolContext.Text()` — a `TextTyper` port handed over
-   only when the reader announced `typing`.
-10. **`adapters/bridge/json_lines_client.go`** — a `TypeText(text)` method.
-11. **`domain/controllers/tools/type_text.go`** — the `type_text` tool, gated on
-    `typing`, description saying it is for literal text (and pointing at
-    `press_gesture` for keys).
-12. **`domain/controllers/tools/registry.go`** — the registry line.
-
-**Wire binding** — regenerated both sides from `schema.json` (adds `TypeParams`,
-the `typeText` command, the `typing` capability); the drift gate keeps them in
-step.
-
-**Fakes** — a fake `TextTyper` (bridge) recording typed strings, beside the fake
-gesture sender.
-
-### Tests
-
-- **Bridge unit** — `TypeTextHandler` types the string through a fake typer and
-  logs it; the handler enumeration test (spec 0017) asserts `mutates_reader` is
-  `True`.
-- **Wire scenario** — a session typing text end to end over the fake bridge.
-- **Server** — `type_text` advertised only when `typing` is announced; withheld
-  on an `observe` session.
-- **Conformance** — the real Python bridge types a known string into a focused
-  control, read back through `getFocusInfo`/`getSpeech`.
-
-### Live-NVDA checklist (the Part B PR's body)
-
-1. Focus a text field, `typeText "hello world"`, read it back — matches.
-2. Focus Chrome's address bar (`control+l`), `typeText "www.blindtec.com.br"`,
-   `pressGesture ["enter"]` — the page loads.
-3. A string with punctuation and an accented character types correctly regardless
-   of keyboard layout.
-4. On an `observe` session, `type_text` is absent from the tool list and refused
-   if called anyway — no character reaches the machine.
-
-### Out of scope
-
-- Clipboard paste, IME composition, and per-keystroke timing control — `typeText`
-  is atomic literal insertion.
-- Rich key sequences mixing text and chords in one call; compose them from
-  `typeText` + `pressGesture`.
+The rest of Part B — the `typeText` command and `typing` capability, the Win32
+`SendInput` Unicode injection, the observe-only interaction, the full class/file
+layout, tests and live checklist — is promoted to its own implementation spec,
+**[0019-type-primitive.md](0019-type-primitive.md)** (entry E.3). It lands and is
+reviewed there, and rides in E.3's own PR; this section keeps only the motivation.
 
 ## Findings recorded from the 11b live runs
 
@@ -210,6 +122,5 @@ These shaped the spec and belong with it:
 - **Part A:** done — the files above shipped in PR #41; headless suites, pyright,
   ruff, the schema drift gate and conformance green; validated live. Board entry
   **E.2** marked Done (PR #41).
-- **Part B:** the `type` files above, both headless suites and conformance green,
-  and its live checklist run with the tester at the keyboard — in its **own** PR
-  (entry **E.3**).
+- **Part B:** specified and delivered in **[spec 0019](0019-type-primitive.md)**,
+  entry **E.3**, in its own PR.
