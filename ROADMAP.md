@@ -327,8 +327,8 @@ rather than before it.
         off-layout characters). A new `typeText` command + `typing` capability,
         injected via Win32 `SendInput` with `KEYEVENTF_UNICODE`, gated like
         `pressGesture` and withheld under observe-only (0017). Spec:
-        [0019-type-primitive.md](specs/0019-type-primitive.md) (drafted
-        2026-07-25, awaiting review; rides in E.3's own PR).
+        [0019-type-primitive.md](specs/0019-type-primitive.md) (agreed
+        2026-07-25, ready to implement; rides in E.3's own PR).
         **Prioritised in lane 1** so the live tests can enter text — URLs, search
         phrases — instead of spelling them one gesture at a time.
 11.1. **E, bridge introspection** (lane 1). The four handlers behind

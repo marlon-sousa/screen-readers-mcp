@@ -1,10 +1,12 @@
 # Spec 0019 — the `type` primitive: literal text entry (entry E.3)
 
-Status: **drafted 2026-07-25, awaiting review.** Not yet agreed in conversation;
-no code written. Promotes and supersedes [spec 0018](0018-input-vocabulary.md)
-Part B, which sketched this and now points here. Lane 1 + lane 2. Prioritised in
-lane 1 so the live tests can enter text (URLs, search phrases) instead of
-spelling them one gesture at a time.
+Status: **agreed 2026-07-25; ready to implement.** No code written yet. Promotes
+and supersedes [spec 0018](0018-input-vocabulary.md) Part B, which sketched this
+and now points here. Lane 1 + lane 2. Prioritised in lane 1 so the live tests can
+enter text (URLs, search phrases) instead of spelling them one gesture at a time.
+
+Agreed in conversation: the Unicode injection via NVDA's own `winBindings.user32`
+`SendInput` bindings (below), and the transcript logging length only (below).
 
 ## Goal
 
@@ -33,7 +35,7 @@ Typing via `pressGesture`, one call per character, is wrong three ways:
 The precedent is universal: Playwright's `press` vs `fill`/`type`, Selenium's
 chord vs `sendKeys`. This adopts the same split.
 
-## Decided — proposed
+## Decided
 
 ### A new command `typeText`, a new capability `typing`
 
@@ -113,24 +115,20 @@ is `mutates_reader = True` (the property [spec 0017](0017-observe-only-control.m
 added), so an `observe` session refuses it and the server withholds the `typing`
 port, never advertising `type_text`. No new gate — it rides the one 0017 builds.
 
-### Open question — does the transcript log the typed text?
+### Decided — the transcript logs length only
 
-The transcript (spec 0003) records session events; a natural entry is
-`("type", text)`. But **`typeText` is exactly how a password or other secret
-would be entered** (it is the mechanism [spec 0016](0016-human-in-the-loop.md)
-will lean on), and logging it verbatim writes the secret to disk.
+The transcript (spec 0003) records session events. `typeText` is **exactly how a
+password or other secret would be entered** (it is the mechanism
+[spec 0016](0016-human-in-the-loop.md) will lean on), and logging it verbatim
+would write the secret to disk. So the transcript records that a `typeText` of
+*n* characters occurred — **the length, never the content.**
 
-Two options, flagged for review:
-
-- **Log length only** — record that a `typeText` of *n* characters occurred, not
-  the content. Safe by default; costs reproducibility (a replay cannot see what
-  was typed).
-- **Log the text, redactable** — log verbatim (useful for an attended live test),
-  with redaction arriving alongside the 0016 password path.
-
-**Proposed: log length only now**, and let 0016 introduce an explicit
-"type this secret" path that is redacted by construction. An attended tester who
-needs to see the literal text has it in the PR's own notes.
+The cost is reproducibility: a replay sees *that* text was typed and *how much*,
+not *what*. That is the right default — an attended tester who needs the literal
+string has it in the PR's own notes, and [spec 0016](0016-human-in-the-loop.md)
+will add an explicit, redacted-by-construction "type this secret" path if a
+verbatim channel is ever wanted. The handler therefore logs `("type", len(text))`,
+not the text.
 
 ## Wire contract changes
 
