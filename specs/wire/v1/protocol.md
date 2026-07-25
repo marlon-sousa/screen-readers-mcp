@@ -167,8 +167,12 @@ means the command takes no parameters. Summary:
   JSON value; a whole-stack round-trip check.
 - `pressGesture` `{ gestures: [string] }` → `{ ok: true }` — press the given
   reader gesture ids in order, blocking until each is processed. Gesture id
-  syntax is **reader-specific** and passes through opaquely (NVDA example:
-  `"kb:NVDA+f7"`).
+  syntax is **reader-specific** and passes through opaquely: it is the reader's
+  own **user-facing command notation**, as its documentation writes it — for
+  NVDA, the key-combo form from the User Guide (`"NVDA+f7"`, `"control+l"`,
+  `"escape"`), not an internal identifier. The reader-specific bridge maps it to
+  a keypress; an NVDA bridge tolerates a legacy `"kb:"` inputCore prefix but the
+  documented form is prefixless.
 - `getSpeech` `{ sinceIndex }` → `{ text, fromIndex, toIndex }` — captured speech
   since an index (§7).
 - `getLastSpeech` → `{ text, index }`.
