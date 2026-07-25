@@ -5,11 +5,13 @@
 // USES: ports.GestureSender, through ToolContext.Gestures().
 // LISTED BY: registry.go.
 //
-// GESTURE IDS ARE OPAQUE (spec 0005, principle 3). `kb:NVDA+f7` means something
+// GESTURE IDS ARE OPAQUE (spec 0005, principle 3). `NVDA+f7` means something
 // to NVDA and to the agent, and nothing to this server, which routes the string
 // without interpreting it. That is what keeps the chassis reader-agnostic: a
 // JAWS gesture vocabulary needs no code change here, and this file contains no
-// reader's syntax except as an example in the text an agent reads.
+// reader's syntax except as an example in the text an agent reads. The example
+// is deliberately the reader's user-facing command notation (what its manual
+// prints), not an internal identifier -- the vocabulary any agent already knows.
 package tools
 
 import (
@@ -30,11 +32,12 @@ func (t *PressGesture) Capability() entities.Capability { return entities.Capabi
 
 func (t *PressGesture) Description() string {
 	return "Press one or more screen reader gestures, in order, blocking until each " +
-		"has been processed. Gesture ids are the READER's own syntax and pass through " +
-		"untouched -- for NVDA, ids like \"kb:NVDA+f7\", \"kb:downArrow\" or " +
-		"\"kb:control+home\". Read screenreader://info to learn which reader you are " +
-		"driving, then use that reader's vocabulary. Note that gestures land wherever " +
-		"the system focus currently is."
+		"has been processed. Gesture ids are the reader's own user-facing command " +
+		"notation -- the key combo as its documentation writes it -- and pass through " +
+		"untouched: for NVDA, the User Guide form like \"NVDA+f7\", \"downArrow\" or " +
+		"\"control+home\", not an internal identifier. Read screenreader://info to learn " +
+		"which reader you are driving, then use that reader's vocabulary. This is for " +
+		"pressing keys and chords; gestures land wherever the system focus currently is."
 }
 
 func (t *PressGesture) InputSchema() json.RawMessage {
@@ -45,7 +48,7 @@ func (t *PressGesture) InputSchema() json.RawMessage {
 			"type": "array",
 			"items": {"type": "string"},
 			"minItems": 1,
-			"description": "The gesture ids to press, in order. Reader-specific syntax, passed through unchanged (NVDA example: [\"kb:NVDA+control+f7\"])."
+			"description": "The gesture ids to press, in order. The reader's user-facing command notation, passed through unchanged (NVDA example: [\"NVDA+control+f7\"])."
 		}
 	},
 	"required": ["gestures"],

@@ -1,0 +1,4 @@
+# Dev-built server binary (CONTRIBUTING.md, "Setting up to test against a live
+# NVDA"). Released artifacts are built by the release workflow, never committed.
+/screenreader-mcp.exe
+/screenreader-mcp

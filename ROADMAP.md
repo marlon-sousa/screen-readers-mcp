@@ -293,6 +293,42 @@ rather than before it.
       what prove each real adapter behaves like its fake. **Findings are the
       deliverable**: they spawn iteration entries (E.1, E.2, …) in this board,
       per the checklist rule above.
+      - **E.1 — `pressGesture` never reached NVDA: the `kb:` prefix was fed to
+        `fromName`.** Found in the 11b run (NVDA 2026.1.1, Claude Code driving)
+        when every agent-sent gesture was refused — `kb:windows+d` and
+        `kb:control+l` both came back `unknown gesture id '…': 'kb:…'`. Root
+        cause: `NvdaGestureSender.press` passed the wire's opaque inputCore id
+        (`kb:control+l`) straight to `KeyboardInputGesture.fromName`, which wants
+        the **bare** combo (`control+l`) — it splits on `+` and looks each token
+        up in `vkCodes`, so `kb:control` raised `KeyError`. Every `pressGesture`
+        failed identically; the `capture` scenario only ever "passed" on the
+        tester's **physical** keypresses, not the agent's. Fix: a pure
+        `bare_key_name` helper strips the `kb:`/`kb(layout):` source prefix,
+        headless-tested in `tests/unit/adapters/`; the NVDA-touching sender is
+        one line thinner. **Fixed in PR #41 and verified live 2026-07-25** —
+        after the rebuild, agent-driven gestures drove the desktop end to end
+        (spec 0018 Part A).
+      - **E.2 — the gesture vocabulary is the reader's user-facing command
+        notation, not an internal id. Done (PR #41).** E.1's tolerated `kb:` is
+        NVDA inputCore's internal source-namespace, which no agent learns from
+        user-facing docs; a source-privileged session reached for it and hit the
+        bug, whereas an agent reading only the NVDA User Guide would have sent the
+        prefixless `NVDA+f7` and worked even pre-E.1. So the canonical vocabulary
+        is the User-Guide key-combo form (`NVDA+f7`, `control+l`, `escape`),
+        prefixless; the server routes it opaquely, the bridge maps it via
+        `fromName`, and a source prefix is reserved for future non-keyboard
+        vocabularies. Reworded `protocol.md` and the `press_gesture` tool
+        description; the bridge still tolerates a legacy `kb:`. Validated live in
+        both `live` and `silent` mode. Spec:
+        [0018-input-vocabulary.md](specs/0018-input-vocabulary.md), Part A.
+      - **E.3 — a `type` primitive for literal text** (lane 1 + lane 2). Gestures
+        are commands; typing a URL or phrase is content and needs its own command,
+        not one `pressGesture` per character (fragile: `VkKeyScanEx` fails for
+        off-layout characters). A new `typeText` command + `typing` capability,
+        injected via Win32 `SendInput` with `KEYEVENTF_UNICODE`, gated like
+        `pressGesture` and withheld under observe-only (0017). Spec:
+        [0018-input-vocabulary.md](specs/0018-input-vocabulary.md), Part B
+        (specified, awaiting review; rides in E.3's own PR).
 11.1. **E, bridge introspection** (lane 1). The four handlers behind
     `getFocusInfo` / `getState` / `getConfig` / `setConfig`, their ports and
     NVDA adapters, and re-widening `NVDA_CAPABILITIES` to announce `focus`,

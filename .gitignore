@@ -233,3 +233,8 @@ bridges/nvda/addon/globalPlugins/nvdaMcpBridge/protocol.py
 
 # The addon is scons-built; no uv project lock belongs here
 bridges/nvda/uv.lock
+
+# Contributor-local MCP client registration for driving the dev server (see
+# CONTRIBUTING.md, "Driving it as Claude Code itself"). Kept out of the repo so
+# it never clobbers a contributor's own .mcp.json.
+.mcp.json
