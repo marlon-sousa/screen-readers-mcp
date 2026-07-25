@@ -56,21 +56,36 @@ interpret control characters or submit on its own; it inserts the literal string
 and returns. Newlines and Enter are the agent's job, via `pressGesture`, so the
 primitive stays one unambiguous thing.
 
-### The bridge injects Unicode directly, not character-by-character gestures
+### The bridge injects Unicode with NVDA's own bindings, not raw ctypes
 
-The NVDA adapter uses Win32 **`SendInput` with `KEYEVENTF_UNICODE`**: for each
-UTF-16 code unit of the string, a key-down and key-up event carrying the code
-unit, injected into the OS input queue. This is **layout-independent** — the code
-unit is the character, not a scan code to be re-mapped — and handles the full
-range `VkKeyScanEx` cannot, including characters outside the BMP (a surrogate pair
-is two consecutive Unicode events, which `SendInput` accepts).
+**NVDA has no `typeString`.** It is a screen reader, not an automation harness —
+there is no high-level "type this text" API to call. But it *does* ship the exact
+primitive we need: **NVDA Remote** injects input on the controlled machine
+through `_remoteClient/input.sendKey`, which drives
+**`winBindings.user32.SendInput`** with NVDA's `INPUT` / `KEYEVENTF` bindings —
+including `KEYEVENTF.UNICODE`. So the adapter reuses *NVDA's* bindings (already on
+pyright's ignore list), not a hand-rolled `ctypes` layer; it is the Remote code
+path, looped over the string instead of one key.
 
-It runs on **NVDA's main thread** and blocks until done, mirroring
-`NvdaGestureSender`: marshal with `wx.CallAfter`, wait on a
-`threading.Event` with the same generous timeout, and surface a `SendInput`
-failure (fewer events inserted than requested — e.g. another thread holds the
-input desktop) as a `TypeError`-style per-command failure the Session reports,
-not a session death.
+For each UTF-16 code unit of the text, send a key-down then key-up `INPUT` with
+`KEYEVENTF.UNICODE` set and the code unit in `wScan` (`wVk = 0`). This is
+**layout-independent** — the code unit *is* the character, not a scan code to be
+re-mapped — and covers the full range `VkKeyScanEx` cannot, including characters
+outside the BMP (a surrogate pair is two consecutive Unicode events, which
+`SendInput` accepts).
+
+**Typing bypasses NVDA on purpose — the opposite of a gesture.** `pressGesture`
+goes through `inputCore.manager.emulateGesture`, so NVDA *processes* it
+(`NVDA+f7` runs NVDA's own command). `typeText` must instead reach the **focused
+application**, so it uses raw `SendInput` exactly as Remote does, never
+`emulateGesture` — the characters are content for the app, not commands for NVDA.
+
+Injection runs on **NVDA's main thread** and blocks until done, mirroring
+`NvdaGestureSender`'s `wx.CallAfter` + `threading.Event` marshaling with the same
+generous timeout, so "the call returned" means "the text reached the control." A
+`SendInput` that inserts fewer events than requested (e.g. another thread holds
+the input desktop) surfaces as a `TypeError`-style per-command failure the Session
+reports, not a session death.
 
 ```mermaid
 sequenceDiagram
@@ -147,9 +162,11 @@ capability table in §4.
    decision above), return `AckResult`; class attribute `mutates_reader = True`.
 4. **`domain/controllers/commands/registry.py`** — register the handler; advertise
    `Capability.TYPING` in `NVDA_CAPABILITIES` when the typer port is present.
-5. **`adapters/nvda_text_typer.py`** — `NvdaTextTyper`: the
-   `SendInput`/`KEYEVENTF_UNICODE` injection on the main thread (NVDA + ctypes
-   `winUser`; on pyright's ignore list, validated by the live checklist).
+5. **`adapters/nvda_text_typer.py`** — `NvdaTextTyper`: the per-code-unit
+   `KEYEVENTF.UNICODE` injection on the main thread, using NVDA's
+   **`winBindings.user32`** `SendInput`/`INPUT`/`KEYEVENTF` bindings (the same
+   ones `_remoteClient/input.sendKey` uses), **not** raw `ctypes`; on pyright's
+   ignore list, validated by the live checklist.
 6. **`adapters/nvda_adapter_factory.py`** — build `NvdaTextTyper` and hand it to
    the session alongside the gesture sender.
 7. *(no `session.py` dispatch change — the 0017 observe gate already refuses a
