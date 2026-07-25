@@ -20,35 +20,44 @@ from typing import TYPE_CHECKING, Mapping, Sequence
 from nvdaMcpBridge.domain.ports.adapter_factory import AdapterFactory, AdapterSet
 
 from .braille_source import FakeBrailleSource
+from .config_accessor import FakeConfigAccessor
+from .focus_inspector import FakeFocusInspector
 from .gesture_sender import FakeGestureSender
 from .speech_source import FakeSpeechSource
+from .state_inspector import FakeStateInspector
 from .text_typer import FakeTextTyper
 
 if TYPE_CHECKING:
-	from nvdaMcpBridge import protocol
+    from nvdaMcpBridge import protocol
 
 
 class FakeAdapterFactory(AdapterFactory):
-	"""Builds a fake AdapterSet and remembers the mode it was built for."""
+    """Builds a fake AdapterSet and remembers the mode it was built for."""
 
-	def __init__(
-		self,
-		*,
-		reject: Sequence[str] | None = None,
-		speech: Mapping[str, Sequence[str]] | None = None,
-		type_fail_on: Sequence[str] | None = None,
-	) -> None:
-		self.speech_source = FakeSpeechSource()
-		self.braille_source = FakeBrailleSource()
-		self.gesture_sender = FakeGestureSender(self.speech_source, reject=reject, speech=speech)
-		self.text_typer = FakeTextTyper(fail_on=type_fail_on)
-		self.built_mode: protocol.CaptureMode | None = None
+    def __init__(
+        self,
+        *,
+        reject: Sequence[str] | None = None,
+        speech: Mapping[str, Sequence[str]] | None = None,
+        type_fail_on: Sequence[str] | None = None,
+    ) -> None:
+        self.speech_source = FakeSpeechSource()
+        self.braille_source = FakeBrailleSource()
+        self.gesture_sender = FakeGestureSender(self.speech_source, reject=reject, speech=speech)
+        self.text_typer = FakeTextTyper(fail_on=type_fail_on)
+        self.focus_inspector = FakeFocusInspector()
+        self.state_inspector = FakeStateInspector()
+        self.config_accessor = FakeConfigAccessor()
+        self.built_mode: protocol.CaptureMode | None = None
 
-	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
-		self.built_mode = mode
-		return AdapterSet(
-			speech_source=self.speech_source,
-			braille_source=self.braille_source,
-			gesture_sender=self.gesture_sender,
-			text_typer=self.text_typer,
-		)
+    def build(self, mode: protocol.CaptureMode) -> AdapterSet:
+        self.built_mode = mode
+        return AdapterSet(
+            speech_source=self.speech_source,
+            braille_source=self.braille_source,
+            gesture_sender=self.gesture_sender,
+            text_typer=self.text_typer,
+            focus_inspector=self.focus_inspector,
+            state_inspector=self.state_inspector,
+            config_accessor=self.config_accessor,
+        )

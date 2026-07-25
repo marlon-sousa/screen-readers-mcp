@@ -246,6 +246,10 @@ class Session:
 			# restore, because none was ever swapped.
 			self._guard(ctx.adapters.speech_source.stop)
 			self._guard(ctx.adapters.braille_source.stop)
+			# Restore every config key this session touched (spec 0015,
+			# entry 11.1). Guarded so a failed restore never skips the
+			# remaining teardown steps.
+			self._guard(ctx.adapters.config_accessor.restore_all)
 		self._guard(lambda: self._transcript.session_closed(reason.value))
 		if self._state is _State.ESTABLISHED:
 			# Two descending tones: control released. Only if a session actually

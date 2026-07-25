@@ -522,9 +522,9 @@ class StateResult:
 	flipping ``browseMode`` between ``"browse"`` and ``"focus"``).
 	"""
 
-	#: ``"browse"`` / ``"focus"`` from the focus object's
-	#: ``treeInterceptor.passThrough``; ``None`` when there is no browse document.
-	browseMode: str | None
+	#: ``"browse"`` / ``"focus"`` / ``"none"`` from the focus object's
+	#: ``treeInterceptor.passThrough``; ``"none"`` when there is no browse document.
+	browseMode: str
 	#: ``"talk"`` / ``"beeps"`` / ``"off"`` / ``"onDemand"``.
 	speechMode: str
 	sleepMode: bool

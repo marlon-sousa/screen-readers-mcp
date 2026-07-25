@@ -83,8 +83,39 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		agent.write(_request(6, "announce", text="pressing bye now"))
 		assert _read_reply(agent)["result"] == {"ok": True}
 
+		# -- introspection commands (entry 11.1) -------------------------------
+		# Seed config fake before the session reads it.
+		factory.config_accessor.seed(["speech", "synth"], "espeak")
+
+		# getFocusInfo from the seeded fake.
+		agent.write(_request(8, "getFocusInfo"))
+		focus = _read_reply(agent)["result"]
+		assert focus["name"] == "Test Button"
+		assert focus["role"] == "BUTTON"
+		assert focus["states"] == ["FOCUSABLE", "FOCUSED"]
+
+		# getState from the seeded fake.
+		agent.write(_request(9, "getState"))
+		state_reply = _read_reply(agent)
+		assert state_reply is not None, "no reply for getState"
+		assert state_reply.get("error") is None, f"getState error: {state_reply.get('error')}"
+		state = state_reply["result"]
+		assert state["browseMode"] == "none"
+		assert state["speechMode"] == "talk"
+		assert state["sleepMode"] is False
+
+		# getConfig reads a pre-seeded key.
+		agent.write(_request(10, "getConfig", keyPath=["speech", "synth"]))
+		config_read = _read_reply(agent)["result"]
+		assert config_read == {"value": "espeak"}
+
+		# setConfig writes and returns the prior value.
+		agent.write(_request(11, "setConfig", keyPath=["speech", "synth"], value="sapi5"))
+		config_write = _read_reply(agent)["result"]
+		assert config_write == {"value": "espeak"}
+
 		# Bye -> ack, then teardown stops capture (speech would flow again).
-		agent.write(_request(7, "bye"))
+		agent.write(_request(12, "bye"))
 		assert _read_reply(agent)["result"] == {"ok": True}
 	finally:
 		thread.join(timeout=5.0)
@@ -93,3 +124,6 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 	assert factory.speech_source.stopped == 1
 	assert signals.started == 1 and signals.ended == 1
 	assert announcer.announced == ["pressing bye now"]
+	# Config was seeded then read/written; teardown should have restored.
+	assert factory.config_accessor.get(["speech", "synth"]) == "espeak"
+	assert factory.config_accessor.restore_calls >= 1

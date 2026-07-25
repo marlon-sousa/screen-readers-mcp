@@ -362,3 +362,40 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 	assert ("session_closed", TeardownReason.EXTERNAL.value) in transcript.events
 	assert factory.speech_source.stopped == 1
 	assert signals.ended == 1
+
+
+# -- teardown: config restoration (spec 0015) --------------------------------
+
+
+def test_teardown_restores_config_keys() -> None:
+    """After a normal session, teardown calls config_accessor.restore_all."""
+    factory = FakeAdapterFactory()
+    factory.config_accessor.seed(["speech", "synth"], "espeak")
+    run = run_session([hello("silent")], factory=factory)
+    # restore_all was called during teardown.
+    assert factory.config_accessor.restore_calls >= 1
+
+
+def test_teardown_restores_config_even_when_earlier_step_raised() -> None:
+    """Config restore still runs after a speech source stop raises."""
+    factory = FakeAdapterFactory()
+    factory.config_accessor.seed(["speech", "synth"], "espeak")
+    factory.speech_source.fail_stop = True
+    run = run_session([hello("silent")], factory=factory)
+    # Even though speech_source.stop raised, config restore still ran.
+    assert factory.config_accessor.restore_calls >= 1
+    assert run.channel.closed is True
+
+
+def test_config_restore_actually_restores_the_prior_value() -> None:
+    """restore_all restores modified keys to their original values."""
+    # Test the fake directly, independent of session teardown.
+    from tests.fakes.config_accessor import FakeConfigAccessor
+    store = FakeConfigAccessor()
+    store.seed(["speech", "synth"], "espeak")
+    # Write modifies the value in memory and records the prior.
+    store.set(["speech", "synth"], "sapi5")
+    assert store.get(["speech", "synth"]) == "sapi5"
+    # Restore brings it back.
+    store.restore_all()
+    assert store.get(["speech", "synth"]) == "espeak"

@@ -402,14 +402,7 @@
       "type": "object",
       "properties": {
         "browseMode": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ]
+          "type": "string"
         },
         "speechMode": {
           "type": "string"

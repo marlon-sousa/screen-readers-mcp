@@ -24,64 +24,66 @@ from .bye import ByeHandler
 from .command_handler import CommandHandler
 from .echo import EchoHandler
 from .get_braille import GetBrailleHandler
+from .get_config import GetConfigHandler
+from .get_focus_info import GetFocusInfoHandler
 from .get_last_speech import GetLastSpeechHandler
 from .get_next_speech_index import GetNextSpeechIndexHandler
 from .get_speech import GetSpeechHandler
+from .get_state import GetStateHandler
 from .hello import HelloHandler
-from .not_implemented import NotImplementedHandler
 from .ping import PingHandler
 from .press_gesture import PressGestureHandler
+from .set_config import SetConfigHandler
 from .type_text import TypeTextHandler
 from .wait_for_speech import WaitForSpeechHandler
 from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
 
 if TYPE_CHECKING:
-	from ...ports.adapter_factory import AdapterFactory
+    from ...ports.adapter_factory import AdapterFactory
 
-#: The command groups the NVDA bridge actually serves today. ``focus``/``state``/
-#: ``config`` answer NotImplementedHandler until session E, so the bridge does not
-#: announce them -- a consumer must not offer a tool the bridge will only reject
-#: (spec 0007). The ``Capability`` enum still defines all six; session E re-widens
-#: this list when it lands those handlers.
+#: The command groups the NVDA bridge serves (spec 0007). All seven are live
+#: as of session E (entry 11.1): introspection arrived with real ports and
+#: NVDA adapters, replacing NotImplementedHandler. A partial-capability bridge
+#: (JAWS without braille, ...) would advertise a different subset.
 NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
-	protocol.Capability.SPEECH,
-	protocol.Capability.BRAILLE,
-	protocol.Capability.GESTURES,
-	protocol.Capability.ANNOUNCE,
-	protocol.Capability.TYPING,
+    protocol.Capability.SPEECH,
+    protocol.Capability.BRAILLE,
+    protocol.Capability.GESTURES,
+    protocol.Capability.FOCUS,
+    protocol.Capability.STATE,
+    protocol.Capability.CONFIG,
+    protocol.Capability.ANNOUNCE,
+    protocol.Capability.TYPING,
 )
 
 
 def build_command_registry(factory: AdapterFactory, nvda_version: str) -> dict[str, CommandHandler]:
-	"""Construct the command -> handler map for a bridge (one per process).
+    """Construct the command -> handler map for a bridge (one per process).
 
-	This is the NVDA bridge, so it stamps its reader identity here: name
-	``"nvda"``, the version wiring passed, and the capabilities it actually
-	serves (:data:`NVDA_CAPABILITIES` -- speech/braille/gestures). A
-	partial-capability bridge (JAWS without braille, ...) would advertise a
-	different subset instead.
-	"""
-	reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
-	capabilities = list(NVDA_CAPABILITIES)
-	not_implemented = NotImplementedHandler()
-	registry: dict[str, CommandHandler] = {
-		protocol.Command.HELLO: HelloHandler(factory, reader, capabilities),
-		protocol.Command.BYE: ByeHandler(),
-		protocol.Command.PING: PingHandler(),
-		protocol.Command.ECHO: EchoHandler(),
-		protocol.Command.PRESS_GESTURE: PressGestureHandler(),
-		protocol.Command.TYPE_TEXT: TypeTextHandler(),
-		protocol.Command.GET_SPEECH: GetSpeechHandler(),
-		protocol.Command.GET_LAST_SPEECH: GetLastSpeechHandler(),
-		protocol.Command.GET_NEXT_SPEECH_INDEX: GetNextSpeechIndexHandler(),
-		protocol.Command.WAIT_FOR_SPEECH: WaitForSpeechHandler(),
-		protocol.Command.WAIT_FOR_SPEECH_TO_FINISH: WaitForSpeechToFinishHandler(),
-		protocol.Command.GET_BRAILLE: GetBrailleHandler(),
-		protocol.Command.ANNOUNCE: AnnounceHandler(),
-		# Ports arrive in session E; until then they answer a clean CommandError.
-		protocol.Command.GET_FOCUS_INFO: not_implemented,
-		protocol.Command.GET_STATE: not_implemented,
-		protocol.Command.GET_CONFIG: not_implemented,
-		protocol.Command.SET_CONFIG: not_implemented,
-	}
-	return registry
+    This is the NVDA bridge, so it stamps its reader identity here: name
+    ``"nvda"``, the version wiring passed, and the capabilities it actually
+    serves (:data:`NVDA_CAPABILITIES` -- all seven groups now that
+    introspection (11.1) has real ports and NVDA adapters).
+    """
+    reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
+    capabilities = list(NVDA_CAPABILITIES)
+    registry: dict[str, CommandHandler] = {
+        protocol.Command.HELLO: HelloHandler(factory, reader, capabilities),
+        protocol.Command.BYE: ByeHandler(),
+        protocol.Command.PING: PingHandler(),
+        protocol.Command.ECHO: EchoHandler(),
+        protocol.Command.PRESS_GESTURE: PressGestureHandler(),
+        protocol.Command.TYPE_TEXT: TypeTextHandler(),
+        protocol.Command.GET_SPEECH: GetSpeechHandler(),
+        protocol.Command.GET_LAST_SPEECH: GetLastSpeechHandler(),
+        protocol.Command.GET_NEXT_SPEECH_INDEX: GetNextSpeechIndexHandler(),
+        protocol.Command.WAIT_FOR_SPEECH: WaitForSpeechHandler(),
+        protocol.Command.WAIT_FOR_SPEECH_TO_FINISH: WaitForSpeechToFinishHandler(),
+        protocol.Command.GET_BRAILLE: GetBrailleHandler(),
+        protocol.Command.ANNOUNCE: AnnounceHandler(),
+        protocol.Command.GET_FOCUS_INFO: GetFocusInfoHandler(),
+        protocol.Command.GET_STATE: GetStateHandler(),
+        protocol.Command.GET_CONFIG: GetConfigHandler(),
+        protocol.Command.SET_CONFIG: SetConfigHandler(),
+    }
+    return registry
