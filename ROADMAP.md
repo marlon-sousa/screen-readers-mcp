@@ -321,14 +321,20 @@ rather than before it.
         description; the bridge still tolerates a legacy `kb:`. Validated live in
         both `live` and `silent` mode. Spec:
         [0018-input-vocabulary.md](specs/0018-input-vocabulary.md), Part A.
-      - **E.3 — a `type` primitive for literal text** (lane 1 + lane 2). Gestures
-        are commands; typing a URL or phrase is content and needs its own command,
-        not one `pressGesture` per character (fragile: `VkKeyScanEx` fails for
-        off-layout characters). A new `typeText` command + `typing` capability,
-        injected via Win32 `SendInput` with `KEYEVENTF_UNICODE`, gated like
-        `pressGesture` and withheld under observe-only (0017). Spec:
-        [0019-type-primitive.md](specs/0019-type-primitive.md) (agreed
-        2026-07-25, ready to implement; rides in E.3's own PR).
+      - **E.3 — a `type` primitive for literal text. Done (PR #42), verified live
+        2026-07-25.** (lane 1 + lane 2). Gestures are commands; typing a URL or
+        phrase is content and needs its own command, not one `pressGesture` per
+        character (fragile: `VkKeyScanEx` fails for off-layout characters). A new
+        `typeText` command + `typing` capability, injected via Win32 `SendInput`
+        with `KEYEVENTF_UNICODE`, gated like `pressGesture`; withholding it under
+        observe-only still rides on 0017, a separate entry (11.3) not yet built —
+        only the `mutates_reader` classification it needs landed here. Live
+        end-to-end against a real NVDA and Chrome: `type_text
+        "www.blindtec.com.br"` landed all 19 characters (echoed back
+        individually by NVDA's own "speak typed characters", proving the
+        injection is indistinguishable from a real keystroke), the page loaded,
+        and its Elements List was read back through `press_gesture`/`get_speech`.
+        Spec: [0019-type-primitive.md](specs/0019-type-primitive.md).
         **Prioritised in lane 1** so the live tests can enter text — URLs, search
         phrases — instead of spelling them one gesture at a time.
 11.1. **E, bridge introspection** (lane 1). The four handlers behind
