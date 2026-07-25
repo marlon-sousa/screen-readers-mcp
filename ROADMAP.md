@@ -293,6 +293,20 @@ rather than before it.
       what prove each real adapter behaves like its fake. **Findings are the
       deliverable**: they spawn iteration entries (E.1, E.2, …) in this board,
       per the checklist rule above.
+      - **E.1 — `pressGesture` never reached NVDA: the `kb:` prefix was fed to
+        `fromName`.** Found in the 11b run (NVDA 2026.1.1, Claude Code driving)
+        when every agent-sent gesture was refused — `kb:windows+d` and
+        `kb:control+l` both came back `unknown gesture id '…': 'kb:…'`. Root
+        cause: `NvdaGestureSender.press` passed the wire's opaque inputCore id
+        (`kb:control+l`) straight to `KeyboardInputGesture.fromName`, which wants
+        the **bare** combo (`control+l`) — it splits on `+` and looks each token
+        up in `vkCodes`, so `kb:control` raised `KeyError`. Every `pressGesture`
+        failed identically; the `capture` scenario only ever "passed" on the
+        tester's **physical** keypresses, not the agent's. Fix: a pure
+        `bare_key_name` helper strips the `kb:`/`kb(layout):` source prefix,
+        headless-tested in `tests/unit/adapters/`; the NVDA-touching sender is
+        one line thinner. **Fix rides in this PR.** Needs a rebuilt add-on to
+        re-verify live (the desktop-driving run resumes from there).
 11.1. **E, bridge introspection** (lane 1). The four handlers behind
     `getFocusInfo` / `getState` / `getConfig` / `setConfig`, their ports and
     NVDA adapters, and re-widening `NVDA_CAPABILITIES` to announce `focus`,

@@ -23,6 +23,7 @@ import wx
 from keyboardHandler import KeyboardInputGesture
 
 from ..domain.ports.gesture_sender import GestureError, GestureSender
+from .keyboard_gesture_name import bare_key_name
 
 #: Upper bound on how long press() waits for the main thread to emulate the
 #: gesture before giving up -- generous, since it only trips on a wedged UI.
@@ -36,8 +37,11 @@ class NvdaGestureSender(GestureSender):
 		self._timeout = timeout
 
 	def press(self, gesture_id: str) -> None:
+		# fromName wants the bare key combo, not the wire's "kb:"-prefixed
+		# inputCore id; see keyboard_gesture_name.bare_key_name. The error still
+		# reports the original id the caller sent.
 		try:
-			gesture = KeyboardInputGesture.fromName(gesture_id)
+			gesture = KeyboardInputGesture.fromName(bare_key_name(gesture_id))
 		except Exception as exc:
 			raise GestureError(f"unknown gesture id {gesture_id!r}: {exc}") from exc
 
