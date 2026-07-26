@@ -1,0 +1,87 @@
+# Repo-root dev task host. NOT a package and not part of the shipped product --
+# it exists so that "what green means" has ONE definition, invoked the same way
+# locally and in CI, instead of living only inside .github/workflows/ci.yml
+# where neither a contributor nor an agent can run it.
+#
+#     uv run poe doctor    <- run this FIRST, before anything else
+#     uv run poe ci        <- everything CI runs, in CI's order
+#
+# Tasks deliberately use `python -m <tool>` rather than the console scripts
+# (`pytest`, `pyright`). On Windows a console script is a "trampoline" exe with
+# the interpreter path baked in, and a moved or half-synced venv makes it fail
+# with `uv trampoline failed to canonicalize script path` -- which says nothing
+# about the actual problem. `python -m` has no trampoline to break. `poe doctor`
+# reports a broken one anyway, and `poe fix` reinstalls it.
+
+[project]
+name = "nvda-mcp-devtools"
+version = "0"
+description = "Dev task host for the nvda-mcp workspace (not shipped)"
+requires-python = ">=3.13"
+
+[dependency-groups]
+dev = ["poethepoet>=0.30"]
+
+[tool.uv]
+package = false
+
+# poe runs tasks from the directory holding this file, so every task names its
+# own subproject and none depends on where you happened to be standing.
+
+[tool.poe.tasks.doctor]
+help = "Check the dev environment is sane. RUN THIS FIRST."
+cmd = "python scripts/doctor.py"
+
+[tool.poe.tasks.fix]
+help = "Repair the dev environment (reinstall the project venvs)"
+cmd = "python scripts/doctor.py --fix"
+
+# -- the individual suites, for a fast inner loop ----------------------------
+
+[tool.poe.tasks.bridge]
+help = "Bridge headless tests (the usual inner loop)"
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
+
+[tool.poe.tasks.shared]
+help = "Shared wire-contract tests"
+cmd = "uv run --directory shared --with pytest python -m pytest -q"
+
+[tool.poe.tasks.types]
+help = "pyright strict, both Python projects"
+sequence = [
+	{ cmd = "uv run --directory shared --with pytest --with pyright python -m pyright" },
+	{ cmd = "uv run --directory bridges/nvda --with pytest --with pyright python -m pyright" },
+]
+
+[tool.poe.tasks.lint]
+help = "ruff check + format check, both Python projects"
+sequence = [
+	{ cmd = "uv run --directory shared --with ruff python -m ruff check ." },
+	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests" },
+]
+
+[tool.poe.tasks.go]
+help = "Go build, vet, unit and integration tests"
+sequence = [
+	{ cmd = "go -C server build ./..." },
+	{ cmd = "go -C server vet ./..." },
+	{ cmd = "go -C server test ./..." },
+	{ cmd = "go -C server test -tags integration ./..." },
+]
+
+# -- the gates that catch generated-artifact drift ---------------------------
+
+[tool.poe.tasks.gates]
+help = "Schema and wire-binding drift gates"
+cmd = "python scripts/drift.py"
+
+[tool.poe.tasks.conformance]
+help = "Cross-language tier: the real Go binary against the real Python bridge (slow)"
+cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
+
+# -- the whole thing ---------------------------------------------------------
+
+[tool.poe.tasks.ci]
+help = "Everything CI runs, in CI's order. Green here means green there."
+sequence = ["doctor", "shared", "bridge", "types", "gates", "go", "conformance"]
+ignore_fail = false

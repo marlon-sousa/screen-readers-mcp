@@ -36,7 +36,7 @@ picture.
 | **Windows** | 10/11 | The add-on and any live test need it. The server and the shared wire binding are cross-platform, but the full system is driven on Windows. |
 | **Go** | 1.25+ (matches `server/go.mod`) | Builds the server. Static binary — `CGO_ENABLED=0`, no C toolchain needed. |
 | **[uv](https://docs.astral.sh/uv/)** | current | Runs and isolates every Python part (shared wire, bridge tests, schema generation). |
-| **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. **The bare `python` launcher on the maintainer's machine is broken** — always use `uv run` or `py -3.13`, never `python`. |
+| **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. Prefer `uv run` or `py -3.13` over a bare `python`, whose meaning varies per machine — `uv run poe doctor` reports what yours actually resolves to. |
 | **NVDA (installed)** | **2026.1.0** or later | The minimum supported version (`bridges/nvda/buildVars.py`, `addon_minimumNVDAVersion`). A live test needs a running copy. |
 | **NVDA source checkout** | the version you target (≥ 2026.1.0) | A **reference for reading real NVDA APIs**, checked out as a sibling of this repo at [`../nvda`](../nvda). There is no NVDA source *dependency* in the build or the headless tests — the NVDA edge is exempt from the type check — but developing or reviewing an adapter means verifying API contracts against real code (see the `nvda-headless-testing` approach in `AGENTS.md`). |
 | **scons + add-on build deps** | per `bridges/nvda/` | Builds the `.nvda-addon`. |

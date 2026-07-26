@@ -41,6 +41,13 @@ pythonVersion = "3.13"       # NVDA 2026.1 embeds CPython 3.13
 pythonPlatform = "Windows"
 typeCheckingMode = "strict"
 
+# Tell pyright WHICH environment to resolve imports against. Without this it
+# uses whatever interpreter it inherits, so the same code reports 0 errors under
+# `uv run --with pytest` and ~140 phantom "Import could not be resolved" errors
+# under a bare invocation -- and the phantoms bury the real diagnostics.
+venvPath = "."
+venv = ".venv"
+
 # The PURE domain (and the pure adapters, and the tests) are strict-checked.
 # There is NO NVDA source dependency and NO vendored stubs: the side-effecting
 # edge that imports NVDA is exempted via `ignore` below, because the domain it
@@ -70,4 +77,8 @@ reportMissingModuleSource = false
 dev = [
     "pyright>=1.1.411",
     "pytest>=9.1.1",
+    # Configured in [tool.ruff] above and named in every spec's definition of
+    # done, but it was never declared here -- so "ruff green" could not actually
+    # be run, and nobody could tell a new violation from a pre-existing one.
+    "ruff>=0.8",
 ]

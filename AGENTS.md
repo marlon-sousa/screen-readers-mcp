@@ -459,9 +459,79 @@ make the port pointless for testing.
 
 ## Dev commands
 
-Requires [uv](https://docs.astral.sh/uv/). **The bare `python` launcher on this
-machine is broken** (it points at a non-existent Python310) — always use `uv
-run` or `py -3.13`, never `python`.
+Requires [uv](https://docs.astral.sh/uv/). **Run the doctor first, before
+anything else** — including before your first search or test run:
+
+```sh
+uv run poe doctor    # is this machine able to work the repo?
+uv run poe fix       # repair what it found (reinstalls the project venvs)
+```
+
+It is not ceremony. Every check in it corresponds to something that has already
+cost someone hours, because the symptom pointed nowhere near the cause:
+
+| Symptom | Real cause |
+|---|---|
+| ~140 phantom `Import "pytest" could not be resolved` from pyright | pyright had no venv configured, so it analysed against the wrong interpreter |
+| `uv trampoline failed to canonicalize script path` | a stale console-script shim; names neither the tool nor the fix |
+| A search returns thousands of `site-packages/...` lines | no ripgrep, so it fell back to `grep -r`, which ignores `.gitignore` |
+| The bridge behaves like an older wire contract | `addon/…/protocol.py` is a **copy**; `sync_shared.py` had not been re-run |
+| `scons` fails late in the addon build | `msgfmt`/`markdown` missing |
+
+A red doctor makes green tests and red tests equally uninformative. Fix it
+first.
+
+### The task list
+
+One definition of "green", runnable locally and in CI:
+
+```sh
+uv run poe ci            # everything, in CI's order — ~30s
+uv run poe bridge        # bridge headless tests (the usual inner loop)
+uv run poe shared        # shared wire-contract tests
+uv run poe types         # pyright strict, both Python projects
+uv run poe go            # go build, vet, test, -tags integration
+uv run poe gates         # schema + wire-binding drift
+uv run poe conformance   # the real Go binary against the real Python bridge
+uv run poe lint          # ruff (see the caveat below)
+```
+
+`poe ci` is the one to run before saying something works. It is deliberately the
+same set, in the same order, that `.github/workflows/ci.yml` runs.
+
+**`poe lint` is not part of `poe ci`, and that is honest, not an oversight.**
+Ruff is configured and now installed, but no CI workflow has ever run it and
+there is a pre-existing backlog of violations (mostly import ordering and the
+tab/space split across older files). Until that backlog is cleared, a green
+`poe lint` is not achievable and wiring it into `ci` would just train people to
+ignore a red gate. Specs that list "ruff green" in their definition of done are
+describing an intent, not a gate that runs.
+
+### Notes for agents specifically
+
+- **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep
+  honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
+  both ignored and both enormous. One careless `grep -r` returns hundreds of
+  irrelevant `site-packages` paths.
+- **Prefer the Bash tool over PowerShell** for anything whose output you intend
+  to read. Windows PowerShell 5.1 has no `&&`/`||`, and wraps every native
+  stderr line in a multi-line `ErrorRecord` (`CategoryInfo`,
+  `FullyQualifiedErrorId`, a caret diagram) — so a one-line failure costs a
+  dozen lines to report. It also reports failure on exit code 0 when a native
+  command writes to stderr. Install PowerShell 7 (`pwsh`) if you want the
+  PowerShell tool to behave; the doctor warns when it is missing.
+- **Don't tail command output when diagnosing a failure.** The error is usually
+  the *first* line; `| tail` hides it behind a usage banner. (This cost a real
+  debugging round on `poe` itself.)
+- Invoke Python tools as `python -m pytest` / `-m pyright` / `-m ruff` rather
+  than the console scripts — no trampoline to go stale.
+- The PowerShell tool's working directory does not reliably persist between
+  calls in this harness. Use absolute paths, or `Set-Location` inside each
+  command.
+
+### The underlying commands
+
+`poe` is a thin wrapper; these are what it runs, if you need one directly:
 
 ```sh
 # shared wire contract (no NVDA needed)

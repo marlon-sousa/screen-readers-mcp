@@ -238,3 +238,8 @@ bridges/nvda/uv.lock
 # CONTRIBUTING.md, "Driving it as Claude Code itself"). Kept out of the repo so
 # it never clobbers a contributor's own .mcp.json.
 .mcp.json
+
+# Go build artifacts left by an interrupted `go build -o` (they show up in
+# every `git status` and are never wanted).
+server/screenreader-mcp.exe
+server/screenreader-mcp.exe~
