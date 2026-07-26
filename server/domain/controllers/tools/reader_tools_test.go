@@ -172,11 +172,10 @@ func TestGetStateSnapshotsCanBeDiffedAcrossAnAction(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityState)
 	call := testsupport.NewToolCall(&tools.GetState{}).WithConnection(built.Connection)
 
-	browse := "browse"
-	built.State.SetState(ports.ReaderState{BrowseMode: &browse, SpeechMode: "talk"})
+	built.State.SetState(ports.ReaderState{BrowseMode: "browse", SpeechMode: "talk"})
 
 	var before struct {
-		BrowseMode *string `json:"browseMode"`
+		BrowseMode string `json:"browseMode"`
 	}
 	result, err := call.Run("")
 	if err != nil {
@@ -184,11 +183,10 @@ func TestGetStateSnapshotsCanBeDiffedAcrossAnAction(t *testing.T) {
 	}
 	decode(t, result, &before)
 
-	focus := "focus"
-	built.State.SetState(ports.ReaderState{BrowseMode: &focus, SpeechMode: "talk"})
+	built.State.SetState(ports.ReaderState{BrowseMode: "focus", SpeechMode: "talk"})
 
 	var after struct {
-		BrowseMode *string `json:"browseMode"`
+		BrowseMode string `json:"browseMode"`
 	}
 	result, err = call.Run("")
 	if err != nil {
@@ -196,23 +194,25 @@ func TestGetStateSnapshotsCanBeDiffedAcrossAnAction(t *testing.T) {
 	}
 	decode(t, result, &after)
 
-	if before.BrowseMode == nil || after.BrowseMode == nil {
-		t.Fatalf("browseMode = %v then %v, want both reported", before.BrowseMode, after.BrowseMode)
+	if before.BrowseMode == "" || after.BrowseMode == "" {
+		t.Fatalf("browseMode = %q then %q, want both reported", before.BrowseMode, after.BrowseMode)
 	}
-	if *before.BrowseMode == *after.BrowseMode {
+	if before.BrowseMode == after.BrowseMode {
 		t.Error("the two snapshots are identical; the toggle would be invisible")
 	}
 }
 
-// A reader with no such concept reports null, which is a different answer from
-// "a mode whose name is empty".
-func TestGetStateReportsAnAbsentBrowseModeAsNull(t *testing.T) {
+// A reader with no browsable document reports the string "none" -- a real
+// answer in the tri-state, not null and not an empty name (spec 0015). This is
+// what stops `if not browseMode` from conflating "focus mode" with "no such
+// concept", the ambiguity the nullable shape used to carry.
+func TestGetStateReportsAnAbsentBrowseModeAsNone(t *testing.T) {
 	built := testsupport.NewConnection("jaws", entities.CapabilityState)
 	call := testsupport.NewToolCall(&tools.GetState{}).WithConnection(built.Connection)
-	built.State.SetState(ports.ReaderState{SpeechMode: "talk"})
+	built.State.SetState(ports.ReaderState{BrowseMode: "none", SpeechMode: "talk"})
 
 	var state struct {
-		BrowseMode *string `json:"browseMode"`
+		BrowseMode string `json:"browseMode"`
 	}
 	result, err := call.Run("")
 	if err != nil {
@@ -220,8 +220,8 @@ func TestGetStateReportsAnAbsentBrowseModeAsNull(t *testing.T) {
 	}
 	decode(t, result, &state)
 
-	if state.BrowseMode != nil {
-		t.Errorf("browseMode = %q, want null for a reader with no such mode", *state.BrowseMode)
+	if state.BrowseMode != "none" {
+		t.Errorf("browseMode = %q, want \"none\" for a reader with no such mode", state.BrowseMode)
 	}
 }
 

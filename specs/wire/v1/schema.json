@@ -402,7 +402,12 @@
       "type": "object",
       "properties": {
         "browseMode": {
-          "type": "string"
+          "type": "string",
+          "enum": [
+            "browse",
+            "focus",
+            "none"
+          ]
         },
         "speechMode": {
           "type": "string"

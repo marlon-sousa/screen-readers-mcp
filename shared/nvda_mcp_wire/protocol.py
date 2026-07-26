@@ -40,6 +40,7 @@ __all__ = [
 	"CaptureMode",
 	"LogLevel",
 	"Capability",
+	"BrowseMode",
 	"Command",
 	"CommandShape",
 	"COMMAND_SHAPES",
@@ -145,6 +146,22 @@ class Capability(StrEnum):
 	CONFIG = "config"
 	ANNOUNCE = "announce"
 	TYPING = "typing"
+
+
+class BrowseMode(StrEnum):
+	"""Whether the focus is in a browsable document, and which mode it is in.
+
+	A closed tri-state rather than a nullable bool, because ``"focus"`` and
+	``"none"`` are genuinely different answers: ``"focus"`` means "inside a
+	browsable document, keys go to the document"; ``"none"`` means the question
+	does not arise here at all (a plain Win32 dialog). Collapsing the two to a
+	falsy value would make a diff across a gesture read as a mode change when
+	nothing changed -- exactly the ambiguity spec 0015 argued against.
+	"""
+
+	BROWSE = "browse"
+	FOCUS = "focus"
+	NONE = "none"
 
 
 class Command(StrEnum):
@@ -522,9 +539,9 @@ class StateResult:
 	flipping ``browseMode`` between ``"browse"`` and ``"focus"``).
 	"""
 
-	#: ``"browse"`` / ``"focus"`` / ``"none"`` from the focus object's
-	#: ``treeInterceptor.passThrough``; ``"none"`` when there is no browse document.
-	browseMode: str
+	#: From the focus object's ``treeInterceptor.passThrough``; ``NONE`` when
+	#: there is no browse document. A closed set -- see :class:`BrowseMode`.
+	browseMode: BrowseMode
 	#: ``"talk"`` / ``"beeps"`` / ``"off"`` / ``"onDemand"``.
 	speechMode: str
 	sleepMode: bool

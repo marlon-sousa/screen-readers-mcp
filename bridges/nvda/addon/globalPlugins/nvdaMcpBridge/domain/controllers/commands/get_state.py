@@ -20,7 +20,11 @@ class GetStateHandler(CommandHandler):
     def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
         state = ctx.adapter_set.state_inspector.state()
         return protocol.StateResult(
-            browseMode=state.browse_mode,
+            # The port speaks the same three strings the wire does, so this is a
+            # widening into the closed set -- and it RAISES on anything else,
+            # which is the point: a bridge that invented a fourth mode should
+            # fail here rather than put an unknown string on the wire.
+            browseMode=protocol.BrowseMode(state.browse_mode),
             speechMode=state.speech_mode,
             sleepMode=state.sleep_mode,
             inputHelp=state.input_help,

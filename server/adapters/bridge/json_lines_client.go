@@ -239,7 +239,7 @@ func (c *JSONLinesClient) State() (ports.ReaderState, error) {
 		return ports.ReaderState{}, err
 	}
 	return ports.ReaderState{
-		BrowseMode: result.BrowseMode,
+		BrowseMode: string(result.BrowseMode),
 		SpeechMode: result.SpeechMode,
 		SleepMode:  result.SleepMode,
 		InputHelp:  result.InputHelp,

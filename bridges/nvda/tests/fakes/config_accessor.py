@@ -12,8 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
-from nvdaMcpBridge.domain.ports.config_accessor import ConfigAccessor
+from nvdaMcpBridge.domain.ports.config_accessor import ConfigAccessor, ConfigError
 
 
 class FakeConfigAccessor(ConfigAccessor):
@@ -31,14 +30,14 @@ class FakeConfigAccessor(ConfigAccessor):
         self.get_calls.append(key_path)
         key = tuple(key_path)
         if key not in self._store:
-            raise CommandError(f"unknown key: {key_path!r}")
+            raise ConfigError(f"unknown key: {key_path!r}")
         return self._store[key]
 
     def set(self, key_path: list[str], value: Any) -> Any:
         self.set_calls.append((key_path, value))
         key = tuple(key_path)
         if key not in self._store:
-            raise CommandError(f"unknown key: {key_path!r}")
+            raise ConfigError(f"unknown key: {key_path!r}")
         prior = self._store[key]
         if key not in self._prior:
             self._prior[key] = prior

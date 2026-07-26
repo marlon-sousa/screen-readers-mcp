@@ -9,7 +9,7 @@ from fakes.clock import FakeClock
 from support.context import adapters_from, make_context, request
 
 from nvdaMcpBridge import protocol as p
-from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
+from nvdaMcpBridge.domain.ports.config_accessor import ConfigError
 from nvdaMcpBridge.domain.controllers.commands.set_config import SetConfigHandler
 
 
@@ -31,10 +31,10 @@ def test_mutates_reader_is_true() -> None:
     assert SetConfigHandler.mutates_reader is True
 
 
-def test_bad_key_propagates_as_command_error(clock: FakeClock) -> None:
+def test_bad_key_propagates_as_config_error(clock: FakeClock) -> None:
     factory = FakeAdapterFactory()
     ctx = make_context(clock, adapters=adapters_from(factory))
-    with pytest.raises(CommandError):
+    with pytest.raises(ConfigError):
         SetConfigHandler().execute(
             ctx, request("setConfig", keyPath=["nonexistent"], value="x")
         )

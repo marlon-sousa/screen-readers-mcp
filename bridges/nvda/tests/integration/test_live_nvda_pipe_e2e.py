@@ -130,3 +130,127 @@ def test_two_sequential_sessions_on_one_server() -> None:
 			agent.close()
 	assert synths[0] == synths[1]
 	assert synths[0]  # a real synth name, stable across sessions
+
+
+# -- introspection e2e (entry 11.1) ------------------------------------------
+
+
+def test_get_focus_info_reports_real_focus() -> None:
+	"""getFocusInfo returns a real role and appModule from the running NVDA."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		result = agent.result("getFocusInfo")
+		assert result["role"], "focus role should be non-empty"
+		assert isinstance(result["states"], list)
+		# Open Notepad to get a known app module.
+		agent.result("pressGesture", gestures=["windows+r"])
+		agent.result("typeText", text="notepad")
+		agent.result("pressGesture", gestures=["enter"])
+		agent.result("waitForSpeechToFinish", timeout=3.0)
+		result = agent.result("getFocusInfo")
+		assert result["appModule"] == "notepad", (
+			f"expected notepad, got {result['appModule']!r}"
+		)
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_get_state_reports_real_modes() -> None:
+	"""getState returns real browseMode, speechMode, sleepMode, inputHelp."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		state = agent.result("getState")
+		assert state["browseMode"] in ("browse", "focus", "none")
+		assert state["speechMode"] in ("talk", "off", "beeps", "onDemand")
+		assert isinstance(state["sleepMode"], bool)
+		assert isinstance(state["inputHelp"], bool)
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_get_config_reads_real_config_key() -> None:
+	"""getConfig reads a known NVDA config key."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		result = agent.result("getConfig", keyPath=["speech", "synth"])
+		assert result["value"], "speech.synth should be a non-empty string"
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_set_config_roundtrip_and_restore() -> None:
+	"""set_config -> get_config sees override; new session sees original."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		original = agent.result(
+			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+		)["value"]
+
+		flipped = not bool(original)
+		prior = agent.result(
+			"setConfig",
+			keyPath=["speech", "sayCapForCapitals"],
+			value=flipped,
+		)["value"]
+		assert prior == original, (
+			f"setConfig should return prior {original}, got {prior}"
+		)
+
+		current = agent.result(
+			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+		)["value"]
+		assert current == flipped, (
+			f"getConfig should see override {flipped}, got {current}"
+		)
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+	# New session: override is gone (teardown cleared the map).
+	agent2 = _dial()
+	try:
+		_hello(agent2, "silent")
+		restored = agent2.result(
+			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+		)["value"]
+		assert restored == original, (
+			f"new session should see original {original}, got {restored}"
+		)
+		agent2.result("bye")
+	finally:
+		agent2.close()
+
+
+def test_set_config_changes_nvda_behaviour() -> None:
+	"""set_config changes what NVDA speaks -- the hook reaches NVDA code."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+
+		# Force caps ON so we hear "cap" when typing a capital.
+		_ = agent.result(
+			"setConfig",
+			keyPath=["speech", "sayCapForCapitals"],
+			value=True,
+		)
+
+		start = agent.result("getNextSpeechIndex")["index"]
+		agent.result("typeText", text="A")
+		agent.result("waitForSpeechToFinish", timeout=2.0)
+		speech = agent.result("getSpeech", sinceIndex=start)["text"].lower()
+
+		assert "cap" in speech, (
+			f"expected 'cap' in speech after capital A, got: {speech!r}"
+		)
+
+		agent.result("bye")
+	finally:
+		agent.close()

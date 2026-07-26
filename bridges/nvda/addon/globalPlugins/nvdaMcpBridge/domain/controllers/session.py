@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
 from ... import protocol
+from ..ports.config_accessor import ConfigError
 from ..ports.gesture_sender import GestureError
 from ..ports.message_channel import ChannelClosed, Timeout
 from .commands.command_handler import CommandError
@@ -207,7 +208,7 @@ class Session:
 
 		try:
 			result = handler.execute(self._ctx, request)
-		except (protocol.ValidationError, GestureError, CommandError) as exc:
+		except (protocol.ValidationError, GestureError, ConfigError, CommandError) as exc:
 			self._reply_command_error(request.id, str(exc))
 			return
 		except Exception as exc:  # a handler blew up unexpectedly; the session survives

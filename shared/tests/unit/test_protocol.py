@@ -377,7 +377,9 @@ def test_command_shapes_cover_every_command() -> None:
 			p.StateResult,
 			{"browseMode": "focus", "speechMode": "talk", "sleepMode": False, "inputHelp": False},
 		),
-		(p.StateResult, {"browseMode": None, "speechMode": "beeps", "sleepMode": True, "inputHelp": False}),
+		# "none" is a STRING, not null -- "there is no browse document here" is a
+		# real answer in the closed set, not a missing one (spec 0015).
+		(p.StateResult, {"browseMode": "none", "speechMode": "beeps", "sleepMode": True, "inputHelp": False}),
 	],
 )
 def test_representative_payloads_validate(cls: type[Any], payload: dict[str, Any]) -> None:

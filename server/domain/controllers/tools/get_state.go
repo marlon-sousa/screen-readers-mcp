@@ -39,13 +39,16 @@ func (t *GetState) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
-// stateResult keeps BrowseMode a pointer: a reader with no such concept reports
-// null, which is a different answer from "a mode whose name is empty".
+// stateResult reports BrowseMode as one of "browse" / "focus" / "none" (spec
+// 0015). A reader with no browsable document says "none" rather than null: the
+// absence IS one of the three answers, so an agent never has to special-case a
+// missing field, and `if not state.browseMode` cannot silently conflate "focus
+// mode" with "no such concept".
 type stateResult struct {
-	BrowseMode *string `json:"browseMode"`
-	SpeechMode string  `json:"speechMode"`
-	SleepMode  bool    `json:"sleepMode"`
-	InputHelp  bool    `json:"inputHelp"`
+	BrowseMode string `json:"browseMode"`
+	SpeechMode string `json:"speechMode"`
+	SleepMode  bool   `json:"sleepMode"`
+	InputHelp  bool   `json:"inputHelp"`
 }
 
 func (t *GetState) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {

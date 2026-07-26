@@ -59,30 +59,38 @@ const (
 // ungatedTools is what a server with no session advertises; gatedTools is what
 // this bridge's announced capabilities must add.
 //
-// `announce` joined this list in entry 11a. Until then the bridge announced the
-// capability and the server had no tool behind it, which exercised the "ignore
-// what you do not know" clause of protocol.md §4 against a real announcement.
-// That clause is still covered -- by focus/state/config below, which the wire
-// defines and this bridge does not serve.
+// `announce` joined this list in entry 11a. focus/state/config joined in entry
+// 11.1 (spec 0015), which served the four introspection commands and widened
+// NVDA_CAPABILITIES to all eight -- and did so with ZERO changes to the
+// server's production code. These expectations moving from unannounced to
+// gated, with nothing under server/ changing but this test, is what proves the
+// capability gate is structural rather than hand-maintained.
+//
+// unannouncedTools is consequently empty: this bridge now serves every group
+// the wire defines. Kept (rather than deleted) as the slot for the next
+// capability the wire defines before a bridge serves it -- that is what
+// exercises the "ignore what you do not know" clause of protocol.md §4 against
+// a real announcement.
 var (
 	ungatedTools = []string{"connect_reader", "disconnect_reader", "list_readers", "status"}
 
 	gatedTools = []string{
 		"announce",                  // announce
 		"get_braille",               // braille
+		"get_config",                // config
+		"get_focus_info",            // focus
 		"get_last_speech",           // speech
 		"get_next_speech_index",     // speech
 		"get_speech",                // speech
+		"get_state",                 // state
 		"press_gesture",             // gestures
+		"set_config",                // config
 		"type_text",                 // typing
 		"wait_for_speech",           // speech
 		"wait_for_speech_to_finish", // speech
 	}
 
-	// The bridge does not announce focus/state/config (it answers those with a
-	// clean error until session E), so the gate must not advertise their tools.
-	// This is the capability gate proven against a REAL announcement.
-	unannouncedTools = []string{"get_config", "get_focus_info", "get_state", "set_config"}
+	unannouncedTools = []string{}
 )
 
 // TestAWholeSessionOverLoopbackTCP is the conformance run over TCP. Its named
@@ -180,7 +188,10 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("log paths = %q / %q, want both reported", session.LogPath, session.ReaderLogPath)
 	}
 
-	want := []string{"announce", "braille", "gestures", "speech", "typing"}
+	want := []string{
+		"announce", "braille", "config", "focus",
+		"gestures", "speech", "state", "typing",
+	}
 	got := slices.Clone(session.Capabilities)
 	slices.Sort(got)
 	if !slices.Equal(got, want) {
