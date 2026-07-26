@@ -74,10 +74,17 @@ exclude = ["sconstruct", ".git", "__pycache__"]
 # these files thin (glue only); real logic belongs in the checked domain. The
 # adapters/nvda_*.py glob covers every NVDA-importing adapter (the sources, the
 # announcer, the session-signals beeps, and the nvda_main_thread wx helper).
+#
+# test_profile_override.py is the same edge on the test side: unlike the other
+# live-NVDA tests, which are pure socket/pipe clients and type-check normally,
+# it runs INSIDE NVDA's own Python and imports `config` directly, so every
+# expression through `config.conf` is untyped here and fully typed there. It is
+# validated by being run in NVDA, exactly as the nvda_*.py adapters are.
 ignore = [
     "addon/globalPlugins/nvdaMcpBridge/plugin.py",
     "addon/globalPlugins/nvdaMcpBridge/adapters/nvda_*.py",
     "addon/globalPlugins/nvdaMcpBridge/views/",
+    "tests/integration/test_profile_override.py",
 ]
 
 # So `import nvdaMcpBridge.*` (the package) and `import fakes` (test helpers)
