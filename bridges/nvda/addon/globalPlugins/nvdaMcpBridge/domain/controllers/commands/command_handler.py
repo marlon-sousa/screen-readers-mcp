@@ -46,10 +46,11 @@ class CommandHandler(ABC):
 
 	#: Whether this command moves the user's machine (a keypress, typed text, a
 	#: config write) rather than only observing it. Set True on the handlers that
-	#: do (``PressGestureHandler``, ``TypeTextHandler``); an observe-only session
-	#: (spec 0017) refuses a mutating handler. The base default is False and the
-	#: failure mode of forgetting to opt in is "allowed", so a future mutating
-	#: command must set this deliberately.
+	#: do -- ``PressGestureHandler``, ``TypeTextHandler``, ``SetConfigHandler`` --
+	#: and an observe-only session (spec 0017) refuses them. The base default is
+	#: False and the failure mode of forgetting to opt in is "allowed", so a
+	#: future mutating command must set this deliberately; registry.py's
+	#: enumeration test is what makes forgetting visible.
 	mutates_reader: bool = False
 
 	@abstractmethod

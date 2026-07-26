@@ -47,7 +47,16 @@ def test_only_ping_skips_the_inactivity_reset() -> None:
     assert non_resetting == {p.Command.PING}
 
 
-def test_set_config_is_the_only_new_mutating_handler() -> None:
+def test_exactly_the_three_mutating_commands_are_marked() -> None:
+    # Spec 0017's enumeration test: every registered handler is asked, so a new
+    # mutating command cannot be added without a deliberate answer here. The
+    # three that move the user's machine are a keypress, typed text and a config
+    # write; everything else -- announce included, which speaks to the human
+    # without changing anything -- only observes.
     registry = build_command_registry(FakeAdapterFactory(), "x")
     mutating = {cmd for cmd, handler in registry.items() if handler.mutates_reader}
-    assert mutating == {p.Command.TYPE_TEXT, p.Command.SET_CONFIG}
+    assert mutating == {
+        p.Command.PRESS_GESTURE,
+        p.Command.TYPE_TEXT,
+        p.Command.SET_CONFIG,
+    }

@@ -28,6 +28,12 @@ def test_presses_in_order_and_logs_each(clock: FakeClock) -> None:
 	assert _gestures(transcript) == [("gesture", "a"), ("gesture", "b")]
 
 
+def test_mutates_reader_is_true() -> None:
+	# A keypress moves the user's machine, so an observe-only session (spec
+	# 0017) must refuse it -- the same gate typeText and setConfig ride.
+	assert PressGestureHandler.mutates_reader is True
+
+
 def test_gesture_error_aborts_the_remainder(clock: FakeClock) -> None:
 	factory = FakeAdapterFactory(reject=["bad"])
 	transcript = FakeTranscript()
