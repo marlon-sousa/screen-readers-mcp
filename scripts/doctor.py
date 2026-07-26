@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -61,33 +62,52 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 # -- checks -------------------------------------------------------------------
 
 
-#: (binary, required, why it matters, how to get it). "Required" means you
-#: cannot work the repo without it; everything else degrades a specific task and
-#: is reported as a warning naming that task.
+#: (binary, required, minimum, why it matters, how to get it).
+#:
+#: "Required" means you cannot work the repo without it; everything else
+#: degrades one named task and is reported as a warning.
+#:
+#: A minimum of None means "presence is all we can check" -- gettext's Windows
+#: builds report version strings that do not order sensibly against the GNU
+#: ones, and a comparison that gives wrong answers is worse than no comparison.
 BINARIES = (
-	("uv", True, "runs every Python task", "https://docs.astral.sh/uv/getting-started/"),
-	("go", True, "builds and tests the MCP server", "https://go.dev/dl/"),
-	("git", True, "version control", "https://git-scm.com/downloads"),
 	(
-		"rg",
-		True,
+		"uv", True, (0, 5, 0),
+		"runs every Python task; 0.5 is where dependency-groups landed",
+		"https://docs.astral.sh/uv/getting-started/",
+	),
+	(
+		"go", True, (1, 25, 0),
+		"builds and tests the MCP server; the minimum is server/go.mod's own",
+		"https://go.dev/dl/",
+	),
+	("git", True, (2, 30), "version control", "https://git-scm.com/downloads"),
+	(
+		"rg", True, (13, 0),
 		"without it a search falls back to grep -r, which does NOT honour "
 		".gitignore and so reads .venv and __pycache__ -- thousands of "
 		"irrelevant lines per search",
 		"winget install BurntSushi.ripgrep.MSVC",
 	),
-	("scons", False, "builds the .nvda-addon", "uv tool install scons  (or pip install scons)"),
 	(
-		"msgfmt",
-		False,
+		"scons", False, (4, 0),
+		"builds the .nvda-addon",
+		"pip install scons  (into the interpreter you build addons with)",
+	),
+	(
+		"msgfmt", False, None,
 		"gettext: scons compiles the addon's .po files into .mo with it",
 		"winget install GnuWin32.GetText  (or the gettext-tools MSYS2 package)",
 	),
-	("xgettext", False, "gettext: extracts translatable strings for the addon", "same as msgfmt"),
-	("gh", False, "PR and issue work from the command line", "winget install GitHub.cli"),
+	("xgettext", False, None, "gettext: extracts the addon's translatable strings", "same as msgfmt"),
 	(
-		"pwsh",
-		False,
+		"gh", False, (2, 55),
+		"PR and issue work. BELOW 2.55 `gh pr edit` fails with the Projects-classic "
+		"deprecation error and every body/title edit needs a REST workaround",
+		"winget upgrade GitHub.cli",
+	),
+	(
+		"pwsh", False, (7, 0),
 		"PowerShell 7. The Windows PowerShell 5.1 this box defaults to has no "
 		"&& or ||, and wraps every native stderr line in a multi-line ErrorRecord "
 		"-- verbose, slow to read, and it reports failure on exit code 0",
@@ -96,29 +116,96 @@ BINARIES = (
 )
 
 
+def _version_of(text: str) -> tuple[int, ...] | None:
+	"""First dotted-number run in a --version banner, as a comparable tuple.
+
+	Deliberately loose: these banners have no common shape (`go version go1.26.5
+	windows/amd64`, `git version 2.47.0.windows.2`, `uv 0.11.17 (hash date)`),
+	and the leading number is the one that means something in all of them.
+	"""
+	match = re.search(r"(\d+(?:\.\d+)+)", text)
+	if not match:
+		return None
+	return tuple(int(part) for part in match.group(1).split("."))
+
+
 def check_binaries() -> list[Result]:
 	"""Everything the workspace shells out to, required or not."""
 	out: list[Result] = []
-	for name, required, why, fix in BINARIES:
+	for name, required, minimum, why, fix in BINARIES:
 		if shutil.which(name) is None:
 			out.append(Result(FAIL if required else WARN, name, f"not on PATH -- {why}", fix))
 			continue
 		# `go` spells it `go version`, not `go --version`.
-		code, ver = _run([name, "version"] if name == "go" else [name, "--version"])
-		out.append(Result(OK, name, ver.splitlines()[0] if code == 0 and ver else "present"))
+		code, banner = _run([name, "version"] if name == "go" else [name, "--version"])
+		if code != 0 or not banner:
+			out.append(Result(WARN, name, "present, but would not report a version", fix))
+			continue
+		shown = banner.splitlines()[0].strip()
+		found = _version_of(banner)
+		if minimum and found and found[: len(minimum)] < minimum:
+			want = ".".join(str(part) for part in minimum)
+			out.append(
+				Result(
+					FAIL if required else WARN,
+					name,
+					f"{shown} -- below the {want} this repo needs. {why}",
+					fix,
+				)
+			)
+		else:
+			out.append(Result(OK, name, shown))
 	return out
 
 
+def _scons_interpreter() -> Path | None:
+	"""The Python that owns `scons`, which is NOT the one running this script.
+
+	scons is invoked as a standalone tool from whichever interpreter it was
+	installed into, so its imports must be checked there. Checking them against
+	`sys.executable` -- the poe devtools venv -- reports a missing `markdown`
+	on a machine that builds addons perfectly well, which is a false alarm, and
+	a false alarm trains people to ignore the whole report.
+	"""
+	found = shutil.which("scons")
+	if not found:
+		return None
+	# Both a venv and a CPython install put console scripts in Scripts/ (or
+	# bin/) with the interpreter one level up.
+	scripts = Path(found).resolve().parent
+	for candidate in (scripts.parent / "python.exe", scripts.parent / "bin" / "python", scripts.parent / "python"):
+		if candidate.is_file():
+			return candidate
+	return None
+
+
 def check_addon_build_deps() -> list[Result]:
-	"""scons imports these from whatever Python runs it, not from a project venv."""
-	out: list[Result] = []
-	for module, why in (("markdown", "scons renders the addon's docs to HTML"),):
-		code, _ = _run([sys.executable, "-c", f"import {module}"])
+	"""scons imports these from ITS interpreter, not from a project venv."""
+	interpreter = _scons_interpreter()
+	if interpreter is None:
+		return [
+			Result(
+				WARN,
+				"scons interpreter",
+				"could not locate the Python that owns scons; skipping its import checks",
+			)
+		]
+	out = [Result(OK, "scons interpreter", str(interpreter))]
+	for module, why in (
+		("SCons", "the build tool itself"),
+		("markdown", "scons renders the addon's docs to HTML"),
+	):
+		code, _ = _run([str(interpreter), "-c", f"import {module}"])
 		if code == 0:
-			out.append(Result(OK, f"python: {module}", "importable"))
+			out.append(Result(OK, f"scons python: {module}", "importable"))
 		else:
 			out.append(
-				Result(WARN, f"python: {module}", f"not importable -- {why}", f"pip install {module}")
+				Result(
+					WARN,
+					f"scons python: {module}",
+					f"not importable -- {why}",
+					f'"{interpreter}" -m pip install {module}',
+				)
 			)
 	return out
 
