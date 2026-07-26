@@ -68,8 +68,10 @@ class NvdaConfigAccessor(ConfigAccessor):
         prior, coerced = run_on_main(_prepare, block=True)
         self._prior.setdefault(key, prior)
 
-        # Install the hook on first set(), lending it this session's map.
-        install(AggregatedSection, self._overrides)
+        # Install the hooks on first set(), lending them this session's map and
+        # the same confspec check, so a value NVDA's GUI writes back into an
+        # overridden key is coerced exactly as one arriving via setConfig is.
+        install(AggregatedSection, self._overrides, self._coerce_for_hook)
         self._overrides[key] = coerced
         return self._prior[key]
 
@@ -84,6 +86,22 @@ class NvdaConfigAccessor(ConfigAccessor):
         self._restored = True
 
     # -- helpers --------------------------------------------------------------
+
+    @staticmethod
+    def _coerce_for_hook(key_path: tuple[str, ...], value: Any) -> Any:
+        """Validate a hooked write, but never fail one.
+
+        The write is already happening -- typically NVDA's own settings GUI
+        saving a panel -- and there is no caller to hand an error to. So a value
+        the confspec rejects is stored as given rather than raised on: the
+        session keeps its override, the dialog keeps working, and the blast
+        radius is one in-memory value that dies at teardown. Rejection is for
+        ``setConfig``, which HAS a caller to tell.
+        """
+        try:
+            return NvdaConfigAccessor._validated(list(key_path), value)
+        except ConfigError:
+            return value
 
     @staticmethod
     def _get_from_conf(key_path: list[str]) -> Any:

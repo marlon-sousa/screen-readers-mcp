@@ -104,35 +104,110 @@ one part of this entry the drift gate and the conformance job will see.
 
 ### `setConfig` never persists to disk, and is restored at teardown
 
-**Decided.** This was flagged as the decision most worth arguing about; it
-stands as proposed, unchanged.
+**Decided 2026-07-25; amended 2026-07-26.** The original design wrote through
+`config.conf`'s `AggregatedSection` layer — writes landed in the most recently
+activated profile — and restored by writing the prior value back through the
+same path. That has a profile-switching gap: if a profile is active at `set`
+time but a different profile (or none) is active at `restore` time, the restore
+writes to the wrong place.
 
-`config.conf` is NVDA's live `ConfigManager`. Writing to it changes the running
-reader immediately; calling `.save()` would change the tester's NVDA
-permanently.
+**Revised design (2026-07-26): the session override map.** The bridge holds a
+`dict[tuple[str, ...], Any]` — never writes to `config.conf` at all. Instead, it
+installs a hook on `AggregatedSection.__getitem__` that checks the map first.
+Every consumer in NVDA — not just the bridge's own `get()` — sees the override,
+and the map sits *above* the profile stack, so a profile switch mid-session does
+not change which value is returned.
 
-The rule: **never call `save()`**, and record each key's prior value on first
-write so that session teardown restores every key this session touched, on every
-exit path. The precedent is exact — spec 0009's `logLevel` raises NVDA's own log
-verbosity for the session and restores it at teardown, for the same reason:
-an agent's session is an experiment, and an experiment that permanently
-reconfigures a blind person's screen reader because it crashed halfway is not
-acceptable. This is the same family as the invariant that a crashed harness must
-never leave a user mute.
+The rule: **never call `save()`** (unchanged), **never write to `config.conf`**
+(new). On first `set()` the adapter records the effective value from
+`config.conf` as the prior, stores the new value in the override map, and
+installs the `__getitem__` hook. `get()` checks the map first, then falls
+through to `config.conf`. Teardown clears the map and removes the hook; since
+nothing was ever written to `config.conf`, restore is just clearing the map —
+there is nothing to "restore" to. The prior value is recorded but never written
+back; it exists so the `ConfigResult` returned by `set_config` carries the
+previous effective value.
 
-Never calling `save()` is also what makes the restore robust against the case
-restoration *can't* run at all: a hard kill of the NVDA process itself needs no
-cleanup code, because the unsaved in-memory change dies with the process.
-Restore-at-teardown only has to cover the case this entry actually targets —
-the session ending while NVDA keeps running — which is exactly what the
-session's existing teardown machinery already handles for other state.
+This is robust against every exit path:
+
+- **Normal teardown:** clear map, remove hook. No config was ever touched.
+- **Abnormal teardown (panic gesture):** same — the hook dies with the bridge
+  process and NVDA's own `AggregatedSection.__getitem__` is the original.
+- **Hard NVDA kill:** the map and hook are in-process state; they die together.
+- **Profile switch mid-session:** the map is above the profile stack, so the
+  override is visible regardless of which profile is active. Switching profiles
+  does not move the override — it stays at the session-override layer.
+
+The precedent is spec 0008's transparent silent capture: both intercept NVDA at
+a core layer (`filter_speechSequence` / `AggregatedSection.__getitem__`), both
+are session-scoped, and both are designed so that a crash restores normal
+behaviour by the hook dying with the bridge process.
 
 Consequence to state plainly: an agent cannot use `setConfig` to make a durable
 change, by design. If a durable change is ever wanted it should be an explicit,
 separately-named command, not a side effect of a test tool.
 
-`keyPath` is opaque to the server and validated only by NVDA: a bad path or a
-value the confspec rejects becomes a `CommandError`, which the session survives.
+#### Amended 2026-07-26 (second): writes are hooked too, or the override escapes
+
+Hooking only `__getitem__` made the layer **asymmetric — reads went through it
+and writes went around it — and that asymmetry is a leak, not a detail.**
+
+`ConfigManager.__getitem__` delegates to `rootSection[key]`, so *every* read in
+NVDA resolves through the hooked `AggregatedSection.__getitem__` — including
+NVDA's own settings GUI, which reads a value into a control
+(`gui/settingsDialogs.py:1801`) and writes every control back on OK
+(`gui/settingsDialogs.py:1906`). That write goes through `__setitem__`, which was
+*not* hooked: the override landed in the real profile and marked it dirty, and
+the next `save()` — `NVDA+control+c`, or save-on-exit — wrote it to disk. Opening
+a settings dialog and clicking OK mid-session was therefore enough to
+**permanently reconfigure the user's screen reader**, the exact outcome this
+section exists to prevent.
+
+So `AggregatedSection.__setitem__` is hooked on the same terms as
+`__getitem__`:
+
+- Writing a key **that is in the override map** updates the map. The profile is
+  not touched and is not marked dirty, so there is nothing for `save()` to
+  persist — which is why `save()` itself needs no hook.
+- Writing **any other key** falls through to NVDA's own `__setitem__`,
+  unchanged. Settings the session never touched behave exactly as they always
+  did, including being saved.
+- The short-circuit applies to scalar leaves only; sections, unspecced keys,
+  dirty marking and cache maintenance are all left to the original.
+- The short-circuit runs the same confspec `validator.check()` the original would
+  have (`config/__init__.py:1261-1263`), so a value written through the GUI is
+  coerced into the map with the type NVDA would have stored.
+
+**That NVDA's GUI shows overridden values is correct, not a wart.** The dialog
+displays what is in effect; editing it edits the effective layer. Documented
+consequence: if the tester changes an overridden setting through NVDA's own UI
+mid-session, that change goes into the map and is **discarded at teardown**
+along with the session's own. The session owns the keys it overrode. Settings
+outside the map are unaffected and persist normally.
+
+**Rejected: injecting a synthetic profile** instead of patching. NVDA already
+aggregates a stack of profiles, and `_getUpdateSection` writes to
+`self.profiles[-1]`, so a profile of ours pushed on top would receive both reads
+and writes with no monkey-patching at all. It fails on the one property this
+design exists for: `_handleProfileSwitch` rebuilds `rootSection` from
+`self.profiles` (`config/__init__.py:542`), and any profile activated *after*
+ours sits above it — so the override would lose to a profile switch. Staying on
+top would mean hooking the switch handler on every activation: more patching
+than two `AggregatedSection` methods, on a hotter path. (Our profile also has no
+`filename`, so anything marking it dirty would send `save()` looking for a file.)
+
+**Boundary, stated so it is a decision and not an oversight.** This protects
+NVDA's *documented* paths: GUI read and write, `save()`, manual profile
+activation, and trigger-driven switches. It does not and cannot protect against
+code that bypasses `AggregatedSection` entirely — an add-on writing
+`config.conf.profiles[0][...]` directly reaches the profile underneath us. The
+goal is correctness against NVDA, not tamper-proofing against arbitrary add-ons.
+
+`keyPath` is opaque to the server and validated only by NVDA: a bad path, or a
+value the confspec rejects, becomes a `ConfigError`, which the session survives.
+Because the override map never reaches `config.conf`, configobj no longer gets
+to vet the value on the way past, so the adapter runs the confspec check itself
+— on the `setConfig` path and on the hooked-write path alike.
 
 ### Everything touching NVDA is marshalled to the main thread
 
@@ -168,9 +243,13 @@ All under `bridges/nvda/addon/globalPlugins/nvdaMcpBridge/`.
    yields an empty `FocusInfo` rather than raising.
 5. **`adapters/nvda_state_inspector.py`** — the four reads above, plus the
    tri-state browse-mode derivation.
-6. **`adapters/nvda_config_accessor.py`** — walks `config.conf` by key path;
-   holds the `dict[tuple[str, ...], Any]` of prior values for `restore_all`;
-   never calls `save()`.
+6. **`adapters/nvda_config_accessor.py`** — holds a session override map
+   (`dict[tuple[str, ...], Any]`) and installs a hook on
+   `AggregatedSection.__getitem__` on first `set()`. `get()` checks the map
+   first, falling through to `config.conf`; `set()` records the effective value
+   as prior, stores the new value in the map, and never writes to `config.conf`;
+   `restore_all` clears the map and removes the hook. The map sits above the
+   profile stack, so profile switches mid-session cannot affect it.
 
 ### Handlers (domain, strict-checked)
 

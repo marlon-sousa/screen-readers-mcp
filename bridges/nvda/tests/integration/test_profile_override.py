@@ -33,7 +33,32 @@ from nvdaMcpBridge.adapters.config_override_hook import install, remove
 # install() -- so this test owns its own, exactly as NvdaConfigAccessor does.
 _overrides: dict[tuple[str, ...], object] = {}
 
-TEST_KEY = ("speech", "sayCapForCapitals")
+#: sayCapForCapitals lives under [speech][[__many__]] -- the PER-SYNTH
+#: subsection (config/configSpec.py:52-55), which is also how NVDA's own voice
+#: panel reaches it (gui/settingsDialogs.py:1801). ("speech",
+#: "sayCapForCapitals") is not a real path: nothing reads it, so an override
+#: there is inaudible and a get on it raises. Resolved at run time from the
+#: synth actually loaded.
+def _test_key() -> tuple[str, ...]:
+    return ("speech", config.conf["speech"]["synth"], "sayCapForCapitals")
+
+
+def _conf_value() -> object:
+    """Read the test key through NVDA's own aggregated config."""
+    section, leaf = _test_key()[:-1], _test_key()[-1]
+    node: object = config.conf
+    for part in section:
+        node = node[part]  # type: ignore[index]
+    return node[leaf]  # type: ignore[index]
+
+
+def _set_conf_value(value: object) -> None:
+    """Write the test key through NVDA's own aggregated config."""
+    section, leaf = _test_key()[:-1], _test_key()[-1]
+    node: object = config.conf
+    for part in section:
+        node = node[part]  # type: ignore[index]
+    node[leaf] = value  # type: ignore[index]
 PROFILE_OFF = "nvdaMcpTest_capsOff"
 PROFILE_ON = "nvdaMcpTest_capsOn"
 
@@ -61,32 +86,32 @@ def run() -> int:
 
         # Set the test key to False in the "off" profile.
         config.conf.manualActivateProfile(PROFILE_OFF)
-        config.conf["speech"]["sayCapForCapitals"] = False
+        _set_conf_value(False)
 
         # Set to True in the "on" profile.
         config.conf.manualActivateProfile(PROFILE_ON)
-        config.conf["speech"]["sayCapForCapitals"] = True
+        _set_conf_value(True)
 
         # -- baseline: verify profile switching works --------------------
         config.conf.manualActivateProfile(PROFILE_OFF)
-        assert config.conf["speech"]["sayCapForCapitals"] is False, (
+        assert _conf_value() is False, (
             f"{PROFILE_OFF} should have caps off"
         )
 
         config.conf.manualActivateProfile(PROFILE_ON)
-        assert config.conf["speech"]["sayCapForCapitals"] is True, (
+        assert _conf_value() is True, (
             f"{PROFILE_ON} should have caps on"
         )
 
         # -- install the hook and set an override ------------------------
         install(AggregatedSection, _overrides)
         # Override to False regardless of which profile says what.
-        _overrides[TEST_KEY] = False
+        _overrides[_test_key()] = False
 
         # -- verify: override visible in both profiles -------------------
         config.conf.manualActivateProfile(PROFILE_ON)
         # The profile says True, but the OVERRIDE says False.
-        val = config.conf["speech"]["sayCapForCapitals"]
+        val = _conf_value()
         if val is not False:
             failures.append(
                 f"override not visible in {PROFILE_ON}: "
@@ -94,7 +119,7 @@ def run() -> int:
             )
 
         config.conf.manualActivateProfile(PROFILE_OFF)
-        val = config.conf["speech"]["sayCapForCapitals"]
+        val = _conf_value()
         if val is not False:
             failures.append(
                 f"override not visible in {PROFILE_OFF}: "
@@ -104,12 +129,41 @@ def run() -> int:
         # -- switch back to no profile, verify override still holds ------
         config.conf.manualActivateProfile(None)
         # Base config's value for this key — the override should mask it.
-        val = config.conf["speech"]["sayCapForCapitals"]
+        val = _conf_value()
         if val is not False:
             failures.append(
                 f"override not visible with no profile: "
                 f"expected False, got {val}"
             )
+
+        # -- the GUI round trip: a write to an overridden key stays in the
+        # -- map, and must NOT reach the profile or mark it dirty ---------
+        # This is what NVDA's settings panel does on OK: read every control's
+        # value, write every one back. With writes unhooked it lifted the
+        # override into the real profile, where the next save() persisted it.
+        config.conf.manualActivateProfile(PROFILE_ON)
+        dirty_before = set(getattr(config.conf, "_dirtyProfiles", ()))
+        _set_conf_value(_conf_value())  # read it, write it straight back
+
+        if _overrides.get(_test_key()) is not False:
+            failures.append(
+                "a write to an overridden key did not land in the map: "
+                f"map now holds {_overrides.get(_test_key())!r}"
+            )
+        if set(getattr(config.conf, "_dirtyProfiles", ())) != dirty_before:
+            failures.append(
+                "a write to an overridden key marked a profile dirty; "
+                "the next save() would persist the override to disk"
+            )
+
+        # A key the session never overrode must still write through normally.
+        untouched = ("speech", "symbolLevel")
+        try:
+            before = config.conf["speech"]["symbolLevel"]
+            config.conf["speech"]["symbolLevel"] = before
+        except Exception as exc:
+            failures.append(f"a non-overridden write did not pass through: {exc}")
+        del untouched
 
         # -- teardown: clear override map, remove hook -------------------
         _overrides.clear()
@@ -117,7 +171,7 @@ def run() -> int:
 
         # -- verify: original profile values are back --------------------
         config.conf.manualActivateProfile(PROFILE_ON)
-        val = config.conf["speech"]["sayCapForCapitals"]
+        val = _conf_value()
         if val is not True:
             failures.append(
                 f"{PROFILE_ON} not restored after teardown: "
@@ -125,7 +179,7 @@ def run() -> int:
             )
 
         config.conf.manualActivateProfile(PROFILE_OFF)
-        val = config.conf["speech"]["sayCapForCapitals"]
+        val = _conf_value()
         if val is not False:
             failures.append(
                 f"{PROFILE_OFF} not restored after teardown: "

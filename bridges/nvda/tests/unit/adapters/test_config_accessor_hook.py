@@ -16,7 +16,13 @@ from nvdaMcpBridge.adapters.config_override_hook import install, remove
 
 
 class _FakeSection:
-    """Stand-in for NVDA's AggregatedSection with the .path attribute."""
+    """Stand-in for NVDA's AggregatedSection with the .path attribute.
+
+    ``written`` records what reached the REAL __setitem__ -- which, for a key
+    the session overrode, must be nothing at all.
+    """
+
+    written: list[tuple[tuple[str, ...], Any]] = []
 
     def __init__(self, path: tuple[str, ...]) -> None:
         self.path = path
@@ -24,10 +30,14 @@ class _FakeSection:
     def __getitem__(self, key: Any, checkValidity: bool = True) -> str:  # noqa: ARG001
         return f"original:{self.path}:{key}"
 
+    def __setitem__(self, key: Any, val: Any) -> None:
+        _FakeSection.written.append((self.path + (key,), val))
+
 
 def setup_function() -> None:
     """No hook installed at the start of each test."""
     remove()
+    _FakeSection.written.clear()
 
 
 def teardown_function() -> None:
@@ -122,3 +132,65 @@ def test_overrides_are_shared_across_instances() -> None:
 
     assert _FakeSection(("speech",))["synth"] == "shared"
     assert _FakeSection(("speech",))["synth"] == "shared"
+
+
+# -- writes ------------------------------------------------------------------
+#
+# The leak these close: NVDA's settings GUI reads a value into a control and
+# writes every control back on OK. With reads hooked and writes not, that round
+# trip lifted the override out of the map and into the real profile, where the
+# next save() persisted it.
+
+
+def test_a_write_to_an_overridden_key_updates_the_map_not_the_profile() -> None:
+    overrides = {("speech", "synth"): "espeak"}
+    install(_FakeSection, overrides)
+
+    _FakeSection(("speech",))["synth"] = "sapi5"
+
+    assert overrides[("speech", "synth")] == "sapi5"
+    assert _FakeSection.written == [], "the write reached NVDA's real config"
+
+
+def test_a_write_to_any_other_key_falls_through_untouched() -> None:
+    """The session owns the keys it overrode -- not config as a whole."""
+    install(_FakeSection, {("speech", "synth"): "espeak"})
+
+    _FakeSection(("braille",))["display"] = "noBraille"
+
+    assert _FakeSection.written == [(("braille", "display"), "noBraille")]
+
+
+def test_the_gui_round_trip_cannot_escape_the_map() -> None:
+    """Read a value, write it straight back -- exactly what a settings panel does."""
+    overrides = {("speech", "espeak", "sayCapForCapitals"): True}
+    install(_FakeSection, overrides)
+
+    section = _FakeSection(("speech", "espeak"))
+    shown = section["sayCapForCapitals"]  # what the checkbox displays
+    section["sayCapForCapitals"] = shown  # what OK writes back
+
+    assert shown is True, "the dialog should display the override in effect"
+    assert overrides[("speech", "espeak", "sayCapForCapitals")] is True
+    assert _FakeSection.written == [], "the OK button persisted the override"
+
+
+def test_writes_are_coerced_by_the_supplied_coercer() -> None:
+    """A hooked write is validated exactly as NVDA's own __setitem__ would."""
+    overrides: dict[tuple[str, ...], Any] = {("speech", "espeak", "rate"): 50}
+    install(_FakeSection, overrides, lambda _path, value: int(value))
+
+    _FakeSection(("speech", "espeak"))["rate"] = "75"
+
+    assert overrides[("speech", "espeak", "rate")] == 75, "stored as the string '75'"
+
+
+def test_writes_fall_through_again_after_remove() -> None:
+    overrides = {("speech", "synth"): "espeak"}
+    install(_FakeSection, overrides)
+    remove()
+
+    _FakeSection(("speech",))["synth"] = "sapi5"
+
+    assert _FakeSection.written == [(("speech", "synth"), "sapi5")]
+    assert overrides[("speech", "synth")] == "espeak", "the map took a post-teardown write"

@@ -90,6 +90,19 @@ def _hello(agent: Agent, mode: str) -> dict[str, Any]:
 	return agent.result("hello", mode=mode, protocolVersion=p.PROTOCOL_VERSION)
 
 
+def _caps_key(agent: Agent) -> list[str]:
+	"""The real path of sayCapForCapitals: PER SYNTH, not directly under speech.
+
+	It is declared in [speech][[__many__]] (config/configSpec.py:52-55), and
+	NVDA's own voice panel reads it as config.conf["speech"][driver.name][...]
+	(gui/settingsDialogs.py:1801). ["speech", "sayCapForCapitals"] is not a real
+	key: getConfig on it raises, and an override there is inaudible because
+	nothing in NVDA ever reads it.
+	"""
+	synth = agent.result("getConfig", keyPath=["speech", "synth"])["value"]
+	return ["speech", synth, "sayCapForCapitals"]
+
+
 def test_hello_reports_real_nvda_and_served_capabilities() -> None:
 	agent = _dial()
 	try:
@@ -190,13 +203,13 @@ def test_set_config_roundtrip_and_restore() -> None:
 	try:
 		_hello(agent, "silent")
 		original = agent.result(
-			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+			"getConfig", keyPath=_caps_key(agent)
 		)["value"]
 
 		flipped = not bool(original)
 		prior = agent.result(
 			"setConfig",
-			keyPath=["speech", "sayCapForCapitals"],
+			keyPath=_caps_key(agent),
 			value=flipped,
 		)["value"]
 		assert prior == original, (
@@ -204,7 +217,7 @@ def test_set_config_roundtrip_and_restore() -> None:
 		)
 
 		current = agent.result(
-			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+			"getConfig", keyPath=_caps_key(agent)
 		)["value"]
 		assert current == flipped, (
 			f"getConfig should see override {flipped}, got {current}"
@@ -219,7 +232,7 @@ def test_set_config_roundtrip_and_restore() -> None:
 	try:
 		_hello(agent2, "silent")
 		restored = agent2.result(
-			"getConfig", keyPath=["speech", "sayCapForCapitals"]
+			"getConfig", keyPath=_caps_key(agent2)
 		)["value"]
 		assert restored == original, (
 			f"new session should see original {original}, got {restored}"
@@ -238,7 +251,7 @@ def test_set_config_changes_nvda_behaviour() -> None:
 		# Force caps ON so we hear "cap" when typing a capital.
 		_ = agent.result(
 			"setConfig",
-			keyPath=["speech", "sayCapForCapitals"],
+			keyPath=_caps_key(agent),
 			value=True,
 		)
 
