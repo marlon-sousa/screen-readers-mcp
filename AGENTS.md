@@ -467,6 +467,15 @@ uv run poe doctor    # is this machine able to work the repo?
 uv run poe fix       # repair what it found (reinstalls the project venvs)
 ```
 
+**The rule, for agents: if `poe doctor` fails, fix the environment before doing
+anything else — do not build, do not test, do not diagnose code.** A failing
+doctor means the tools are lying to you, so every result you gather is
+worthless and every conclusion you draw from it is guesswork presented as fact.
+This is enforced, not merely advised: every task depends on a fast subset of the
+doctor and aborts with a non-zero exit if it fails, so `poe bridge` on a broken
+environment refuses to run rather than producing a green tick you should not
+believe.
+
 It is not ceremony. Every check in it corresponds to something that has already
 cost someone hours, because the symptom pointed nowhere near the cause:
 
@@ -498,6 +507,19 @@ uv run poe lint          # ruff (see the caveat below)
 
 `poe ci` is the one to run before saying something works. It is deliberately the
 same set, in the same order, that `.github/workflows/ci.yml` runs.
+
+Every task except `doctor`, `fix` and `check` itself is gated on `check` (the
+fast doctor subset, ~1s, silent when it passes). The three diagnostics are
+exempt on purpose: gating the tool that reports a broken environment on that
+same environment would make the breakage unreportable.
+
+**Tool minimums are floors, never pins.** The doctor fails a tool that is *below*
+the version this repo needs and is silent about anything newer, so upgrading is
+always safe and nothing here ever has to be revisited because a tool moved
+forward. Each minimum exists for a stated reason -- `gh` below 2.55 cannot edit
+a PR body, `go` tracks `server/go.mod` -- and gettext is presence-only, because
+its Windows builds report versions that do not order against the GNU ones and a
+comparison that gives wrong answers is worse than none.
 
 **`poe lint` is not part of `poe ci`, and that is honest, not an oversight.**
 Ruff is configured and now installed, but no CI workflow has ever run it and

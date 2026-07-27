@@ -50,7 +50,23 @@ git clone --branch release-2026.1 https://github.com/nvaccess/nvda.git nvda
 
 ## Running the headless suites
 
-These need no NVDA and are what CI runs. Run them before every PR.
+These need no NVDA. **From the repo root** — every task names its own
+subproject, so the directory you run from is always the same one:
+
+```sh
+uv run poe doctor    # is this machine able to work the repo? run this first
+uv run poe ci        # everything CI runs, in CI's order (~30s)
+uv run poe bridge    # just the bridge suite, for a fast inner loop (~5s)
+uv run poe           # list every task
+```
+
+`poe ci` is what to run before opening a PR. Every task first runs a fast
+environment check and **refuses to run if it fails** — a broken toolchain makes
+passing and failing tests equally uninformative, so it is better to stop than to
+hand you a result you cannot trust. `uv run poe fix` repairs the common causes.
+
+<details>
+<summary>The underlying commands, if you need one directly</summary>
 
 ```sh
 # Shared wire contract
@@ -66,6 +82,7 @@ py -3.13 bridges/nvda/sync_shared.py
 uv run --directory bridges/nvda pytest
 uv run --directory bridges/nvda pyright
 ```
+</details>
 
 One tier is Windows-only and opts in explicitly — the cross-language
 **conformance** run, the built server binary against the *real* Python bridge

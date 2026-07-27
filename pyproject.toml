@@ -32,6 +32,10 @@ package = false
 help = "Check the dev environment is sane. RUN THIS FIRST."
 cmd = "python scripts/doctor.py"
 
+[tool.poe.tasks.check]
+help = "The fast subset of doctor, used as a gate before every other task"
+cmd = "python scripts/doctor.py --quick"
+
 [tool.poe.tasks.fix]
 help = "Repair the dev environment (reinstall the project venvs)"
 cmd = "python scripts/doctor.py --fix"
@@ -40,14 +44,17 @@ cmd = "python scripts/doctor.py --fix"
 
 [tool.poe.tasks.bridge]
 help = "Bridge headless tests (the usual inner loop)"
+deps = ["check"]
 cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
 
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"
+deps = ["check"]
 cmd = "uv run --directory shared --with pytest python -m pytest -q"
 
 [tool.poe.tasks.types]
 help = "pyright strict, both Python projects"
+deps = ["check"]
 sequence = [
 	{ cmd = "uv run --directory shared --with pytest --with pyright python -m pyright" },
 	{ cmd = "uv run --directory bridges/nvda --with pytest --with pyright python -m pyright" },
@@ -55,6 +62,7 @@ sequence = [
 
 [tool.poe.tasks.lint]
 help = "ruff check + format check, both Python projects"
+deps = ["check"]
 sequence = [
 	{ cmd = "uv run --directory shared --with ruff python -m ruff check ." },
 	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests" },
@@ -62,6 +70,7 @@ sequence = [
 
 [tool.poe.tasks.go]
 help = "Go build, vet, unit and integration tests"
+deps = ["check"]
 sequence = [
 	{ cmd = "go -C server build ./..." },
 	{ cmd = "go -C server vet ./..." },
@@ -73,10 +82,12 @@ sequence = [
 
 [tool.poe.tasks.gates]
 help = "Schema and wire-binding drift gates"
+deps = ["check"]
 cmd = "python scripts/drift.py"
 
 [tool.poe.tasks.conformance]
 help = "Cross-language tier: the real Go binary against the real Python bridge (slow)"
+deps = ["check"]
 cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
 
 # -- the whole thing ---------------------------------------------------------

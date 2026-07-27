@@ -143,7 +143,12 @@ def check_binaries() -> list[Result]:
 			continue
 		shown = banner.splitlines()[0].strip()
 		found = _version_of(banner)
-		if minimum and found and found[: len(minimum)] < minimum:
+		# A FLOOR, never a pin: anything at or above the minimum passes, so a
+		# newer toolchain is always fine. Pad the found version to the
+		# minimum's length first, or a two-part 1.25 would compare as older
+		# than a three-part 1.25.0 and fail a version that satisfies it.
+		padded = (found + (0,) * len(minimum))[: len(minimum)] if (minimum and found) else None
+		if padded and padded < minimum:
 			want = ".".join(str(part) for part in minimum)
 			out.append(
 				Result(
@@ -387,6 +392,11 @@ def repair() -> None:
 def main() -> int:
 	parser = argparse.ArgumentParser(description="Check the nvda-mcp dev environment.")
 	parser.add_argument("--fix", action="store_true", help="repair what can be repaired first")
+	parser.add_argument(
+		"--quick",
+		action="store_true",
+		help="skip the checks that spawn a uv env per tool; for use as a pre-task gate",
+	)
 	args = parser.parse_args()
 
 	if args.fix:
@@ -397,10 +407,21 @@ def main() -> int:
 	results.append(check_bare_python())
 	results += check_addon_build_deps()
 	results += check_pyright_venv_config()
-	results += check_dev_tools()
-	results += check_trampolines()
-	results.append(check_conformance_python())
 	results.append(check_shared_synced())
+	if not args.quick:
+		# These spawn a uv environment per tool per project -- a few seconds,
+		# which is fine for `poe doctor` and far too slow to sit in front of
+		# every `poe bridge`. The quick set still catches the failures that
+		# make OTHER results untrustworthy: a missing tool, an unconfigured
+		# pyright, an addon on a stale wire contract.
+		results += check_dev_tools()
+		results += check_trampolines()
+		results.append(check_conformance_python())
+
+	failures = [r for r in results if r.status == FAIL]
+	if args.quick and not failures:
+		# Nothing to say: the gate passed and the real task is what matters.
+		return 0
 
 	marks = {OK: "PASS", WARN: "WARN", FAIL: "FAIL"}
 	width = max(len(r.check) for r in results)
@@ -409,7 +430,6 @@ def main() -> int:
 		if result.fix and result.status != OK:
 			print(f"        {' ' * width}  -> {result.fix}")
 
-	failures = [r for r in results if r.status == FAIL]
 	warnings = [r for r in results if r.status == WARN]
 	print()
 	if failures:
