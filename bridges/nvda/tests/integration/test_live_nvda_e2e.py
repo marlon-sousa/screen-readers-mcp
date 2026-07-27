@@ -33,6 +33,10 @@ from typing import Any
 
 import pytest
 
+#: Every test here drives a REAL NVDA on this machine -- gestures, typed
+#: text, config changes. Excluded from the default run; see pyproject.toml.
+pytestmark = pytest.mark.live_nvda
+
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
 from nvdaMcpBridge.adapters.socket_transport import SocketTransport

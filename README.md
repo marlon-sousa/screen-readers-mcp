@@ -64,6 +64,9 @@ uv run poe           # list every task
 cd bridges/nvda && scons    # build the .nvda-addon
 ```
 
+`poe live` exists too, and is the only task that touches your machine: it drives
+a real NVDA. It is excluded from `ci` and from the default test run.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the underlying commands.
 
 Wire the server into Claude Code from source:

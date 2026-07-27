@@ -47,6 +47,11 @@ help = "Bridge headless tests (the usual inner loop)"
 deps = ["check"]
 cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
 
+[tool.poe.tasks.live]
+help = "DRIVES YOUR REAL NVDA: gestures, typed text, config changes. Opt-in only."
+deps = ["check"]
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m live_nvda"
+
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"
 deps = ["check"]

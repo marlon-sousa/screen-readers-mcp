@@ -65,6 +65,15 @@ environment check and **refuses to run if it fails** — a broken toolchain make
 passing and failing tests equally uninformative, so it is better to stop than to
 hand you a result you cannot trust. `uv run poe fix` repairs the common causes.
 
+Live-NVDA tests are **excluded by default** and are not part of `ci`. They drive
+the real NVDA on your machine — pressing gestures, opening dialogs, typing into
+whatever has focus, changing reader settings. Run them only deliberately, and
+only when you are ready for your screen reader to be taken over:
+
+```sh
+uv run poe live
+```
+
 <details>
 <summary>The underlying commands, if you need one directly</summary>
 

@@ -503,7 +503,18 @@ uv run poe go            # go build, vet, test, -tags integration
 uv run poe gates         # schema + wire-binding drift
 uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe lint          # ruff (see the caveat below)
+uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
 ```
+
+**`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
+gestures, open the Run dialog, type into whatever currently has focus, and
+change the reader's configuration -- on the machine you are sitting at. They
+were previously harmless only by accident: they skip when nothing is listening
+on the pipe, so nobody noticed until a developer ran the suite with their own
+NVDA and bridge up and had their screen reader commandeered mid-task. For a
+blind developer that is not a nuisance, it is losing control of the machine.
+They are now marked `live_nvda` and excluded by `addopts`; running them is an
+explicit act. Never add them to `ci`.
 
 `poe ci` is the one to run before saying something works. It is deliberately the
 same set, in the same order, that `.github/workflows/ci.yml` runs.
