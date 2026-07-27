@@ -19,8 +19,6 @@ from __future__ import annotations
 
 import ast
 import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -208,44 +206,53 @@ def test_two_sequential_sessions_on_one_server() -> None:
 
 
 
-@contextmanager
-def _run_dialog(agent: Agent) -> Iterator[None]:
-	"""Focus the Run dialog for the body, and ALWAYS dismiss it afterwards.
+class _RunDialog:
+	"""Focus the Run dialog for the block, and ALWAYS dismiss it afterwards.
 
-	The Run dialog is the cheapest real focus this suite can borrow: it is
-	present on every Windows box, it is a plain edit field that echoes typed
-	characters, its app module is a known constant, and Escape puts everything
-	back exactly as it was. Nothing is launched and nothing is left running.
+	The Run dialog is the cheapest real focus this suite can borrow: present on
+	every Windows box, a plain edit field, an app module that is a known
+	constant, and Escape puts everything back exactly as it was. Nothing is
+	launched and nothing is left running.
 
 	It replaced opening Notepad, which spawned a process, raced the window
-	appearing (the poll it needed was ~15s of wall clock in the bad case), and
-	left a window on the tester's desktop. None of that bought any coverage.
+	appearing, and left a window on the tester's desktop -- for no coverage that
+	the dialog itself does not already provide.
 
-	The dismissal is in a `finally` because this drives a REAL machine: a failed
-	assertion must not walk away leaving a dialog open over someone's work, and
-	the text typed here is never committed -- Escape, never Enter, so nothing
-	can be executed by accident.
+	Written as a class rather than @contextlib.contextmanager only because
+	pyright's strict mode reports that decorator as deprecated; the behaviour is
+	the same and the two dunders make the guarantee easier to see.
 	"""
-	agent.result("pressGesture", gestures=["windows+r"])
-	try:
+
+	def __init__(self, agent: Agent) -> None:
+		self._agent = agent
+
+	def __enter__(self) -> None:
+		self._agent.result("pressGesture", gestures=["windows+r"])
 		deadline = time.monotonic() + 5.0
 		while time.monotonic() < deadline:
-			if agent.result("getFocusInfo")["appModule"] == RUN_DIALOG_APP_MODULE:
+			if self._agent.result("getFocusInfo")["appModule"] == RUN_DIALOG_APP_MODULE:
 				break
 			time.sleep(0.1)
 		else:
+			# Dismiss before failing: an assertion must not leave a dialog open
+			# over someone's work just because it did not recognise it.
+			self._agent.result("pressGesture", gestures=["escape"])
 			raise AssertionError(
 				f"the Run dialog never took focus within 5s (appModule stayed "
-				f"{agent.result('getFocusInfo')['appModule']!r})"
+				f"{self._agent.result('getFocusInfo')['appModule']!r})"
 			)
 		# Let the dialog finish announcing ITSELF before handing over. Focus
 		# arrives before the announcement ends, so a body that immediately takes
 		# a speech index captures the tail of "Run dialog, Type the name of a
 		# program..." and attributes it to whatever it did next.
-		agent.result("waitForSpeechToFinish", timeout=5.0)
-		yield
-	finally:
-		agent.result("pressGesture", gestures=["escape"])
+		self._agent.result("waitForSpeechToFinish", timeout=5.0)
+
+	def __exit__(self, *exc_info: object) -> None:
+		# In __exit__ because this drives a REAL machine: a failed assertion
+		# must not walk away leaving a dialog open over someone's work. Escape,
+		# never Enter -- the typed text is never committed, so nothing can be
+		# executed by accident.
+		self._agent.result("pressGesture", gestures=["escape"])
 
 
 # -- introspection e2e (entry 11.1) ------------------------------------------
@@ -260,7 +267,7 @@ def test_get_focus_info_reports_real_focus() -> None:
 		assert result["role"], "focus role should be non-empty"
 		assert isinstance(result["states"], list)
 
-		with _run_dialog(agent):
+		with _RunDialog(agent):
 			focus = agent.result("getFocusInfo")
 			assert focus["appModule"] == RUN_DIALOG_APP_MODULE, (
 				f"expected the Run dialog to be hosted by "
@@ -406,7 +413,7 @@ def test_set_config_changes_nvda_behaviour() -> None:
 		# their editor, their terminal, their email -- which is both a way to
 		# corrupt someone's work and a way to get a flaky result, since not
 		# every control echoes typed characters.
-		with _run_dialog(agent):
+		with _RunDialog(agent):
 			agent.result("setConfig", keyPath=key, value=False)
 			without = _speak_a_capital()
 
