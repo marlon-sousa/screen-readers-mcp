@@ -155,6 +155,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		Synth:           result.Synth,
 		LogPath:         result.LogPath,
 		ReaderLogPath:   result.NVDALogPath,
+		BridgeVersion:   derefOr(result.BridgeVersion, ""),
 		ProtocolVersion: result.ProtocolVersion,
 	}
 
@@ -191,4 +192,16 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		connection.Text = client
 	}
 	return connection, nil
+}
+
+// derefOr reads an optional wire field. A nil pointer means the bridge did not
+// send the field at all -- an older build predating it -- which is a different
+// fact from a bridge that sent "unknown" because it could not determine its own
+// version. Both flatten to a harmless empty string here; the distinction is
+// preserved on the wire for anyone who needs it.
+func derefOr(value *string, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	return *value
 }

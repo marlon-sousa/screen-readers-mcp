@@ -421,6 +421,13 @@ class HelloResult:
 	#: log, scoped to exactly this session (distinct from `logPath`, the
 	#: bridge's own transcript; see spec 0009).
 	nvdaLogPath: str
+	#: The BRIDGE's own version -- the add-on's, not the reader's (that is
+	#: ``reader.version``). Reported because the bridge is installed separately
+	#: from the code under test: a live-NVDA run talks to whatever build was
+	#: last installed, and without this a stale one shows up as an inexplicable
+	#: capability or behaviour mismatch rather than as "you are running an old
+	#: build". ``"unknown"`` when the bridge cannot determine it.
+	bridgeVersion: str = "unknown"
 
 
 @dataclass

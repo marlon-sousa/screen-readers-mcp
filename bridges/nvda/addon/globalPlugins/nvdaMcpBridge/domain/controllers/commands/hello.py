@@ -36,10 +36,12 @@ class HelloHandler(CommandHandler):
 		factory: AdapterFactory,
 		reader: ReaderInfo,
 		capabilities: list[Capability],
+		bridge_version: str,
 	) -> None:
 		self._factory = factory
 		self._reader = reader
 		self._capabilities = capabilities
+		self._bridge_version = bridge_version
 
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		params = protocol.from_dict(protocol.HelloParams, request.params)
@@ -80,4 +82,5 @@ class HelloHandler(CommandHandler):
 			synth=synth,
 			logPath=ctx.transcript.path,
 			nvdaLogPath=ctx.log_capture.path,
+			bridgeVersion=self._bridge_version,
 		)

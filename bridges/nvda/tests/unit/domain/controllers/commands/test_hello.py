@@ -11,6 +11,9 @@ from fakes.transcript import FakeTranscript
 from support.context import make_context
 
 from nvdaMcpBridge import protocol as p
+
+#: Stand-in for the installed add-on version reported in hello.
+BRIDGE_VERSION = "9.9.9-test"
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
 from nvdaMcpBridge.domain.controllers.commands.hello import HelloHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
@@ -28,7 +31,12 @@ def _hello(
 def _handler(factory: FakeAdapterFactory, version: str = "2026.1.0") -> HelloHandler:
 	# The bridge stamps its NVDA identity + the capabilities it serves (as wiring
 	# does): speech/braille/gestures, not the full enum -- see NVDA_CAPABILITIES.
-	return HelloHandler(factory, p.ReaderInfo(name="nvda", version=version), list(NVDA_CAPABILITIES))
+	return HelloHandler(
+		factory,
+		p.ReaderInfo(name="nvda", version=version),
+		list(NVDA_CAPABILITIES),
+		BRIDGE_VERSION,
+	)
 
 
 def test_silent_hello_builds_and_reports(clock: FakeClock) -> None:

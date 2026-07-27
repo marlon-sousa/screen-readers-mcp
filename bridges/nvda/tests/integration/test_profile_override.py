@@ -20,6 +20,10 @@ from __future__ import annotations
 
 import pytest
 
+#: Every test here drives a REAL NVDA on this machine -- gestures, typed
+#: text, config changes. Excluded from the default run; see pyproject.toml.
+pytestmark = pytest.mark.live_nvda
+
 try:
     import config  # type: ignore[import-untyped]
     from config import AggregatedSection  # type: ignore[import-untyped]

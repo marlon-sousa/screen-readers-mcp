@@ -190,6 +190,7 @@ type HelloResult struct {
 	Synth           string       `json:"synth"`
 	LogPath         string       `json:"logPath"`
 	NVDALogPath     string       `json:"nvdaLogPath"`
+	BridgeVersion   *string      `json:"bridgeVersion,omitempty"`
 }
 
 // LastSpeechResult is the wire shape of the same name.

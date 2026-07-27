@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+import ast
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -90,6 +92,25 @@ def _hello(agent: Agent, mode: str) -> dict[str, Any]:
 	return agent.result("hello", mode=mode, protocolVersion=p.PROTOCOL_VERSION)
 
 
+def _expected_bridge_version() -> str:
+	"""The add-on version this CHECKOUT would build, read from buildVars.py.
+
+	Parsed rather than imported: buildVars.py pulls in the site_scons tooling,
+	so importing it needs SCons installed in whatever interpreter runs pytest.
+	The version is a literal keyword argument, and reading it with ast keeps
+	this check working in a bare test environment.
+	"""
+	source = Path(__file__).resolve().parents[2] / "buildVars.py"
+	tree = ast.parse(source.read_text(encoding="utf-8"), str(source))
+	for node in ast.walk(tree):
+		if not isinstance(node, ast.Call):
+			continue
+		for keyword in node.keywords:
+			if keyword.arg == "addon_version" and isinstance(keyword.value, ast.Constant):
+				return str(keyword.value.value)
+	raise AssertionError(f"no addon_version literal found in {source}")
+
+
 def _caps_key(agent: Agent) -> list[str]:
 	"""The real path of sayCapForCapitals: PER SYNTH, not directly under speech.
 
@@ -101,6 +122,42 @@ def _caps_key(agent: Agent) -> list[str]:
 	"""
 	synth = agent.result("getConfig", keyPath=["speech", "synth"])["value"]
 	return ["speech", synth, "sayCapForCapitals"]
+
+
+def test_the_installed_addon_is_the_one_in_this_checkout() -> None:
+	"""Guard every other live test in this file against a STALE install.
+
+	These tests import the bridge package from the SOURCE TREE but talk over the
+	pipe to whatever add-on build NVDA actually loaded. When the two drift, the
+	failures land somewhere else entirely -- a capability list that does not
+	match, a command that answers "unknown" -- and read like bridge bugs. Asking
+	directly turns a session of confusion into one clear line.
+
+	Caveat worth knowing: this compares VERSIONS, so it catches an install from
+	a different release. It cannot catch editing code without bumping
+	addon_version; for that the discipline is still rebuild-and-reinstall.
+	"""
+	agent = _dial()
+	try:
+		hello = _hello(agent, "silent")
+		expected = _expected_bridge_version()
+		rebuild = (
+			"rebuild and reinstall the add-on (cd bridges/nvda && scons), then restart NVDA"
+		)
+		# A build predating this field omits it entirely -- which IS the stale
+		# case, and the commonest one, so it gets the same clear message rather
+		# than a KeyError from the middle of a fixture.
+		assert "bridgeVersion" in hello, (
+			f"the running bridge does not report bridgeVersion at all, so it predates "
+			f"this check; this checkout is {expected!r} -- {rebuild}"
+		)
+		reported = hello["bridgeVersion"]
+		assert reported == expected, (
+			f"the running NVDA has bridge {reported!r}, this checkout is {expected!r} -- {rebuild}"
+		)
+		agent.result("bye")
+	finally:
+		agent.close()
 
 
 def test_hello_reports_real_nvda_and_served_capabilities() -> None:
@@ -255,25 +312,38 @@ def test_set_config_roundtrip_and_restore() -> None:
 
 
 def test_set_config_changes_nvda_behaviour() -> None:
-	"""set_config changes what NVDA speaks -- the hook reaches NVDA code."""
+	"""set_config changes what NVDA speaks -- the hook reaches NVDA code.
+
+	Asserts that the two spoken results DIFFER, not that either contains a
+	particular word. NVDA announces a capital in the tester's own language
+	("cap" in English, "maiuscula" in Portuguese), and spec 0015 rejected
+	localized strings in assertions for exactly this reason -- an assertion
+	that passes or fails depending on the tester's NVDA language is the class
+	of flakiness this project exists to remove.
+	"""
 	agent = _dial()
 	try:
 		_hello(agent, "silent")
+		key = _caps_key(agent)
 
-		# Force caps ON so we hear "cap" when typing a capital.
-		_ = agent.result(
-			"setConfig",
-			keyPath=_caps_key(agent),
-			value=True,
+		def _speak_a_capital() -> str:
+			start = agent.result("getNextSpeechIndex")["index"]
+			agent.result("typeText", text="A")
+			agent.result("waitForSpeechToFinish", timeout=2.0)
+			return agent.result("getSpeech", sinceIndex=start)["text"].strip()
+
+		agent.result("setConfig", keyPath=key, value=False)
+		without = _speak_a_capital()
+
+		agent.result("setConfig", keyPath=key, value=True)
+		with_cap = _speak_a_capital()
+
+		assert with_cap != without, (
+			"turning sayCapForCapitals on did not change what NVDA spoke for a "
+			f"capital A (both were {without!r}) -- the override never reached NVDA"
 		)
-
-		start = agent.result("getNextSpeechIndex")["index"]
-		agent.result("typeText", text="A")
-		agent.result("waitForSpeechToFinish", timeout=2.0)
-		speech = agent.result("getSpeech", sinceIndex=start)["text"].lower()
-
-		assert "cap" in speech, (
-			f"expected 'cap' in speech after capital A, got: {speech!r}"
+		assert len(with_cap) > len(without), (
+			f"expected the announcement to GAIN a capital marker, got {without!r} -> {with_cap!r}"
 		)
 
 		agent.result("bye")

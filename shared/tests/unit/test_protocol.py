@@ -278,10 +278,14 @@ def test_hello_result_serializes_all_fields() -> None:
 		"synth",
 		"logPath",
 		"nvdaLogPath",
+		"bridgeVersion",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert d["capabilities"] == ["speech", "gestures"]
+	# reader.version is the READER's; bridgeVersion is the ADD-ON's, and defaults
+	# to "unknown" rather than to the reader's, so the two can never be confused.
+	assert d["bridgeVersion"] == "unknown"
 
 
 def test_hello_result_round_trips_reader_and_capabilities() -> None:

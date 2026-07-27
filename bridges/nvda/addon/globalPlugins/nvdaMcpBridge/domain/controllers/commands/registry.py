@@ -57,7 +57,9 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 )
 
 
-def build_command_registry(factory: AdapterFactory, nvda_version: str) -> dict[str, CommandHandler]:
+def build_command_registry(
+    factory: AdapterFactory, nvda_version: str, bridge_version: str = "unknown"
+) -> dict[str, CommandHandler]:
     """Construct the command -> handler map for a bridge (one per process).
 
     This is the NVDA bridge, so it stamps its reader identity here: name
@@ -68,7 +70,7 @@ def build_command_registry(factory: AdapterFactory, nvda_version: str) -> dict[s
     reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
     capabilities = list(NVDA_CAPABILITIES)
     registry: dict[str, CommandHandler] = {
-        protocol.Command.HELLO: HelloHandler(factory, reader, capabilities),
+        protocol.Command.HELLO: HelloHandler(factory, reader, capabilities, bridge_version),
         protocol.Command.BYE: ByeHandler(),
         protocol.Command.PING: PingHandler(),
         protocol.Command.ECHO: EchoHandler(),

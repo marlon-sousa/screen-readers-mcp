@@ -82,6 +82,10 @@ type connectResult struct {
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
 	ReaderLogPath string   `json:"readerLogPath"`
+	// The BRIDGE build answering, distinct from the reader version above. A
+	// live run talks to whatever add-on build is installed, so an agent that
+	// sees odd behaviour can check this before blaming the code.
+	BridgeVersion string `json:"bridgeVersion,omitempty"`
 }
 
 func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -132,6 +136,7 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Synth:         session.Synth,
 		LogPath:       session.LogPath,
 		ReaderLogPath: session.ReaderLogPath,
+		BridgeVersion: session.BridgeVersion,
 	}, nil
 }
 

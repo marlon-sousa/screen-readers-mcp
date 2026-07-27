@@ -246,6 +246,9 @@
         },
         "nvdaLogPath": {
           "type": "string"
+        },
+        "bridgeVersion": {
+          "type": "string"
         }
       },
       "required": [

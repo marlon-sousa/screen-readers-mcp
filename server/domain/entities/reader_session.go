@@ -46,6 +46,14 @@ type ReaderSession struct {
 	// a reader's name in a field name.
 	ReaderLogPath string
 
+	// BridgeVersion is the BRIDGE's own version -- the add-on's, not the
+	// reader's (that is Reader.Version). Worth carrying because the bridge is
+	// installed separately from the code under test: a live run talks to
+	// whatever build was last installed, and a stale one otherwise shows up as
+	// an inexplicable capability mismatch rather than as "old build". Empty or
+	// "unknown" when the bridge could not determine it.
+	BridgeVersion string
+
 	// ProtocolVersion is the wire version the bridge answered with. Recorded
 	// rather than assumed, so a mismatch can be reported naming both sides.
 	ProtocolVersion int
