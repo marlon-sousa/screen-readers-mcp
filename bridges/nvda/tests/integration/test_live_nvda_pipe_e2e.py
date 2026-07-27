@@ -238,6 +238,11 @@ def _run_dialog(agent: Agent) -> Iterator[None]:
 				f"the Run dialog never took focus within 5s (appModule stayed "
 				f"{agent.result('getFocusInfo')['appModule']!r})"
 			)
+		# Let the dialog finish announcing ITSELF before handing over. Focus
+		# arrives before the announcement ends, so a body that immediately takes
+		# a speech index captures the tail of "Run dialog, Type the name of a
+		# program..." and attributes it to whatever it did next.
+		agent.result("waitForSpeechToFinish", timeout=5.0)
 		yield
 	finally:
 		agent.result("pressGesture", gestures=["escape"])
@@ -271,13 +276,11 @@ def test_get_focus_info_reports_real_focus() -> None:
 				f"role should be a stable enum NAME, got {focus['role']!r}"
 			)
 
-			# Typing echoes each character back, which is a real speech path
-			# through a real control -- and it needs no window to exist.
-			start = agent.result("getNextSpeechIndex")["index"]
-			agent.result("typeText", text="abc")
-			agent.result("waitForSpeechToFinish", timeout=3.0)
-			spoken = agent.result("getSpeech", sinceIndex=start)["text"]
-			assert spoken.strip(), "typing into the Run dialog announced nothing"
+			# Deliberately NOT asserting that typing echoes here. Character echo
+			# is a user setting ("speak typed characters"), off on at least one
+			# maintainer's machine, and this test is about getFocusInfo -- an
+			# assertion that fails on someone's keyboard preferences would be
+			# blaming the bridge for the tester's configuration.
 
 		agent.result("bye")
 	finally:
@@ -388,6 +391,17 @@ def test_set_config_changes_nvda_behaviour() -> None:
 
 			agent.result("setConfig", keyPath=key, value=True)
 			with_cap = _speak_a_capital()
+
+		# sayCapForCapitals is only audible through TYPED-CHARACTER ECHO, which
+		# is itself a user setting. With echo off there is simply nothing to
+		# observe, and failing would blame the bridge for the tester's NVDA
+		# configuration -- so say what is actually wrong and skip.
+		if not without and not with_cap:
+			pytest.skip(
+				"NVDA announced nothing for a typed capital in either state, so "
+				"'speak typed characters' is off -- sayCapForCapitals has no "
+				"audible effect to measure. Enable it in Keyboard settings."
+			)
 
 		assert with_cap != without, (
 			"turning sayCapForCapitals on did not change what NVDA spoke for a "
