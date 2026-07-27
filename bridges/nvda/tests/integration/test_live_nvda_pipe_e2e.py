@@ -375,8 +375,29 @@ def test_set_config_changes_nvda_behaviour() -> None:
 		key = _caps_key(agent)
 
 		def _speak_a_capital() -> str:
-			start = agent.result("getNextSpeechIndex")["index"]
+			"""Put a capital A in the field, then ARROW ONTO IT and listen.
+
+			Not "type it and listen to the echo". typeText injects
+			KEYEVENTF.UNICODE events (adapters/nvda_text_typer.py), which carry
+			the character in wScan with no virtual-key -- NVDA's typed-character
+			echo keys off real character-producing keystrokes and never fires
+			for injected text. Reading that silence as "the user has echo
+			switched off" was wrong; the setting was on the whole time.
+
+			Moving the caret over a character makes NVDA announce it through the
+			caret path instead, which is core behaviour rather than a keyboard
+			preference -- so this measures sayCapForCapitals wherever it runs.
+
+			control+a first, so each measurement starts from a field holding
+			exactly one character rather than whatever the previous one left.
+			"""
+			agent.result("pressGesture", gestures=["control+a"])
 			agent.result("typeText", text="A")
+			agent.result("waitForSpeechToFinish", timeout=2.0)
+			# Index taken AFTER the insert, so only the caret announcement lands
+			# in the window.
+			start = agent.result("getNextSpeechIndex")["index"]
+			agent.result("pressGesture", gestures=["leftArrow"])
 			agent.result("waitForSpeechToFinish", timeout=2.0)
 			return agent.result("getSpeech", sinceIndex=start)["text"].strip()
 
@@ -392,17 +413,7 @@ def test_set_config_changes_nvda_behaviour() -> None:
 			agent.result("setConfig", keyPath=key, value=True)
 			with_cap = _speak_a_capital()
 
-		# sayCapForCapitals is only audible through TYPED-CHARACTER ECHO, which
-		# is itself a user setting. With echo off there is simply nothing to
-		# observe, and failing would blame the bridge for the tester's NVDA
-		# configuration -- so say what is actually wrong and skip.
-		if not without and not with_cap:
-			pytest.skip(
-				"NVDA announced nothing for a typed capital in either state, so "
-				"'speak typed characters' is off -- sayCapForCapitals has no "
-				"audible effect to measure. Enable it in Keyboard settings."
-			)
-
+		assert without, "arrowing onto a character announced nothing at all"
 		assert with_cap != without, (
 			"turning sayCapForCapitals on did not change what NVDA spoke for a "
 			f"capital A (both were {without!r}) -- the override never reached NVDA"
