@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import ast
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +39,9 @@ from nvdaMcpBridge.domain.ports.message_channel import Timeout
 #: Same choice as test_live_nvda_e2e.py: speaks in essentially any focus
 #: context, so the capture assertion does not depend on a particular window.
 SPEAKING_GESTURE = "NVDA+t"
+
+#: The Run dialog is hosted by the shell, so NVDA attributes it to explorer.
+RUN_DIALOG_APP_MODULE = "explorer"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -202,6 +207,42 @@ def test_two_sequential_sessions_on_one_server() -> None:
 	assert synths[0]  # a real synth name, stable across sessions
 
 
+
+@contextmanager
+def _run_dialog(agent: Agent) -> Iterator[None]:
+	"""Focus the Run dialog for the body, and ALWAYS dismiss it afterwards.
+
+	The Run dialog is the cheapest real focus this suite can borrow: it is
+	present on every Windows box, it is a plain edit field that echoes typed
+	characters, its app module is a known constant, and Escape puts everything
+	back exactly as it was. Nothing is launched and nothing is left running.
+
+	It replaced opening Notepad, which spawned a process, raced the window
+	appearing (the poll it needed was ~15s of wall clock in the bad case), and
+	left a window on the tester's desktop. None of that bought any coverage.
+
+	The dismissal is in a `finally` because this drives a REAL machine: a failed
+	assertion must not walk away leaving a dialog open over someone's work, and
+	the text typed here is never committed -- Escape, never Enter, so nothing
+	can be executed by accident.
+	"""
+	agent.result("pressGesture", gestures=["windows+r"])
+	try:
+		deadline = time.monotonic() + 5.0
+		while time.monotonic() < deadline:
+			if agent.result("getFocusInfo")["appModule"] == RUN_DIALOG_APP_MODULE:
+				break
+			time.sleep(0.1)
+		else:
+			raise AssertionError(
+				f"the Run dialog never took focus within 5s (appModule stayed "
+				f"{agent.result('getFocusInfo')['appModule']!r})"
+			)
+		yield
+	finally:
+		agent.result("pressGesture", gestures=["escape"])
+
+
 # -- introspection e2e (entry 11.1) ------------------------------------------
 
 
@@ -213,27 +254,31 @@ def test_get_focus_info_reports_real_focus() -> None:
 		result = agent.result("getFocusInfo")
 		assert result["role"], "focus role should be non-empty"
 		assert isinstance(result["states"], list)
-		# Open Notepad to get a known app module.
-		agent.result("pressGesture", gestures=["windows+r"])
-		agent.result("typeText", text="notepad")
-		agent.result("pressGesture", gestures=["enter"])
 
-		# POLL rather than sampling once. `waitForSpeechToFinish` returns when
-		# NVDA stops talking, which happens while the Run dialog is still
-		# closing -- so a single read reliably caught the DESKTOP ("explorer")
-		# instead of Notepad. How long a process takes to appear is a property
-		# of the machine, not of the bridge, so waiting for the condition is the
-		# assertion; the timeout is only there to fail rather than hang.
-		deadline = time.monotonic() + 15.0
-		app_module = None
-		while time.monotonic() < deadline:
-			app_module = agent.result("getFocusInfo")["appModule"]
-			if app_module == "notepad":
-				break
-			time.sleep(0.25)
-		assert app_module == "notepad", (
-			f"focus never reached notepad within 15s (last saw {app_module!r})"
-		)
+		with _run_dialog(agent):
+			focus = agent.result("getFocusInfo")
+			assert focus["appModule"] == RUN_DIALOG_APP_MODULE, (
+				f"expected the Run dialog to be hosted by "
+				f"{RUN_DIALOG_APP_MODULE!r}, got {focus['appModule']!r}"
+			)
+			# The role is asserted as NON-EMPTY and stable rather than as a
+			# specific member: this field's contract is "a stable enum NAME
+			# rather than a localized display string" (spec 0015), and which
+			# member the Run dialog's field reports is a Windows detail that
+			# has changed between releases. Pinning it would test Windows.
+			assert focus["role"], "the Run dialog's field should report a role"
+			assert focus["role"] == focus["role"].upper(), (
+				f"role should be a stable enum NAME, got {focus['role']!r}"
+			)
+
+			# Typing echoes each character back, which is a real speech path
+			# through a real control -- and it needs no window to exist.
+			start = agent.result("getNextSpeechIndex")["index"]
+			agent.result("typeText", text="abc")
+			agent.result("waitForSpeechToFinish", timeout=3.0)
+			spoken = agent.result("getSpeech", sinceIndex=start)["text"]
+			assert spoken.strip(), "typing into the Run dialog announced nothing"
+
 		agent.result("bye")
 	finally:
 		agent.close()
@@ -332,11 +377,17 @@ def test_set_config_changes_nvda_behaviour() -> None:
 			agent.result("waitForSpeechToFinish", timeout=2.0)
 			return agent.result("getSpeech", sinceIndex=start)["text"].strip()
 
-		agent.result("setConfig", keyPath=key, value=False)
-		without = _speak_a_capital()
+		# Type into the Run dialog, not into "whatever happens to have focus".
+		# The old form typed a capital A into the tester's foreground window --
+		# their editor, their terminal, their email -- which is both a way to
+		# corrupt someone's work and a way to get a flaky result, since not
+		# every control echoes typed characters.
+		with _run_dialog(agent):
+			agent.result("setConfig", keyPath=key, value=False)
+			without = _speak_a_capital()
 
-		agent.result("setConfig", keyPath=key, value=True)
-		with_cap = _speak_a_capital()
+			agent.result("setConfig", keyPath=key, value=True)
+			with_cap = _speak_a_capital()
 
 		assert with_cap != without, (
 			"turning sayCapForCapitals on did not change what NVDA spoke for a "
