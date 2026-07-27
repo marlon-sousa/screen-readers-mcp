@@ -160,10 +160,22 @@ def test_get_focus_info_reports_real_focus() -> None:
 		agent.result("pressGesture", gestures=["windows+r"])
 		agent.result("typeText", text="notepad")
 		agent.result("pressGesture", gestures=["enter"])
-		agent.result("waitForSpeechToFinish", timeout=3.0)
-		result = agent.result("getFocusInfo")
-		assert result["appModule"] == "notepad", (
-			f"expected notepad, got {result['appModule']!r}"
+
+		# POLL rather than sampling once. `waitForSpeechToFinish` returns when
+		# NVDA stops talking, which happens while the Run dialog is still
+		# closing -- so a single read reliably caught the DESKTOP ("explorer")
+		# instead of Notepad. How long a process takes to appear is a property
+		# of the machine, not of the bridge, so waiting for the condition is the
+		# assertion; the timeout is only there to fail rather than hang.
+		deadline = time.monotonic() + 15.0
+		app_module = None
+		while time.monotonic() < deadline:
+			app_module = agent.result("getFocusInfo")["appModule"]
+			if app_module == "notepad":
+				break
+			time.sleep(0.25)
+		assert app_module == "notepad", (
+			f"focus never reached notepad within 15s (last saw {app_module!r})"
 		)
 		agent.result("bye")
 	finally:
