@@ -459,9 +459,112 @@ make the port pointless for testing.
 
 ## Dev commands
 
-Requires [uv](https://docs.astral.sh/uv/). **The bare `python` launcher on this
-machine is broken** (it points at a non-existent Python310) — always use `uv
-run` or `py -3.13`, never `python`.
+Requires [uv](https://docs.astral.sh/uv/). **Run the doctor first, before
+anything else** — including before your first search or test run:
+
+```sh
+uv run poe doctor    # is this machine able to work the repo?
+uv run poe fix       # repair what it found (reinstalls the project venvs)
+```
+
+**The rule, for agents: if `poe doctor` fails, fix the environment before doing
+anything else — do not build, do not test, do not diagnose code.** A failing
+doctor means the tools are lying to you, so every result you gather is
+worthless and every conclusion you draw from it is guesswork presented as fact.
+This is enforced, not merely advised: every task depends on a fast subset of the
+doctor and aborts with a non-zero exit if it fails, so `poe bridge` on a broken
+environment refuses to run rather than producing a green tick you should not
+believe.
+
+It is not ceremony. Every check in it corresponds to something that has already
+cost someone hours, because the symptom pointed nowhere near the cause:
+
+| Symptom | Real cause |
+|---|---|
+| ~140 phantom `Import "pytest" could not be resolved` from pyright | pyright had no venv configured, so it analysed against the wrong interpreter |
+| `uv trampoline failed to canonicalize script path` | a stale console-script shim; names neither the tool nor the fix |
+| A search returns thousands of `site-packages/...` lines | no ripgrep, so it fell back to `grep -r`, which ignores `.gitignore` |
+| The bridge behaves like an older wire contract | `addon/…/protocol.py` is a **copy**; `sync_shared.py` had not been re-run |
+| `scons` fails late in the addon build | `msgfmt`/`markdown` missing |
+
+A red doctor makes green tests and red tests equally uninformative. Fix it
+first.
+
+### The task list
+
+One definition of "green", runnable locally and in CI:
+
+```sh
+uv run poe ci            # everything, in CI's order — ~30s
+uv run poe bridge        # bridge headless tests (the usual inner loop)
+uv run poe shared        # shared wire-contract tests
+uv run poe types         # pyright strict, both Python projects
+uv run poe go            # go build, vet, test, -tags integration
+uv run poe gates         # schema + wire-binding drift
+uv run poe conformance   # the real Go binary against the real Python bridge
+uv run poe lint          # ruff (see the caveat below)
+uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
+```
+
+**`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
+gestures, open the Run dialog, type into whatever currently has focus, and
+change the reader's configuration -- on the machine you are sitting at. They
+were previously harmless only by accident: they skip when nothing is listening
+on the pipe, so nobody noticed until a developer ran the suite with their own
+NVDA and bridge up and had their screen reader commandeered mid-task. For a
+blind developer that is not a nuisance, it is losing control of the machine.
+They are now marked `live_nvda` and excluded by `addopts`; running them is an
+explicit act. Never add them to `ci`.
+
+`poe ci` is the one to run before saying something works. It is deliberately the
+same set, in the same order, that `.github/workflows/ci.yml` runs.
+
+Every task except `doctor`, `fix` and `check` itself is gated on `check` (the
+fast doctor subset, ~1s, silent when it passes). The three diagnostics are
+exempt on purpose: gating the tool that reports a broken environment on that
+same environment would make the breakage unreportable.
+
+**Tool minimums are floors, never pins.** The doctor fails a tool that is *below*
+the version this repo needs and is silent about anything newer, so upgrading is
+always safe and nothing here ever has to be revisited because a tool moved
+forward. Each minimum exists for a stated reason -- `gh` below 2.55 cannot edit
+a PR body, `go` tracks `server/go.mod` -- and gettext is presence-only, because
+its Windows builds report versions that do not order against the GNU ones and a
+comparison that gives wrong answers is worse than none.
+
+**`poe lint` is not part of `poe ci`, and that is honest, not an oversight.**
+Ruff is configured and now installed, but no CI workflow has ever run it and
+there is a pre-existing backlog of violations (mostly import ordering and the
+tab/space split across older files). Until that backlog is cleared, a green
+`poe lint` is not achievable and wiring it into `ci` would just train people to
+ignore a red gate. Specs that list "ruff green" in their definition of done are
+describing an intent, not a gate that runs.
+
+### Notes for agents specifically
+
+- **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep
+  honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
+  both ignored and both enormous. One careless `grep -r` returns hundreds of
+  irrelevant `site-packages` paths.
+- **Prefer the Bash tool over PowerShell** for anything whose output you intend
+  to read. Windows PowerShell 5.1 has no `&&`/`||`, and wraps every native
+  stderr line in a multi-line `ErrorRecord` (`CategoryInfo`,
+  `FullyQualifiedErrorId`, a caret diagram) — so a one-line failure costs a
+  dozen lines to report. It also reports failure on exit code 0 when a native
+  command writes to stderr. Install PowerShell 7 (`pwsh`) if you want the
+  PowerShell tool to behave; the doctor warns when it is missing.
+- **Don't tail command output when diagnosing a failure.** The error is usually
+  the *first* line; `| tail` hides it behind a usage banner. (This cost a real
+  debugging round on `poe` itself.)
+- Invoke Python tools as `python -m pytest` / `-m pyright` / `-m ruff` rather
+  than the console scripts — no trampoline to go stale.
+- The PowerShell tool's working directory does not reliably persist between
+  calls in this harness. Use absolute paths, or `Set-Location` inside each
+  command.
+
+### The underlying commands
+
+`poe` is a thin wrapper; these are what it runs, if you need one directly:
 
 ```sh
 # shared wire contract (no NVDA needed)

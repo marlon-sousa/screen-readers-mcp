@@ -36,7 +36,7 @@ picture.
 | **Windows** | 10/11 | The add-on and any live test need it. The server and the shared wire binding are cross-platform, but the full system is driven on Windows. |
 | **Go** | 1.25+ (matches `server/go.mod`) | Builds the server. Static binary — `CGO_ENABLED=0`, no C toolchain needed. |
 | **[uv](https://docs.astral.sh/uv/)** | current | Runs and isolates every Python part (shared wire, bridge tests, schema generation). |
-| **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. **The bare `python` launcher on the maintainer's machine is broken** — always use `uv run` or `py -3.13`, never `python`. |
+| **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. Prefer `uv run` or `py -3.13` over a bare `python`, whose meaning varies per machine — `uv run poe doctor` reports what yours actually resolves to. |
 | **NVDA (installed)** | **2026.1.0** or later | The minimum supported version (`bridges/nvda/buildVars.py`, `addon_minimumNVDAVersion`). A live test needs a running copy. |
 | **NVDA source checkout** | the version you target (≥ 2026.1.0) | A **reference for reading real NVDA APIs**, checked out as a sibling of this repo at [`../nvda`](../nvda). There is no NVDA source *dependency* in the build or the headless tests — the NVDA edge is exempt from the type check — but developing or reviewing an adapter means verifying API contracts against real code (see the `nvda-headless-testing` approach in `AGENTS.md`). |
 | **scons + add-on build deps** | per `bridges/nvda/` | Builds the `.nvda-addon`. |
@@ -50,7 +50,32 @@ git clone --branch release-2026.1 https://github.com/nvaccess/nvda.git nvda
 
 ## Running the headless suites
 
-These need no NVDA and are what CI runs. Run them before every PR.
+These need no NVDA. **From the repo root** — every task names its own
+subproject, so the directory you run from is always the same one:
+
+```sh
+uv run poe doctor    # is this machine able to work the repo? run this first
+uv run poe ci        # everything CI runs, in CI's order (~30s)
+uv run poe bridge    # just the bridge suite, for a fast inner loop (~5s)
+uv run poe           # list every task
+```
+
+`poe ci` is what to run before opening a PR. Every task first runs a fast
+environment check and **refuses to run if it fails** — a broken toolchain makes
+passing and failing tests equally uninformative, so it is better to stop than to
+hand you a result you cannot trust. `uv run poe fix` repairs the common causes.
+
+Live-NVDA tests are **excluded by default** and are not part of `ci`. They drive
+the real NVDA on your machine — pressing gestures, opening dialogs, typing into
+whatever has focus, changing reader settings. Run them only deliberately, and
+only when you are ready for your screen reader to be taken over:
+
+```sh
+uv run poe live
+```
+
+<details>
+<summary>The underlying commands, if you need one directly</summary>
 
 ```sh
 # Shared wire contract
@@ -66,6 +91,7 @@ py -3.13 bridges/nvda/sync_shared.py
 uv run --directory bridges/nvda pytest
 uv run --directory bridges/nvda pyright
 ```
+</details>
 
 One tier is Windows-only and opts in explicitly — the cross-language
 **conformance** run, the built server binary against the *real* Python bridge

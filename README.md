@@ -53,20 +53,21 @@ Requires [uv](https://docs.astral.sh/uv/). No NVDA checkout is needed for any
 of it: the bridge's domain is pure Python and its NVDA edge is exempt from the
 type check (see [AGENTS.md](AGENTS.md)).
 
+From the repo root:
+
 ```sh
-# Shared wire contract
-uv run --directory shared pytest
-uv run --directory shared pyright
+uv run poe doctor    # check the machine can work the repo -- run this first
+uv run poe ci        # every headless suite, type check and drift gate (~30s)
+uv run poe bridge    # just the bridge suite, for a fast inner loop
+uv run poe           # list every task
 
-# Server (Go; tests use a fake bridge)
-go -C server test ./...
-go -C server vet ./...
-
-# Bridge add-on: sync the shared wire module in, then headless tests + type check
-py -3.13 bridges/nvda/sync_shared.py
-uv run --directory bridges/nvda pytest
-uv run --directory bridges/nvda pyright   # or: cd bridges/nvda && scons   to build the .nvda-addon
+cd bridges/nvda && scons    # build the .nvda-addon
 ```
+
+`poe live` exists too, and is the only task that touches your machine: it drives
+a real NVDA. It is excluded from `ci` and from the default test run.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the underlying commands.
 
 Wire the server into Claude Code from source:
 

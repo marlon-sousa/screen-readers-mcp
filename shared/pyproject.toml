@@ -11,7 +11,7 @@ authors = [{ name = "Marlon Brandao de Sousa", email = "marlon.bsousa@gmail.com"
 dependencies = []
 
 [dependency-groups]
-dev = ["pytest>=8", "pyright>=1.1.390"]
+dev = ["pytest>=8", "pyright>=1.1.390", "ruff>=0.8"]
 
 [build-system]
 requires = ["hatchling"]
@@ -36,3 +36,9 @@ ignore = ["W191"]  # tabs, per the NVDA/addon house style
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
 include = ["nvda_mcp_wire", "tests"]
+
+# Which environment to resolve imports against. Without it pyright uses whatever
+# interpreter it inherits, and reports every test import as unresolved under a
+# bare invocation while reporting none under `uv run --with pytest`.
+venvPath = "."
+venv = ".venv"
