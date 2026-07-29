@@ -330,6 +330,18 @@ proves a *real* adapter behaves like its fake; they do not run in CI.
 Keep test module basenames unique across the tree (pytest's prepend import mode
 requires it). Mirroring gives that for free, since source basenames are unique.
 
+### Driving a live NVDA — three things that cost real time
+
+A live-NVDA run drives the machine a **blind developer is currently using**. Everything below was learned by getting it wrong on the maintainer's own desktop.
+
+**Announce every phase transition, not just the start.** `announce()` is the only channel the tester has. Without it, focus moves, dialogs open and keys are typed with no explanation — which for a screen-reader user is indistinguishable from their machine misbehaving. Announce *before* the action, including before verification steps, not only before the ones you hand over.
+
+**Prime the control, then set the override — never the reverse.** A settings dialog reads its values when it *opens*. If a dialog is already open when an override is set, pressing OK writes the **pre-override** value back, which the hook faithfully captures into the override map — so the override looks displaced when it was simply overwritten, exactly as spec 0015 documents. This reads as a failure of the write hook and is not one. Sit on the control first.
+
+**The 120s inactivity watchdog invalidates any step with human work between the override and the check.** `ping` deliberately does not reset it (`command_handler.py:38-41`: it proves liveness, not that the agent is still testing). A session dies while the tester navigates a dialog, silently discarding the override, and the result reads as "the override did not survive a profile switch". Either prime the tester so the gap is seconds, or drive the whole step from the agent. Most steps turn out to be agent-drivable: `get_config`, `get_speech` and `get_focus_info` make the assertions without anyone needing to *hear* anything, so reserve the human for what genuinely needs hands or ears.
+
+Corollary worth remembering: `setConfig` can enable a setting a test needs and teardown restores it, so "the tester's configuration is wrong for this test" is usually solvable without asking them to change anything.
+
 ### Doubles are hand-written stateful fakes, not mocks
 
 One per port, in `tests/fakes/` (one file per fake, mirroring the port's
