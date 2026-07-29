@@ -516,7 +516,18 @@ uv run poe gates         # schema + wire-binding drift
 uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe lint          # ruff (see the caveat below)
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
+uv run poe build         # both deliverables: the server binary and the .nvda-addon
 ```
+
+**Rebuild the server binary after touching `server/`.** `.mcp.json` spawns
+`server/screenreader-mcp.exe`, so an agent that edits Go code and then drives
+the MCP tools is testing the OLD server against the NEW bridge. The symptom is
+a field simply missing from a result, which reads as "the bridge did not send
+it" rather than "your binary predates it" -- that is exactly how `bridgeVersion`
+went unnoticed through an entire live checklist. `poe doctor` now fails when the
+binary is older than any `server/*.go`, and **a rebuild alone is not enough**:
+the MCP client spawned the old process at startup, so the connection has to be
+restarted too.
 
 **`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
 gestures, open the Run dialog, type into whatever currently has focus, and
@@ -602,6 +613,7 @@ go -C server test -tags conformance -count=1 ./tests/conformance/
 py -3.13 bridges/nvda/sync_shared.py
 uv run --directory bridges/nvda pytest       # headless domain tests
 uv run --directory bridges/nvda pyright
+# builds: prefer `uv run poe build-server` / `build-addon` (same commands, one entry point)
 cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
 ```
 

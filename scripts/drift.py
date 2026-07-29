@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -70,12 +71,19 @@ def schema_gate() -> bool:
 def binding_gate() -> bool:
 	"""`go generate` must be a no-op against the committed binding."""
 	before = BINDING.read_bytes()
+	before_stat = BINDING.stat()
 	code, _out, err = _run(["go", "-C", str(ROOT / "server"), "generate", "./adapters/wire"])
 	if code != 0:
 		print("  FAIL  wire binding  go generate failed:", err.splitlines()[-1] if err else code)
 		return False
 	after = BINDING.read_bytes()
 	if before == after:
+		# Restore the ORIGINAL mtime. `go generate` rewrites the file whether or
+		# not the content changed, and the doctor decides the MCP server binary
+		# is stale by comparing it against the newest server/*.go -- so running
+		# this gate would make the binary look stale and fail the very next task.
+		# A gate that manufactures work for another gate is worse than no gate.
+		os.utime(BINDING, (before_stat.st_atime, before_stat.st_mtime))
 		print("  PASS  wire binding  go generate is a no-op")
 		return True
 	print("  FAIL  wire binding  wire.gen.go was stale and has just been regenerated")

@@ -83,6 +83,32 @@ sequence = [
 	{ cmd = "go -C server test -tags integration ./..." },
 ]
 
+# -- builds ------------------------------------------------------------------
+#
+# Every build lives here, so "how do I produce the thing" has one answer. The
+# `go`/`scons` inside a task is just the tool poe drives, the same way `bridge`
+# drives pytest -- what matters is that nobody has to remember the incantation
+# or which directory to stand in.
+
+# NOT gated on `check`, deliberately: the doctor FAILS when this binary is
+# stale, so gating the task that rebuilds it on that same check deadlocks --
+# the only way to fix the failure refuses to run because of the failure. Same
+# rule as doctor/fix/check themselves: a remediation task is never gated on the
+# condition it remediates.
+[tool.poe.tasks.build-server]
+help = "Rebuild the MCP server binary that .mcp.json spawns (restart the MCP connection after)"
+cmd = "go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp"
+
+# Ungated for the same reason: sconstruct runs sync_shared.sync(), which is what
+# repairs the doctor's "shared module synced" check.
+[tool.poe.tasks.build-addon]
+help = "Build the .nvda-addon (then install it in NVDA and restart it)"
+cmd = "scons -C bridges/nvda"
+
+[tool.poe.tasks.build]
+help = "Build both deliverables: the MCP server binary and the .nvda-addon"
+sequence = ["build-server", "build-addon"]
+
 # -- the gates that catch generated-artifact drift ---------------------------
 
 [tool.poe.tasks.gates]

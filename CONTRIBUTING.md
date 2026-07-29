@@ -115,7 +115,7 @@ once:
 ### 1. Build the server binary
 
 ```sh
-go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp
+uv run poe build-server
 ```
 
 No arguments are ever needed to reach a local NVDA: the binary ships knowing the
@@ -125,7 +125,7 @@ default endpoints (`--print-default-config` shows them).
 
 ```sh
 py -3.13 bridges/nvda/sync_shared.py     # copy the shared wire module in
-cd bridges/nvda && scons                 # produces nvdaMcpBridge-<version>.nvda-addon
+uv run poe build-addon                   # produces nvdaMcpBridge-<version>.nvda-addon
 ```
 
 Open the built `.nvda-addon` with NVDA and restart when prompted. Reinstalling a
