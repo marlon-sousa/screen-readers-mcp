@@ -1,9 +1,12 @@
 # Spec 0016 — human-in-the-loop (entry 11.2)
 
-Status: **drafted 2026-07-23, awaiting review.** Not yet agreed in
-conversation; no code written. Deliberately scheduled **after** the real-world
-run (entry 11b), so the run can say whether the cheap shape below is enough
-before the expensive one is built.
+Status: **agreed in conversation 2026-07-29, with one question still open** —
+the sequencing of the heartbeat fix (see "The heartbeat fix", below). Everything
+else is decided and ready to implement. No code written.
+
+Scheduled **after** the real-world run (entry 11b) so the run could say whether
+the cheap shape below is enough before the expensive one is built. It ran, and
+nothing in it showed a need to build stage 2 — see that section.
 
 ## Goal
 
@@ -53,7 +56,7 @@ the filter). But:
 5. It also forecloses [spec 0017](0017-observe-only-control.md) entirely:
    observe-and-interfere requires one live session throughout, by definition.
 
-## Decided — proposed
+## Decided
 
 ### The mechanism is suspending suppression, not ending the session
 
@@ -82,9 +85,24 @@ record rather than being a mystery.
 
 ### The window is opened by `askUser` and closed automatically
 
-Three ways it closes, all of them: the human answers, the timeout expires, or the
-session tears down. The window is exactly the interaction, so there is no
-suspended state the agent can leak or forget to close.
+Three ways it closes, all of them: the human answers, **the window's own
+lifetime expires**, or the session tears down. The window is exactly the
+interaction, so there is no suspended state the agent can leak or forget to
+close.
+
+**Decided 2026-07-29 — the window's lifetime is its own, not the poll's.** The
+draft said "the timeout expires" without saying which, and the two candidates
+behave very differently. If a `waitForUserReply` timeout closed the window, the
+window would die on the first poll miss and the whole present-then-poll shape
+would collapse. So it does not: a poll miss is just a miss.
+
+`UserPrompt` therefore carries an absolute deadline, defaulting to **300
+seconds**, set when `askUser` mints it. On expiry the prompt is marked cancelled
+and the speech source resumed, so the next poll returns a clean
+`answered: false` against a closed window rather than waiting forever. Without
+this bound an agent that stops polling would leave capture suspended
+indefinitely — the exact half-suspended failure that `suspendCapture` was
+rejected for, arrived at by another route.
 
 An explicit `suspendCapture`/`resumeCapture` pair was considered and is **not**
 in this entry. It is more flexible — "go do this multi-step thing by hand and
@@ -123,17 +141,66 @@ client's own tool timeout.
 The prompt is presented **once**, tied to the ticket, so re-polling does not
 re-nag the human.
 
-### The heartbeat fix is a separate, independent bug
+### Three timeouts, and how a window survives them — **Decided 2026-07-29**
+
+Polling is not merely one valid shape here; it is **what keeps the session
+alive**, and that is load-bearing enough to state rather than leave implicit.
+
+| Timeout | Reset by | What it bounds |
+|---|---|---|
+| heartbeat, 30 s | any message, `ping` included | each **poll's own timeout** |
+| inactivity, 120 s | real commands only (`ping` sets `resets_inactivity = False`) | the agent's **poll interval** |
+| window lifetime, 300 s | nothing — absolute, from `askUser` | how long the human gets |
+
+Trace each way it can go wrong and the composition is already correct, so **no
+change to the watchdogs is part of this entry**:
+
+- **The agent abandons the session.** Inactivity fires at 120 s, teardown runs,
+  `stop()` unregisters the filter, and **the tester gets their speech back.**
+  This is why the inactivity watchdog must *not* be suspended for the window: it
+  is the last thing that rescues a blind user whose agent died mid-question.
+- **The human never answers while the agent waits patiently.** The window's own
+  deadline expires, the source resumes, the prompt is cancelled, and the next
+  poll returns a clean negative.
+- **The human answers.** The window closes normally.
+
+Note the consequence: a window can only outlive 120 s *if the agent is still
+polling*, so the window deadline is only ever reached in the case where someone
+is genuinely waiting — which is exactly when it should be.
+
+### The heartbeat fix — **OPEN, to be resolved before implementation**
 
 While a handler runs, the peer's silence is *our* doing, not evidence it died.
 `_dispatch` should refresh the heartbeat when it returns, not only before it is
-called. This is a latent bug today, independent of this entry:
-`waitForSpeech` with a caller-supplied `timeout: 40` kills the session, despite
-`wait_for_speech.py`'s comment asserting the timeout is "well below the watchdog
-windows" — nothing enforces that.
+called. Verified still present on main: `session.py:146-148` touches the
+heartbeat, dispatches, then checks the deadline — so `waitForSpeech` with a
+caller-supplied `timeout: 40` kills the session the instant it answers, despite
+`wait_for_speech.py`'s comment asserting timeouts stay "well below the watchdog
+windows" with nothing enforcing it.
 
-It rides here because this entry is what makes long handlers ordinary, but it
-should be reviewed on its own merits and could land separately.
+Two sub-decisions, and the second matters more than it looks:
+
+**(a) Refresh the heartbeat after dispatch.** Not contentious — this is the bug.
+
+**(b) Also refresh *inactivity* after dispatch?** `_last_command_time` is set
+*before* `handler.execute()`, so a handler blocking 300 s trips inactivity even
+with (a) fixed. Proposed: **no.** Inactivity means "has the agent abandoned this
+session", and per the table above it is the last backstop that frees a blind
+user's speech filter. A backstop a hanging handler can defeat is not a backstop.
+Handlers carry their own timeouts; this one should stay measured from dispatch
+start.
+
+**What is open is the sequencing, not the fix.** The proposal is to land (a)
+alone and first, in its own PR with a regression test — a handler that blocks
+past the heartbeat window must not end the session — because it is a live bug
+today, independent of this entry, and reviewable on its own merits.
+
+**Whichever way that goes, it does not change this entry's design.** Even with
+unlimited blocking at the bridge, `DefaultCallTimeout` is 15 s in the Go client
+and the MCP client imposes its own tool timeout — **timeouts this project does
+not own**. A blocking `askUser` would die at the server or the client regardless.
+Present-then-poll is required by those, not by the heartbeat, and must not be
+"simplified" away later on the grounds that the heartbeat was fixed.
 
 ### The reply is an acknowledgement gesture first, a dialog only if needed
 
@@ -157,6 +224,15 @@ and not a re-spec of the command. Build it when a real run shows "press a key
 when you're done" was insufficient — which is a question 11b answers and
 speculation does not.
 
+**Decided 2026-07-29: stage 1 only.** The 11b run happened and showed no case
+needing a typed reply. A later observation sharpened why: in a session driven
+from an agent chat window, every human-in-the-loop moment was "do this, then
+tell me" — a hand-back, not an answer, and the human answered in the chat
+because they were sitting at it. The gesture exists for the case the chat cannot
+serve: a tester inside the application under test, in a silent session, who
+cannot reach the chat window at all. Nothing yet shows they need to *say*
+something once they get there.
+
 ### It is one new capability, `interact`
 
 Covering `announce`, `askUser` and `waitForUserReply`. `Capability.ANNOUNCE`
@@ -168,8 +244,13 @@ bridge author will want to make. v1 is pre-release and amendable in place
 (protocol.md §8) and the only consumer is this repo, so the rename is cheap —
 but it does touch `protocol.py`, `schema.json`, the Go binding, the domain
 capability constant, the handshake mapping and the conformance bridge, so it is
-not free either. **Flagged for review**: keeping `announce` and adding
-`interact` alongside is the smaller diff and the uglier vocabulary.
+not free either.
+
+**Decided 2026-07-29: rename.** Entry 11.1 widened `NVDA_CAPABILITIES` and the
+cost of that ripple is now known rather than guessed — it is mechanical, and the
+conformance expectations are the only place it is easy to forget. Paying a known
+one-off diff to avoid permanently uglier vocabulary is the right trade while v1
+is pre-release and this repo is the only consumer.
 
 ## Wire contract changes
 
@@ -193,8 +274,11 @@ remedies, the same reasoning as the server's `CapabilityError` distinguishing
 ### Bridge — domain (strict-checked)
 
 1. **`domain/entities/user_prompt.py`** — entity. One outstanding ask: its
-   ticket, prompt, answered flag and answer text, guarded by a lock because the
-   NVDA main thread writes the answer while the session thread polls it. Holds a
+   ticket, prompt, answered flag, answer text and **absolute deadline** (300 s
+   from minting; see "The window is opened by `askUser`"), guarded by a lock
+   because the NVDA main thread writes the answer while the session thread
+   polls it. An expired prompt answers `answered: false` and is cancelled
+   rather than waited on. Holds a
    `_wait(predicate, timeout)` loop against the injected `Clock`, mirroring
    `IndexedBuffer._wait` — same poll cadence, same fake-clock testability.
 2. **`domain/ports/user_prompter.py`** — port. `present(prompt, ticket)` and
@@ -206,7 +290,11 @@ remedies, the same reasoning as the server's `CapabilityError` distinguishing
    asks the prompter to present, returns the ticket. Returns immediately.
 4. **`domain/controllers/commands/wait_for_user_reply.py`** —
    `WaitForUserReplyHandler`. Looks the ticket up, waits on the entity, and on a
-   real answer resumes the speech source and clears the outstanding prompt.
+   real answer resumes the speech source and clears the outstanding prompt. A
+   poll miss leaves the window open — only an answer, the window deadline or
+   teardown closes it. On finding an expired prompt it resumes, clears, and
+   returns `answered: false`, so the window cannot outlive its deadline merely
+   because nobody polled during it.
 5. **`domain/controllers/commands/session_context.py`** — gains the single
    outstanding `UserPrompt | None` and the accessors for it. One at a time: a
    second `askUser` while one is outstanding is a `CommandError`, because two
