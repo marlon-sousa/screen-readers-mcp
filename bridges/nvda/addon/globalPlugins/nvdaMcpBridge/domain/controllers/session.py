@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Mapping
 
 from ... import protocol
+from ..ports.config_accessor import ConfigError
 from ..ports.gesture_sender import GestureError
 from ..ports.message_channel import ChannelClosed, Timeout
 from .commands.command_handler import CommandError
@@ -207,7 +208,7 @@ class Session:
 
 		try:
 			result = handler.execute(self._ctx, request)
-		except (protocol.ValidationError, GestureError, CommandError) as exc:
+		except (protocol.ValidationError, GestureError, ConfigError, CommandError) as exc:
 			self._reply_command_error(request.id, str(exc))
 			return
 		except Exception as exc:  # a handler blew up unexpectedly; the session survives
@@ -246,6 +247,10 @@ class Session:
 			# restore, because none was ever swapped.
 			self._guard(ctx.adapters.speech_source.stop)
 			self._guard(ctx.adapters.braille_source.stop)
+			# Restore every config key this session touched (spec 0015,
+			# entry 11.1). Guarded so a failed restore never skips the
+			# remaining teardown steps.
+			self._guard(ctx.adapters.config_accessor.restore_all)
 		self._guard(lambda: self._transcript.session_closed(reason.value))
 		if self._state is _State.ESTABLISHED:
 			# Two descending tones: control released. Only if a session actually

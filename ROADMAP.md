@@ -342,8 +342,8 @@ rather than before it.
     NVDA adapters, and re-widening `NVDA_CAPABILITIES` to announce `focus`,
     `state` and `config` — at which point the server's four already-built tools
     light up with no server change at all. Needs live NVDA. Spec:
-    `0015-bridge-introspection.md` (drafted, awaiting review; rides in 11.1's own
-    PR). Scope: RFC 0001 milestone 5.
+    `0015-bridge-introspection.md` (agreed 2026-07-25; rides in 11.1's branch).
+    Scope: RFC 0001 milestone 5.
 11.2. **E, human-in-the-loop** (both lanes). The agent asks the tester for
     something it cannot supply itself — a password, a CAPTCHA, a physical act —
     and gets an answer back, without ending the session. Needs live NVDA. Spec:

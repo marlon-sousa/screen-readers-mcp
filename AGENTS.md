@@ -330,6 +330,18 @@ proves a *real* adapter behaves like its fake; they do not run in CI.
 Keep test module basenames unique across the tree (pytest's prepend import mode
 requires it). Mirroring gives that for free, since source basenames are unique.
 
+### Driving a live NVDA — three things that cost real time
+
+A live-NVDA run drives the machine a **blind developer is currently using**. Everything below was learned by getting it wrong on the maintainer's own desktop.
+
+**Announce every phase transition, not just the start.** `announce()` is the only channel the tester has. Without it, focus moves, dialogs open and keys are typed with no explanation — which for a screen-reader user is indistinguishable from their machine misbehaving. Announce *before* the action, including before verification steps, not only before the ones you hand over.
+
+**Prime the control, then set the override — never the reverse.** A settings dialog reads its values when it *opens*. If a dialog is already open when an override is set, pressing OK writes the **pre-override** value back, which the hook faithfully captures into the override map — so the override looks displaced when it was simply overwritten, exactly as spec 0015 documents. This reads as a failure of the write hook and is not one. Sit on the control first.
+
+**The 120s inactivity watchdog invalidates any step with human work between the override and the check.** `ping` deliberately does not reset it (`command_handler.py:38-41`: it proves liveness, not that the agent is still testing). A session dies while the tester navigates a dialog, silently discarding the override, and the result reads as "the override did not survive a profile switch". Either prime the tester so the gap is seconds, or drive the whole step from the agent. Most steps turn out to be agent-drivable: `get_config`, `get_speech` and `get_focus_info` make the assertions without anyone needing to *hear* anything, so reserve the human for what genuinely needs hands or ears.
+
+Corollary worth remembering: `setConfig` can enable a setting a test needs and teardown restores it, so "the tester's configuration is wrong for this test" is usually solvable without asking them to change anything.
+
 ### Doubles are hand-written stateful fakes, not mocks
 
 One per port, in `tests/fakes/` (one file per fake, mirroring the port's
@@ -504,7 +516,18 @@ uv run poe gates         # schema + wire-binding drift
 uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe lint          # ruff (see the caveat below)
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
+uv run poe build         # both deliverables: the server binary and the .nvda-addon
 ```
+
+**Rebuild the server binary after touching `server/`.** `.mcp.json` spawns
+`server/screenreader-mcp.exe`, so an agent that edits Go code and then drives
+the MCP tools is testing the OLD server against the NEW bridge. The symptom is
+a field simply missing from a result, which reads as "the bridge did not send
+it" rather than "your binary predates it" -- that is exactly how `bridgeVersion`
+went unnoticed through an entire live checklist. `poe doctor` now fails when the
+binary is older than any `server/*.go`, and **a rebuild alone is not enough**:
+the MCP client spawned the old process at startup, so the connection has to be
+restarted too.
 
 **`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
 gestures, open the Run dialog, type into whatever currently has focus, and
@@ -590,6 +613,7 @@ go -C server test -tags conformance -count=1 ./tests/conformance/
 py -3.13 bridges/nvda/sync_shared.py
 uv run --directory bridges/nvda pytest       # headless domain tests
 uv run --directory bridges/nvda pyright
+# builds: prefer `uv run poe build-server` / `build-addon` (same commands, one entry point)
 cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
 ```
 

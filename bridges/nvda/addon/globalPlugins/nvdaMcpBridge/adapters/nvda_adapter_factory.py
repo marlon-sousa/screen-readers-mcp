@@ -11,29 +11,35 @@
 # of the factory: silent mode captures via the speak() FILTER and suppresses the
 # audio while leaving the real synth loaded (NvdaSilentSpeechSource); live mode
 # observes the pre_speechQueued hook and lets the real synth talk. Neither mode
-# swaps the synth -- there is no synth swapper. Braille and the gesture sender are
-# mode-independent.
+# swaps the synth -- there is no synth swapper. Braille, gestures, typing,
+# focus, state and config are mode-independent.
 
 from __future__ import annotations
 
 from .. import protocol
 from ..domain.ports.adapter_factory import AdapterFactory, AdapterSet
 from .nvda_braille_source import NvdaBrailleSource
+from .nvda_config_accessor import NvdaConfigAccessor
+from .nvda_focus_inspector import NvdaFocusInspector
 from .nvda_gesture_sender import NvdaGestureSender
 from .nvda_live_speech_source import NvdaLiveSpeechSource
 from .nvda_silent_speech_source import NvdaSilentSpeechSource
+from .nvda_state_inspector import NvdaStateInspector
 from .nvda_text_typer import NvdaTextTyper
 
 
 class NvdaAdapterFactory(AdapterFactory):
-	"""Assembles the real NVDA-backed AdapterSet for the negotiated capture mode."""
+    """Assembles the real NVDA-backed AdapterSet for the negotiated capture mode."""
 
-	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
-		silent = mode is protocol.CaptureMode.SILENT
-		speech_source = NvdaSilentSpeechSource() if silent else NvdaLiveSpeechSource()
-		return AdapterSet(
-			speech_source=speech_source,
-			braille_source=NvdaBrailleSource(),
-			gesture_sender=NvdaGestureSender(),
-			text_typer=NvdaTextTyper(),
-		)
+    def build(self, mode: protocol.CaptureMode) -> AdapterSet:
+        silent = mode is protocol.CaptureMode.SILENT
+        speech_source = NvdaSilentSpeechSource() if silent else NvdaLiveSpeechSource()
+        return AdapterSet(
+            speech_source=speech_source,
+            braille_source=NvdaBrailleSource(),
+            gesture_sender=NvdaGestureSender(),
+            text_typer=NvdaTextTyper(),
+            focus_inspector=NvdaFocusInspector(),
+            state_inspector=NvdaStateInspector(),
+            config_accessor=NvdaConfigAccessor(),
+        )

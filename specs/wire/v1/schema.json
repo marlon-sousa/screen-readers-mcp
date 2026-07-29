@@ -246,6 +246,9 @@
         },
         "nvdaLogPath": {
           "type": "string"
+        },
+        "bridgeVersion": {
+          "type": "string"
         }
       },
       "required": [
@@ -402,13 +405,11 @@
       "type": "object",
       "properties": {
         "browseMode": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
+          "type": "string",
+          "enum": [
+            "browse",
+            "focus",
+            "none"
           ]
         },
         "speechMode": {

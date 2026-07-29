@@ -45,6 +45,25 @@ from .views.bridge_dialog import BridgeDialog
 from .wiring import build_session
 
 
+def _addon_version() -> str:
+	"""This add-on's own version, as NVDA records it in the installed manifest.
+
+	Reported in `hello` so a live-NVDA run can tell which BUILD it is talking
+	to. The add-on is installed separately from the checkout under test, so
+	without this a stale install surfaces as an inexplicable capability or
+	behaviour mismatch instead of "you are running an old build".
+
+	Never raises: an unknown version is a worse diagnostic than none, but a
+	bridge that fails to start is worse than both.
+	"""
+	try:
+		import addonHandler
+
+		return str(addonHandler.getCodeAddon().manifest["version"])
+	except Exception:
+		return "unknown"
+
+
 def _bridge_logs_dir() -> str:
 	"""Where session transcripts and NVDA-log captures land: ``<configPath>/nvdaMcpBridge``.
 
@@ -80,13 +99,23 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		listener = build_listener(self._config.get_connection_mode())
 		logs_dir = _bridge_logs_dir()
 		nvda_version = buildVersion.version
+		bridge_version = _addon_version()
 		signals = NvdaSessionSignals()
 		announcer = NvdaAnnouncer()
 		log_capture = NvdaLogCapture(logs_dir)
 		self._event_bus = SimpleEventBus()
 
 		def make_session(transport):
-			return build_session(transport, factory, logs_dir, nvda_version, signals, announcer, log_capture)
+			return build_session(
+				transport,
+				factory,
+				logs_dir,
+				nvda_version,
+				signals,
+				announcer,
+				log_capture,
+				bridge_version=bridge_version,
+			)
 
 		self._server = BridgeServer(listener, make_session, event_bus=self._event_bus)
 		self._tools_menu_item: wx.MenuItem | None = None

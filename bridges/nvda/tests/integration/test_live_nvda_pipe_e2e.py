@@ -17,7 +17,9 @@
 
 from __future__ import annotations
 
+import ast
 import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -35,6 +37,9 @@ from nvdaMcpBridge.domain.ports.message_channel import Timeout
 #: Same choice as test_live_nvda_e2e.py: speaks in essentially any focus
 #: context, so the capture assertion does not depend on a particular window.
 SPEAKING_GESTURE = "NVDA+t"
+
+#: The Run dialog is hosted by the shell, so NVDA attributes it to explorer.
+RUN_DIALOG_APP_MODULE = "explorer"
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -90,6 +95,74 @@ def _hello(agent: Agent, mode: str) -> dict[str, Any]:
 	return agent.result("hello", mode=mode, protocolVersion=p.PROTOCOL_VERSION)
 
 
+def _expected_bridge_version() -> str:
+	"""The add-on version this CHECKOUT would build, read from buildVars.py.
+
+	Parsed rather than imported: buildVars.py pulls in the site_scons tooling,
+	so importing it needs SCons installed in whatever interpreter runs pytest.
+	The version is a literal keyword argument, and reading it with ast keeps
+	this check working in a bare test environment.
+	"""
+	source = Path(__file__).resolve().parents[2] / "buildVars.py"
+	tree = ast.parse(source.read_text(encoding="utf-8"), str(source))
+	for node in ast.walk(tree):
+		if not isinstance(node, ast.Call):
+			continue
+		for keyword in node.keywords:
+			if keyword.arg == "addon_version" and isinstance(keyword.value, ast.Constant):
+				return str(keyword.value.value)
+	raise AssertionError(f"no addon_version literal found in {source}")
+
+
+def _caps_key(agent: Agent) -> list[str]:
+	"""The real path of sayCapForCapitals: PER SYNTH, not directly under speech.
+
+	It is declared in [speech][[__many__]] (config/configSpec.py:52-55), and
+	NVDA's own voice panel reads it as config.conf["speech"][driver.name][...]
+	(gui/settingsDialogs.py:1801). ["speech", "sayCapForCapitals"] is not a real
+	key: getConfig on it raises, and an override there is inaudible because
+	nothing in NVDA ever reads it.
+	"""
+	synth = agent.result("getConfig", keyPath=["speech", "synth"])["value"]
+	return ["speech", synth, "sayCapForCapitals"]
+
+
+def test_the_installed_addon_is_the_one_in_this_checkout() -> None:
+	"""Guard every other live test in this file against a STALE install.
+
+	These tests import the bridge package from the SOURCE TREE but talk over the
+	pipe to whatever add-on build NVDA actually loaded. When the two drift, the
+	failures land somewhere else entirely -- a capability list that does not
+	match, a command that answers "unknown" -- and read like bridge bugs. Asking
+	directly turns a session of confusion into one clear line.
+
+	Caveat worth knowing: this compares VERSIONS, so it catches an install from
+	a different release. It cannot catch editing code without bumping
+	addon_version; for that the discipline is still rebuild-and-reinstall.
+	"""
+	agent = _dial()
+	try:
+		hello = _hello(agent, "silent")
+		expected = _expected_bridge_version()
+		rebuild = (
+			"rebuild and reinstall the add-on (cd bridges/nvda && scons), then restart NVDA"
+		)
+		# A build predating this field omits it entirely -- which IS the stale
+		# case, and the commonest one, so it gets the same clear message rather
+		# than a KeyError from the middle of a fixture.
+		assert "bridgeVersion" in hello, (
+			f"the running bridge does not report bridgeVersion at all, so it predates "
+			f"this check; this checkout is {expected!r} -- {rebuild}"
+		)
+		reported = hello["bridgeVersion"]
+		assert reported == expected, (
+			f"the running NVDA has bridge {reported!r}, this checkout is {expected!r} -- {rebuild}"
+		)
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
 def test_hello_reports_real_nvda_and_served_capabilities() -> None:
 	agent = _dial()
 	try:
@@ -130,3 +203,232 @@ def test_two_sequential_sessions_on_one_server() -> None:
 			agent.close()
 	assert synths[0] == synths[1]
 	assert synths[0]  # a real synth name, stable across sessions
+
+
+
+class _RunDialog:
+	"""Focus the Run dialog for the block, and ALWAYS dismiss it afterwards.
+
+	The Run dialog is the cheapest real focus this suite can borrow: present on
+	every Windows box, a plain edit field, an app module that is a known
+	constant, and Escape puts everything back exactly as it was. Nothing is
+	launched and nothing is left running.
+
+	It replaced opening Notepad, which spawned a process, raced the window
+	appearing, and left a window on the tester's desktop -- for no coverage that
+	the dialog itself does not already provide.
+
+	Written as a class rather than @contextlib.contextmanager only because
+	pyright's strict mode reports that decorator as deprecated; the behaviour is
+	the same and the two dunders make the guarantee easier to see.
+	"""
+
+	def __init__(self, agent: Agent) -> None:
+		self._agent = agent
+
+	def __enter__(self) -> None:
+		self._agent.result("pressGesture", gestures=["windows+r"])
+		deadline = time.monotonic() + 5.0
+		while time.monotonic() < deadline:
+			if self._agent.result("getFocusInfo")["appModule"] == RUN_DIALOG_APP_MODULE:
+				break
+			time.sleep(0.1)
+		else:
+			# Dismiss before failing: an assertion must not leave a dialog open
+			# over someone's work just because it did not recognise it.
+			self._agent.result("pressGesture", gestures=["escape"])
+			raise AssertionError(
+				f"the Run dialog never took focus within 5s (appModule stayed "
+				f"{self._agent.result('getFocusInfo')['appModule']!r})"
+			)
+		# Let the dialog finish announcing ITSELF before handing over. Focus
+		# arrives before the announcement ends, so a body that immediately takes
+		# a speech index captures the tail of "Run dialog, Type the name of a
+		# program..." and attributes it to whatever it did next.
+		self._agent.result("waitForSpeechToFinish", timeout=5.0)
+
+	def __exit__(self, *exc_info: object) -> None:
+		# In __exit__ because this drives a REAL machine: a failed assertion
+		# must not walk away leaving a dialog open over someone's work. Escape,
+		# never Enter -- the typed text is never committed, so nothing can be
+		# executed by accident.
+		self._agent.result("pressGesture", gestures=["escape"])
+
+
+# -- introspection e2e (entry 11.1) ------------------------------------------
+
+
+def test_get_focus_info_reports_real_focus() -> None:
+	"""getFocusInfo returns a real role and appModule from the running NVDA."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		result = agent.result("getFocusInfo")
+		assert result["role"], "focus role should be non-empty"
+		assert isinstance(result["states"], list)
+
+		with _RunDialog(agent):
+			focus = agent.result("getFocusInfo")
+			assert focus["appModule"] == RUN_DIALOG_APP_MODULE, (
+				f"expected the Run dialog to be hosted by "
+				f"{RUN_DIALOG_APP_MODULE!r}, got {focus['appModule']!r}"
+			)
+			# The role is asserted as NON-EMPTY and stable rather than as a
+			# specific member: this field's contract is "a stable enum NAME
+			# rather than a localized display string" (spec 0015), and which
+			# member the Run dialog's field reports is a Windows detail that
+			# has changed between releases. Pinning it would test Windows.
+			assert focus["role"], "the Run dialog's field should report a role"
+			assert focus["role"] == focus["role"].upper(), (
+				f"role should be a stable enum NAME, got {focus['role']!r}"
+			)
+
+			# Deliberately NOT asserting that typing echoes here. Character echo
+			# is a user setting ("speak typed characters"), off on at least one
+			# maintainer's machine, and this test is about getFocusInfo -- an
+			# assertion that fails on someone's keyboard preferences would be
+			# blaming the bridge for the tester's configuration.
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_get_state_reports_real_modes() -> None:
+	"""getState returns real browseMode, speechMode, sleepMode, inputHelp."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		state = agent.result("getState")
+		assert state["browseMode"] in ("browse", "focus", "none")
+		assert state["speechMode"] in ("talk", "off", "beeps", "onDemand")
+		assert isinstance(state["sleepMode"], bool)
+		assert isinstance(state["inputHelp"], bool)
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_get_config_reads_real_config_key() -> None:
+	"""getConfig reads a known NVDA config key."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		result = agent.result("getConfig", keyPath=["speech", "synth"])
+		assert result["value"], "speech.synth should be a non-empty string"
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_set_config_roundtrip_and_restore() -> None:
+	"""set_config -> get_config sees override; new session sees original."""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		original = agent.result(
+			"getConfig", keyPath=_caps_key(agent)
+		)["value"]
+
+		flipped = not bool(original)
+		prior = agent.result(
+			"setConfig",
+			keyPath=_caps_key(agent),
+			value=flipped,
+		)["value"]
+		assert prior == original, (
+			f"setConfig should return prior {original}, got {prior}"
+		)
+
+		current = agent.result(
+			"getConfig", keyPath=_caps_key(agent)
+		)["value"]
+		assert current == flipped, (
+			f"getConfig should see override {flipped}, got {current}"
+		)
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+	# New session: override is gone (teardown cleared the map).
+	agent2 = _dial()
+	try:
+		_hello(agent2, "silent")
+		restored = agent2.result(
+			"getConfig", keyPath=_caps_key(agent2)
+		)["value"]
+		assert restored == original, (
+			f"new session should see original {original}, got {restored}"
+		)
+		agent2.result("bye")
+	finally:
+		agent2.close()
+
+
+def test_set_config_changes_nvda_behaviour() -> None:
+	"""set_config changes what NVDA speaks -- the hook reaches NVDA code.
+
+	Asserts that the two spoken results DIFFER, not that either contains a
+	particular word. NVDA announces a capital in the tester's own language
+	("cap" in English, "maiuscula" in Portuguese), and spec 0015 rejected
+	localized strings in assertions for exactly this reason -- an assertion
+	that passes or fails depending on the tester's NVDA language is the class
+	of flakiness this project exists to remove.
+	"""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		key = _caps_key(agent)
+
+		def _speak_a_capital() -> str:
+			"""Put a capital A in the field, then ARROW ONTO IT and listen.
+
+			Not "type it and listen to the echo". typeText injects
+			KEYEVENTF.UNICODE events (adapters/nvda_text_typer.py), which carry
+			the character in wScan with no virtual-key -- NVDA's typed-character
+			echo keys off real character-producing keystrokes and never fires
+			for injected text. Reading that silence as "the user has echo
+			switched off" was wrong; the setting was on the whole time.
+
+			Moving the caret over a character makes NVDA announce it through the
+			caret path instead, which is core behaviour rather than a keyboard
+			preference -- so this measures sayCapForCapitals wherever it runs.
+
+			control+a first, so each measurement starts from a field holding
+			exactly one character rather than whatever the previous one left.
+			"""
+			agent.result("pressGesture", gestures=["control+a"])
+			agent.result("typeText", text="A")
+			agent.result("waitForSpeechToFinish", timeout=2.0)
+			# Index taken AFTER the insert, so only the caret announcement lands
+			# in the window.
+			start = agent.result("getNextSpeechIndex")["index"]
+			agent.result("pressGesture", gestures=["leftArrow"])
+			agent.result("waitForSpeechToFinish", timeout=2.0)
+			return agent.result("getSpeech", sinceIndex=start)["text"].strip()
+
+		# Type into the Run dialog, not into "whatever happens to have focus".
+		# The old form typed a capital A into the tester's foreground window --
+		# their editor, their terminal, their email -- which is both a way to
+		# corrupt someone's work and a way to get a flaky result, since not
+		# every control echoes typed characters.
+		with _RunDialog(agent):
+			agent.result("setConfig", keyPath=key, value=False)
+			without = _speak_a_capital()
+
+			agent.result("setConfig", keyPath=key, value=True)
+			with_cap = _speak_a_capital()
+
+		assert without, "arrowing onto a character announced nothing at all"
+		assert with_cap != without, (
+			"turning sayCapForCapitals on did not change what NVDA spoke for a "
+			f"capital A (both were {without!r}) -- the override never reached NVDA"
+		)
+		assert len(with_cap) > len(without), (
+			f"expected the announcement to GAIN a capital marker, got {without!r} -> {with_cap!r}"
+		)
+
+		agent.result("bye")
+	finally:
+		agent.close()

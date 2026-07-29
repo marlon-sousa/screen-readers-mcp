@@ -41,6 +41,7 @@ def build_session(
 	announcer: Announcer,
 	log_capture: LogCapture,
 	*,
+	bridge_version: str = "unknown",
 	heartbeat_timeout: float = 30.0,
 	inactivity_timeout: float = 120.0,
 ) -> Session:
@@ -59,7 +60,7 @@ def build_session(
 	transcript = create_session_log(logs_dir)
 	channel = JsonLinesChannel(transport)
 	clock = RealClock()
-	registry = build_command_registry(factory, nvda_version)
+	registry = build_command_registry(factory, nvda_version, bridge_version)
 	config = SessionConfig(
 		nvda_version=nvda_version,
 		heartbeat_timeout=heartbeat_timeout,

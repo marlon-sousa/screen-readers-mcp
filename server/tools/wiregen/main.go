@@ -157,6 +157,7 @@ type node struct {
 // name, and failing the generator is how that decision gets asked for.
 var enumNames = map[string]string{
 	"live|silent":                "CaptureMode",
+	"browse|focus|none":         "BrowseMode",
 	"debug|debugwarning|info|io": "LogLevel",
 	"announce|braille|config|focus|gestures|speech|state|typing": "Capability",
 }

@@ -61,7 +61,7 @@ uv run poe ci        # every headless suite, type check and drift gate (~30s)
 uv run poe bridge    # just the bridge suite, for a fast inner loop
 uv run poe           # list every task
 
-cd bridges/nvda && scons    # build the .nvda-addon
+uv run poe build            # the server binary and the .nvda-addon
 ```
 
 `poe live` exists too, and is the only task that touches your machine: it drives
@@ -72,7 +72,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the underlying commands.
 Wire the server into Claude Code from source:
 
 ```sh
-go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp
+uv run poe build-server
 claude mcp add --scope user screenreader -- C:\projects\screen-readers-mcp\server\screenreader-mcp.exe
 ```
 

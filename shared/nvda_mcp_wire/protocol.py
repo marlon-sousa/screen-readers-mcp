@@ -40,6 +40,7 @@ __all__ = [
 	"CaptureMode",
 	"LogLevel",
 	"Capability",
+	"BrowseMode",
 	"Command",
 	"CommandShape",
 	"COMMAND_SHAPES",
@@ -145,6 +146,22 @@ class Capability(StrEnum):
 	CONFIG = "config"
 	ANNOUNCE = "announce"
 	TYPING = "typing"
+
+
+class BrowseMode(StrEnum):
+	"""Whether the focus is in a browsable document, and which mode it is in.
+
+	A closed tri-state rather than a nullable bool, because ``"focus"`` and
+	``"none"`` are genuinely different answers: ``"focus"`` means "inside a
+	browsable document, keys go to the document"; ``"none"`` means the question
+	does not arise here at all (a plain Win32 dialog). Collapsing the two to a
+	falsy value would make a diff across a gesture read as a mode change when
+	nothing changed -- exactly the ambiguity spec 0015 argued against.
+	"""
+
+	BROWSE = "browse"
+	FOCUS = "focus"
+	NONE = "none"
 
 
 class Command(StrEnum):
@@ -404,6 +421,13 @@ class HelloResult:
 	#: log, scoped to exactly this session (distinct from `logPath`, the
 	#: bridge's own transcript; see spec 0009).
 	nvdaLogPath: str
+	#: The BRIDGE's own version -- the add-on's, not the reader's (that is
+	#: ``reader.version``). Reported because the bridge is installed separately
+	#: from the code under test: a live-NVDA run talks to whatever build was
+	#: last installed, and without this a stale one shows up as an inexplicable
+	#: capability or behaviour mismatch rather than as "you are running an old
+	#: build". ``"unknown"`` when the bridge cannot determine it.
+	bridgeVersion: str = "unknown"
 
 
 @dataclass
@@ -522,9 +546,9 @@ class StateResult:
 	flipping ``browseMode`` between ``"browse"`` and ``"focus"``).
 	"""
 
-	#: ``"browse"`` / ``"focus"`` from the focus object's
-	#: ``treeInterceptor.passThrough``; ``None`` when there is no browse document.
-	browseMode: str | None
+	#: From the focus object's ``treeInterceptor.passThrough``; ``NONE`` when
+	#: there is no browse document. A closed set -- see :class:`BrowseMode`.
+	browseMode: BrowseMode
 	#: ``"talk"`` / ``"beeps"`` / ``"off"`` / ``"onDemand"``.
 	speechMode: str
 	sleepMode: bool

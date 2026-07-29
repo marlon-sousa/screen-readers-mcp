@@ -15,9 +15,12 @@ package ports
 // ReaderState is queryable reader state. Values are reader-specific strings and
 // pass through opaquely.
 type ReaderState struct {
-	// BrowseMode is a pointer because a reader with no such concept reports
-	// null, which is a different answer from "some mode named empty".
-	BrowseMode *string
+	// BrowseMode is a closed tri-state: "browse", "focus", or "none" (spec
+	// 0015). NOT a nullable bool and no longer a nullable string -- "none"
+	// ("this focus has no browsable document, so the question does not arise")
+	// is a real answer in the set, so it needs no null to express it, and a
+	// caller cannot accidentally collapse it to falsy.
+	BrowseMode string
 
 	SpeechMode string
 	SleepMode  bool

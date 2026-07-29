@@ -341,6 +341,47 @@ def check_conformance_python() -> Result:
 	)
 
 
+def check_server_binary() -> Result:
+	"""The MCP server BINARY must be newer than the Go source it was built from.
+
+	This is the one staleness that hides best. The binary in .mcp.json is what
+	the MCP client actually spawns, so an agent editing server/ and then driving
+	the tools is testing the OLD server against the NEW bridge -- and the
+	symptom is a field that is simply absent from a result, which reads as "the
+	bridge did not send it" rather than "your server predates it". That happened:
+	`bridgeVersion` was added, the bridge sent it, the whole live checklist ran,
+	and nobody noticed the server could not carry it because the binary was four
+	days old.
+
+	Rebuilding is not enough on its own -- the client spawned the old process at
+	startup and keeps it, so the MCP connection has to be restarted too. The fix
+	text says so, because a rebuild that appears to change nothing is its own
+	rabbit hole.
+	"""
+	binary = ROOT / "server" / "screenreader-mcp.exe"
+	if not binary.is_file():
+		return Result(
+			WARN,
+			"server binary",
+			"not built -- the MCP tools cannot run",
+			"uv run poe build-server",
+		)
+	built = binary.stat().st_mtime
+	newest, newest_name = 0.0, ""
+	for path in (ROOT / "server").rglob("*.go"):
+		stamp = path.stat().st_mtime
+		if stamp > newest:
+			newest, newest_name = stamp, path.name
+	if newest <= built:
+		return Result(OK, "server binary", "newer than server/*.go")
+	return Result(
+		FAIL,
+		"server binary",
+		f"STALE -- {newest_name} is newer than the binary the MCP client runs",
+		"uv run poe build-server, then restart the MCP connection",
+	)
+
+
 def check_shared_synced() -> Result:
 	"""The addon carries a COPY of the wire module; a stale copy is invisible.
 
@@ -408,6 +449,7 @@ def main() -> int:
 	results += check_addon_build_deps()
 	results += check_pyright_venv_config()
 	results.append(check_shared_synced())
+	results.append(check_server_binary())
 	if not args.quick:
 		# These spawn a uv environment per tool per project -- a few seconds,
 		# which is fine for `poe doctor` and far too slow to sit in front of

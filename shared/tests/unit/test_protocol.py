@@ -278,10 +278,14 @@ def test_hello_result_serializes_all_fields() -> None:
 		"synth",
 		"logPath",
 		"nvdaLogPath",
+		"bridgeVersion",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert d["capabilities"] == ["speech", "gestures"]
+	# reader.version is the READER's; bridgeVersion is the ADD-ON's, and defaults
+	# to "unknown" rather than to the reader's, so the two can never be confused.
+	assert d["bridgeVersion"] == "unknown"
 
 
 def test_hello_result_round_trips_reader_and_capabilities() -> None:
@@ -377,7 +381,9 @@ def test_command_shapes_cover_every_command() -> None:
 			p.StateResult,
 			{"browseMode": "focus", "speechMode": "talk", "sleepMode": False, "inputHelp": False},
 		),
-		(p.StateResult, {"browseMode": None, "speechMode": "beeps", "sleepMode": True, "inputHelp": False}),
+		# "none" is a STRING, not null -- "there is no browse document here" is a
+		# real answer in the closed set, not a missing one (spec 0015).
+		(p.StateResult, {"browseMode": "none", "speechMode": "beeps", "sleepMode": True, "inputHelp": False}),
 	],
 )
 def test_representative_payloads_validate(cls: type[Any], payload: dict[str, Any]) -> None:

@@ -61,6 +61,7 @@ type info struct {
 	// same machine as the server.
 	LogPath       string `json:"logPath,omitempty"`
 	ReaderLogPath string `json:"readerLogPath,omitempty"`
+	BridgeVersion string `json:"bridgeVersion,omitempty"`
 
 	ProtocolVersion int `json:"protocolVersion,omitempty"`
 }
@@ -112,6 +113,7 @@ func describe(sessions SessionSource) info {
 	document.Synth = session.Synth
 	document.LogPath = session.LogPath
 	document.ReaderLogPath = session.ReaderLogPath
+	document.BridgeVersion = session.BridgeVersion
 	document.ProtocolVersion = session.ProtocolVersion
 	return document
 }

@@ -68,6 +68,16 @@ const (
 	CommandBye                   Command = "bye"
 )
 
+// BrowseMode is a closed value set in the wire contract.
+type BrowseMode string
+
+// The values BrowseMode may take.
+const (
+	BrowseModeBrowse BrowseMode = "browse"
+	BrowseModeFocus  BrowseMode = "focus"
+	BrowseModeNone   BrowseMode = "none"
+)
+
 // Capability is a closed value set in the wire contract.
 type Capability string
 
@@ -180,6 +190,7 @@ type HelloResult struct {
 	Synth           string       `json:"synth"`
 	LogPath         string       `json:"logPath"`
 	NVDALogPath     string       `json:"nvdaLogPath"`
+	BridgeVersion   *string      `json:"bridgeVersion,omitempty"`
 }
 
 // LastSpeechResult is the wire shape of the same name.
@@ -233,10 +244,10 @@ type SpeechResult struct {
 
 // StateResult is the wire shape of the same name.
 type StateResult struct {
-	BrowseMode *string `json:"browseMode"`
-	SpeechMode string  `json:"speechMode"`
-	SleepMode  bool    `json:"sleepMode"`
-	InputHelp  bool    `json:"inputHelp"`
+	BrowseMode BrowseMode `json:"browseMode"`
+	SpeechMode string     `json:"speechMode"`
+	SleepMode  bool       `json:"sleepMode"`
+	InputHelp  bool       `json:"inputHelp"`
 }
 
 // TypeParams is the wire shape of the same name.
