@@ -354,8 +354,8 @@ rather than before it.
 11.2. **E, human-in-the-loop** (both lanes). The agent asks the tester for
     something it cannot supply itself — a password, a CAPTCHA, a physical act —
     and gets an answer back, without ending the session. Needs live NVDA. Spec:
-    `0016-human-in-the-loop.md` (**agreed 2026-07-29** bar one open question —
-    the sequencing of the heartbeat fix; rides in 11.2's own PR). It was
+    `0016-human-in-the-loop.md` (**agreed 2026-07-29**; rides in 11.2's own PR,
+    together with the heartbeat fix it makes necessary). It was
     scheduled **after** the run so the run could say whether the cheap shape
     (announce, suspend suppression, acknowledgement gesture) suffices before a
     reply dialog is built: it ran, it does, and stage 2 stays unbuilt. The 11.1

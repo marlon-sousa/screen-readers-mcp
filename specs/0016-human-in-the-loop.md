@@ -1,8 +1,7 @@
 # Spec 0016 — human-in-the-loop (entry 11.2)
 
-Status: **agreed in conversation 2026-07-29, with one question still open** —
-the sequencing of the heartbeat fix (see "The heartbeat fix", below). Everything
-else is decided and ready to implement. No code written.
+Status: **agreed in conversation 2026-07-29; ready to implement.** No code
+written.
 
 Scheduled **after** the real-world run (entry 11b) so the run could say whether
 the cheap shape below is enough before the expensive one is built. It ran, and
@@ -168,7 +167,7 @@ Note the consequence: a window can only outlive 120 s *if the agent is still
 polling*, so the window deadline is only ever reached in the case where someone
 is genuinely waiting — which is exactly when it should be.
 
-### The heartbeat fix — **OPEN, to be resolved before implementation**
+### The heartbeat fix rides in this entry — **Decided 2026-07-29**
 
 While a handler runs, the peer's silence is *our* doing, not evidence it died.
 `_dispatch` should refresh the heartbeat when it returns, not only before it is
@@ -190,10 +189,14 @@ user's speech filter. A backstop a hanging handler can defeat is not a backstop.
 Handlers carry their own timeouts; this one should stay measured from dispatch
 start.
 
-**What is open is the sequencing, not the fix.** The proposal is to land (a)
-alone and first, in its own PR with a regression test — a handler that blocks
-past the heartbeat window must not end the session — because it is a live bug
-today, independent of this entry, and reviewable on its own merits.
+**Decided: (a) lands in this entry's PR, not a separate one.** Splitting it was
+considered — it is a live bug today and reviewable on its own merits — and
+rejected, because this entry is precisely what makes a long-running handler
+ordinary rather than exceptional. The fix and the reason it matters belong in
+one diff, and so does its regression test: a handler that blocks past the
+heartbeat window must not end the session. A reviewer seeing the fix alone would
+have to take "something will need this" on trust; seeing it here, the need is on
+the same page.
 
 **Whichever way that goes, it does not change this entry's design.** Even with
 unlimited blocking at the bridge, `DefaultCallTimeout` is 15 s in the Go client
