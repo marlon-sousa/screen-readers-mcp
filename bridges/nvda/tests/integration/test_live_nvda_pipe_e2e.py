@@ -595,3 +595,39 @@ def test_a_session_that_dies_with_a_window_open_recovers() -> None:
 		recovered.result("bye")
 	finally:
 		recovered.close()
+
+
+def test_the_acknowledgement_is_confirmed_out_loud() -> None:
+	# The confirmation exists ONLY for the person listening: pressing the gesture
+	# used to be silent, which for a blind tester is indistinguishable from a
+	# keypress that never registered. So "did it speak" is the requirement, not a
+	# nicety -- and it needs asserting somewhere, because ui.message lives in
+	# plugin.py, the NVDA edge that no unit test reaches.
+	#
+	# LIVE mode is what makes it observable: the speech source watches NVDA's own
+	# pipeline, so ui.message enters the buffer. In silent mode it cannot be seen
+	# from here at all -- the open window suspends suppression, so the words go to
+	# the synth and are deliberately never captured.
+	agent = _dial()
+	try:
+		_hello(agent, "live")
+		ticket = agent.result("askUser", prompt="Automated test. Ignore this.")["ticket"]
+
+		start = _settled_index(agent)
+		agent.result("pressGesture", gestures=["NVDA+control+shift+a"])
+		spoken = _speech_after(agent, start)
+
+		assert spoken, (
+			"the acknowledgement gesture said NOTHING; silence is indistinguishable "
+			"from a keypress that missed the dialog"
+		)
+		# Our own string, and untranslated today -- when a catalog lands this needs
+		# the same treatment spec 0015 gave localized assertions.
+		assert "acknowledg" in spoken.casefold(), (
+			f"the gesture spoke {spoken!r}, which is not the confirmation"
+		)
+		assert agent.result("waitForUserReply", ticket=ticket, timeout=5.0)["answered"] is True
+
+		agent.result("bye")
+	finally:
+		agent.close()
