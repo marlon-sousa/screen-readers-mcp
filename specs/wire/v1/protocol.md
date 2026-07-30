@@ -211,9 +211,13 @@ means the command takes no parameters. Summary:
   messages, all case-insensitive. `fields` projects which columns to render
   (default: time, level, module, message); an unknown field name or level is
   **rejected**, never silently dropped, so a typo cannot return a slice that
-  merely looks filtered. Each window is sliced separately and the texts joined,
-  so `windows: 3` is three commands' worth and not the whole span between them.
-  Bounded by `maxEntries` (default 200), spent across the windows in order;
+  merely looks filtered. `windows` > 1 returns one continuous span, from the
+  first window's start to the last one's end, **including what fell between the
+  windows** — a window closes when the handler returns, but the reader does the
+  work the command caused just after that, so the record an agent wants is
+  often a millisecond past the end mark. Ask for a single window when you want
+  only that command; widen it to see what the command actually caused.
+  Bounded by `maxEntries` (default 200);
   reports `matched` (before the cap), `truncated` (when capped or the window aged
   out of the ring), and `capturedAtLevel` (the floor in force while the window
   was recorded — an empty slice at `capturedAtLevel: "info"` with

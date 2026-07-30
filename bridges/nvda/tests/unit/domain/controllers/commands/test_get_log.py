@@ -139,15 +139,19 @@ def test_windows_beyond_what_exists_returns_what_there_is(clock: FakeClock) -> N
 	assert result.entries == 1
 
 
-def test_the_gap_between_two_windows_is_not_included(clock: FakeClock) -> None:
-	# Windows are disjoint but NOT adjacent: whatever NVDA logged while the agent
-	# was thinking between two commands sits between them, and asking for two
-	# windows must not drag that idle chatter along.
+def test_a_multi_window_range_includes_what_fell_between_the_windows(
+	clock: FakeClock,
+) -> None:
+	# The span, gaps included -- and this is the case that decided it. A window
+	# closes when the handler returns, but NVDA does the work the command CAUSED
+	# just after that: live, `speech.speech.speak` landed one millisecond past a
+	# gesture window's end mark. Excluding the gaps drops exactly the record an
+	# agent asking "what did that keypress do?" came for.
 	capture = FakeLogCapture()
 	ctx = _context(clock, capture)
 	capture.feed("inside command 5")
 	_window(ctx, 5, 0, 1)
-	capture.feed("idle chatter between commands")
+	capture.feed("what command 5 actually caused, a millisecond late")
 	capture.feed("inside command 6")
 	_window(ctx, 6, 2, 3)
 
@@ -155,8 +159,25 @@ def test_the_gap_between_two_windows_is_not_included(clock: FakeClock) -> None:
 
 	assert "inside command 5" in result.text
 	assert "inside command 6" in result.text
-	assert "idle chatter" not in result.text
-	assert result.entries == 2
+	assert "a millisecond late" in result.text
+	assert result.entries == 3
+
+
+def test_a_single_window_is_still_exactly_that_command(clock: FakeClock) -> None:
+	# Widening is opt-in: windows=1 stays tight, so "just this command" is still
+	# askable and is still free of the neighbours' records.
+	capture = FakeLogCapture()
+	ctx = _context(clock, capture)
+	capture.feed("before")
+	_window(ctx, 5, 0, 1)
+	capture.feed("between")
+	capture.feed("inside command 6")
+	_window(ctx, 6, 2, 3)
+
+	result = _get_log(ctx, commandId=6)
+
+	assert result.text == "INFO - test.module (12:00:00.000):\ninside command 6"
+	assert result.entries == 1
 
 
 # -- filters reach the journal -------------------------------------------------

@@ -417,11 +417,27 @@ the code actually does stay separately readable.
    fail"; the first implementation recorded the window only on the success path,
    so the one command an agent most wants a slice for was the one it could not
    ask about. The mark is now closed in a `finally`.
-3. **Multi-window slices are concatenated, not spanned.** `windows: 3` slices
-   three windows and joins them, instead of taking one range from the first
-   window's start to the last one's end. Windows are disjoint but not *adjacent*
-   — whatever NVDA logged while the agent was thinking between two commands sits
-   between them — and a single span swallows that idle chatter unboundedly.
+3. **Multi-window slices stay one span, gaps included — and a window is much
+   narrower than the spec assumes.** Concatenating the windows and dropping the
+   gaps was implemented first, on the reasoning that `windows: 3` should mean
+   three commands' worth and not the idle time between them. Live NVDA refuted
+   it. A window closes the moment the handler returns, but NVDA does the work
+   the command *caused* just after that, on its own thread:
+
+   ```
+   IO - inputCore.executeGesture (18:47:56.033)   <- inside the window
+   IO - speech.speech.speak      (18:47:56.034)   <- one millisecond later
+   ```
+
+   So the gap is where most of the interesting log lives, and excluding it
+   excludes what the feature exists to show. **This also means the spec's
+   "everything NVDA logged during the window" is optimistic**: for a gesture, a
+   single window reliably contains only NVDA's own `executeGesture` line. Item 1
+   of the live checklist passes in that narrow sense; items 2, 3 and 6 — the
+   speech-filtering cases — need `windows` > 1 to have any speech records to
+   filter at all. Whether the window should instead be held open until NVDA
+   settles is a real design question this entry does not answer, and is flagged
+   for a follow-up rather than decided here.
 4. **`capturedAtLevel` over several windows is the oldest window's floor.** The
    conservative end: it can under-report what a later window captured, but never
    over-report. Visible in the conformance run, which asserts both directions.

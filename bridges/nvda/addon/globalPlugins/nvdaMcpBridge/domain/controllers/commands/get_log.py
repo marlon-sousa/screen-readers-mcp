@@ -7,12 +7,24 @@
 # USES: the LogCapture port (the journal behind it), the Session's command-window
 # list through the SessionContext.
 #
-# Each window is sliced SEPARATELY and the texts joined, rather than slicing one
-# span from the first window's start to the last one's end. The windows are
-# disjoint but not adjacent -- whatever NVDA logged while the agent was thinking
-# between two commands falls between them -- and a single span would swallow that
-# idle chatter, which is neither "three commands' worth" nor bounded by anything
-# the agent controls.
+# A multi-window request is ONE span, from the first window's start to the last
+# one's end -- the gaps between the windows included.
+#
+# Slicing each window separately and joining reads better on paper, and it was
+# tried: it is more precise, and it keeps the idle chatter from between two
+# commands out of the answer. Live NVDA killed it. A command's window closes the
+# moment the handler returns, but NVDA does the WORK the command caused just
+# after that, on its own thread:
+#
+#     IO - inputCore.executeGesture (18:47:56.033)   <- inside the window
+#     IO - speech.speech.speak      (18:47:56.034)   <- one millisecond later
+#
+# The speech record -- the one an agent asking "what did that keypress do?"
+# actually wants -- lands a millisecond past the end mark, in the gap. Excluding
+# gaps therefore excludes most of what the feature exists to show, so the span
+# wins: an agent that asked for three windows gets everything between the start
+# of the first and the end of the last, idle chatter included, bounded by
+# maxEntries like everything else.
 
 from __future__ import annotations
 
@@ -50,28 +62,14 @@ class GetLogHandler(CommandHandler):
 		if not windows:
 			raise CommandError("no command windows within range")
 
-		max_entries = max(0, params.maxEntries)
-		texts: list[str] = []
-		entries_total = 0
-		matched_total = 0
-		truncated = False
-		for _command_id, start, end, _level in windows:
-			# Spend the cap across the windows in order, so an early flood cannot
-			# starve the later windows of their `matched` count -- the journal
-			# still reports what passed the filters even when nothing fits.
-			text, entries, matched, window_truncated = self._slice(
-				ctx, start, end, params, max(0, max_entries - entries_total)
-			)
-			if text:
-				texts.append(text)
-			entries_total += entries
-			matched_total += matched
-			truncated = truncated or window_truncated
+		text, entries, matched, truncated = self._slice(
+			ctx, windows[0][1], windows[-1][2], params, max(0, params.maxEntries)
+		)
 
 		return protocol.LogSliceResult(
-			text="\n".join(texts),
-			entries=entries_total,
-			matched=matched_total,
+			text=text,
+			entries=entries,
+			matched=matched,
 			truncated=truncated,
 			fromCommandId=windows[0][0],
 			toCommandId=windows[-1][0],
