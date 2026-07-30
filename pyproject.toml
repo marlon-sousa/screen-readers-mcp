@@ -50,7 +50,17 @@ cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
 [tool.poe.tasks.live]
 help = "DRIVES YOUR REAL NVDA: gestures, typed text, config changes. Opt-in only."
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m live_nvda"
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and not slow'"
+
+# The wall-clock checks, separated because they cost minutes rather than seconds:
+# the 300 s interaction window and the 120 s inactivity watchdog cannot be hurried
+# without testing numbers the add-on does not ship. Headless tests already prove
+# the arithmetic instantly with a fake clock; this proves the REAL constants
+# behave on a real NVDA, which is a release-gate question.
+[tool.poe.tasks.live-slow]
+help = "The minutes-long live checks (300 s window, five-minute session). Opt-in."
+deps = ["check"]
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and slow'"
 
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"

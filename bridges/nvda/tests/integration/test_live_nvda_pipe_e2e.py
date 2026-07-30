@@ -60,7 +60,13 @@ class Agent:
 		self._channel = channel
 		self._id = 0
 
-	def call(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+	def raw(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+		"""The reply exactly as it came, error and all.
+
+		For the tests whose SUBJECT is a refusal -- an expired ticket, a rejected
+		second prompt -- where `call` raising would hide the very thing being
+		asserted.
+		"""
 		self._id += 1
 		self._channel.write(p.Request(id=self._id, cmd=cmd, params=dict(params)))
 		deadline = time.monotonic() + reply_timeout
@@ -68,10 +74,14 @@ class Agent:
 			message = self._channel.read_message()
 			if isinstance(message, Timeout):
 				continue
-			if message.get("error") is not None:
-				raise AssertionError(f"{cmd} failed: {message['error']}")
 			return message
 		raise AssertionError(f"no reply to {cmd} within {reply_timeout}s")
+
+	def call(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+		reply = self.raw(cmd, reply_timeout=reply_timeout, **params)
+		if reply.get("error") is not None:
+			raise AssertionError(f"{cmd} failed: {reply['error']}")
+		return reply
 
 	def result(self, cmd: str, **params: Any) -> dict[str, Any]:
 		return self.call(cmd, **params)["result"]
@@ -628,6 +638,95 @@ def test_the_acknowledgement_is_confirmed_out_loud() -> None:
 		)
 		assert agent.result("waitForUserReply", ticket=ticket, timeout=5.0)["answered"] is True
 
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+@pytest.mark.slow
+def test_an_unanswered_window_expires_and_the_session_survives() -> None:
+	"""Checklist items 6 and 9, in one real five-minute run.
+
+	Both are questions about WALL-CLOCK time, which is exactly what the headless
+	tier cannot answer: FakeClock proves the arithmetic in microseconds (a 301 s
+	advance in test_user_prompt.py), and what remains is whether the numbers
+	COMPILED INTO THE INSTALLED ADD-ON behave on a real NVDA -- the 300 s window,
+	the 30 s heartbeat, the 120 s inactivity watchdog. Hurrying it would mean
+	testing numbers the add-on does not ship, so it is marked slow and left out of
+	`poe live`.
+
+	Item 6: nobody answers, so the window closes on its own. Its deadline is
+	observed BY A POLL rather than by a timer (spec 0016, amendment 4), so this
+	keeps polling instead of sleeping blind -- and the proof that it closed is that
+	the ticket then stops being accepted at all.
+
+	Item 9: those same polls are what keeps the session alive, each one resetting
+	command-inactivity while the heartbeat sees traffic. So a session that is still
+	answering after the whole window has passed IS item 9, and the closing `bye`
+	proves it was never torn down underneath us.
+
+	It announces as it goes, because a human is listening to a five-minute test and
+	silence is indistinguishable from a hang.
+	"""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		agent.result(
+			"announce",
+			text=(
+				"Starting the slow checklist run. I will open a question and deliberately "
+				"never answer it, for about five minutes, announcing as I go. Nothing is "
+				"needed from you."
+			),
+		)
+
+		ticket = agent.result("askUser", prompt="Slow test. Do not answer this one.")["ticket"]
+		started = time.monotonic()
+
+		expired = False
+		polls = 0
+		# Generous ceiling: the window is 300 s, so anything past ~360 s means it
+		# did not close when it should have.
+		while time.monotonic() - started < 420.0:
+			polls += 1
+			# raw, not call: a refused ticket is the OUTCOME being waited for here,
+			# and call() would raise it away.
+			reply = agent.raw("waitForUserReply", reply_timeout=90.0, ticket=ticket, timeout=60.0)
+			if reply.get("error") is not None:
+				# The ticket is no longer accepted: the window closed and the poll
+				# before this one is the one that observed it.
+				expired = True
+				break
+			assert reply["result"]["answered"] is False, (
+				"the bridge reported an answer, but nothing acknowledged the prompt"
+			)
+			minutes = (time.monotonic() - started) / 60.0
+			agent.result("announce", text=f"Still waiting. {minutes:.0f} minutes so far.")
+
+		elapsed = time.monotonic() - started
+		assert expired, (
+			f"the window was still open after {elapsed:.0f}s and {polls} polls; it should close at 300s"
+		)
+		assert elapsed >= 290.0, (
+			f"the window closed after only {elapsed:.0f}s -- far short of its 300 s deadline, "
+			"so something other than the deadline ended it"
+		)
+
+		# Suppression resumed when the expiry was observed, so capture works again.
+		before = agent.result("getNextSpeechIndex")["index"]
+		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		time.sleep(0.5)
+		after = agent.result("getNextSpeechIndex")["index"]
+		assert after > before, (
+			"nothing was captured after the window expired, so suppression never resumed"
+		)
+
+		# Item 9, stated as an assertion: the session is still the same one, still
+		# serving, after five minutes -- neither watchdog fired.
+		agent.result(
+			"announce",
+			text=f"Slow run finished. The window expired on its own after {elapsed:.0f} seconds.",
+		)
 		agent.result("bye")
 	finally:
 		agent.close()
