@@ -113,6 +113,18 @@ Three knobs, evaluated in this order, all optional:
 | `minLevel` | drop records below this level (the `LogLevel` enum, extended with `warning` and `error`) |
 | `contains` | keep only records whose message matches any of these substrings |
 | `exclude` | drop records whose **module or message** matches any of these |
+| `fields` | which fields of each record to render, defaulting to all four |
+
+`fields` is what structured records buy beyond exact filtering, and it is a
+bigger saving than it looks: dropping the timestamp and thread from 200 records
+removes more characters than most `exclude` patterns do. `["level", "message"]`
+is the compact form worth reaching for; the default stays `["time", "level",
+"module", "message"]` so a slice pasted into an issue still reads like
+`nvda.log`.
+
+It also enables a cheap survey: `fields: ["module"]` with a high `maxEntries`
+answers "what is flooding this window?" in a few hundred bytes, so the next call
+can `exclude` precisely instead of guessing.
 
 Marlon's case — *"level info, but not output speech, because that I already
 know"* — is expressible two ways, and both should work:
@@ -125,10 +137,55 @@ know"* — is expressible two ways, and both should work:
 `exclude` matches the module name as well as the message precisely so the second
 form is exact rather than a guess at message wording.
 
-**One gotcha to state in the tool description:** filters narrow what was
-*captured*, and the capture level is fixed at `hello`. A session connected at
-`info` never emitted IO records at all, so no filter can recover them. That is
-what `connect_reader(log_level=…)` is for.
+### The level is the agent's to change, mid-session — and only forwards
+
+`hello` fixing the capture level for the whole session was the wrong shape once
+the bridge can be on another machine: the agent, not the connect call, is what
+knows which level a given question needs. But there is a hard constraint that
+decides the design:
+
+**A level cannot be raised retroactively.** Python's logging decides at the
+*logger* whether a record exists at all; a handler only ever sees what was
+emitted. If NVDA's root is at `INFO`, `DEBUG` records were never created, so no
+journal holds them and no filter recovers them. Of the two options considered —
+"return what was captured" or "raise the level" — raising is the useful one, and
+it is useful **forwards only**. The loop is: raise, re-run the command, read the
+slice. That is the same loop as the F1 ritual, which also cannot see the past.
+
+Downwards is free: the journal holds more than asked for and the filter shows
+less.
+
+So, three levels rather than one, which is the "parallel journal" idea made
+explicit:
+
+| | Set by | Purpose |
+|---|---|---|
+| NVDA's **logger** floor | `hello`, then `setLogLevel` | what NVDA emits at all — the only one that cannot be undone after the fact |
+| the **file** handler's level | `hello`, unchanged from 0009 | keeps `logPath` the clean human artifact it is today |
+| the **journal** handler's level | `setLogLevel` | what slices can see, independent of the file |
+
+`hello` keeps its `logLevel` parameter: without it the *first* commands — the
+handshake itself, whatever failed immediately — are unreachable, and those are
+often the ones being debugged. It becomes the starting value rather than the
+session's fixed one.
+
+`setLogLevel` restores NVDA's own level at teardown, exactly as 0009's
+hello-scoped change already does; the machinery is the same, only its trigger
+moves.
+
+Two costs, stated because a screen reader's user pays them:
+
+- **NVDA at `debug`/`io` is slower for the human**, not just for us. Raising the
+  floor is a real change to their reader, so it belongs in an explicit command
+  they can see in the transcript, not as an implicit side effect of asking for a
+  slice.
+- **The ring fills faster**, so windows expire sooner. At `io` on a busy session
+  that is seconds, and `truncated: true` is how the agent finds out.
+
+`setLogLevel` sets `mutates_reader = True`, consistent with `setConfig`: it is a
+temporary but real change to the reader. **Open question for 11.3** (observe-only)
+— an observe-only session arguably still wants to raise its own log level, since
+nothing about it moves the user's machine. Flagged rather than decided here.
 
 ### The payload is bounded, and says so when it truncates
 
@@ -184,6 +241,7 @@ class Capability(StrEnum):
 
 class Command(StrEnum):
     GET_LOG = "getLog"
+    SET_LOG_LEVEL = "setLogLevel"
 
 @dataclass
 class GetLogParams:
@@ -192,7 +250,18 @@ class GetLogParams:
     minLevel: LogLevel | None = None
     contains: list[str] | None = None
     exclude: list[str] | None = None
+    fields: list[str] | None = None   # default: time, level, module, message
     maxEntries: int = 200
+
+@dataclass
+class SetLogLevelParams:
+    level: LogLevel                # raises NVDA's own floor; forwards only
+    fileToo: bool = False          # leave logPath's file at the session level
+
+@dataclass
+class LogLevelResult:
+    level: LogLevel                # now in force
+    previous: LogLevel
 
 @dataclass
 class LogSliceResult:
@@ -202,11 +271,17 @@ class LogSliceResult:
     truncated: bool    # matched > entries, or the window had aged out of the ring
     fromCommandId: int
     toCommandId: int
+    capturedAtLevel: LogLevel  # the floor in force while this window was recorded
 ```
 
 `LogLevel` gains `WARNING` and `ERROR` (it exists today to *request* a capture
 level, where those are useless; as a filter they are the common case).
-`COMMAND_SHAPES` gains one row; the schema and the Go binding are regenerated.
+`COMMAND_SHAPES` gains two rows; the schema and the Go binding are regenerated.
+
+`capturedAtLevel` earns its place: once the level is dynamic, an empty slice is
+ambiguous between "nothing was logged" and "you were not capturing that", and the
+agent cannot tell which without being told. Reporting the floor that was in force
+turns a confusing retry loop into one obvious next call.
 
 ## Class/file layout
 
@@ -259,8 +334,12 @@ level, where those are useless; as a filter they are the common case).
 3. `exclude: ["speech.speech.speak"]` at `debug` drops speech and keeps the
    IAccessible/UIA chatter.
 4. `windows: 3` returns three commands' worth, in order.
-5. A session captured at `info` returns nothing for `minLevel: "debug"` — and the
-   tool's description explains why, rather than looking broken.
+5. On a session captured at `info`, `minLevel: "debug"` returns nothing and says
+   `capturedAtLevel: "info"`; then `set_log_level("debug")`, re-run the command,
+   and the same slice request has the debug records. Raising is forwards only, and
+   this is the check that says so out loud.
+7. `set_log_level` restores NVDA's own level at teardown -- verify in NVDA's
+   General settings that it reads what it did before the session.
 6. A slice from a busy `io` session reports `truncated: true` rather than
    returning megabytes.
 
