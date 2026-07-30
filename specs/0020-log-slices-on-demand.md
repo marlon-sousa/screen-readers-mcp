@@ -96,13 +96,46 @@ formats only what a `getLog` actually returns.
 
 Costs, stated rather than discovered later:
 
-- **Memory.** Bounded ring, **5 000 records** or **2 MB**, whichever comes first.
+- **Memory.** Bounded ring, **10 000 records** or **4 MB**, whichever comes first.
+  Larger than first drafted because, with 0009's file gone (below), this is the
+  only copy the bridge keeps; still bounded, because an unbounded journal inside a
+  screen reader is a memory leak in a screen reader.
 - **Slices expire.** A window whose records have aged out returns what survives
-  plus `truncated: true`. At `io` level on a busy session that can be seconds, and
-  it is the right trade: an unbounded journal inside NVDA is a memory leak in a
-  screen reader.
-- The file from 0009 is **unchanged**. It stays the human artifact, and `logPath`
-  keeps its contract.
+  plus `truncated: true`. At `io` on a busy session that can be a minute or two.
+  The fallback is not lost data: NVDA's own `nvda.log` has the same records (see
+  below), and the session transcript's timestamps bracket the window in it.
+
+### 0009's parallel FILE goes away — the journal is what it was for
+
+Marlon's question on review: is the parallel file still needed? It is not, and the
+evidence is stronger than the intuition.
+
+**It has no unique content.** 0009 raises the level with `log.root.setLevel(...)`,
+which is global, and NVDA's own handler is added to `log.root`
+(`logHandler.py:627`) with no handler-level of its own. So every record our tee
+receives, NVDA's `nvda.log` receives too. The tee was never *more* detailed — only
+*scoped*.
+
+**Nobody read it.** Across the whole 11.2 review session, including a genuine
+post-mortem of the bridge silently stopping, what got read was NVDA's own
+`nvda.log` and the bridge's session transcript. The 0009 capture file was never
+opened once. A duplicate that goes unread while its original is right there is
+not a safety net, it is upkeep — it needed its own pruning machinery to stop it
+accumulating on the user's disk.
+
+**It costs the wrong thing at the wrong moment.** A second handler means a second
+format-and-write per record, inside a screen reader, at exactly the moment the
+agent has raised verbosity to `io`.
+
+What replaces the one thing it did well — finding the session's window after the
+fact — is already built: the transcript records session open and close with
+timestamps, and those bracket the window inside `nvda.log`. Content plus scoping,
+both durable, no third copy.
+
+So **0020 supersedes that half of 0009**. The journal handler replaces the file
+handler; `nvdaLogPath` leaves `HelloResult` and the server's session info with it.
+0009's other decisions — the temporary level change and its restore-on-teardown —
+stand, and this entry only moves their trigger.
 
 ### Filters compose, and both directions matter
 
@@ -160,9 +193,8 @@ explicit:
 
 | | Set by | Purpose |
 |---|---|---|
-| NVDA's **logger** floor | `hello`, then `setLogLevel` | what NVDA emits at all — the only one that cannot be undone after the fact |
-| the **file** handler's level | `hello`, unchanged from 0009 | keeps `logPath` the clean human artifact it is today |
-| the **journal** handler's level | `setLogLevel` | what slices can see, independent of the file |
+| NVDA's **logger** floor | `hello`, then `setLogLevel` | what NVDA emits at all — the only one that cannot be undone after the fact, and the one the human's own `nvda.log` sees too |
+| the **journal** handler's level | `setLogLevel` | what slices can see |
 
 `hello` keeps its `logLevel` parameter: without it the *first* commands — the
 handshake itself, whatever failed immediately — are unreachable, and those are
@@ -256,7 +288,6 @@ class GetLogParams:
 @dataclass
 class SetLogLevelParams:
     level: LogLevel                # raises NVDA's own floor; forwards only
-    fileToo: bool = False          # leave logPath's file at the session level
 
 @dataclass
 class LogLevelResult:
@@ -273,6 +304,11 @@ class LogSliceResult:
     toCommandId: int
     capturedAtLevel: LogLevel  # the floor in force while this window was recorded
 ```
+
+`HelloResult` **loses** `nvdaLogPath`, and the server's session info loses
+`readerLogPath` with it: there is no file to point at. Removing a field is
+tolerated by protocol.md §2 (absent fields are ignored), and pre-release nothing
+external depends on it.
 
 `LogLevel` gains `WARNING` and `ERROR` (it exists today to *request* a capture
 level, where those are useless; as a filter they are the common case).
@@ -302,9 +338,12 @@ turns a confusing retry loop into one obvious next call.
 
 ### Bridge — adapters (NVDA edge, pyright-ignored)
 
-7. **`adapters/nvda_log_capture.py`** — the existing `FileHandler` gains a sibling
-   handler that appends to the journal. Both attach to `log.root`; the file keeps
-   0009's behaviour exactly.
+7. **`adapters/nvda_log_capture.py`** — the `FileHandler` is **replaced** by a
+   journal handler on `log.root`: same attach/detach and same level
+   save-and-restore as 0009, writing records into the journal entity instead of a
+   file. `path` leaves the port. The logs directory keeps only
+   `session-*.log` (the transcript), so 0009's two-prefix pruning simplifies to
+   one.
 
 ### Server
 
@@ -325,6 +364,9 @@ turns a confusing retry loop into one obvious next call.
 14. Conformance: `exerciseGetLog` — a real slice over a real bridge.
 15. Live: that a gesture's window really contains NVDA's own records, and that
     excluding `speech.speech.speak` at `debug` removes speech and keeps the rest.
+16. Removals: every assertion on `nvdaLogPath` / `readerLogPath` across the bridge
+    unit tests, the wire roundtrip, the conformance expectations and the Go
+    session-info tests. The `hello` handler stops starting a file.
 
 ## Live-NVDA checklist
 
@@ -345,8 +387,10 @@ turns a confusing retry loop into one obvious next call.
 
 ## Out of scope
 
-- Reading the log of a *previous* session. The journal is session-scoped, like
-  the buffers; the file at `logPath` remains for post-mortems.
+- Reading the log of a *previous* session, or one whose records have aged out of
+  the ring. The journal is session-scoped, like the speech buffer. The answer for
+  post-mortems is NVDA's own `nvda.log`, whose window the transcript's timestamps
+  bracket — not a third copy maintained by us.
 - Regular expressions. Substrings cover the cases and cannot hang the reader.
 - Structured records on the wire (see above).
 - Pushing or tailing.
@@ -356,7 +400,7 @@ turns a confusing retry loop into one obvious next call.
 
 The bridge advertises `log`; `get_log` appears only when it does; a command's
 window is exact and disjoint from its neighbours; filters compose in both
-directions; payloads are bounded and honest about truncation; the file from 0009
-is byte-for-byte unaffected; every gate green (`doctor`, `shared`, `bridge`,
-`types`, `gates`, `go`, `conformance`); the live checklist run with the tester at
-the machine.
+directions; payloads are bounded and honest about truncation; 0009's capture file
+is gone along with `nvdaLogPath`, with no orphaned assertions left behind; every
+gate green (`doctor`, `shared`, `bridge`, `types`, `gates`, `go`,
+`conformance`); the live checklist run with the tester at the machine.
