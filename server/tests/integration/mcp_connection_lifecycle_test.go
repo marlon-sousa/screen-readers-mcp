@@ -114,7 +114,6 @@ func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	}
 	result.Decode(t, &connected)
 

@@ -13,6 +13,8 @@ import (
 // FakeLogReader records what it was asked for and returns scripted responses.
 type FakeLogReader struct {
 	LastParams  ports.GetLogParams
+	LastLevel   string
+	Calls       int
 	SliceResult ports.LogSliceResult
 	LevelResult ports.LogLevelResult
 	Err         error
@@ -41,6 +43,7 @@ func NewFakeLogReader() *FakeLogReader {
 
 func (f *FakeLogReader) GetLog(params ports.GetLogParams) (ports.LogSliceResult, error) {
 	f.LastParams = params
+	f.Calls++
 	if f.Err != nil {
 		return ports.LogSliceResult{}, f.Err
 	}
@@ -48,6 +51,8 @@ func (f *FakeLogReader) GetLog(params ports.GetLogParams) (ports.LogSliceResult,
 }
 
 func (f *FakeLogReader) SetLogLevel(level string) (ports.LogLevelResult, error) {
+	f.LastLevel = level
+	f.Calls++
 	if f.Err != nil {
 		return ports.LogLevelResult{}, f.Err
 	}

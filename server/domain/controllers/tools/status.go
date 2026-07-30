@@ -54,7 +54,6 @@ type statusSession struct {
 	Mode          string   `json:"mode"`
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
-	ReaderLogPath string   `json:"readerLogPath"`
 	BridgeVersion string   `json:"bridgeVersion,omitempty"`
 	ProtocolVer   int      `json:"protocolVersion"`
 }

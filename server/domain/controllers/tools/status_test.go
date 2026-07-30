@@ -30,7 +30,6 @@ type statusAnswer struct {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	} `json:"session"`
 }
 

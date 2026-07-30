@@ -3,7 +3,13 @@
 
 from __future__ import annotations
 
-from nvdaMcpBridge.domain.entities.log_journal import MAX_RECORDS, LogJournal
+import pytest
+from nvdaMcpBridge.domain.entities.log_journal import (
+    MAX_RECORDS,
+    SETTABLE_LEVELS,
+    LogJournal,
+    wire_level_for,
+)
 
 
 def _append(
@@ -91,7 +97,9 @@ def test_fields_projection_returns_only_requested_fields() -> None:
 
 def test_min_level_drops_below_threshold() -> None:
     j = LogJournal()
-    _append(j, level_no=5, level_name="IO", message="io msg")
+    # NVDA's IO is 12, ABOVE DEBUG's 10 -- not 5. Speech is logged at IO, which is
+    # why `minLevel: "info"` is the spec's one-step way to drop it.
+    _append(j, level_no=12, level_name="IO", message="io msg")
     _append(j, level_no=20, level_name="INFO", message="info msg")
     _append(j, level_no=30, level_name="WARNING", message="warn msg")
 
@@ -101,6 +109,28 @@ def test_min_level_drops_below_threshold() -> None:
     assert "warn msg" in text
     assert entries == 2
     assert matched == 2
+
+
+def test_io_sits_above_debug_so_debug_keeps_io_records() -> None:
+    # The ordering that made the old io=5 harmless-looking and the level REPORTING
+    # wrong: asking for debug must keep IO records, because 12 >= 10.
+    j = LogJournal()
+    _append(j, level_no=10, level_name="DEBUG", message="debug msg")
+    _append(j, level_no=12, level_name="IO", message="io msg")
+
+    text, entries, _, _ = j.slice(0, j.mark(), min_level="debug")
+    assert "debug msg" in text
+    assert "io msg" in text
+    assert entries == 2
+
+
+def test_unknown_min_level_is_rejected_rather_than_ignored() -> None:
+    # Silently returning everything for a typo'd level is the worst answer: the
+    # agent reads an unfiltered slice as if it were filtered.
+    j = LogJournal()
+    _append(j)
+    with pytest.raises(ValueError, match="unknown log level"):
+        j.slice(0, j.mark(), min_level="verbose")
 
 
 # -- contains filter -----------------------------------------------------------
@@ -176,7 +206,10 @@ def test_exclude_is_case_insensitive() -> None:
 
 def test_filters_compose() -> None:
     j = LogJournal()
-    _append(j, level_no=5, level_name="IO", module="speech.speech", message="Speaking hi")
+    # IO at NVDA's real 12, so this record PASSES min_level="debug" (10) and is
+    # dropped by `exclude` on the module. At the old, wrong io=5 the level filter
+    # removed it first and the exclude clause was never exercised at all.
+    _append(j, level_no=12, level_name="IO", module="speech.speech", message="Speaking hi")
     _append(j, level_no=10, level_name="DEBUG", module="IAccessible", message="COM error")
     _append(j, level_no=20, level_name="INFO", module="some.module", message="session started")
     _append(j, level_no=10, level_name="DEBUG", module="another", message="debug trace")
@@ -264,3 +297,89 @@ def test_thread_fields_are_recorded() -> None:
     text, _, _, _ = j.slice(0, 1, fields=["thread", "thread_id"])
     assert "MainThread" in text
     assert "42" in text
+
+
+# -- the rendered line is nvda.log's own shape ---------------------------------
+
+
+def test_a_full_field_line_reproduces_nvdas_format() -> None:
+    # NVDA writes: "IO - inputCore.InputManager.executeGesture (09:17:40.724) -
+    # Thread-5 (13576):\nInput: kb(desktop):v". A slice pasted into an issue has
+    # to read like that, which is the reason the default projection exists at all.
+    j = LogJournal()
+    j.append(12, "IO", "inputCore.InputManager.executeGesture",
+             "Input: kb(desktop):v", "09:17:40.724", "Thread-5", 13576)
+
+    text, _, _, _ = j.slice(
+        0, 1, fields=["level", "module", "time", "thread", "thread_id", "message"]
+    )
+
+    assert text == (
+        "IO - inputCore.InputManager.executeGesture (09:17:40.724) - "
+        "Thread-5 (13576):\nInput: kb(desktop):v"
+    )
+
+
+def test_the_default_projection_keeps_the_same_shape_minus_the_threads() -> None:
+    j = LogJournal()
+    j.append(20, "INFO", "core.main", "starting", "09:17:40.724", "MainThread", 1)
+
+    text, _, _, _ = j.slice(0, 1)
+
+    assert text == "INFO - core.main (09:17:40.724):\nstarting"
+
+
+def test_the_compact_projection_is_level_and_message() -> None:
+    # The form the spec calls out as worth reaching for.
+    j = LogJournal()
+    j.append(20, "INFO", "core.main", "starting", "09:17:40.724", "MainThread", 1)
+
+    text, _, _, _ = j.slice(0, 1, fields=["level", "message"])
+
+    assert text == "INFO:\nstarting"
+
+
+def test_a_module_only_survey_is_just_the_module_names() -> None:
+    # The cheap "what is flooding this window?" call: a few hundred bytes that
+    # tell the next call what to exclude, instead of guessing.
+    j = LogJournal()
+    _append(j, module="speech.speech.speak")
+    _append(j, module="IAccessibleHandler.getRole")
+
+    text, _, _, _ = j.slice(0, j.mark(), fields=["module"])
+
+    assert text == "speech.speech.speak\nIAccessibleHandler.getRole"
+
+
+def test_unknown_field_is_rejected_rather_than_silently_dropped() -> None:
+    j = LogJournal()
+    _append(j)
+    with pytest.raises(ValueError, match="unknown log field"):
+        j.slice(0, j.mark(), fields=["level", "mesage"])
+
+
+# -- level numbers -------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("level_no", "expected"),
+    [
+        (0, "debug"),  # NOTSET emits everything: report the most verbose
+        (10, "debug"),
+        (12, "io"),  # NVDA's IO, between DEBUG and DEBUGWARNING
+        (15, "debugwarning"),
+        (20, "info"),
+        (25, "info"),  # between floors: the coarsest one still admitted
+        (30, "warning"),
+        (40, "error"),
+        (100, "error"),  # NVDA's OFF
+    ],
+)
+def test_wire_level_for_maps_nvdas_numbers(level_no: int, expected: str) -> None:
+    assert wire_level_for(level_no) == expected
+
+
+def test_filter_only_levels_are_not_settable() -> None:
+    # warning/error exist in the enum to serve minLevel; setting NVDA's own floor
+    # to either would silence warnings in the user's nvda.log.
+    assert SETTABLE_LEVELS == {"debug", "io", "debugwarning", "info"}

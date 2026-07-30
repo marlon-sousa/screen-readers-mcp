@@ -33,8 +33,10 @@ func (t *SetLogLevel) Description() string {
 		"debug/io levels the reader is slower, and the ring fills faster so " +
 		"windows expire sooner. The level is restored at session teardown " +
 		"regardless of how the session ends. Parameters: level (one of debug, io, " +
-		"debugwarning, info, warning, error). Returns the level now in force and " +
-		"the previous level."
+		"debugwarning, info -- 'warning' and 'error' exist as get_log minLevel " +
+		"filters but cannot be SET, since lowering the reader's own floor would " +
+		"silence warnings in the user's own log). Returns the level now in force " +
+		"and the previous level."
 }
 
 func (t *SetLogLevel) InputSchema() json.RawMessage {
@@ -43,8 +45,8 @@ func (t *SetLogLevel) InputSchema() json.RawMessage {
 		"properties": {
 			"level": {
 				"type": "string",
-				"enum": ["debug", "io", "debugwarning", "info", "warning", "error"],
-				"description": "The logging level to set."
+				"enum": ["debug", "io", "debugwarning", "info"],
+				"description": "The logging level to set. 'warning' and 'error' are get_log minLevel filters only, not settable: lowering the reader's own floor would silence warnings in the user's log for the rest of the session."
 			}
 		},
 		"required": ["level"],

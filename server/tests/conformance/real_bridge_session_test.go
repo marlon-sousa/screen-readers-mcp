@@ -125,6 +125,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseAnnounce(t, harness)
 	exerciseAskUser(t, harness)
 	exerciseTyping(t, harness)
+	exerciseLog(t, harness)
 	assertStatusIsProvenOnTheWire(t, harness)
 	assertInfoDescribesTheSession(t, harness, session)
 
@@ -150,7 +151,6 @@ type connectedSession struct {
 	Mode          string   `json:"mode"`
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
-	ReaderLogPath string   `json:"readerLogPath"`
 }
 
 // connect performs the handshake and checks that every field the real bridge
@@ -158,7 +158,7 @@ type connectedSession struct {
 //
 // This is the single densest assertion in the tier: `hello` carries a nested
 // object, a string enum, a string array and an integer, so a binding that got
-// any field NAME wrong -- `nvdaLogPath` rather than `readerLogPath`, `reader` as
+// any field NAME wrong -- `logPath` rather than `transcriptPath`, `reader` as
 // a string rather than an object -- fails here and nowhere else.
 func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge) connectedSession {
 	t.Helper()
@@ -210,6 +210,121 @@ func disconnect(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 	if result := harness.Call(t, "disconnect_reader", nil); result.IsError {
 		t.Fatalf("disconnect_reader: %s", result.Text)
+	}
+}
+
+// exerciseLog is the `log` capability group (spec 0020): both commands, the full
+// filter set, and one piece of real cross-language STATE.
+//
+// The bridge under conformance has no NVDA behind it, so the slice's text is
+// empty -- and that is fine, because what this tier exists to catch is a binding
+// bug, not NVDA's behaviour (see the harness header). Two things here are still
+// genuinely end-to-end rather than shape checks:
+//
+//   - Every filter is populated. GetLogParams marshals seven fields of four
+//     different shapes (optional int, int, optional string, three arrays); the
+//     bridge validates the field names and REFUSES unknown ones, so a binding
+//     that spelled `maxEntries` or `minLevel` wrong comes back as an error here.
+//   - set_log_level then a marked command then get_log: `capturedAtLevel` has to
+//     come back as the level just set. That only holds if setLogLevel really
+//     moved the bridge's own state and the Session recorded it on the NEXT
+//     command's window -- neither of which a same-language fake could prove.
+func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	var level struct {
+		Level    string `json:"level"`
+		Previous string `json:"previous"`
+	}
+	harness.Call(t, "set_log_level", map[string]any{"level": "debug"}).Decode(t, &level)
+	if level.Level != "debug" {
+		t.Errorf("level = %q, want the debug that was asked for", level.Level)
+	}
+	if level.Previous == "" {
+		t.Error("previous level is empty; it is what makes the change reversible")
+	}
+
+	// A command AFTER the level change, so its window records the new floor. This
+	// is also the command get_log will anchor on, since get_log does not mark
+	// itself.
+	harness.Call(t, "press_gesture", map[string]any{"gestures": []string{scriptedKey}})
+
+	var slice struct {
+		Text            string `json:"text"`
+		Entries         int    `json:"entries"`
+		Matched         int    `json:"matched"`
+		Truncated       bool   `json:"truncated"`
+		FromCommandID   int    `json:"fromCommandId"`
+		ToCommandID     int    `json:"toCommandId"`
+		CapturedAtLevel string `json:"capturedAtLevel"`
+	}
+	result := harness.Call(t, "get_log", map[string]any{
+		"windows":    1,
+		"minLevel":   "debug",
+		"contains":   []string{"COMError", "speech"},
+		"exclude":    []string{"speech.speech.speak"},
+		"fields":     []string{"time", "level", "module", "message"},
+		"maxEntries": 25,
+	})
+	if result.IsError {
+		t.Fatalf("get_log with every filter set: %s", result.Text)
+	}
+	result.Decode(t, &slice)
+
+	if slice.CapturedAtLevel != "debug" {
+		t.Errorf("capturedAtLevel = %q, want the debug set_log_level just established -- "+
+			"the level did not reach the bridge, or the window did not record it",
+			slice.CapturedAtLevel)
+	}
+	// Real request ids the bridge assigned, in order -- not zero-valued fields a
+	// binding forgot to populate.
+	if slice.FromCommandID <= 0 || slice.ToCommandID <= 0 {
+		t.Errorf("command range = %d..%d, want the ids the bridge actually marked",
+			slice.FromCommandID, slice.ToCommandID)
+	}
+	if slice.FromCommandID > slice.ToCommandID {
+		t.Errorf("command range = %d..%d, want it ordered oldest-first",
+			slice.FromCommandID, slice.ToCommandID)
+	}
+	// No NVDA behind this bridge, so nothing was logged; the counts must be
+	// honest about that rather than inventing entries.
+	if slice.Entries != 0 || slice.Matched != 0 || slice.Text != "" {
+		t.Errorf("slice = %d/%d %q, want an honest empty answer from a bridge with no NVDA",
+			slice.Entries, slice.Matched, slice.Text)
+	}
+
+	// Widening to two windows reaches back PAST the set_log_level, and the answer
+	// changes to the level in force for the oldest window in the range. That is
+	// the conservative direction on purpose: a multi-window slice never claims to
+	// have captured more than its earliest window did.
+	var widened struct {
+		FromCommandID   int    `json:"fromCommandId"`
+		CapturedAtLevel string `json:"capturedAtLevel"`
+	}
+	harness.Call(t, "get_log", map[string]any{"windows": 2}).Decode(t, &widened)
+	if widened.CapturedAtLevel != "info" {
+		t.Errorf("capturedAtLevel over two windows = %q, want the info in force before "+
+			"set_log_level ran", widened.CapturedAtLevel)
+	}
+	if widened.FromCommandID >= slice.FromCommandID {
+		t.Errorf("two windows started at command %d, want something older than %d",
+			widened.FromCommandID, slice.FromCommandID)
+	}
+
+	// An unknown field name is the agent's mistake and comes back as an error,
+	// not as a slice quietly missing a column.
+	if refused := harness.Call(t, "get_log", map[string]any{
+		"fields": []string{"levl"},
+	}); !refused.IsError {
+		t.Error("get_log accepted an unknown field name instead of refusing it")
+	}
+
+	// warning/error are minLevel filters, never settable: the bridge refuses even
+	// though the enum contains them.
+	if refused := harness.Call(t, "set_log_level", map[string]any{
+		"level": "error",
+	}); !refused.IsError {
+		t.Error("set_log_level accepted 'error', which would silence the user's own log")
 	}
 }
 

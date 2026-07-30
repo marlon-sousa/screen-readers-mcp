@@ -44,6 +44,12 @@ if TYPE_CHECKING:
 	from .commands.command_handler import CommandHandler
 
 
+#: How many command log-windows the context keeps (spec 0020). Enough that a
+#: debugging loop can still reach the command that failed several commands ago,
+#: bounded because each entry pins nothing but four numbers.
+MAX_COMMAND_WINDOWS: int = 50
+
+
 @dataclass(frozen=True)
 class SessionConfig:
 	"""Per-session settings wiring hands the controller.
@@ -237,12 +243,13 @@ class Session:
 		# Record the log-journal position before dispatch, for commands that want
 		# a window (spec 0020). A handler that sets marks_log=False (getLog) is
 		# not itself marked, so the default anchor is never the getLog that just ran.
-		marks = handler.marks_log
-		start_pos = 0
-		captured_at: protocol.LogLevel | None = None
-		if marks:
-			start_pos = self._log_capture.position()
-			captured_at = self._log_capture.current_level
+		# Guarded: a journal that cannot be read costs the window, never the command.
+		opened: tuple[int, protocol.LogLevel] | None = None
+		if handler.marks_log:
+			try:
+				opened = (self._log_capture.position(), self._log_capture.current_level)
+			except Exception:
+				opened = None
 
 		try:
 			result = handler.execute(self._ctx, request)
@@ -252,15 +259,14 @@ class Session:
 		except Exception as exc:  # a handler blew up unexpectedly; the session survives
 			self._reply_command_error(request.id, str(exc))
 			return
-
-		if marks:
-			assert captured_at is not None  # always set when marks is True
-			end_pos = self._log_capture.position()
-			windows = self._ctx.command_windows
-			windows.append((request.id, start_pos, end_pos, captured_at))
-			# Keep the last 50.
-			if len(windows) > 50:
-				del windows[:-50]
+		finally:
+			# Close the window on EVERY path, the failures above included. "This
+			# command just failed, show me what NVDA logged while it ran" is the
+			# case spec 0020 exists for, so a failed command has to stay
+			# addressable by its request id.
+			if opened is not None:
+				start_pos, captured_at = opened
+				self._guard(lambda: self._close_window(request.id, start_pos, captured_at))
 
 		self._reply(request.id, result)
 		if pre_hello:
@@ -268,6 +274,15 @@ class Session:
 			# Two ascending tones: the bridge is now controlling NVDA. Guarded so a
 			# beep failure never breaks the just-established session.
 			self._guard(self._signals.session_started)
+
+	def _close_window(
+		self, request_id: int, start_pos: int, captured_at: protocol.LogLevel
+	) -> None:
+		"""Append this command's finished log window, keeping the last N."""
+		windows = self._ctx.command_windows
+		windows.append((request_id, start_pos, self._log_capture.position(), captured_at))
+		if len(windows) > MAX_COMMAND_WINDOWS:
+			del windows[:-MAX_COMMAND_WINDOWS]
 
 	# -- teardown ------------------------------------------------------------
 

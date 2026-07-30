@@ -401,6 +401,45 @@ turns a confusing retry loop into one obvious next call.
 - Pushing or tailing.
 - Any change to the `logPath` file from 0009.
 
+## Amendments during implementation (2026-07-30, PR #46 review)
+
+Six things the spec left open or got wrong about NVDA, settled while building it.
+Recorded here rather than edited into the text above, so the agreed shape and what
+the code actually does stay separately readable.
+
+1. **`warning`/`error` are refused by `setLogLevel` and by `hello`.** The spec
+   introduces them as filter-only but never says what happens if one is *set*.
+   Setting NVDA's floor to `error` silences warnings in the human's own nvda.log
+   for the session, which nothing here asks for. The settable set is the four the
+   server's `ParseReaderLogLevel` already enforced: `debug`, `io`, `debugwarning`,
+   `info`.
+2. **A failed command still gets a window.** The Goal says "or just had a command
+   fail"; the first implementation recorded the window only on the success path,
+   so the one command an agent most wants a slice for was the one it could not
+   ask about. The mark is now closed in a `finally`.
+3. **Multi-window slices are concatenated, not spanned.** `windows: 3` slices
+   three windows and joins them, instead of taking one range from the first
+   window's start to the last one's end. Windows are disjoint but not *adjacent*
+   — whatever NVDA logged while the agent was thinking between two commands sits
+   between them — and a single span swallows that idle chatter unboundedly.
+4. **`capturedAtLevel` over several windows is the oldest window's floor.** The
+   conservative end: it can under-report what a later window captured, but never
+   over-report. Visible in the conformance run, which asserts both directions.
+5. **The journal's "module" is NVDA's `codepath`, not `record.name`.** NVDA has a
+   single logger, so `record.name` is the constant `"NVDA"`; the thing that reads
+   `speech.speech.speak` is the `codepath` attribute NVDA attaches per record
+   (`logHandler.py`). The spec's own worked example — `exclude:
+   ["speech.speech.speak"]` — matches nothing without this.
+6. **NVDA's `IO` is 12, above `DEBUG`'s 10** (`logHandler.py`: `IO = 12`,
+   `DEBUGWARNING = 15`), and its timestamps are local time-only (`09:17:40.724`),
+   produced by a `formatTime` that deliberately avoids `time.localtime`. Both are
+   borrowed from NVDA rather than restated, so a slice lines up with the log a
+   human would diff it against.
+
+An unknown `fields` entry or `minLevel` is also now an error rather than a silent
+omission: a typo'd projection otherwise returns plausible text with a column
+quietly missing, which is worse than a refusal.
+
 ## Definition of done
 
 The bridge advertises `log`; `get_log` appears only when it does; a command's

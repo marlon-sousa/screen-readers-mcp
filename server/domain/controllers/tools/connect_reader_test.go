@@ -143,7 +143,6 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	}
 	encoded, _ := json.Marshal(result)
 	if err := json.Unmarshal(encoded, &got); err != nil {

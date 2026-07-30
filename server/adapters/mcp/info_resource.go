@@ -60,7 +60,6 @@ type info struct {
 	// conversation, not least about what it means once a bridge is not on the
 	// same machine as the server.
 	LogPath       string `json:"logPath,omitempty"`
-	ReaderLogPath string `json:"readerLogPath,omitempty"`
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
 
 	ProtocolVersion int `json:"protocolVersion,omitempty"`
@@ -112,7 +111,8 @@ func describe(sessions SessionSource) info {
 	document.Mode = session.Mode.String()
 	document.Synth = session.Synth
 	document.LogPath = session.LogPath
-	// ReaderLogPath superseded by 0020; always empty.
+	// There is no reader-log PATH to report: spec 0020 replaced 0009's capture
+	// file with the in-memory journal, read through the get_log tool instead.
 	document.BridgeVersion = session.BridgeVersion
 	document.ProtocolVersion = session.ProtocolVersion
 	return document

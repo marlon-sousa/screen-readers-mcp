@@ -209,17 +209,30 @@ means the command takes no parameters. Summary:
   from the anchor. Filters compose: `minLevel` drops records below a level,
   `contains` keeps only matching messages, `exclude` drops matching modules or
   messages, all case-insensitive. `fields` projects which columns to render
-  (default: time, level, module, message). Bounded by `maxEntries` (default 200);
+  (default: time, level, module, message); an unknown field name or level is
+  **rejected**, never silently dropped, so a typo cannot return a slice that
+  merely looks filtered. Each window is sliced separately and the texts joined,
+  so `windows: 3` is three commands' worth and not the whole span between them.
+  Bounded by `maxEntries` (default 200), spent across the windows in order;
   reports `matched` (before the cap), `truncated` (when capped or the window aged
   out of the ring), and `capturedAtLevel` (the floor in force while the window
   was recorded — an empty slice at `capturedAtLevel: "info"` with
   `minLevel: "debug"` means the records were never emitted, not that none exist).
+  Over several windows `capturedAtLevel` reports the **oldest** window's floor, so
+  it never claims to have captured more than the earliest part of the range did.
+  Every marked command has a window, including one that **failed** — "show me the
+  log for the command that just errored" is the case this exists for.
 - `setLogLevel` `{ level }` → `{ level, previous }` — raise or lower the
   reader's diagnostic logging floor for the rest of the session. Forwards only:
   Python's logging decides at the *logger* whether a record exists, so a level
   that was never emitted cannot be recovered. Downwards is free. This is a real
   (if temporary) change to the reader; the level is restored at teardown on every
   exit path (spec 0020, superseding 0009's hello-only level change).
+  Only `debug`, `io`, `debugwarning` and `info` may be **set** — the same four
+  `hello`'s `logLevel` accepts. `warning` and `error` exist in `LogLevel` as
+  `getLog` `minLevel` filters, where they are the common case; setting the
+  reader's own floor to either would silence warnings in the **user's** nvda.log
+  for the rest of the session, so both commands reject them.
 
 Reader-specific vocabulary — gesture ids, roles, states, config key paths, state
 values — is **opaque payload**: the server routes it without interpreting it, and
