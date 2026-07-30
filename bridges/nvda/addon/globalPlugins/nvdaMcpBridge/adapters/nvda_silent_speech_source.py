@@ -37,43 +37,43 @@ from speech.extensions import filter_speechSequence
 from ..domain.ports.speech_source import SpeechSource
 
 if TYPE_CHECKING:
-    from ..domain.entities.speech_buffer import SpeechBuffer
+	from ..domain.entities.speech_buffer import SpeechBuffer
 
 
 class NvdaSilentSpeechSource(SpeechSource):
-    """Captures NVDA speech and suppresses it, leaving the real synth loaded."""
+	"""Captures NVDA speech and suppresses it, leaving the real synth loaded."""
 
-    def __init__(self) -> None:
-        self._buffer: SpeechBuffer | None = None
-        self._registered = False
+	def __init__(self) -> None:
+		self._buffer: SpeechBuffer | None = None
+		self._registered = False
 
-    def start(self, buffer: SpeechBuffer) -> None:
-        self._buffer = buffer
-        filter_speechSequence.register(self._capture_and_suppress)
-        self._registered = True
+	def start(self, buffer: SpeechBuffer) -> None:
+		self._buffer = buffer
+		filter_speechSequence.register(self._capture_and_suppress)
+		self._registered = True
 
-    def stop(self) -> None:
-        if self._registered:
-            filter_speechSequence.unregister(self._capture_and_suppress)
-            self._registered = False
-        self._buffer = None
+	def stop(self) -> None:
+		if self._registered:
+			filter_speechSequence.unregister(self._capture_and_suppress)
+			self._registered = False
+		self._buffer = None
 
-    def suspend(self) -> None:
-        """Unregister the filter so the tester hears speech during a window."""
-        if self._registered:
-            filter_speechSequence.unregister(self._capture_and_suppress)
-            self._registered = False
+	def suspend(self) -> None:
+		"""Unregister the filter so the tester hears speech during a window."""
+		if self._registered:
+			filter_speechSequence.unregister(self._capture_and_suppress)
+			self._registered = False
 
-    def resume(self) -> None:
-        """Re-register the filter; idempotent, safe to call at teardown."""
-        if not self._registered:
-            filter_speechSequence.register(self._capture_and_suppress)
-            self._registered = True
+	def resume(self) -> None:
+		"""Re-register the filter; idempotent, safe to call at teardown."""
+		if not self._registered:
+			filter_speechSequence.register(self._capture_and_suppress)
+			self._registered = True
 
-    def _capture_and_suppress(self, speechSequence: Any) -> Any:
-        # Runs on NVDA's main thread (inside speak()). Capture the words, then
-        # return an empty sequence so speak() stops before the synth.
-        buffer = self._buffer
-        if buffer is not None and speechSequence:
-            buffer.append(speechSequence)
-        return []
+	def _capture_and_suppress(self, speechSequence: Any) -> Any:
+		# Runs on NVDA's main thread (inside speak()). Capture the words, then
+		# return an empty sequence so speak() stops before the synth.
+		buffer = self._buffer
+		if buffer is not None and speechSequence:
+			buffer.append(speechSequence)
+		return []

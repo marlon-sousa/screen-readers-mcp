@@ -50,6 +50,7 @@ const (
 	brailleCells  = "elements lst dlg"
 	fakeSynth     = "espeak"
 	announcedHint = "Taking over: I need a password."
+	askedPrompt   = "Plug the braille display in, then acknowledge."
 	// Punctuation and an accented character, deliberately: this is what
 	// KeyboardInputGesture.fromName cannot reach on every keyboard layout, and
 	// exactly the case spec 0019 exists for.
@@ -120,6 +121,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseSpeech(t, harness)
 	exerciseBraille(t, harness)
 	exerciseAnnounce(t, harness)
+	exerciseAskUser(t, harness)
 	exerciseTyping(t, harness)
 	assertStatusIsProvenOnTheWire(t, harness)
 	assertInfoDescribesTheSession(t, harness, session)
@@ -340,6 +342,63 @@ func exerciseAnnounce(t *testing.T, harness *testsupport.MCPHarness) {
 
 	if spoken.Announced != announcedHint {
 		t.Errorf("announce = %q, want the text echoed back unchanged", spoken.Announced)
+	}
+}
+
+// exerciseAskUser is the rest of the `interact` group: ask_user, a poll nobody
+// answers, and then PROOF THAT THE SESSION IS STILL USABLE.
+//
+// That last call is what this tier adds. A poll miss is the one ordinary outcome
+// that leaves a reply in flight, and the two unit tiers cannot see what that does
+// to a real connection: the bridge-side roundtrip has no Go client, and the
+// Go-side tool tests have a fake port, so neither ever puts a real client's
+// deadline arithmetic against a real bridge's wait. When those two disagreed
+// (they did -- `waitForUserReply` is the first waiting command whose contract
+// default is not the shared 5 s), the symptom landed on the call AFTER the poll,
+// as a lost connection. Hence the announce at the end.
+//
+// The timeout is short and EXPLICIT on purpose. An omitted one makes the bridge
+// wait out its own 30 s default, which is 30 s of wall clock in a gate that
+// otherwise runs in eight -- and the budget arithmetic it would exercise is
+// pinned for free, on a fake clock, in adapters/bridge's
+// TestWaitForUserReplyOutlivesTheBridgesOwnDefault. Nothing answers the prompt
+// here (the acknowledgement is an NVDA gesture and there is no NVDA in a headless
+// run), so `answered: false` is the expected outcome; the answered path is driven
+// where a test can reach the entity, in
+// tests/integration/test_wire_session_roundtrip.py.
+func exerciseAskUser(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	var asked struct {
+		Ticket string `json:"ticket"`
+	}
+	harness.Call(t, "ask_user", map[string]any{"prompt": askedPrompt}).Decode(t, &asked)
+	if asked.Ticket == "" {
+		t.Fatal("ask_user returned no ticket, so there is nothing to poll with")
+	}
+
+	var replied struct {
+		Answered bool   `json:"answered"`
+		Text     string `json:"text"`
+	}
+	harness.Call(t, "wait_for_user_reply", map[string]any{
+		"ticket":  asked.Ticket,
+		"timeout": 0.25,
+	}).Decode(t, &replied)
+	if replied.Answered {
+		t.Errorf("answered = true, but nothing acknowledged the prompt in a headless run")
+	}
+
+	// The claim this exercise exists for: a poll miss leaves the connection in a
+	// state the next command can use. If the response stream had desynchronised,
+	// this is where it would surface -- as a lost connection, not as a bad answer.
+	var spoken struct {
+		Announced string `json:"announced"`
+	}
+	harness.Call(t, "announce", map[string]any{"text": announcedHint}).Decode(t, &spoken)
+	if spoken.Announced != announcedHint {
+		t.Errorf("after a poll miss, announce = %q -- the response stream is out of step",
+			spoken.Announced)
 	}
 }
 

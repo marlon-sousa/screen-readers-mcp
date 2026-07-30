@@ -36,6 +36,7 @@ from ..domain.ports.event_bus import EventBus
 from .ports.listener import Listener, ListenerClosed
 
 if TYPE_CHECKING:
+	from ..domain.controllers.commands.session_context import SessionContext
 	from ..domain.controllers.session import Session
 	from .ports.transport import Transport
 
@@ -206,8 +207,12 @@ class BridgeServer:
 			if not self._is_stopping():
 				self._notify()
 
-	def current_session_context(self):
-		"""The active session's context, or None. For the ack gesture."""
+	def current_session_context(self) -> SessionContext | None:
+		"""The active session's context, or None. For the ack gesture.
+
+		Read under the lock like every other accessor here, because the caller is
+		NVDA's main thread and the writer is the accept loop.
+		"""
 		with self._lock:
 			session = self._active_session
 		if session is None:

@@ -147,7 +147,7 @@ alive**, and that is load-bearing enough to state rather than leave implicit.
 
 | Timeout | Reset by | What it bounds |
 |---|---|---|
-| heartbeat, 30 s | any message, `ping` included | each **poll's own timeout** |
+| heartbeat, 30 s | any message, `ping` included | each **poll's own timeout** (capped at 110 s — see the amendment below) |
 | inactivity, 120 s | real commands only (`ping` sets `resets_inactivity = False`) | the agent's **poll interval** |
 | window lifetime, 300 s | nothing — absolute, from `askUser` | how long the human gets |
 
@@ -197,6 +197,66 @@ one diff, and so does its regression test: a handler that blocks past the
 heartbeat window must not end the session. A reviewer seeing the fix alone would
 have to take "something will need this" on trust; seeing it here, the need is on
 the same page.
+
+### Four amendments from the review of PR #45 — **Amended 2026-07-30**
+
+Each is a place where the decisions above were right and the code did not yet
+enforce them.
+
+**1. A poll is capped at 110 s, in the bridge.** Decision (b) leaves inactivity
+measured from dispatch, which makes "a poll must be shorter than the inactivity
+window" a real constraint — and nothing enforced it. An agent taking the
+`waitForUserReply` description at its word ("the window's own 300 s deadline is
+the bridge's business") and passing `timeout: 300` would get its answer and lose
+the session in the same breath, to `INACTIVITY_TIMEOUT`, one line after the reply
+was written. `WaitForUserReplyHandler` now clamps to `MAX_POLL_TIMEOUT` (110 s)
+and notes the clamp in the transcript; the tool schema says the same number out
+loud, so no agent has to discover it by losing a session. The clamp lives in the
+bridge because the bridge owns the watchdogs, and so protects every client rather
+than only this server's tool.
+
+**2. An omitted poll timeout is filled in by the caller, not left to the
+bridge.** The window survives on the *client's* deadline exceeding the bridge's,
+which is what `waitSlack` is for. That invariant silently broke here: the wire
+default for `waitForUserReply.timeout` is 30 s, while the Go client sizes an
+omitted timeout from the 5 s default the *speech*-waiting commands share — a 10 s
+budget against a 30 s wait. The client would give up first, hand the agent a
+timeout instead of `answered: false`, and leave the bridge's late reply unread in
+the stream, where the next call reads it as a mismatched id and declares the
+connection lost. So `wait_for_user_reply` now fills the default itself
+(`tools.defaultPollTimeout`) and the request always carries the value the budget
+was sized from. The lesson generalises: the client's "duplicating the default is
+harmless" reasoning holds only while every waiting command shares one default.
+
+**3. Teardown does not `resume()`.** "It fails in the safe direction" above is
+only true if nothing re-suppresses on the way out — and `resume()` *is* the
+re-suppressing operation. Calling it during teardown reinstalled the filter
+microseconds before `stop()` removed it, and since every teardown step is guarded,
+a `stop()` that then raised would have left the tester **mute**: precisely the
+outcome checklist item 8 exists to prevent. Teardown now cancels the prompt,
+calls `UserPrompter.cancel(ticket)` (so stage 2's dialog cannot outlive the
+session that opened it — the port always documented this caller and did not have
+one), and leaves the filter exactly as the open window left it: unregistered.
+
+**4. The 300 s deadline is observed by a poll, not by a timer.** "An agent that
+stops polling would leave capture suspended indefinitely" describes the danger
+correctly but overstates the cure: `UserPrompt.wait()` is where the deadline is
+evaluated, so an agent that asks and then never polls again leaves the window open
+until inactivity ends the session — whose teardown lifts suppression anyway. The
+direction is safe and the outcome is the same; only the mechanism differs, and it
+is now written down where the entity is defined rather than implied.
+
+### Compatibility: `announce` → `interact` is a wire-visible rename
+
+The capability rename lands inside `PROTOCOL_VERSION = 1` deliberately (the v1
+contract is still pre-1.0 and the schema is regenerated, not versioned per
+change). The cost is worth stating because the add-on is installed *separately*
+from the server: a stale add-on still advertising `announce` completes the
+handshake happily and then silently lacks `announce`, `ask_user` and
+`wait_for_user_reply` — three tools simply missing, with no error to explain it.
+That is the same class of confusion `bridgeVersion` was added to `hello` to
+diagnose, so the diagnostic already exists; the release notes must say that this
+server needs an add-on from 11.2 or later.
 
 **Whichever way that goes, it does not change this entry's design.** Even with
 unlimited blocking at the bridge, `DefaultCallTimeout` is 15 s in the Go client
@@ -352,16 +412,22 @@ remedies, the same reasoning as the server's `CapabilityError` distinguishing
    hear typed characters, and read the screen normally.
 3. What the tester hears during the window does **not** appear in `get_speech`,
    and the speech index is unchanged across it.
-4. Pressing the acknowledgement gesture ends the window; suppression resumes;
-   the agent's next `wait_for_user_reply` returns `answered: true`.
+4. Pressing the acknowledgement gesture is confirmed out loud ("Acknowledged")
+   and ends the window; suppression resumes on the agent's next
+   `wait_for_user_reply`, which returns `answered: true`.
 5. A poll before the answer returns `answered: false` at its timeout, and the
-   session survives.
-6. A prompt left unanswered past its timeout resumes suppression on its own.
+   session survives. Run this one with the timeout **omitted** too: amendment 2
+   is the case where an omitted timeout used to cost the connection, and the
+   symptom appears on the call *after* the poll, not on the poll itself.
+6. A prompt left unanswered past its timeout returns `answered: false` to the
+   next poll, which is what resumes suppression (amendment 4: the deadline is
+   observed by a poll, so a checklist run must keep polling to see it).
 7. The panic gesture during an open window stops cleanly and leaves speech on.
 8. Killing the MCP client during an open window leaves the tester **audible** —
    the invariant this whole design is arranged around.
 9. A session held open across a five-minute human interaction does not trip
-   either watchdog (the heartbeat fix, observed live).
+   either watchdog (the heartbeat fix, observed live). Poll in steps of 30–110 s
+   rather than one long wait; amendment 1 is why.
 
 ## Out of scope
 

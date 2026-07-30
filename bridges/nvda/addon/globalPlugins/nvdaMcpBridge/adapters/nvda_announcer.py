@@ -13,16 +13,17 @@
 #   * announce() speaks straight through that live synth via getSynth().speak(),
 #     which bypasses the speak() suppression filter entirely -- so the hint is
 #     heard even while normal captured speech is muted. Two short beeps precede it
-#     as a "hint incoming" cue (Marlon's request).
+#     as a "hint incoming" cue (Marlon's request). That cue-then-speak gesture
+#     lives in nvda_cue.py, shared with NvdaUserPrompter, which needs the same
+#     thing one pitch lower.
 # All NVDA touches are marshalled to the main thread.
 
 from __future__ import annotations
 
 import synthDriverHandler
-import tones
-import wx
 
 from ..domain.ports.announcer import Announcer
+from .nvda_cue import cue_and_speak
 from .nvda_main_thread import run_on_main
 
 _CUE_HZ = 660
@@ -39,25 +40,11 @@ class NvdaAnnouncer(Announcer):
 		return run_on_main(self._read_name, block=True) or ""
 
 	def announce(self, text: str) -> None:
-		run_on_main(lambda: self._cue_and_speak(text))
+		run_on_main(
+			lambda: cue_and_speak([text], hz=_CUE_HZ, ms=_CUE_MS, gap_ms=_CUE_GAP_MS)
+		)
 
 	@staticmethod
 	def _read_name() -> str:
 		synth = synthDriverHandler.getSynth()
 		return synth.name if synth is not None else ""
-
-	@staticmethod
-	def _cue_and_speak(text: str) -> None:
-		# Two spaced short beeps, then speak the hint through the live synth. The
-		# beeps are scheduled apart so both are heard, and the speech follows them;
-		# speaking is a direct driver call, so the speak() suppression filter never
-		# sees it.
-		tones.beep(_CUE_HZ, _CUE_MS)
-		wx.CallLater(_CUE_GAP_MS, tones.beep, _CUE_HZ, _CUE_MS)
-
-		def _speak() -> None:
-			synth = synthDriverHandler.getSynth()
-			if synth is not None:
-				synth.speak([text])
-
-		wx.CallLater(_CUE_GAP_MS * 2, _speak)

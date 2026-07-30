@@ -44,7 +44,7 @@ import (
 const DefaultCallTimeout = 15 * time.Second
 
 // contractWaitDefault mirrors the wire contract's own default timeout for the
-// two waiting commands (protocol.py's 5.0 seconds).
+// speech-waiting commands (protocol.py's 5.0 seconds).
 //
 // It is used ONLY to size the local deadline when the caller did not ask for a
 // specific timeout -- the request still omits the field, so the bridge applies
@@ -53,7 +53,27 @@ const DefaultCallTimeout = 15 * time.Second
 // the contract's default changed, the worst outcome is a budget that is too
 // generous or too tight by seconds, not two peers disagreeing about when to
 // stop waiting.
+//
+// That tolerance only holds while every waiting command shares one default, and
+// `waitForUserReply` does not -- hence contractUserReplyWaitDefault below.
 const contractWaitDefault = 5 * time.Second
+
+// contractUserReplyWaitDefault mirrors protocol.py's own default for
+// `waitForUserReply.timeout`, which is 30 s rather than the 5 s the
+// speech-waiting commands share.
+//
+// It exists because the budget must always outlast the wait the BRIDGE will
+// actually perform. Sizing an omitted user-reply timeout from the 5 s default
+// gave a 10 s budget against a 30 s wait: the client gave up first, returned a
+// timeout instead of `answered: false`, and left the bridge's late reply unread
+// in the stream -- where the next call read it, saw a mismatched id, and declared
+// the connection lost, one command after the mistake.
+//
+// The request still OMITS the field either way, so the bridge remains the single
+// authority on the value; this only sizes the local deadline. Callers are
+// expected to send a timeout explicitly (tools.defaultPollTimeout does), and
+// this is what keeps the port safe for one that does not.
+const contractUserReplyWaitDefault = 30 * time.Second
 
 // waitSlack is added to a waiting command's own timeout before the client gives
 // up, so that the BRIDGE's timeout always fires first and the agent gets
@@ -234,7 +254,8 @@ func (c *JSONLinesClient) WaitForUserReply(ticket string, timeout time.Duration)
 		params.Timeout = &seconds
 	}
 	var result wire.WaitForUserReplyResult
-	if err := c.call(wire.CommandWaitForUserReply, params, &result, waitBudget(timeout)); err != nil {
+	budget := waitBudgetFrom(timeout, contractUserReplyWaitDefault)
+	if err := c.call(wire.CommandWaitForUserReply, params, &result, budget); err != nil {
 		return ports.UserReply{}, err
 	}
 	text := ""
@@ -325,8 +346,16 @@ func (c *JSONLinesClient) Close() error {
 // waitBudget sizes the local deadline for a waiting command so that the
 // BRIDGE's own timeout is always the one that fires.
 func waitBudget(requested time.Duration) time.Duration {
+	return waitBudgetFrom(requested, contractWaitDefault)
+}
+
+// waitBudgetFrom is waitBudget for a command whose contract default is not the
+// shared one. The fallback must be the default the BRIDGE will apply to an
+// omitted timeout, or the client gives up mid-wait and desynchronises the
+// response stream (see contractUserReplyWaitDefault).
+func waitBudgetFrom(requested, contractDefault time.Duration) time.Duration {
 	if requested <= 0 {
-		requested = contractWaitDefault
+		requested = contractDefault
 	}
 	return requested + waitSlack
 }

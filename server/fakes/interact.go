@@ -1,7 +1,7 @@
 // screenreader-mcp fakes -- FakeInteractPort: the Interact port double.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: test double. MIRRORS domain/ports/announcer.go (the interact port).
+// ROLE: test double. MIRRORS domain/ports/interact.go.
 // USED BY: the announce, ask_user and wait_for_user_reply tool controller tests.
 package fakes
 
@@ -17,6 +17,7 @@ type FakeInteractPort struct {
 	mu        sync.Mutex
 	announced []string
 	err       error
+	polls     []time.Duration
 	// Scripted replies: ticket -> reply. Set before a test runs.
 	Replies map[string]ports.UserReply
 	// Recorded prompts: ticket -> prompt.
@@ -71,6 +72,10 @@ func (f *FakeInteractPort) AskUser(prompt string) (string, error) {
 func (f *FakeInteractPort) WaitForUserReply(ticket string, timeout time.Duration) (ports.UserReply, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Recorded even on the failure path: the timeout the tool RESOLVED is the
+	// subject of its own tests (an omitted one must not reach the bridge as zero,
+	// and an excessive one must be capped), so it must be observable.
+	f.polls = append(f.polls, timeout)
 	if f.err != nil {
 		return ports.UserReply{}, f.err
 	}
@@ -80,9 +85,9 @@ func (f *FakeInteractPort) WaitForUserReply(ticket string, timeout time.Duration
 	return ports.UserReply{Answered: false}, nil
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
+// Polls is every timeout the port was asked to wait for, in order.
+func (f *FakeInteractPort) Polls() []time.Duration {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]time.Duration(nil), f.polls...)
 }

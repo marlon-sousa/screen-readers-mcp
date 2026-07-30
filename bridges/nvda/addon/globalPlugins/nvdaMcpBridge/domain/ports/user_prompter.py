@@ -14,16 +14,16 @@ from abc import ABC, abstractmethod
 
 
 class UserPrompter(ABC):
-    """Presents a prompt to the human and can cancel it."""
+	"""Presents a prompt to the human and can cancel it."""
 
-    @abstractmethod
-    def present(self, prompt: str, ticket: str) -> None:
-        """Announce the prompt audibly: beeps, the prompt text, the gesture name.
+	@abstractmethod
+	def present(self, prompt: str, ticket: str) -> None:
+		"""Announce the prompt audibly: beeps, the prompt text, the gesture name.
 
-        Called from the session thread; the implementation marshals to the
-        main thread.
-        """
+		Called from the session thread; the implementation marshals to the
+		main thread.
+		"""
 
-    @abstractmethod
-    def cancel(self, ticket: str) -> None:
-        """Cancel the prompt (teardown). Idempotent -- safe to call twice."""
+	@abstractmethod
+	def cancel(self, ticket: str) -> None:
+		"""Cancel the prompt (teardown). Idempotent -- safe to call twice."""

@@ -23,52 +23,52 @@ from .domain.controllers.commands.registry import build_command_registry
 from .domain.controllers.session import Session, SessionConfig
 
 if TYPE_CHECKING:
-    import os
+	import os
 
-    from .adapters.ports.transport import Transport
-    from .domain.ports.adapter_factory import AdapterFactory
-    from .domain.ports.announcer import Announcer
-    from .domain.ports.log_capture import LogCapture
-    from .domain.ports.session_signals import SessionSignals
-    from .domain.ports.user_prompter import UserPrompter
+	from .adapters.ports.transport import Transport
+	from .domain.ports.adapter_factory import AdapterFactory
+	from .domain.ports.announcer import Announcer
+	from .domain.ports.log_capture import LogCapture
+	from .domain.ports.session_signals import SessionSignals
+	from .domain.ports.user_prompter import UserPrompter
 
 
 def build_session(
-    transport: Transport,
-    factory: AdapterFactory,
-    logs_dir: str | os.PathLike[str],
-    nvda_version: str,
-    signals: SessionSignals,
-    announcer: Announcer,
-    log_capture: LogCapture,
-    user_prompter: UserPrompter,
-    *,
-    bridge_version: str = "unknown",
-    heartbeat_timeout: float = 30.0,
-    inactivity_timeout: float = 120.0,
+	transport: Transport,
+	factory: AdapterFactory,
+	logs_dir: str | os.PathLike[str],
+	nvda_version: str,
+	signals: SessionSignals,
+	announcer: Announcer,
+	log_capture: LogCapture,
+	user_prompter: UserPrompter,
+	*,
+	bridge_version: str = "unknown",
+	heartbeat_timeout: float = 30.0,
+	inactivity_timeout: float = 120.0,
 ) -> Session:
-    """Assemble a Session for one connection over ``transport``.
+	"""Assemble a Session for one connection over ``transport``.
 
-    Opens a fresh session transcript under ``logs_dir``, wraps ``transport`` in
-    the JSON-lines channel, builds the command registry (whose hello handler
-    holds ``factory``), and hands the Session its ports -- including the session
-    ``signals`` (start/end beeps), the ``announcer`` (the bridge's line to the
-    real synth, for the hello synth name and the announce hint channel),
-    ``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
-    ``user_prompter`` (presents prompts to the human during silent mode).
-    ``log_capture``/``user_prompter`` are NVDA-facing like ``signals``/``announcer``,
-    so they are parameters built at the edge (plugin.py), not constructed here --
-    wiring.py stays pure.
-    """
-    transcript = create_session_log(logs_dir)
-    channel = JsonLinesChannel(transport)
-    clock = RealClock()
-    registry = build_command_registry(factory, nvda_version, bridge_version)
-    config = SessionConfig(
-        nvda_version=nvda_version,
-        heartbeat_timeout=heartbeat_timeout,
-        inactivity_timeout=inactivity_timeout,
-    )
-    return Session(
-        channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter,
-    )
+	Opens a fresh session transcript under ``logs_dir``, wraps ``transport`` in
+	the JSON-lines channel, builds the command registry (whose hello handler
+	holds ``factory``), and hands the Session its ports -- including the session
+	``signals`` (start/end beeps), the ``announcer`` (the bridge's line to the
+	real synth, for the hello synth name and the announce hint channel),
+	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
+	``user_prompter`` (presents prompts to the human during silent mode).
+	``log_capture``/``user_prompter`` are NVDA-facing like ``signals``/``announcer``,
+	so they are parameters built at the edge (plugin.py), not constructed here --
+	wiring.py stays pure.
+	"""
+	transcript = create_session_log(logs_dir)
+	channel = JsonLinesChannel(transport)
+	clock = RealClock()
+	registry = build_command_registry(factory, nvda_version, bridge_version)
+	config = SessionConfig(
+		nvda_version=nvda_version,
+		heartbeat_timeout=heartbeat_timeout,
+		inactivity_timeout=inactivity_timeout,
+	)
+	return Session(
+		channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter,
+	)

@@ -1,23 +1,24 @@
 // screenreader-mcp domain -- the announce tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: controller, one per tool. GATED on `announce`.
-// USES: ports.Announcer, through ToolContext.Announcer().
+// ROLE: controller, one per tool. GATED on `interact`.
+// USES: ports.Interact, through ToolContext.Interact().
 // LISTED BY: registry.go.
 //
-// The only tool that addresses a HUMAN. Everything else here observes or drives
-// a screen reader; this speaks to the person in front of it, through the
+// One of the three tools that address a HUMAN. Everything else here observes or
+// drives a screen reader; this speaks to the person in front of it, through the
 // reader's real synthesizer and UNDERNEATH whatever suppression the capture mode
 // has in place -- which is the whole point, because the mode where the agent
 // most needs to say something is the mode where the tester can hear nothing
 // else.
 //
 // The description below carries the operational warning, and has to: in `silent`
-// mode the tester can hear this announcement and then nothing further, cannot
-// navigate, and cannot reply. Until entry 11.2 lands there is no reply channel
-// at all, so an announcement in a silent session must TELL, never ASK, and
-// should name the panic gesture as the way out. An agent that reads this tool as
-// a chat channel will strand somebody.
+// mode the tester hears this announcement and then nothing further, and cannot
+// navigate. Since 11.2 there IS a reply channel -- `ask_user` opens a window in
+// which the human hears normally and can answer -- so the division of labour is
+// the thing to get across: announce TELLS, ask_user ASKS. An agent that reads
+// this tool as a chat channel will strand somebody, which is why the description
+// names ask_user rather than leaving the agent to find it.
 package tools
 
 import (
@@ -42,13 +43,14 @@ func (t *Announce) Description() string {
 		"This reaches a person, not a log: it interrupts them, so use it when you " +
 		"genuinely need their attention and not to narrate your progress. It is " +
 		"audible even in silent capture mode, where the reader's own speech is " +
-		"suppressed -- that is what it is for. IMPORTANT: in silent mode the human " +
-		"can hear this and nothing else. They cannot read the screen, cannot reach " +
-		"your chat window, and have no way to reply to you. So in silent mode, TELL " +
-		"them something (\"I am stuck on a password field; press NVDA+control+shift+b " +
-		"to stop the bridge and take over\") rather than asking a question you cannot " +
-		"receive an answer to. In live mode the reader is speaking normally, so the " +
-		"human can hear their way to your chat window and answer you there."
+		"suppressed -- that is what it is for. IMPORTANT: this tool only TELLS. In " +
+		"silent mode the human hears this and nothing else: they cannot read the " +
+		"screen or reach your chat window, and announce gives them no way to reply. " +
+		"So announce a statement (\"I am partway through the form; carry on watching\") " +
+		"and use ask_user for anything you need an answer or an action for -- it hands " +
+		"speech back to them, tells them which key answers you, and reports what they " +
+		"did. If you truly cannot proceed at all, say so and name " +
+		"NVDA+control+shift+b, which stops the bridge and returns their machine."
 }
 
 func (t *Announce) InputSchema() json.RawMessage {

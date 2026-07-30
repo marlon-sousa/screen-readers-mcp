@@ -197,37 +197,37 @@ def test_heartbeat_fires_when_no_message_arrives() -> None:
 
 
 def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
-    # Regression (spec 0016 heartbeat fix): a handler that blocks past the
-    # heartbeat window (e.g. waitForSpeech with a caller-supplied timeout of
-    # 40 s) must NOT kill the session the instant it returns. The peer's
-    # silence while the handler ran was our doing, not evidence it died.
-    # The fix: _touch_heartbeat() now runs AFTER _dispatch() too.
-    # In this test the "long-running handler" advances the clock by 35 s,
-    # well past the 30 s heartbeat window.
-    clock = FakeClock()
+	# Regression (spec 0016 heartbeat fix): a handler that blocks past the
+	# heartbeat window (e.g. waitForSpeech with a caller-supplied timeout of
+	# 40 s) must NOT kill the session the instant it returns. The peer's
+	# silence while the handler ran was our doing, not evidence it died.
+	# The fix: _touch_heartbeat() now runs AFTER _dispatch() too.
+	# In this test the "long-running handler" advances the clock by 35 s,
+	# well past the 30 s heartbeat window.
+	clock = FakeClock()
 
-    def long_running(ctx: object, request: object) -> p.AckResult:
-        clock.advance(35.0)
-        return p.AckResult()
+	def long_running(ctx: object, request: object) -> p.AckResult:
+		clock.advance(35.0)
+		return p.AckResult()
 
-    handler = FakeCommandHandler()
-    handler.execute = long_running  # type: ignore[method-assign]
-    registry = _fake_registry(ping=handler)
+	handler = FakeCommandHandler()
+	handler.execute = long_running  # type: ignore[method-assign]
+	registry = _fake_registry(ping=handler)
 
-    # Start the session with a 30 s heartbeat; the handler blocks for 35 s.
-    # Before the fix this would tear down with HEARTBEAT_TIMEOUT at the
-    # first _check_deadline() after dispatch. With the fix, the
-    # post-dispatch heartbeat refresh saves it.
-    run = run_session(
-        [hello(), command("ping", 2), command("ping", 3)],
-        registry=registry,
-        clock=clock,
-        heartbeat_timeout=30.0,
-    )
-    # The session survived the long handler AND a follow-up command.
-    assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
-    assert _result(run.responses()[1]) == {"ok": True}
-    assert _result(run.responses()[2]) == {"ok": True}
+	# Start the session with a 30 s heartbeat; the handler blocks for 35 s.
+	# Before the fix this would tear down with HEARTBEAT_TIMEOUT at the
+	# first _check_deadline() after dispatch. With the fix, the
+	# post-dispatch heartbeat refresh saves it.
+	run = run_session(
+		[hello(), command("ping", 2), command("ping", 3)],
+		registry=registry,
+		clock=clock,
+		heartbeat_timeout=30.0,
+	)
+	# The session survived the long handler AND a follow-up command.
+	assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
+	assert _result(run.responses()[1]) == {"ok": True}
+	assert _result(run.responses()[2]) == {"ok": True}
 
 
 def test_pings_hold_the_heartbeat_but_not_inactivity() -> None:
@@ -286,6 +286,30 @@ def test_teardown_stops_log_capture_even_when_it_raises_on_stop() -> None:
 	assert run.factory.speech_source.stopped == 1
 	assert run.signals.ended == 1
 	assert run.channel.closed is True
+
+
+def test_teardown_with_an_open_window_leaves_the_tester_audible() -> None:
+	# The invariant the whole askUser design is arranged around: a session that
+	# dies with an interaction window open must leave the tester HEARING.
+	#
+	# So teardown must not call resume() on the way out. resume() re-registers the
+	# suppression filter -- it makes the tester silent -- and stop() is guarded, so
+	# a resume() followed by a raising stop() would strand the tester mute. A window
+	# that was open already left the filter unregistered, which is the state
+	# teardown wants; stop() then makes it permanent.
+	prompter = FakeUserPrompter()
+	run = run_session(
+		[hello("silent"), command("askUser", 2, prompt="plug in the display")],
+		user_prompter=prompter,
+	)
+	ticket = _result(run.responses()[1])["ticket"]
+
+	assert run.factory.speech_source.suspended == 1, "askUser did not suspend suppression"
+	assert run.factory.speech_source.resumed == 0, "teardown re-suppressed a dying session"
+	assert run.factory.speech_source.stopped == 1
+	# The prompter is told to drop whatever it put in front of the human, so
+	# stage 2's dialog cannot outlive the session that opened it.
+	assert prompter.cancelled == [ticket]
 
 
 def test_log_capture_stop_runs_even_when_hello_never_ran() -> None:

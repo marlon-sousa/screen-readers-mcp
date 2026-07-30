@@ -16,40 +16,40 @@ from typing import TYPE_CHECKING
 from nvdaMcpBridge.domain.ports.speech_source import SpeechSource
 
 if TYPE_CHECKING:
-    from nvdaMcpBridge.domain.entities.speech_buffer import SpeechBuffer
+	from nvdaMcpBridge.domain.entities.speech_buffer import SpeechBuffer
 
 
 class FakeSpeechSource(SpeechSource):
-    """Records start/stop/suspend/resume and lets a test inject arbitrary speech."""
+	"""Records start/stop/suspend/resume and lets a test inject arbitrary speech."""
 
-    def __init__(self) -> None:
-        self.buffer: SpeechBuffer | None = None
-        self.started = 0
-        self.stopped = 0
-        self.suspended = 0
-        self.resumed = 0
-        #: Set by a test to prove teardown's guard runs restore even when an
-        #: earlier teardown step (a source stop) raises.
-        self.fail_stop = False
+	def __init__(self) -> None:
+		self.buffer: SpeechBuffer | None = None
+		self.started = 0
+		self.stopped = 0
+		self.suspended = 0
+		self.resumed = 0
+		#: Set by a test to prove teardown's guard runs restore even when an
+		#: earlier teardown step (a source stop) raises.
+		self.fail_stop = False
 
-    def start(self, buffer: SpeechBuffer) -> None:
-        self.buffer = buffer
-        self.started += 1
+	def start(self, buffer: SpeechBuffer) -> None:
+		self.buffer = buffer
+		self.started += 1
 
-    def stop(self) -> None:
-        self.stopped += 1
-        if self.fail_stop:
-            raise RuntimeError("speech source stop failed")
+	def stop(self) -> None:
+		self.stopped += 1
+		if self.fail_stop:
+			raise RuntimeError("speech source stop failed")
 
-    def suspend(self) -> None:
-        self.suspended += 1
+	def suspend(self) -> None:
+		self.suspended += 1
 
-    def resume(self) -> None:
-        self.resumed += 1
+	def resume(self) -> None:
+		self.resumed += 1
 
-    def emit(self, text: str, *, finished: bool = True) -> None:
-        """Inject a spoken line (as a one-string speech sequence)."""
-        assert self.buffer is not None, "emit before the source was started"
-        self.buffer.append([text])
-        if finished:
-            self.buffer.notify_finished()
+	def emit(self, text: str, *, finished: bool = True) -> None:
+		"""Inject a spoken line (as a one-string speech sequence)."""
+		assert self.buffer is not None, "emit before the source was started"
+		self.buffer.append([text])
+		if finished:
+			self.buffer.notify_finished()

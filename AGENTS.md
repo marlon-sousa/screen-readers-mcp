@@ -555,6 +555,23 @@ a PR body, `go` tracks `server/go.mod` -- and gettext is presence-only, because
 its Windows builds report versions that do not order against the GNU ones and a
 comparison that gives wrong answers is worse than none.
 
+**The `VIRTUAL_ENV ... does not match the project environment path` warning is
+expected noise, once per task.** It is nested `uv run`: `uv run poe <task>`
+activates the ROOT env by exporting `VIRTUAL_ENV` into poe, and every suite task
+is a second `uv run --directory <subproject>` whose own env is
+`<subproject>/.venv`. The inner uv reports that it is ignoring the inherited
+variable and then resolves the subproject's env correctly — verified: `sys.prefix`
+inside `poe bridge` is `bridges/nvda/.venv`. Two things follow. **Do not pass
+`--active`**, which the warning itself suggests: that forces the root env, which
+has neither pytest nor pyright for the subprojects, and is the one way to turn
+this cosmetic message into a real failure. And do not try to silence it from
+`pyproject.toml` — `[tool.poe.env]` cannot clear `VIRTUAL_ENV` (a plain variable
+set there does land; that one does not), and `executor.type = "simple"` does not
+either, because the value is inherited rather than set by poe. Silencing it means
+either dropping `uv run` in front of `poe` (which reintroduces the Windows
+console-script trampoline this file's header warns about) or turning every `cmd`
+task into a `shell` task. Both cost more than the warning does.
+
 **`poe lint` is not part of `poe ci`, and that is honest, not an oversight.**
 Ruff is configured and now installed, but no CI workflow has ever run it and
 there is a pre-existing backlog of violations (mostly import ordering and the

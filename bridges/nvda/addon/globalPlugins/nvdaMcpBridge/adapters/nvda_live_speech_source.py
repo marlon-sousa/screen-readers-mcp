@@ -24,34 +24,34 @@ from speech.extensions import pre_speechQueued
 from ..domain.ports.speech_source import SpeechSource
 
 if TYPE_CHECKING:
-    from ..domain.entities.speech_buffer import SpeechBuffer
+	from ..domain.entities.speech_buffer import SpeechBuffer
 
 
 class NvdaLiveSpeechSource(SpeechSource):
-    """Feeds the SpeechBuffer from the pre_speechQueued hook (live mode)."""
+	"""Feeds the SpeechBuffer from the pre_speechQueued hook (live mode)."""
 
-    def __init__(self) -> None:
-        self._buffer: SpeechBuffer | None = None
-        self._registered = False
+	def __init__(self) -> None:
+		self._buffer: SpeechBuffer | None = None
+		self._registered = False
 
-    def start(self, buffer: SpeechBuffer) -> None:
-        self._buffer = buffer
-        pre_speechQueued.register(self._on_speech_queued)
-        self._registered = True
+	def start(self, buffer: SpeechBuffer) -> None:
+		self._buffer = buffer
+		pre_speechQueued.register(self._on_speech_queued)
+		self._registered = True
 
-    def stop(self) -> None:
-        if self._registered:
-            pre_speechQueued.unregister(self._on_speech_queued)
-            self._registered = False
-        self._buffer = None
+	def stop(self) -> None:
+		if self._registered:
+			pre_speechQueued.unregister(self._on_speech_queued)
+			self._registered = False
+		self._buffer = None
 
-    def suspend(self) -> None:
-        """No-op in live mode: nothing was ever suppressed."""
+	def suspend(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
 
-    def resume(self) -> None:
-        """No-op in live mode: nothing was ever suppressed."""
+	def resume(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
 
-    def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:
-        buffer = self._buffer
-        if buffer is not None and speechSequence:
-            buffer.append(speechSequence)
+	def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:
+		buffer = self._buffer
+		if buffer is not None and speechSequence:
+			buffer.append(speechSequence)
