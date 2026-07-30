@@ -28,6 +28,7 @@ from fakes.message_channel import FakeChannel
 from fakes.script import TIMEOUT_EVENT
 from fakes.session_signals import FakeSessionSignals
 from fakes.transcript import FakeTranscript
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
@@ -76,6 +77,7 @@ def run_session(
 	signals: FakeSessionSignals | None = None,
 	announcer: FakeAnnouncer | None = None,
 	log_capture: FakeLogCapture | None = None,
+	user_prompter: FakeUserPrompter | None = None,
 	on_empty: str = "closed",
 	timeout_advance: float = 5.0,
 	nvda_version: str = "2026.1.0",
@@ -89,6 +91,7 @@ def run_session(
 	signals = signals or FakeSessionSignals()
 	announcer = announcer or FakeAnnouncer()
 	log_capture = log_capture or FakeLogCapture()
+	user_prompter = user_prompter or FakeUserPrompter()
 	if registry is None:
 		registry = build_command_registry(factory, nvda_version)
 	channel = FakeChannel(events, clock=clock, timeout_advance=timeout_advance, on_empty=on_empty)
@@ -97,7 +100,7 @@ def run_session(
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
 	)
-	session = Session(channel, transcript, clock, config, registry, signals, announcer, log_capture)
+	session = Session(channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter)
 	if start:
 		session.run()
 	return Run(
@@ -191,6 +194,40 @@ def test_silence_before_hello_times_out() -> None:
 def test_heartbeat_fires_when_no_message_arrives() -> None:
 	run = run_session([hello()], on_empty="timeout", timeout_advance=5.0, heartbeat_timeout=30.0)
 	assert run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
+
+
+def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
+    # Regression (spec 0016 heartbeat fix): a handler that blocks past the
+    # heartbeat window (e.g. waitForSpeech with a caller-supplied timeout of
+    # 40 s) must NOT kill the session the instant it returns. The peer's
+    # silence while the handler ran was our doing, not evidence it died.
+    # The fix: _touch_heartbeat() now runs AFTER _dispatch() too.
+    # In this test the "long-running handler" advances the clock by 35 s,
+    # well past the 30 s heartbeat window.
+    clock = FakeClock()
+
+    def long_running(ctx: object, request: object) -> p.AckResult:
+        clock.advance(35.0)
+        return p.AckResult()
+
+    handler = FakeCommandHandler()
+    handler.execute = long_running  # type: ignore[method-assign]
+    registry = _fake_registry(ping=handler)
+
+    # Start the session with a 30 s heartbeat; the handler blocks for 35 s.
+    # Before the fix this would tear down with HEARTBEAT_TIMEOUT at the
+    # first _check_deadline() after dispatch. With the fix, the
+    # post-dispatch heartbeat refresh saves it.
+    run = run_session(
+        [hello(), command("ping", 2), command("ping", 3)],
+        registry=registry,
+        clock=clock,
+        heartbeat_timeout=30.0,
+    )
+    # The session survived the long handler AND a follow-up command.
+    assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
+    assert _result(run.responses()[1]) == {"ok": True}
+    assert _result(run.responses()[2]) == {"ok": True}
 
 
 def test_pings_hold_the_heartbeat_but_not_inactivity() -> None:
@@ -351,7 +388,7 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
 	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
 	session = Session(
-		channel, transcript, clock, config, registry, signals, FakeAnnouncer(), FakeLogCapture()
+		channel, transcript, clock, config, registry, signals, FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
 	)
 
 	thread = threading.Thread(target=session.run)

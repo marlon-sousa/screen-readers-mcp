@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from .... import protocol
 from .announce import AnnounceHandler
+from .ask_user import AskUserHandler
 from .bye import ByeHandler
 from .command_handler import CommandHandler
 from .echo import EchoHandler
@@ -37,14 +38,14 @@ from .set_config import SetConfigHandler
 from .type_text import TypeTextHandler
 from .wait_for_speech import WaitForSpeechHandler
 from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
+from .wait_for_user_reply import WaitForUserReplyHandler
 
 if TYPE_CHECKING:
     from ...ports.adapter_factory import AdapterFactory
 
-#: The command groups the NVDA bridge serves (spec 0007). All seven are live
-#: as of session E (entry 11.1): introspection arrived with real ports and
-#: NVDA adapters, replacing NotImplementedHandler. A partial-capability bridge
-#: (JAWS without braille, ...) would advertise a different subset.
+#: The command groups the NVDA bridge serves (spec 0007). All eight groups are
+#: live: interact (announce, askUser, waitForUserReply), speech, braille,
+#: gestures, focus, state, config, and typing.
 NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
     protocol.Capability.SPEECH,
     protocol.Capability.BRAILLE,
@@ -52,7 +53,7 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
     protocol.Capability.FOCUS,
     protocol.Capability.STATE,
     protocol.Capability.CONFIG,
-    protocol.Capability.ANNOUNCE,
+    protocol.Capability.INTERACT,
     protocol.Capability.TYPING,
 )
 
@@ -64,8 +65,7 @@ def build_command_registry(
 
     This is the NVDA bridge, so it stamps its reader identity here: name
     ``"nvda"``, the version wiring passed, and the capabilities it actually
-    serves (:data:`NVDA_CAPABILITIES` -- all seven groups now that
-    introspection (11.1) has real ports and NVDA adapters).
+    serves (:data:`NVDA_CAPABILITIES` -- all eight groups).
     """
     reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
     capabilities = list(NVDA_CAPABILITIES)
@@ -83,6 +83,8 @@ def build_command_registry(
         protocol.Command.WAIT_FOR_SPEECH_TO_FINISH: WaitForSpeechToFinishHandler(),
         protocol.Command.GET_BRAILLE: GetBrailleHandler(),
         protocol.Command.ANNOUNCE: AnnounceHandler(),
+        protocol.Command.ASK_USER: AskUserHandler(),
+        protocol.Command.WAIT_FOR_USER_REPLY: WaitForUserReplyHandler(),
         protocol.Command.GET_FOCUS_INFO: GetFocusInfoHandler(),
         protocol.Command.GET_STATE: GetStateHandler(),
         protocol.Command.GET_CONFIG: GetConfigHandler(),

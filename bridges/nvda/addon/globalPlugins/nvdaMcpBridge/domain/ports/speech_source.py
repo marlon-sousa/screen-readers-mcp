@@ -30,3 +30,21 @@ class SpeechSource(ABC):
 	@abstractmethod
 	def stop(self) -> None:
 		"""Stop capturing. Idempotent and never raises -- teardown calls it in a guard."""
+
+	@abstractmethod
+	def suspend(self) -> None:
+		"""Temporarily stop suppressing speech (unregister the filter).
+
+		In ``silent`` mode this unregisters the filter so the human hears
+		everything during an interaction window. In ``live`` mode it is a no-op
+		because nothing was suppressed. Idempotent, like ``stop``.
+		"""
+
+	@abstractmethod
+	def resume(self) -> None:
+		"""Re-suppress speech after ``suspend`` (re-register the filter).
+
+		Idempotent, so a teardown that calls it on a source that was never
+		suspended is safe. Fails in the safe direction: a ``resume`` that never
+		happens leaves the tester with speech, not silence.
+		"""

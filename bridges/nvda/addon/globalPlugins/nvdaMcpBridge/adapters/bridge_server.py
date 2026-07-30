@@ -206,6 +206,14 @@ class BridgeServer:
 			if not self._is_stopping():
 				self._notify()
 
+	def current_session_context(self):
+		"""The active session's context, or None. For the ack gesture."""
+		with self._lock:
+			session = self._active_session
+		if session is None:
+			return None
+		return session.session_context
+
 	def _is_stopping(self) -> bool:
 		with self._lock:
 			return self._stopping

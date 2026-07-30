@@ -23,7 +23,7 @@ def test_announced_capabilities_match_what_the_bridge_serves() -> None:
         p.Capability.FOCUS,
         p.Capability.STATE,
         p.Capability.CONFIG,
-        p.Capability.ANNOUNCE,
+        p.Capability.INTERACT,
         p.Capability.TYPING,
     )
     assert len(NVDA_CAPABILITIES) == 8
@@ -59,4 +59,5 @@ def test_exactly_the_three_mutating_commands_are_marked() -> None:
         p.Command.PRESS_GESTURE,
         p.Command.TYPE_TEXT,
         p.Command.SET_CONFIG,
+        p.Command.ASK_USER,
     }

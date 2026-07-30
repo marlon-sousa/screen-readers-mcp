@@ -75,7 +75,8 @@ var (
 	ungatedTools = []string{"connect_reader", "disconnect_reader", "list_readers", "status"}
 
 	gatedTools = []string{
-		"announce",                  // announce
+		"announce",                  // interact
+		"ask_user",                  // interact
 		"get_braille",               // braille
 		"get_config",                // config
 		"get_focus_info",            // focus
@@ -88,6 +89,7 @@ var (
 		"type_text",                 // typing
 		"wait_for_speech",           // speech
 		"wait_for_speech_to_finish", // speech
+		"wait_for_user_reply",       // interact
 	}
 
 	unannouncedTools = []string{}
@@ -189,8 +191,8 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	}
 
 	want := []string{
-		"announce", "braille", "config", "focus",
-		"gestures", "speech", "state", "typing",
+		"braille", "config", "focus", "gestures",
+		"interact", "speech", "state", "typing",
 	}
 	got := slices.Clone(session.Capabilities)
 	slices.Sort(got)

@@ -35,7 +35,7 @@ const (
 	CapabilityFocus    Capability = "focus"
 	CapabilityState    Capability = "state"
 	CapabilityConfig   Capability = "config"
-	CapabilityAnnounce Capability = "announce"
+	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
 )
 

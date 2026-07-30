@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.session_context import SessionContext
@@ -21,67 +22,69 @@ from nvdaMcpBridge.domain.entities.braille_buffer import BrailleBuffer
 from nvdaMcpBridge.domain.entities.speech_buffer import SpeechBuffer
 
 if TYPE_CHECKING:
-	from fakes.adapter_factory import FakeAdapterFactory
-	from fakes.clock import FakeClock
-	from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
-	from nvdaMcpBridge.domain.ports.adapter_factory import AdapterSet
+    from fakes.adapter_factory import FakeAdapterFactory
+    from fakes.clock import FakeClock
+    from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
+    from nvdaMcpBridge.domain.ports.adapter_factory import AdapterSet
 
 
 class RecordingClose:
-	"""Captures the reason a handler asked the session to close with."""
+    """Captures the reason a handler asked the session to close with."""
 
-	def __init__(self) -> None:
-		self.reasons: list[TeardownReason] = []
+    def __init__(self) -> None:
+        self.reasons: list[TeardownReason] = []
 
-	def __call__(self, reason: TeardownReason) -> None:
-		self.reasons.append(reason)
+    def __call__(self, reason: TeardownReason) -> None:
+        self.reasons.append(reason)
 
 
 def make_context(
-	clock: FakeClock,
-	*,
-	transcript: FakeTranscript | None = None,
-	speech: SpeechBuffer | None = None,
-	braille: BrailleBuffer | None = None,
-	adapters: AdapterSet | None = None,
-	close: RecordingClose | None = None,
-	announcer: FakeAnnouncer | None = None,
-	log_capture: FakeLogCapture | None = None,
+    clock: FakeClock,
+    *,
+    transcript: FakeTranscript | None = None,
+    speech: SpeechBuffer | None = None,
+    braille: BrailleBuffer | None = None,
+    adapters: AdapterSet | None = None,
+    close: RecordingClose | None = None,
+    announcer: FakeAnnouncer | None = None,
+    log_capture: FakeLogCapture | None = None,
+    user_prompter: FakeUserPrompter | None = None,
 ) -> SessionContext:
-	"""Build a SessionContext for a handler test, seeded with only what it needs."""
-	ctx = SessionContext(
-		clock,
-		transcript or FakeTranscript(),
-		close or RecordingClose(),
-		announcer or FakeAnnouncer(),
-		log_capture or FakeLogCapture(),
-	)
-	ctx.speech = speech
-	ctx.braille = braille
-	ctx.adapters = adapters
-	return ctx
+    """Build a SessionContext for a handler test, seeded with only what it needs."""
+    ctx = SessionContext(
+        clock,
+        transcript or FakeTranscript(),
+        close or RecordingClose(),
+        announcer or FakeAnnouncer(),
+        log_capture or FakeLogCapture(),
+        user_prompter or FakeUserPrompter(),
+    )
+    ctx.speech = speech
+    ctx.braille = braille
+    ctx.adapters = adapters
+    return ctx
 
 
 def speech_with(clock: FakeClock, *lines: str, exact_finish: bool = True) -> SpeechBuffer:
-	buffer = SpeechBuffer(clock, exact_finish=exact_finish)
-	for line in lines:
-		buffer.append([line])
-	if lines:
-		buffer.notify_finished()
-	return buffer
+    buffer = SpeechBuffer(clock, exact_finish=exact_finish)
+    for line in lines:
+        buffer.append([line])
+    if lines:
+        buffer.notify_finished()
+    return buffer
 
 
 def braille_with(clock: FakeClock, *lines: str) -> BrailleBuffer:
-	buffer = BrailleBuffer(clock)
-	for line in lines:
-		buffer.append(line)
-	return buffer
+    buffer = BrailleBuffer(clock)
+    for line in lines:
+        buffer.append(line)
+    return buffer
 
 
 def request(cmd: str, id: int = 1, **params: object) -> p.Request:
-	return p.Request(id=id, cmd=cmd, params=dict(params))
+    return p.Request(id=id, cmd=cmd, params=dict(params))
 
 
 def adapters_from(factory: FakeAdapterFactory) -> AdapterSet:
-	"""The AdapterSet a factory would hand a session (mode is arbitrary here)."""
-	return factory.build(p.CaptureMode.SILENT)
+    """The AdapterSet a factory would hand a session (mode is arbitrary here)."""
+    return factory.build(p.CaptureMode.SILENT)

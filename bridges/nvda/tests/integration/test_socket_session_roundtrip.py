@@ -22,6 +22,7 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, ServerState
@@ -73,7 +74,7 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
-			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture()
+			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
 		)
 
 	listener = TcpListener("127.0.0.1", 0)
@@ -143,6 +144,7 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 			FakeSessionSignals(),
 			FakeAnnouncer(),
 			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	server = BridgeServer(TcpListener("127.0.0.1", 0), session_factory)
@@ -166,6 +168,7 @@ def test_an_abruptly_reset_client_does_not_kill_the_server(tmp_path: Path) -> No
 			FakeSessionSignals(),
 			FakeAnnouncer(),
 			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	server = BridgeServer(TcpListener("127.0.0.1", 0), session_factory)

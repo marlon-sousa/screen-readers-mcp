@@ -4,18 +4,18 @@
 # This file imports NVDA and is therefore in pyright's ``ignore`` list (see
 # pyproject.toml): it is the thin edge, kept deliberately small, with all real
 # logic living in the strict-checked ``domain/`` and the adapters. It is
-# validated by the live-NVDA checklist (spec 0007, 9c), not by the type checker.
+# validated by the live-NVDA checklist (spec 0007, 9c, 11.2), not by the type
+# checker.
 #
 # ROLE: the composition root's NVDA end. On load it reads persisted config,
 # builds the matching Listener (named pipe by default; spec 0010 / 0011) and
-# starts the bridge if auto-start is enabled. A control dialog (spec 0011,
-# entry 9.1b PR C) will add a Tools menu item later.
+# starts the bridge if auto-start is enabled.
 # On unload, or on the panic gesture, it stops the server -- which tears down
 # any active session and thereby restores the user's synth.
 #
 # The per-connection wiring itself lives in wiring.build_session; this file
 # only chooses the real adapters and owns the NVDA lifecycle (init / terminate
-# / script).
+# / scripts).
 
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ from .adapters.nvda_announcer import NvdaAnnouncer
 from .adapters.nvda_log import NvdaLog
 from .adapters.nvda_log_capture import NvdaLogCapture
 from .adapters.nvda_session_signals import NvdaSessionSignals
+from .adapters.nvda_user_prompter import NvdaUserPrompter
 from .adapters.simple_event_bus import SimpleEventBus
 from .adapters.text_config_file import TextConfigFile
 from .domain.entities.connection_mode import ConnectionMode
@@ -46,164 +47,195 @@ from .wiring import build_session
 
 
 def _addon_version() -> str:
-	"""This add-on's own version, as NVDA records it in the installed manifest.
+    """This add-on's own version, as NVDA records it in the installed manifest.
 
-	Reported in `hello` so a live-NVDA run can tell which BUILD it is talking
-	to. The add-on is installed separately from the checkout under test, so
-	without this a stale install surfaces as an inexplicable capability or
-	behaviour mismatch instead of "you are running an old build".
+    Reported in `hello` so a live-NVDA run can tell which BUILD it is talking
+    to. The add-on is installed separately from the checkout under test, so
+    without this a stale install surfaces as an inexplicable capability or
+    behaviour mismatch instead of "you are running an old build".
 
-	Never raises: an unknown version is a worse diagnostic than none, but a
-	bridge that fails to start is worse than both.
-	"""
-	try:
-		import addonHandler
+    Never raises: an unknown version is a worse diagnostic than none, but a
+    bridge that fails to start is worse than both.
+    """
+    try:
+        import addonHandler
 
-		return str(addonHandler.getCodeAddon().manifest["version"])
-	except Exception:
-		return "unknown"
+        return str(addonHandler.getCodeAddon().manifest["version"])
+    except Exception:
+        return "unknown"
 
 
 def _bridge_logs_dir() -> str:
-	"""Where session transcripts and NVDA-log captures land: ``<configPath>/nvdaMcpBridge``.
+    """Where session transcripts and NVDA-log captures land: ``<configPath>/nvdaMcpBridge``.
 
-	One directory, two file-prefix families (``session-*.log``,
-	``nvda-log-*.log``) -- each stack's own pruning only ever touches its own.
-	The ``config/`` subdirectory (config.ini) lives here too (spec 0011).
-	"""
-	return os.path.join(globalVars.appArgs.configPath, "nvdaMcpBridge")
+    One directory, two file-prefix families (``session-*.log``,
+    ``nvda-log-*.log``) -- each stack's own pruning only ever touches its own.
+    The ``config/`` subdirectory (config.ini) lives here too (spec 0011).
+    """
+    return os.path.join(globalVars.appArgs.configPath, "nvdaMcpBridge")
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
-	"""Entry point NVDA instantiates when the addon loads.
+    """Entry point NVDA instantiates when the addon loads.
 
-	Builds and starts the bridge server on the persisted connection mode
-	(named pipe by default -- spec 0010 / 0011). One session at a time. The
-	synth is never swapped -- silent mode just suppresses NVDA's speech at the
-	speak() filter -- so ending a session (bye, panic gesture, or NVDA shutdown)
-	simply unregisters that filter and speech resumes at once.
-	"""
+    Builds and starts the bridge server on the persisted connection mode
+    (named pipe by default -- spec 0010 / 0011). One session at a time. The
+    synth is never swapped -- silent mode just suppresses NVDA's speech at the
+    speak() filter -- so ending a session (bye, panic gesture, or NVDA shutdown)
+    simply unregisters that filter and speech resumes at once.
+    """
 
-	# The default Input Gestures category for this plugin's scripts.
-	scriptCategory = _("NVDA MCP Bridge")
+    # The default Input Gestures category for this plugin's scripts.
+    scriptCategory = _("NVDA MCP Bridge")
 
-	def __init__(self) -> None:
-		super().__init__()
+    def __init__(self) -> None:
+        super().__init__()
 
-		# Config lives under the same parent directory as the logs (spec 0011).
-		config_path = os.path.join(_bridge_logs_dir(), "config", "config.ini")
-		self._log = NvdaLog()
-		self._config = IniBridgeConfig(TextConfigFile(config_path), self._log)
+        # Config lives under the same parent directory as the logs (spec 0011).
+        config_path = os.path.join(_bridge_logs_dir(), "config", "config.ini")
+        self._log = NvdaLog()
+        self._config = IniBridgeConfig(TextConfigFile(config_path), self._log)
 
-		factory = NvdaAdapterFactory()
-		listener = build_listener(self._config.get_connection_mode())
-		logs_dir = _bridge_logs_dir()
-		nvda_version = buildVersion.version
-		bridge_version = _addon_version()
-		signals = NvdaSessionSignals()
-		announcer = NvdaAnnouncer()
-		log_capture = NvdaLogCapture(logs_dir)
-		self._event_bus = SimpleEventBus()
+        factory = NvdaAdapterFactory()
+        listener = build_listener(self._config.get_connection_mode())
+        logs_dir = _bridge_logs_dir()
+        nvda_version = buildVersion.version
+        bridge_version = _addon_version()
+        signals = NvdaSessionSignals()
+        announcer = NvdaAnnouncer()
+        log_capture = NvdaLogCapture(logs_dir)
+        user_prompter = NvdaUserPrompter()
+        self._event_bus = SimpleEventBus()
 
-		def make_session(transport):
-			return build_session(
-				transport,
-				factory,
-				logs_dir,
-				nvda_version,
-				signals,
-				announcer,
-				log_capture,
-				bridge_version=bridge_version,
-			)
+        def make_session(transport):
+            return build_session(
+                transport,
+                factory,
+                logs_dir,
+                nvda_version,
+                signals,
+                announcer,
+                log_capture,
+                user_prompter,
+                bridge_version=bridge_version,
+            )
 
-		self._server = BridgeServer(listener, make_session, event_bus=self._event_bus)
-		self._tools_menu_item: wx.MenuItem | None = None
+        self._server = BridgeServer(listener, make_session, event_bus=self._event_bus)
+        self._tools_menu_item: wx.MenuItem | None = None
 
-		self._register_tools_menu_item()
+        self._register_tools_menu_item()
 
-		if self._config.get_auto_start():
-			try:
-				self._server.start()
-				log.info(f"nvdaMcpBridge: listening on {self._server.status.endpoint}")
-			except Exception:
-				# A bind failure (e.g. another NVDA already holds the pipe name) must
-				# not break addon load: log it and stay stopped. The control dialog
-				# (PR C) lets the user retry.
-				log.error("nvdaMcpBridge: could not start the bridge server", exc_info=True)
+        if self._config.get_auto_start():
+            try:
+                self._server.start()
+                log.info(f"nvdaMcpBridge: listening on {self._server.status.endpoint}")
+            except Exception:
+                # A bind failure (e.g. another NVDA already holds the pipe name) must
+                # not break addon load: log it and stay stopped. The control dialog
+                # (PR C) lets the user retry.
+                log.error("nvdaMcpBridge: could not start the bridge server", exc_info=True)
 
-	# -- menu -----------------------------------------------------------------
+    # -- menu -----------------------------------------------------------------
 
-	def _register_tools_menu_item(self) -> None:
-		"""Add "NVDA MCP Bridge…" to NVDA's Tools menu.
+    def _register_tools_menu_item(self) -> None:
+        """Add "NVDA MCP Bridge..." to NVDA's Tools menu.
 
-		Guarded so reloads don't double-add. On systems where the NVDA GUI is
-		not available (e.g. secure mode, no display) this is a no-op.
-		"""
-		if self._tools_menu_item is not None:
-			return  # already registered (reload)
-		try:
-			tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
-		except Exception:
-			# No GUI available; the addon still works, just without the dialog.
-			return
-		# Translators: Menu item in NVDA's Tools menu to open the NVDA MCP Bridge dialog.
-		self._tools_menu_item = tools_menu.Append(
-			wx.ID_ANY, _("NVDA MCP &Bridge…"),
-		)
-		gui.mainFrame.sysTrayIcon.Bind(
-			wx.EVT_MENU, lambda evt: self._show_bridge_dialog(), self._tools_menu_item
-		)
+        Guarded so reloads don't double-add. On systems where the NVDA GUI is
+        not available (e.g. secure mode, no display) this is a no-op.
+        """
+        if self._tools_menu_item is not None:
+            return  # already registered (reload)
+        try:
+            tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
+        except Exception:
+            # No GUI available; the addon still works, just without the dialog.
+            return
+        # Translators: Menu item in NVDA's Tools menu to open the NVDA MCP Bridge dialog.
+        self._tools_menu_item = tools_menu.Append(
+            wx.ID_ANY, _("NVDA MCP &Bridge..."),
+        )
+        gui.mainFrame.sysTrayIcon.Bind(
+            wx.EVT_MENU, lambda evt: self._show_bridge_dialog(), self._tools_menu_item
+        )
 
-	def _remove_tools_menu_item(self) -> None:
-		"""Remove the Tools menu item; called from terminate()."""
-		item = self._tools_menu_item
-		if item is None:
-			return
-		try:
-			tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
-		except Exception:
-			return
-		tools_menu.Remove(item)
-		self._tools_menu_item = None
+    def _remove_tools_menu_item(self) -> None:
+        """Remove the Tools menu item; called from terminate()."""
+        item = self._tools_menu_item
+        if item is None:
+            return
+        try:
+            tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
+        except Exception:
+            return
+        tools_menu.Remove(item)
+        self._tools_menu_item = None
 
-	def _show_bridge_dialog(self) -> None:
-		"""Open the bridge control dialog, injecting real dependencies."""
-		# The dialog is modal (consistent with NVDA's own Tools-menu dialogs like
-		# the Log Viewer).
-		dlg = BridgeDialog(gui.mainFrame, self._server, self._config, self._event_bus)
-		dlg.set_plugin(self)
-		dlg.ShowModal()
-		dlg.Destroy()
+    def _show_bridge_dialog(self) -> None:
+        """Open the bridge control dialog, injecting real dependencies."""
+        # The dialog is modal (consistent with NVDA's own Tools-menu dialogs like
+        # the Log Viewer).
+        dlg = BridgeDialog(gui.mainFrame, self._server, self._config, self._event_bus)
+        dlg.set_plugin(self)
+        dlg.ShowModal()
+        dlg.Destroy()
 
-	# -- server lifecycle ------------------------------------------------------
+    # -- server lifecycle ------------------------------------------------------
 
-	def start_server(self, mode: ConnectionMode) -> None:
-		"""Persist *mode* and start the server with the matching listener.
+    def start_server(self, mode: ConnectionMode) -> None:
+        """Persist *mode* and start the server with the matching listener.
 
-		Called by BridgeDialog (PR C) when the user presses Start. Start is only
-		enabled when the server is STOPPED, so there is nothing to tear down.
-		"""
-		self._config.set_connection_mode(mode)
-		self._server.start(build_listener(mode))
+        Called by BridgeDialog (PR C) when the user presses Start. Start is only
+        enabled when the server is STOPPED, so there is nothing to tear down.
+        """
+        self._config.set_connection_mode(mode)
+        self._server.start(build_listener(mode))
 
-	# -- panic gesture ---------------------------------------------------------
+    # -- panic gesture ---------------------------------------------------------
 
-	@script(
-		# Translators: Input help message for the NVDA MCP bridge panic command.
-		description=_("Stop the NVDA MCP bridge: end any active session and resume NVDA's speech"),
-		gesture="kb:NVDA+control+shift+b",
-	)
-	def script_panic(self, gesture) -> None:
-		# stop() joins the server thread, whose teardown unregisters the speech
-		# filter -- so speech is already flowing again by the time this returns.
-		self._server.stop()
-		# Queue the confirmation after the session-end beep (also queued during
-		# teardown), so it is spoken through the now-unsuppressed synth.
-		# Translators: Announced after the panic gesture stops the bridge.
-		wx.CallAfter(ui.message, _("NVDA MCP bridge stopped"))
+    @script(
+        # Translators: Input help message for the NVDA MCP bridge panic command.
+        description=_("Stop the NVDA MCP bridge: end any active session and resume NVDA's speech"),
+        gesture="kb:NVDA+control+shift+b",
+    )
+    def script_panic(self, gesture) -> None:
+        # stop() joins the server thread, whose teardown unregisters the speech
+        # filter -- so speech is already flowing again by the time this returns.
+        self._server.stop()
+        # Queue the confirmation after the session-end beep (also queued during
+        # teardown), so it is spoken through the now-unsuppressed synth.
+        # Translators: Announced after the panic gesture stops the bridge.
+        wx.CallAfter(ui.message, _("NVDA MCP bridge stopped"))
 
-	def terminate(self) -> None:
-		self._server.stop()
-		self._remove_tools_menu_item()
-		super().terminate()
+    # -- acknowledgement gesture -----------------------------------------------
+
+    @script(
+        # Translators: Input help message for the NVDA MCP bridge acknowledgement command.
+        description=_(
+            "Acknowledge a prompt from the NVDA MCP bridge: tell the agent "
+            "you are done and hand control back"
+        ),
+        gesture="kb:NVDA+control+shift+a",
+    )
+    def script_acknowledge(self, gesture) -> None:
+        # Find the active session's outstanding prompt and answer it.
+        # This runs on NVDA's main thread (it is an NVDA gesture), so it
+        # can safely write to the UserPrompt entity while the session
+        # thread polls it.
+        session = self._server.current_session_context()
+        if session is None:
+            # Translators: Announced when the acknowledgement gesture is pressed
+            # but no session is active.
+            wx.CallAfter(ui.message, _("No bridge session to acknowledge"))
+            return
+        prompt = session.get_outstanding_prompt()
+        if prompt is None:
+            # Translators: Announced when the acknowledgement gesture is pressed
+            # but no prompt is outstanding.
+            wx.CallAfter(ui.message, _("No prompt to acknowledge"))
+            return
+        prompt.answer()
+
+    def terminate(self) -> None:
+        self._server.stop()
+        self._remove_tools_menu_item()
+        super().terminate()

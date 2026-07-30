@@ -35,7 +35,7 @@ var _ Tool = (*Announce)(nil)
 
 func (t *Announce) Name() string { return "announce" }
 
-func (t *Announce) Capability() entities.Capability { return entities.CapabilityAnnounce }
+func (t *Announce) Capability() entities.Capability { return entities.CapabilityInteract }
 
 func (t *Announce) Description() string {
 	return "Speak a short message OUT LOUD to the human sitting at the screen reader. " +
@@ -75,7 +75,7 @@ type announceResult struct {
 }
 
 func (t *Announce) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
-	announcer, err := ctx.Announcer()
+	interact, err := ctx.Interact()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (t *Announce) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 		return nil, errors.New("text is required, and must not be empty or whitespace")
 	}
 
-	if err := announcer.Announce(request.Text); err != nil {
+	if err := interact.Announce(request.Text); err != nil {
 		return nil, err
 	}
 	// Echo what was spoken, as press_gesture echoes its ids: the reader returns

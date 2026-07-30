@@ -18,7 +18,7 @@ import (
 )
 
 func TestAnnounceSpeaksTheTextAndEchoesIt(t *testing.T) {
-	built := testsupport.NewConnection("nvda", entities.CapabilityAnnounce)
+	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.Announce{}).WithConnection(built.Connection)
 
 	var spoken struct {
@@ -30,7 +30,7 @@ func TestAnnounceSpeaksTheTextAndEchoesIt(t *testing.T) {
 	}
 	decode(t, result, &spoken)
 
-	said := built.Announcer.Announced()
+	said := built.Interact.Announced()
 	if len(said) != 1 || said[0] != "I am stuck on a password field." {
 		t.Errorf("announced %v, want the text unchanged", said)
 	}
@@ -43,13 +43,13 @@ func TestAnnounceSpeaksTheTextAndEchoesIt(t *testing.T) {
 // as the one channel they are relying on having broken. It must not reach them.
 func TestAnnounceRefusesEmptyAndWhitespaceText(t *testing.T) {
 	for _, params := range []string{`{"text":""}`, `{"text":"   "}`, `{"text":"\n\t"}`} {
-		built := testsupport.NewConnection("nvda", entities.CapabilityAnnounce)
+		built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 		call := testsupport.NewToolCall(&tools.Announce{}).WithConnection(built.Connection)
 
 		if _, err := call.Run(params); err == nil {
 			t.Errorf("announce(%s) was accepted", params)
 		}
-		if said := built.Announcer.Announced(); len(said) != 0 {
+		if said := built.Interact.Announced(); len(said) != 0 {
 			t.Errorf("announce(%s) reached the reader as %v", params, said)
 		}
 	}
@@ -67,8 +67,8 @@ func TestAnnounceIsRefusedWhenTheReaderDidNotAnnounceIt(t *testing.T) {
 	if !asCapabilityError(err, &capability) {
 		t.Fatalf("announce = %v, want a *CapabilityError", err)
 	}
-	if capability.Capability != entities.CapabilityAnnounce {
-		t.Errorf("Capability = %q, want announce", capability.Capability)
+	if capability.Capability != entities.CapabilityInteract {
+		t.Errorf("Capability = %q, want interact", capability.Capability)
 	}
 	if capability.Reader != "nvda" {
 		t.Errorf("Reader = %q, want the connected reader named", capability.Reader)
@@ -92,9 +92,9 @@ func TestAnnounceWithNothingConnectedSaysToConnectFirst(t *testing.T) {
 // A bridge whose synth had gone would fail the command; the session survives it
 // (protocol.md §3), so the tool must surface the error rather than swallow it.
 func TestAnnounceSurfacesABridgeFailure(t *testing.T) {
-	built := testsupport.NewConnection("nvda", entities.CapabilityAnnounce)
+	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.Announce{}).WithConnection(built.Connection)
-	built.Announcer.FailWith(errors.New("no synth loaded"))
+	built.Interact.FailWith(errors.New("no synth loaded"))
 
 	if _, err := call.Run(`{"text":"hello"}`); err == nil {
 		t.Error("a failing announcement was reported as success")

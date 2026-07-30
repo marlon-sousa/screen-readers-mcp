@@ -125,7 +125,7 @@ var (
 	_ ports.FocusInspector   = (*JSONLinesClient)(nil)
 	_ ports.StateInspector   = (*JSONLinesClient)(nil)
 	_ ports.ConfigAccessor   = (*JSONLinesClient)(nil)
-	_ ports.Announcer        = (*JSONLinesClient)(nil)
+	_ ports.Interact         = (*JSONLinesClient)(nil)
 	_ ports.TextTyper        = (*JSONLinesClient)(nil)
 	_ ports.SessionLifecycle = (*JSONLinesClient)(nil)
 )
@@ -217,6 +217,31 @@ func (c *JSONLinesClient) Announce(text string) error {
 	// The result is an acknowledgement, so it is discarded: the bridge cannot
 	// report whether a human listened, only that it spoke.
 	return c.call(wire.CommandAnnounce, wire.AnnounceParams{Text: text}, nil, DefaultCallTimeout)
+}
+
+func (c *JSONLinesClient) AskUser(prompt string) (string, error) {
+	var result wire.AskUserResult
+	if err := c.call(wire.CommandAskUser, wire.AskUserParams{Prompt: prompt}, &result, DefaultCallTimeout); err != nil {
+		return "", err
+	}
+	return result.Ticket, nil
+}
+
+func (c *JSONLinesClient) WaitForUserReply(ticket string, timeout time.Duration) (ports.UserReply, error) {
+	params := wire.WaitForUserReplyParams{Ticket: ticket}
+	if timeout > 0 {
+		seconds := timeout.Seconds()
+		params.Timeout = &seconds
+	}
+	var result wire.WaitForUserReplyResult
+	if err := c.call(wire.CommandWaitForUserReply, params, &result, waitBudget(timeout)); err != nil {
+		return ports.UserReply{}, err
+	}
+	text := ""
+	if result.Text != nil {
+		text = *result.Text
+	}
+	return ports.UserReply{Answered: result.Answered, Text: text}, nil
 }
 
 func (c *JSONLinesClient) FocusInfo() (ports.FocusInfo, error) {

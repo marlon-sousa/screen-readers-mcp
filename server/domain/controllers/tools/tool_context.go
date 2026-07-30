@@ -130,12 +130,12 @@ func (c ToolContext) Config() (ports.ConfigAccessor, error) {
 	return c.Connection.Config, nil
 }
 
-// Announcer is the `announce` capability, or a structured error.
-func (c ToolContext) Announcer() (ports.Announcer, error) {
-	if c.Connection == nil || c.Connection.Announcer == nil {
-		return nil, c.missing(entities.CapabilityAnnounce)
+// Interact is the `interact` capability, or a structured error.
+func (c ToolContext) Interact() (ports.Interact, error) {
+	if c.Connection == nil || c.Connection.Interact == nil {
+		return nil, c.missing(entities.CapabilityInteract)
 	}
-	return c.Connection.Announcer, nil
+	return c.Connection.Interact, nil
 }
 
 // Text is the `typing` capability, or a structured error.
