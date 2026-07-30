@@ -369,6 +369,15 @@ rather than before it.
     this is about input — so it is a `control` field on `hello`, not a third
     `CaptureMode`. Spec: `0017-observe-only-control.md` (drafted, awaiting
     review; rides in 11.3's own PR).
+11.4. **E, log slices on demand** (both lanes). The agent asks what NVDA logged
+    *while a given command ran*, filtered by level and by pattern, instead of
+    being handed a path and reading the whole file. Finishes what 0009 started:
+    that entry narrowed the haystack to one session, this narrows it to one
+    command. Motivated by measurement during the 11.2 review — the bridge answers
+    in 0.2-0.5 ms, and the slow part was moving tens of thousands of tokens of
+    log into context to find four lines. Needs live NVDA. Spec:
+    `0020-log-slices-on-demand.md` (drafted, awaiting review; rides in 11.4's own
+    PR).
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).
