@@ -351,7 +351,7 @@ rather than before it.
     beating both a manually activated and a trigger-driven profile switch — the
     claims `test_profile_override.py` was meant to cover and never has, since it
     needs NVDA's own interpreter and cannot run under pytest.
-11.2. **E, human-in-the-loop** (both lanes). **Done** (#PR). The agent asks the
+11.2. **E, human-in-the-loop** (both lanes). **Done** (#45). The agent asks the
     tester for something it cannot supply itself — a password, a CAPTCHA, a
     physical act — and gets an answer back, without ending the session. Live
     checklist in the PR body. Spec: `0016-human-in-the-loop.md` (agreed
