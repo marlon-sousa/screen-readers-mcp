@@ -1,6 +1,6 @@
 # 0020 — log slices on demand
 
-Status: **drafted, awaiting review**. Board entry **11.4** (proposed).
+Status: **agreed 2026-07-30**. Board entry **11.4**, scheduled next.
 
 This finishes what [0009](0009-nvda-log-capture.md) started. That entry set out to
 automate the debugging ritual — *"place a marker in NVDA's log, run the repro,
@@ -82,6 +82,11 @@ The agent already knows the id it sent. So:
 - `windows` — how many command windows to include, counting **back** from the
   anchor. `windows: 3` is the `HEAD~2` idea with an absolute anchor.
 
+Trimming `windows` from a first cut was considered and **rejected** (agreed
+2026-07-30): nothing is in production yet, so there is no migration to earn by
+shipping less, and the multi-window case is the ordinary one — a failure is
+usually explained by the command *before* the one that failed.
+
 ### The journal holds structured records, not formatted bytes
 
 Byte offsets into the capture file were the first sketch and are worse in three
@@ -139,7 +144,7 @@ stand, and this entry only moves their trigger.
 
 ### Filters compose, and both directions matter
 
-Three knobs, evaluated in this order, all optional:
+Three filters and one projection, evaluated in this order, all optional:
 
 | Filter | Meaning |
 |---|---|
@@ -380,10 +385,10 @@ turns a confusing retry loop into one obvious next call.
    `capturedAtLevel: "info"`; then `set_log_level("debug")`, re-run the command,
    and the same slice request has the debug records. Raising is forwards only, and
    this is the check that says so out loud.
-7. `set_log_level` restores NVDA's own level at teardown -- verify in NVDA's
-   General settings that it reads what it did before the session.
 6. A slice from a busy `io` session reports `truncated: true` rather than
    returning megabytes.
+7. `set_log_level` restores NVDA's own level at teardown — verify in NVDA's
+   General settings that it reads what it did before the session.
 
 ## Out of scope
 
