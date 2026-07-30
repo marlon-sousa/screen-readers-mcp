@@ -99,6 +99,23 @@ sequence = [
 help = "Rebuild the MCP server binary that .mcp.json spawns (restart the MCP connection after)"
 cmd = "go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp"
 
+# Ungated for the same reason as build-server: it is the remediation for the
+# doctor's own "server binary STALE" failure.
+#
+# This is `build-server` for the normal case, where the binary is RUNNING and so
+# cannot be overwritten. There is no server to ask nicely: stdio MCP gives every
+# client its own process, so two attached agents means two copies of this exe
+# holding the same file and no shared endpoint to shut down (an HTTP transport
+# would have one). So it kills them by executable path and rebuilds.
+#
+# It takes every agent's connection down, not just yours -- deliberately, since a
+# half-replaced binary with somebody still on the old one is the state that wastes
+# an afternoon. Safe for the person at the screen reader: the bridge treats a lost
+# connection as teardown and restores speech. Use --dry-run to see the targets.
+[tool.poe.tasks.redeploy]
+help = "Kill every running MCP server (ALL agents') and rebuild the binary"
+cmd = "python scripts/redeploy.py"
+
 # Ungated for the same reason: sconstruct runs sync_shared.sync(), which is what
 # repairs the doctor's "shared module synced" check.
 [tool.poe.tasks.build-addon]
