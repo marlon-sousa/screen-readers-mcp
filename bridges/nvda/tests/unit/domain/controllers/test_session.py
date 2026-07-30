@@ -15,8 +15,11 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+import pytest
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
@@ -28,11 +31,14 @@ from fakes.message_channel import FakeChannel
 from fakes.script import TIMEOUT_EVENT
 from fakes.session_signals import FakeSessionSignals
 from fakes.transcript import FakeTranscript
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
+from nvdaMcpBridge.adapters.real_clock import RealClock
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES, build_command_registry
 from nvdaMcpBridge.domain.controllers.session import Session, SessionConfig, TeardownReason
+from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 
 
 # -- message builders --------------------------------------------------------
@@ -76,6 +82,7 @@ def run_session(
 	signals: FakeSessionSignals | None = None,
 	announcer: FakeAnnouncer | None = None,
 	log_capture: FakeLogCapture | None = None,
+	user_prompter: FakeUserPrompter | None = None,
 	on_empty: str = "closed",
 	timeout_advance: float = 5.0,
 	nvda_version: str = "2026.1.0",
@@ -89,6 +96,7 @@ def run_session(
 	signals = signals or FakeSessionSignals()
 	announcer = announcer or FakeAnnouncer()
 	log_capture = log_capture or FakeLogCapture()
+	user_prompter = user_prompter or FakeUserPrompter()
 	if registry is None:
 		registry = build_command_registry(factory, nvda_version)
 	channel = FakeChannel(events, clock=clock, timeout_advance=timeout_advance, on_empty=on_empty)
@@ -97,7 +105,7 @@ def run_session(
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
 	)
-	session = Session(channel, transcript, clock, config, registry, signals, announcer, log_capture)
+	session = Session(channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter)
 	if start:
 		session.run()
 	return Run(
@@ -193,6 +201,40 @@ def test_heartbeat_fires_when_no_message_arrives() -> None:
 	assert run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
 
 
+def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
+	# Regression (spec 0016 heartbeat fix): a handler that blocks past the
+	# heartbeat window (e.g. waitForSpeech with a caller-supplied timeout of
+	# 40 s) must NOT kill the session the instant it returns. The peer's
+	# silence while the handler ran was our doing, not evidence it died.
+	# The fix: _touch_heartbeat() now runs AFTER _dispatch() too.
+	# In this test the "long-running handler" advances the clock by 35 s,
+	# well past the 30 s heartbeat window.
+	clock = FakeClock()
+
+	def long_running(ctx: object, request: object) -> p.AckResult:
+		clock.advance(35.0)
+		return p.AckResult()
+
+	handler = FakeCommandHandler()
+	handler.execute = long_running  # type: ignore[method-assign]
+	registry = _fake_registry(ping=handler)
+
+	# Start the session with a 30 s heartbeat; the handler blocks for 35 s.
+	# Before the fix this would tear down with HEARTBEAT_TIMEOUT at the
+	# first _check_deadline() after dispatch. With the fix, the
+	# post-dispatch heartbeat refresh saves it.
+	run = run_session(
+		[hello(), command("ping", 2), command("ping", 3)],
+		registry=registry,
+		clock=clock,
+		heartbeat_timeout=30.0,
+	)
+	# The session survived the long handler AND a follow-up command.
+	assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
+	assert _result(run.responses()[1]) == {"ok": True}
+	assert _result(run.responses()[2]) == {"ok": True}
+
+
 def test_pings_hold_the_heartbeat_but_not_inactivity() -> None:
 	# A ping every 10s keeps the 30s heartbeat alive, but pings do not reset the
 	# 120s inactivity clock, so inactivity is what eventually fires.
@@ -249,6 +291,30 @@ def test_teardown_stops_log_capture_even_when_it_raises_on_stop() -> None:
 	assert run.factory.speech_source.stopped == 1
 	assert run.signals.ended == 1
 	assert run.channel.closed is True
+
+
+def test_teardown_with_an_open_window_leaves_the_tester_audible() -> None:
+	# The invariant the whole askUser design is arranged around: a session that
+	# dies with an interaction window open must leave the tester HEARING.
+	#
+	# So teardown must not call resume() on the way out. resume() re-registers the
+	# suppression filter -- it makes the tester silent -- and stop() is guarded, so
+	# a resume() followed by a raising stop() would strand the tester mute. A window
+	# that was open already left the filter unregistered, which is the state
+	# teardown wants; stop() then makes it permanent.
+	prompter = FakeUserPrompter()
+	run = run_session(
+		[hello("silent"), command("askUser", 2, prompt="plug in the display")],
+		user_prompter=prompter,
+	)
+	ticket = _result(run.responses()[1])["ticket"]
+
+	assert run.factory.speech_source.suspended == 1, "askUser did not suspend suppression"
+	assert run.factory.speech_source.resumed == 0, "teardown re-suppressed a dying session"
+	assert run.factory.speech_source.stopped == 1
+	# The prompter is told to drop whatever it put in front of the human, so
+	# stage 2's dialog cannot outlive the session that opened it.
+	assert prompter.cancelled == [ticket]
 
 
 def test_log_capture_stop_runs_even_when_hello_never_ran() -> None:
@@ -351,7 +417,7 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
 	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
 	session = Session(
-		channel, transcript, clock, config, registry, signals, FakeAnnouncer(), FakeLogCapture()
+		channel, transcript, clock, config, registry, signals, FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
 	)
 
 	thread = threading.Thread(target=session.run)
@@ -399,3 +465,84 @@ def test_config_restore_actually_restores_the_prior_value() -> None:
     # Restore brings it back.
     store.restore_all()
     assert store.get(["speech", "synth"]) == "espeak"
+
+
+def test_request_teardown_cancels_an_open_prompt_window() -> None:
+	# Found live, by pressing the panic gesture during an interaction window: NVDA
+	# went silent and stayed that way until the poll expired.
+	#
+	# Teardown is cooperative -- the loop honours it at its next wakeup -- and a
+	# handler sitting in waitForUserReply does not reach that wakeup for up to
+	# MAX_POLL_TIMEOUT. BridgeServer.stop() joins that thread, and the caller is
+	# NVDA's MAIN THREAD on the panic path, so the screen reader freezes for the
+	# rest of the poll. Cancelling the window as part of honouring the request is
+	# what lets the in-flight wait() return immediately.
+	clock = FakeClock()
+	registry = _fake_registry()
+	transcript = FakeTranscript()
+	signals = FakeSessionSignals()
+	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
+	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
+	session = Session(
+		channel, transcript, clock, config, registry, signals,
+		FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+	)
+	prompt = UserPrompt("do the thing", clock)
+	session.session_context.set_outstanding_prompt(prompt)
+
+	session.request_teardown(TeardownReason.EXTERNAL)
+
+	# The prompt is cancelled, so a poll blocked on it aborts at once rather than
+	# holding the loop -- and thus the joining main thread -- for its full timeout.
+	with pytest.raises(PromptExpired, match="cancelled"):
+		prompt.wait(timeout=1e9)
+	assert not prompt.answered
+
+
+def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
+	# The same failure from the other end, with a REAL thread and REAL sleeps,
+	# because the bug is about wall-clock time on NVDA's main thread and a fake
+	# clock cannot express it: FakeClock.sleep returns instantly, so a poll that
+	# would hang for a minute in production finishes before the test can look.
+	#
+	# The handler blocks on a window the way WaitForUserReplyHandler does, rather
+	# than going over the wire, because a scripted channel cannot know the ticket
+	# askUser has not issued yet.
+	clock = RealClock()
+
+	def block_on_the_window(ctx: Any, request: Any) -> p.AckResult:
+		prompt = UserPrompt("hold the session open", clock)
+		ctx.set_outstanding_prompt(prompt)
+		prompt.wait(60.0)  # a minute, unless teardown cuts it short
+		return p.AckResult()
+
+	handler = FakeCommandHandler()
+	handler.execute = block_on_the_window  # type: ignore[method-assign]
+	registry = _fake_registry(ping=handler)
+	# The channel gets a FakeClock because its clock only drives timeout advancing,
+	# which never happens here (on_empty="closed"); the SESSION and the prompt get
+	# the real one, because real sleeping is the whole point.
+	session = Session(
+		FakeChannel([hello(), command("ping", 2)], clock=FakeClock(), on_empty="closed"),
+		FakeTranscript(), clock,
+		SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9),
+		registry, FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+	)
+
+	thread = threading.Thread(target=session.run, daemon=True)
+	thread.start()
+	deadline = time.monotonic() + 5.0
+	while time.monotonic() < deadline and session.session_context.get_outstanding_prompt() is None:
+		time.sleep(0.02)
+	assert session.session_context.get_outstanding_prompt() is not None, "no window opened"
+
+	started = time.monotonic()
+	session.request_teardown(TeardownReason.EXTERNAL)
+	thread.join(timeout=5.0)
+	elapsed = time.monotonic() - started
+
+	assert not thread.is_alive(), "the session thread outlived a teardown request"
+	assert elapsed < 3.0, (
+		f"teardown took {elapsed:.1f}s with a window open; on the panic path that is "
+		"time NVDA spends silent, waiting for a poll nobody can answer"
+	)

@@ -229,6 +229,78 @@ func TestAWaitingCommandOutlivesItsOwnTimeout(t *testing.T) {
 	}
 }
 
+// The same invariant for `waitForUserReply`, which is the first waiting command
+// whose contract default is NOT the 5 s the speech commands share -- protocol.py
+// defaults it to 30. Sizing an omitted timeout from the shared default gave a
+// 10 s budget against a 30 s wait, so the client gave up first and left the
+// bridge's late reply in the stream for the next call to read as a mismatched id
+// and treat as a lost connection: a broken session, one command after the cause.
+//
+// The fake clock makes the full budget cost microseconds, which is the only
+// reason this is provable here rather than in a 30-second conformance run.
+func TestWaitForUserReplyOutlivesTheBridgesOwnDefault(t *testing.T) {
+	client, _ := newClient(t, nil)
+
+	_, err := client.WaitForUserReply("ticket-1", 0)
+
+	var timeout *bridge.TimeoutError
+	if !errors.As(err, &timeout) {
+		t.Fatalf("WaitForUserReply error = %v, want a *bridge.TimeoutError", err)
+	}
+	if timeout.Waited <= 30*time.Second {
+		t.Errorf("local budget %s does not outlast the bridge's own 30s default for an "+
+			"omitted timeout, so the client would abandon a reply still in flight",
+			timeout.Waited)
+	}
+}
+
+// ...and the other half of that contract: the field stays OFF the wire when the
+// caller did not ask for a timeout, so the bridge applies its own default and
+// stays the single authority on the value. The budget above is sized to match it,
+// not to replace it.
+func TestWaitForUserReplyOmitsAnUnaskedTimeout(t *testing.T) {
+	client, _ := newClient(t, func(request wire.Request) (any, error) {
+		var params wire.WaitForUserReplyParams
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			t.Fatalf("params: %v", err)
+		}
+		if params.Timeout != nil {
+			t.Errorf("timeout = %v on the wire, want it omitted so the bridge decides",
+				*params.Timeout)
+		}
+		return wire.WaitForUserReplyResult{Answered: true}, nil
+	})
+
+	reply, err := client.WaitForUserReply("ticket-1", 0)
+	if err != nil {
+		t.Fatalf("WaitForUserReply: %v", err)
+	}
+	if !reply.Answered {
+		t.Error("answered = false, want the scripted answer through")
+	}
+}
+
+// An explicit timeout, by contrast, is sent -- and the budget still exceeds it.
+func TestWaitForUserReplySendsAnExplicitTimeout(t *testing.T) {
+	client, _ := newClient(t, func(request wire.Request) (any, error) {
+		var params wire.WaitForUserReplyParams
+		if err := json.Unmarshal(request.Params, &params); err != nil {
+			t.Fatalf("params: %v", err)
+		}
+		if params.Timeout == nil {
+			t.Fatal("timeout was omitted, want the caller's 45s on the wire")
+		}
+		if *params.Timeout != 45 {
+			t.Errorf("timeout = %v, want 45 seconds", *params.Timeout)
+		}
+		return wire.WaitForUserReplyResult{Answered: false}, nil
+	})
+
+	if _, err := client.WaitForUserReply("ticket-1", 45*time.Second); err != nil {
+		t.Fatalf("WaitForUserReply: %v", err)
+	}
+}
+
 // Frames do not arrive aligned to transport reads. Reassembly is the whole
 // reason the client owns framing rather than the leaf.
 func TestAFrameSplitAcrossReadsIsReassembled(t *testing.T) {

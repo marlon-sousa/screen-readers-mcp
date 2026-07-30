@@ -24,6 +24,30 @@
       ],
       "additionalProperties": true
     },
+    "AskUserParams": {
+      "type": "object",
+      "properties": {
+        "prompt": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "additionalProperties": true
+    },
+    "AskUserResult": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket"
+      ],
+      "additionalProperties": true
+    },
     "BrailleResult": {
       "type": "object",
       "properties": {
@@ -226,7 +250,7 @@
               "focus",
               "state",
               "config",
-              "announce",
+              "interact",
               "typing"
             ]
           }
@@ -487,6 +511,36 @@
       ],
       "additionalProperties": true
     },
+    "WaitForUserReplyParams": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "string"
+        },
+        "timeout": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "ticket"
+      ],
+      "additionalProperties": true
+    },
+    "WaitForUserReplyResult": {
+      "type": "object",
+      "properties": {
+        "answered": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "answered"
+      ],
+      "additionalProperties": true
+    },
     "WaitToFinishParams": {
       "type": "object",
       "properties": {
@@ -634,6 +688,22 @@
       },
       "result": {
         "$ref": "#/$defs/AckResult"
+      }
+    },
+    "askUser": {
+      "params": {
+        "$ref": "#/$defs/AskUserParams"
+      },
+      "result": {
+        "$ref": "#/$defs/AskUserResult"
+      }
+    },
+    "waitForUserReply": {
+      "params": {
+        "$ref": "#/$defs/WaitForUserReplyParams"
+      },
+      "result": {
+        "$ref": "#/$defs/WaitForUserReplyResult"
       }
     },
     "bye": {

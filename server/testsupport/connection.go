@@ -36,7 +36,7 @@ type Connection struct {
 	Focus     *fakes.FakeFocusInspector
 	State     *fakes.FakeStateInspector
 	Config    *fakes.FakeConfigAccessor
-	Announcer *fakes.FakeAnnouncer
+	Interact  *fakes.FakeInteractPort
 	Text      *fakes.FakeTextTyper
 }
 
@@ -92,9 +92,9 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 		built.Config = fakes.NewFakeConfigAccessor()
 		built.Connection.Config = built.Config
 	}
-	if set.Has(entities.CapabilityAnnounce) {
-		built.Announcer = fakes.NewFakeAnnouncer()
-		built.Connection.Announcer = built.Announcer
+	if set.Has(entities.CapabilityInteract) {
+		built.Interact = fakes.NewFakeInteractPort()
+		built.Connection.Interact = built.Interact
 	}
 	if set.Has(entities.CapabilityTyping) {
 		built.Text = fakes.NewFakeTextTyper()
@@ -109,6 +109,6 @@ func EveryCapability() []entities.Capability {
 	return []entities.Capability{
 		entities.CapabilitySpeech, entities.CapabilityBraille, entities.CapabilityGestures,
 		entities.CapabilityFocus, entities.CapabilityState, entities.CapabilityConfig,
-		entities.CapabilityAnnounce, entities.CapabilityTyping,
+		entities.CapabilityInteract, entities.CapabilityTyping,
 	}
 }

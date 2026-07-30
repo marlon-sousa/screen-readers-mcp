@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 	from ..ports.message_channel import MessageChannel
 	from ..ports.session_signals import SessionSignals
 	from ..ports.transcript import Transcript
+	from ..ports.user_prompter import UserPrompter
 	from .commands.command_handler import CommandHandler
 
 
@@ -78,6 +79,7 @@ class Session:
 		signals: SessionSignals,
 		announcer: Announcer,
 		log_capture: LogCapture,
+		user_prompter: UserPrompter,
 	) -> None:
 		self._channel = channel
 		self._transcript = transcript
@@ -87,7 +89,9 @@ class Session:
 		self._signals = signals
 		self._log_capture = log_capture
 
-		self._ctx = SessionContext(clock, transcript, self.request_teardown, announcer, log_capture)
+		self._ctx = SessionContext(
+			clock, transcript, self.request_teardown, announcer, log_capture, user_prompter,
+		)
 		self._state = _State.PRE_HELLO
 
 		# Watchdog bookkeeping (monotonic seconds); seeded in run().
@@ -113,16 +117,34 @@ class Session:
 		finally:
 			self._teardown()
 
+	@property
+	def session_context(self) -> SessionContext:
+		"""The per-session context, for the ack gesture to reach the prompt."""
+		return self._ctx
+
 	def request_teardown(self, reason: TeardownReason) -> None:
 		"""Ask the session to end (thread-safe; honoured at the next wakeup).
 
 		The SessionContext's close() is wired to this, so a command (bye) and
 		session C's plugin terminate / panic gesture share one path. First
 		request wins.
+
+		Cancelling an open interaction window is part of honouring the request, not
+		a courtesy. Teardown is COOPERATIVE -- the loop notices at its next wakeup
+		-- and a handler blocked on `waitForUserReply` does not reach that wakeup
+		for as long as its poll lasts, up to MAX_POLL_TIMEOUT. Meanwhile the caller
+		may be NVDA's MAIN THREAD: the panic gesture calls BridgeServer.stop(),
+		which joins the session thread. Without this the panic gesture FREEZES NVDA
+		for the rest of the poll -- no speech at all -- which is the exact opposite
+		of what a tester pressing panic needs. Cancelling makes the in-flight
+		`wait()` raise at once, so the handler returns and the loop can see this.
 		"""
 		with self._external_lock:
 			if self._external_reason is None:
 				self._external_reason = reason
+		prompt = self._ctx.get_outstanding_prompt()
+		if prompt is not None:
+			prompt.cancel()
 
 	# -- the one dispatch loop ----------------------------------------------
 
@@ -145,6 +167,12 @@ class Session:
 				continue
 			self._touch_heartbeat()
 			self._dispatch(raw)
+			# Refresh the heartbeat AFTER dispatch too, so a handler that
+			# blocks past the heartbeat window (e.g. waitForSpeech with a
+			# caller-supplied timeout of 40 s) does not kill the session the
+			# instant it returns. The peer's silence while the handler ran
+			# was our doing, not evidence it died.  (spec 0016 heartbeat fix)
+			self._touch_heartbeat()
 			self._check_deadline()
 
 	def _absorb_external(self) -> None:
@@ -238,6 +266,25 @@ class Session:
 		self._torn_down = True
 		reason = self._reason if self._reason is not None else TeardownReason.EXTERNAL
 		ctx = self._ctx
+
+		# Cancel any outstanding prompt: a poll still in flight raises
+		# PromptExpired rather than waiting out a window nobody can answer, and
+		# the prompter drops whatever it put in front of the human. Safe even if
+		# hello never ran (no prompt, no adapters).
+		#
+		# Deliberately NO speech_source.resume() here. resume() RE-REGISTERS the
+		# suppression filter -- it makes the tester silent -- so calling it on
+		# the way out would reinstall suppression microseconds before stop()
+		# removes it, and if stop() then raised (it is guarded, so the failure is
+		# swallowed) the tester would be left MUTE. A window that was open left
+		# the filter unregistered, which is exactly the state teardown wants.
+		prompt = ctx.get_outstanding_prompt()
+		if prompt is not None:
+			ticket = prompt.ticket
+			prompt.cancel()
+			ctx.clear_outstanding_prompt()
+			self._guard(lambda: ctx.user_prompter.cancel(ticket))
+
 		# First: a bumped log level (if hello requested one) is held no longer
 		# than it must be. Safe even if hello never started capture (or never ran).
 		self._guard(self._log_capture.stop)

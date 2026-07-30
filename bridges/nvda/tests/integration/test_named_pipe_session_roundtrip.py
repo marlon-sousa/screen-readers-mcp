@@ -25,6 +25,7 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters import named_pipe_transport
@@ -80,7 +81,7 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
-			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture()
+			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
 		)
 
 	pipe_name = _unique_pipe_name()
@@ -150,7 +151,7 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 			"2026.1.0",
 			FakeSessionSignals(),
 			FakeAnnouncer(),
-			FakeLogCapture(),
+			FakeLogCapture(), FakeUserPrompter(),
 		)
 
 	server = BridgeServer(NamedPipeListener(_unique_pipe_name()), session_factory)
@@ -174,7 +175,7 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 			"2026.1.0",
 			FakeSessionSignals(),
 			FakeAnnouncer(),
-			FakeLogCapture(),
+			FakeLogCapture(), FakeUserPrompter(),
 		)
 
 	pipe_name = _unique_pipe_name()
@@ -198,6 +199,67 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 			agent2.close()
 	finally:
 		server.stop()
+
+
+def test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on(tmp_path: Path) -> None:
+	# Checklist item 8, automated as far as it can be without NVDA: the invariant
+	# the whole askUser design is arranged around. An open interaction window is
+	# the one state in which suppression is deliberately OFF, so a client that
+	# dies inside it must not leave the filter reinstalled -- a blind tester whose
+	# agent crashed mid-question would be sitting at a mute machine with no way to
+	# find out why.
+	#
+	# The abrupt-close test above proves the SERVER survives; this proves the
+	# TESTER does. Both are needed, and this one has to be here rather than in a
+	# unit test: it takes a real transport dropping mid-window and a real session
+	# thread noticing, which is the sequence a FakeChannel cannot stage.
+	factories: list[FakeAdapterFactory] = []
+	prompters: list[FakeUserPrompter] = []
+
+	def session_factory(transport: Any) -> Session:
+		factory = FakeAdapterFactory()
+		prompter = FakeUserPrompter()
+		factories.append(factory)
+		prompters.append(prompter)
+		return build_session(
+			transport,
+			factory,
+			tmp_path,
+			"2026.1.0",
+			FakeSessionSignals(),
+			FakeAnnouncer(),
+			FakeLogCapture(),
+			prompter,
+		)
+
+	pipe_name = _unique_pipe_name()
+	server = BridgeServer(NamedPipeListener(pipe_name), session_factory)
+	server.start()
+	try:
+		agent = _dial(pipe_name)
+		agent.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+		_read_reply(agent)
+
+		agent.write(_request(2, "askUser", prompt="unplug the display and tell me"))
+		ticket = _read_reply(agent)["result"]["ticket"]
+		# The window is open, so suppression is off: this is the dangerous moment.
+		assert factories[0].speech_source.suspended == 1
+		assert factories[0].speech_source.stopped == 0
+
+		agent.close()  # the agent dies mid-question -- no bye, no answer
+
+		_wait_until(lambda: server.status.state is ServerState.LISTENING, timeout=5.0)
+	finally:
+		server.stop()
+
+	# Teardown stopped capture, which unregisters the filter for good...
+	assert factories[0].speech_source.stopped == 1
+	# ...and never re-suppressed on the way out. A resume() here would reinstall
+	# the filter, and a stop() that then failed (it is guarded) would strand the
+	# tester mute.
+	assert factories[0].speech_source.resumed == 0
+	# The prompt the human is still looking at is withdrawn, too.
+	assert prompters[0].cancelled == [ticket]
 
 
 def test_accept_and_recv_report_timeout_when_idle() -> None:

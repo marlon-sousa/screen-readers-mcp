@@ -337,20 +337,32 @@ rather than before it.
         Spec: [0019-type-primitive.md](specs/0019-type-primitive.md).
         **Prioritised in lane 1** so the live tests can enter text — URLs, search
         phrases — instead of spelling them one gesture at a time.
-11.1. **E, bridge introspection** (lane 1). The four handlers behind
+11.1. **Done (PR #43, 2026-07-29)** — E, bridge introspection (lane 1). The four handlers behind
     `getFocusInfo` / `getState` / `getConfig` / `setConfig`, their ports and
     NVDA adapters, and re-widening `NVDA_CAPABILITIES` to announce `focus`,
     `state` and `config` — at which point the server's four already-built tools
     light up with no server change at all. Needs live NVDA. Spec:
-    `0015-bridge-introspection.md` (agreed 2026-07-25; rides in 11.1's branch).
-    Scope: RFC 0001 milestone 5.
-11.2. **E, human-in-the-loop** (both lanes). The agent asks the tester for
-    something it cannot supply itself — a password, a CAPTCHA, a physical act —
-    and gets an answer back, without ending the session. Needs live NVDA. Spec:
-    `0016-human-in-the-loop.md` (drafted, awaiting review; rides in 11.2's own
-    PR). Deliberately scheduled **after** the run, so the run says whether the
-    cheap shape (announce, suspend suppression, wait for an acknowledgement
-    gesture) is enough before a reply dialog is built.
+    `0015-bridge-introspection.md` (agreed 2026-07-25; rode in 11.1's branch).
+    Scope: RFC 0001 milestone 5. `setConfig` was amended twice during review and
+    ended up never writing to the reader's config at all: a session override map
+    with hooks on **both** ends of `AggregatedSection`, because hooking reads
+    alone let NVDA's own settings dialog launder an override into the user's
+    profile and persist it. Live-verified on a real NVDA, including the override
+    beating both a manually activated and a trigger-driven profile switch — the
+    claims `test_profile_override.py` was meant to cover and never has, since it
+    needs NVDA's own interpreter and cannot run under pytest.
+11.2. **E, human-in-the-loop** (both lanes). **Done** (#45). The agent asks the
+    tester for something it cannot supply itself — a password, a CAPTCHA, a
+    physical act — and gets an answer back, without ending the session. Live
+    checklist in the PR body. Spec: `0016-human-in-the-loop.md` (agreed
+    2026-07-29; implemented with the heartbeat fix on `0016-human-in-the-loop`).
+    It was
+    scheduled **after** the run so the run could say whether the cheap shape
+    (announce, suspend suppression, acknowledgement gesture) suffices before a
+    reply dialog is built: it ran, it does, and stage 2 stays unbuilt. The 11.1
+    run also produced the evidence for the timeout analysis — sessions were
+    silently torn down by the 120 s inactivity watchdog while a tester worked in
+    NVDA's dialogs, discarding overrides mid-test.
 11.3. **E, enforced observe-only** (both lanes). A session where the bridge
     *rejects* `pressGesture` and `setConfig`, so the tester drives and the agent
     can only watch. Orthogonal to capture mode — capture mode is about audio,
@@ -377,6 +389,20 @@ rather than before it.
       the `server-v*` release path 12a reserved the namespace for: a tag builds
       the binary, runs it to check its version against the tag, and publishes a
       draft release.
+
+## Out-of-band work (not board entries)
+
+Changes that no entry called for, recorded so the board is not silently
+incomplete:
+
+- **PR #44, 2026-07-29** — one definition of "green". `uv run poe ci` runs
+  everything CI runs, in CI's order, from the repo root; `uv run poe doctor`
+  checks the machine can work the repo and **gates every other task**, because a
+  broken toolchain makes passing and failing tests equally uninformative. Also
+  quarantined the live-NVDA tests behind `poe live`: they drive the developer's
+  real screen reader, were harmless only by accident (they skip when nothing is
+  listening), and took over a blind maintainer's machine mid-task twice before
+  being marked `live_nvda` and excluded by default.
 
 ## Principles — **Decided**
 

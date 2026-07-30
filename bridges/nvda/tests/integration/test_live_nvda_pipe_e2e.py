@@ -60,7 +60,13 @@ class Agent:
 		self._channel = channel
 		self._id = 0
 
-	def call(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+	def raw(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+		"""The reply exactly as it came, error and all.
+
+		For the tests whose SUBJECT is a refusal -- an expired ticket, a rejected
+		second prompt -- where `call` raising would hide the very thing being
+		asserted.
+		"""
 		self._id += 1
 		self._channel.write(p.Request(id=self._id, cmd=cmd, params=dict(params)))
 		deadline = time.monotonic() + reply_timeout
@@ -68,10 +74,14 @@ class Agent:
 			message = self._channel.read_message()
 			if isinstance(message, Timeout):
 				continue
-			if message.get("error") is not None:
-				raise AssertionError(f"{cmd} failed: {message['error']}")
 			return message
 		raise AssertionError(f"no reply to {cmd} within {reply_timeout}s")
+
+	def call(self, cmd: str, *, reply_timeout: float = 10.0, **params: Any) -> dict[str, Any]:
+		reply = self.raw(cmd, reply_timeout=reply_timeout, **params)
+		if reply.get("error") is not None:
+			raise AssertionError(f"{cmd} failed: {reply['error']}")
+		return reply
 
 	def result(self, cmd: str, **params: Any) -> dict[str, Any]:
 		return self.call(cmd, **params)["result"]
@@ -125,6 +135,50 @@ def _caps_key(agent: Agent) -> list[str]:
 	"""
 	synth = agent.result("getConfig", keyPath=["speech", "synth"])["value"]
 	return ["speech", synth, "sayCapForCapitals"]
+
+
+def _settled_index(agent: Agent, *, settle: float = 0.4, timeout: float = 4.0) -> int:
+	"""The speech index once NVDA has genuinely stopped talking.
+
+	`waitForSpeechToFinish` answers "does the buffer look finished now", which is
+	a statement about the LAST utterance, not "has everything I just triggered
+	arrived". Bookmarking an index on it is what made
+	test_set_config_changes_nvda_behaviour flaky: one run bookmarked too early
+	and the selection chatter landed after the mark (three utterances captured,
+	``'A\\nA\\nseleção removida'``), the next bookmarked after everything and
+	captured nothing at all.
+
+	Waiting for the index to hold still for ``settle`` seconds fences the
+	measurement on the observable fact the test actually depends on -- nothing
+	more is coming -- instead of on a heuristic about one utterance.
+	"""
+	last = agent.result("getNextSpeechIndex")["index"]
+	quiet_since = time.monotonic()
+	deadline = time.monotonic() + timeout
+	while time.monotonic() < deadline:
+		time.sleep(0.1)
+		now = agent.result("getNextSpeechIndex")["index"]
+		if now != last:
+			last, quiet_since = now, time.monotonic()
+		elif time.monotonic() - quiet_since >= settle:
+			return last
+	return last
+
+
+def _speech_after(agent: Agent, start: int, *, timeout: float = 4.0) -> str:
+	"""Everything spoken since ``start``, once speech has stopped again.
+
+	Waits for the index to MOVE before waiting for it to settle, so an
+	announcement that simply has not begun yet is never read as silence -- the
+	second half of the flake above.
+	"""
+	deadline = time.monotonic() + timeout
+	while time.monotonic() < deadline:
+		if agent.result("getNextSpeechIndex")["index"] > start:
+			break
+		time.sleep(0.1)
+	_settled_index(agent)
+	return agent.result("getSpeech", sinceIndex=start)["text"].strip()
 
 
 def test_the_installed_addon_is_the_one_in_this_checkout() -> None:
@@ -400,13 +454,12 @@ def test_set_config_changes_nvda_behaviour() -> None:
 			"""
 			agent.result("pressGesture", gestures=["control+a"])
 			agent.result("typeText", text="A")
-			agent.result("waitForSpeechToFinish", timeout=2.0)
-			# Index taken AFTER the insert, so only the caret announcement lands
-			# in the window.
-			start = agent.result("getNextSpeechIndex")["index"]
+			# Bookmark once NVDA has actually gone quiet, not merely once one
+			# utterance reports finished -- otherwise the selection and echo
+			# chatter lands after the mark and is read as the caret announcement.
+			start = _settled_index(agent)
 			agent.result("pressGesture", gestures=["leftArrow"])
-			agent.result("waitForSpeechToFinish", timeout=2.0)
-			return agent.result("getSpeech", sinceIndex=start)["text"].strip()
+			return _speech_after(agent, start)
 
 		# Type into the Run dialog, not into "whatever happens to have focus".
 		# The old form typed a capital A into the tester's foreground window --
@@ -429,6 +482,251 @@ def test_set_config_changes_nvda_behaviour() -> None:
 			f"expected the announcement to GAIN a capital marker, got {without!r} -> {with_cap!r}"
 		)
 
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+# -- human-in-the-loop (spec 0016, entry 11.2) --------------------------------
+#
+# The acknowledgement is a real NVDA gesture, so the obvious reading is that a
+# human has to be present for these. They do not: `askUser` RETURNS IMMEDIATELY
+# (that is the whole point of present-then-poll), so the same session can send
+# the ack gesture itself, and what runs is the real script_acknowledge against
+# the real UserPrompt. The human is only needed to judge what they HEARD, which
+# is what checklist items 1 and 2 are for.
+
+
+def test_ask_user_round_trip_with_the_real_acknowledgement_gesture() -> None:
+	# Checklist items 4 and 5, automated: present a prompt, miss a poll, answer
+	# it with the gesture a tester would actually press, and get answered=true.
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+
+		ticket = agent.result("askUser", prompt="This is an automated test. No action needed.")["ticket"]
+		assert ticket, "askUser returned no ticket"
+
+		# A poll before the answer: a miss is an ordinary outcome and must leave
+		# the window open rather than closing it (spec 0016's first decision).
+		missed = agent.result("waitForUserReply", ticket=ticket, timeout=0.5)
+		assert missed["answered"] is False, "a prompt nobody answered reported answered=true"
+
+		# The tester's keypress, sent as a real gesture: NVDA runs the ack script,
+		# which answers the prompt held by the live session.
+		agent.result("pressGesture", gestures=["NVDA+control+shift+a"])
+
+		answered = agent.result("waitForUserReply", ticket=ticket, timeout=5.0)
+		assert answered["answered"] is True, (
+			"the acknowledgement gesture did not answer the prompt -- the ack script "
+			"could not reach the session's outstanding prompt"
+		)
+
+		# The window is closed, so the ticket is spent: polling it again is an
+		# error, not a second answer. Agent.call turns an error reply into an
+		# AssertionError, so that is what a refusal looks like from here.
+		with pytest.raises(AssertionError, match="no outstanding prompt"):
+			agent.call("waitForUserReply", ticket=ticket, timeout=0.5)
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_nothing_the_tester_hears_during_the_window_is_captured() -> None:
+	# Checklist item 3, automated: suppression is SUSPENDED for the window, so
+	# speech during it reaches the human and must not enter the buffer -- if it
+	# did, the agent's own before/after index arithmetic would silently include
+	# the human's navigation.
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+
+		before = agent.result("getNextSpeechIndex")["index"]
+		ticket = agent.result("askUser", prompt="Automated test. Ignore this.")["ticket"]
+
+		# Make NVDA speak while the window is open. In a suspended session this
+		# goes to the synth and NOT to the buffer.
+		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		time.sleep(0.5)
+
+		during = agent.result("getNextSpeechIndex")["index"]
+		assert during == before, (
+			f"speech index moved {before} -> {during} while the window was open: "
+			"the tester's own speech is being captured as if it were reader output"
+		)
+
+		agent.result("pressGesture", gestures=["NVDA+control+shift+a"])
+		assert agent.result("waitForUserReply", ticket=ticket, timeout=5.0)["answered"] is True
+
+		# And capture resumes afterwards, or the session would be useless from
+		# here on.
+		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		time.sleep(0.5)
+		after = agent.result("getNextSpeechIndex")["index"]
+		assert after > during, (
+			f"speech index stuck at {during} after the window closed -- suppression "
+			"did not resume, so nothing is being captured any more"
+		)
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+def test_a_session_that_dies_with_a_window_open_recovers() -> None:
+	# Checklist item 8's live analogue. Dropping the connection mid-window is the
+	# case where suppression is deliberately OFF, so teardown must leave the
+	# filter unregistered and the server able to serve again. What proves it from
+	# out here is that a FRESH session captures speech normally: that can only
+	# happen if the previous one released cleanly.
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		agent.result("askUser", prompt="Automated test. This session will drop.")
+	finally:
+		agent.close()  # no bye, no answer -- the agent just vanishes
+
+	# The bridge notices the dead pipe on its next read and tears the session
+	# down; the next dial gets a new one.
+	time.sleep(1.0)
+
+	recovered = _dial()
+	try:
+		_hello(recovered, "silent")
+		before = recovered.result("getNextSpeechIndex")["index"]
+		recovered.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		time.sleep(0.5)
+		after = recovered.result("getNextSpeechIndex")["index"]
+		assert after > before, (
+			"a fresh session captured nothing, so the abandoned window left the "
+			"bridge in a state it could not recover from"
+		)
+		recovered.result("bye")
+	finally:
+		recovered.close()
+
+
+def test_the_acknowledgement_is_confirmed_out_loud() -> None:
+	# The confirmation exists ONLY for the person listening: pressing the gesture
+	# used to be silent, which for a blind tester is indistinguishable from a
+	# keypress that never registered. So "did it speak" is the requirement, not a
+	# nicety -- and it needs asserting somewhere, because ui.message lives in
+	# plugin.py, the NVDA edge that no unit test reaches.
+	#
+	# LIVE mode is what makes it observable: the speech source watches NVDA's own
+	# pipeline, so ui.message enters the buffer. In silent mode it cannot be seen
+	# from here at all -- the open window suspends suppression, so the words go to
+	# the synth and are deliberately never captured.
+	agent = _dial()
+	try:
+		_hello(agent, "live")
+		ticket = agent.result("askUser", prompt="Automated test. Ignore this.")["ticket"]
+
+		start = _settled_index(agent)
+		agent.result("pressGesture", gestures=["NVDA+control+shift+a"])
+		spoken = _speech_after(agent, start)
+
+		assert spoken, (
+			"the acknowledgement gesture said NOTHING; silence is indistinguishable "
+			"from a keypress that missed the dialog"
+		)
+		# Our own string, and untranslated today -- when a catalog lands this needs
+		# the same treatment spec 0015 gave localized assertions.
+		assert "acknowledg" in spoken.casefold(), (
+			f"the gesture spoke {spoken!r}, which is not the confirmation"
+		)
+		assert agent.result("waitForUserReply", ticket=ticket, timeout=5.0)["answered"] is True
+
+		agent.result("bye")
+	finally:
+		agent.close()
+
+
+@pytest.mark.slow
+def test_an_unanswered_window_expires_and_the_session_survives() -> None:
+	"""Checklist items 6 and 9, in one real five-minute run.
+
+	Both are questions about WALL-CLOCK time, which is exactly what the headless
+	tier cannot answer: FakeClock proves the arithmetic in microseconds (a 301 s
+	advance in test_user_prompt.py), and what remains is whether the numbers
+	COMPILED INTO THE INSTALLED ADD-ON behave on a real NVDA -- the 300 s window,
+	the 30 s heartbeat, the 120 s inactivity watchdog. Hurrying it would mean
+	testing numbers the add-on does not ship, so it is marked slow and left out of
+	`poe live`.
+
+	Item 6: nobody answers, so the window closes on its own. Its deadline is
+	observed BY A POLL rather than by a timer (spec 0016, amendment 4), so this
+	keeps polling instead of sleeping blind -- and the proof that it closed is that
+	the ticket then stops being accepted at all.
+
+	Item 9: those same polls are what keeps the session alive, each one resetting
+	command-inactivity while the heartbeat sees traffic. So a session that is still
+	answering after the whole window has passed IS item 9, and the closing `bye`
+	proves it was never torn down underneath us.
+
+	It announces as it goes, because a human is listening to a five-minute test and
+	silence is indistinguishable from a hang.
+	"""
+	agent = _dial()
+	try:
+		_hello(agent, "silent")
+		agent.result(
+			"announce",
+			text=(
+				"Starting the slow checklist run. I will open a question and deliberately "
+				"never answer it, for about five minutes, announcing as I go. Nothing is "
+				"needed from you."
+			),
+		)
+
+		ticket = agent.result("askUser", prompt="Slow test. Do not answer this one.")["ticket"]
+		started = time.monotonic()
+
+		expired = False
+		polls = 0
+		# Generous ceiling: the window is 300 s, so anything past ~360 s means it
+		# did not close when it should have.
+		while time.monotonic() - started < 420.0:
+			polls += 1
+			# raw, not call: a refused ticket is the OUTCOME being waited for here,
+			# and call() would raise it away.
+			reply = agent.raw("waitForUserReply", reply_timeout=90.0, ticket=ticket, timeout=60.0)
+			if reply.get("error") is not None:
+				# The ticket is no longer accepted: the window closed and the poll
+				# before this one is the one that observed it.
+				expired = True
+				break
+			assert reply["result"]["answered"] is False, (
+				"the bridge reported an answer, but nothing acknowledged the prompt"
+			)
+			minutes = (time.monotonic() - started) / 60.0
+			agent.result("announce", text=f"Still waiting. {minutes:.0f} minutes so far.")
+
+		elapsed = time.monotonic() - started
+		assert expired, (
+			f"the window was still open after {elapsed:.0f}s and {polls} polls; it should close at 300s"
+		)
+		assert elapsed >= 290.0, (
+			f"the window closed after only {elapsed:.0f}s -- far short of its 300 s deadline, "
+			"so something other than the deadline ended it"
+		)
+
+		# Suppression resumed when the expiry was observed, so capture works again.
+		before = agent.result("getNextSpeechIndex")["index"]
+		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		time.sleep(0.5)
+		after = agent.result("getNextSpeechIndex")["index"]
+		assert after > before, (
+			"nothing was captured after the window expired, so suppression never resumed"
+		)
+
+		# Item 9, stated as an assertion: the session is still the same one, still
+		# serving, after five minutes -- neither watchdog fired.
+		agent.result(
+			"announce",
+			text=f"Slow run finished. The window expired on its own after {elapsed:.0f} seconds.",
+		)
 		agent.result("bye")
 	finally:
 		agent.close()

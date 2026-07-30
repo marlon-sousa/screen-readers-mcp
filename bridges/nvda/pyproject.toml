@@ -32,6 +32,12 @@ testpaths = ["tests"]
 addopts = "-m 'not live_nvda'"
 markers = [
 	"live_nvda: drives a REAL NVDA on this machine. Excluded by default; see above.",
+	# A handful of live checks are about WALL-CLOCK time -- the 300 s interaction
+	# window, the 120 s inactivity watchdog -- so they cannot be hurried without
+	# testing different numbers than the ones the add-on ships with. They are
+	# release-gate checks, not inner-loop ones: `poe live` skips them, `poe
+	# live-slow` runs them.
+	"slow: takes minutes of real time. Skipped even by `poe live`; run `poe live-slow`.",
 ]
 
 [tool.ruff]

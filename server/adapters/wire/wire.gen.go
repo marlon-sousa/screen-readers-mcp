@@ -65,6 +65,8 @@ const (
 	CommandGetConfig             Command = "getConfig"
 	CommandSetConfig             Command = "setConfig"
 	CommandAnnounce              Command = "announce"
+	CommandAskUser               Command = "askUser"
+	CommandWaitForUserReply      Command = "waitForUserReply"
 	CommandBye                   Command = "bye"
 )
 
@@ -89,7 +91,7 @@ const (
 	CapabilityFocus    Capability = "focus"
 	CapabilityState    Capability = "state"
 	CapabilityConfig   Capability = "config"
-	CapabilityAnnounce Capability = "announce"
+	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
 )
 
@@ -121,6 +123,16 @@ type AckResult struct {
 // AnnounceParams is the wire shape of the same name.
 type AnnounceParams struct {
 	Text string `json:"text"`
+}
+
+// AskUserParams is the wire shape of the same name.
+type AskUserParams struct {
+	Prompt string `json:"prompt"`
+}
+
+// AskUserResult is the wire shape of the same name.
+type AskUserResult struct {
+	Ticket string `json:"ticket"`
 }
 
 // BrailleResult is the wire shape of the same name.
@@ -267,6 +279,18 @@ type WaitForSpeechResult struct {
 	Found bool   `json:"found"`
 	Index int    `json:"index"`
 	Text  string `json:"text"`
+}
+
+// WaitForUserReplyParams is the wire shape of the same name.
+type WaitForUserReplyParams struct {
+	Ticket  string   `json:"ticket"`
+	Timeout *float64 `json:"timeout,omitempty"`
+}
+
+// WaitForUserReplyResult is the wire shape of the same name.
+type WaitForUserReplyResult struct {
+	Answered bool    `json:"answered"`
+	Text     *string `json:"text,omitempty"`
 }
 
 // WaitToFinishParams is the wire shape of the same name.

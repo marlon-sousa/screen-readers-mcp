@@ -50,7 +50,17 @@ cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
 [tool.poe.tasks.live]
 help = "DRIVES YOUR REAL NVDA: gestures, typed text, config changes. Opt-in only."
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m live_nvda"
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and not slow'"
+
+# The wall-clock checks, separated because they cost minutes rather than seconds:
+# the 300 s interaction window and the 120 s inactivity watchdog cannot be hurried
+# without testing numbers the add-on does not ship. Headless tests already prove
+# the arithmetic instantly with a fake clock; this proves the REAL constants
+# behave on a real NVDA, which is a release-gate question.
+[tool.poe.tasks.live-slow]
+help = "The minutes-long live checks (300 s window, five-minute session). Opt-in."
+deps = ["check"]
+cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and slow'"
 
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"
@@ -98,6 +108,23 @@ sequence = [
 [tool.poe.tasks.build-server]
 help = "Rebuild the MCP server binary that .mcp.json spawns (restart the MCP connection after)"
 cmd = "go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp"
+
+# Ungated for the same reason as build-server: it is the remediation for the
+# doctor's own "server binary STALE" failure.
+#
+# This is `build-server` for the normal case, where the binary is RUNNING and so
+# cannot be overwritten. There is no server to ask nicely: stdio MCP gives every
+# client its own process, so two attached agents means two copies of this exe
+# holding the same file and no shared endpoint to shut down (an HTTP transport
+# would have one). So it kills them by executable path and rebuilds.
+#
+# It takes every agent's connection down, not just yours -- deliberately, since a
+# half-replaced binary with somebody still on the old one is the state that wastes
+# an afternoon. Safe for the person at the screen reader: the bridge treats a lost
+# connection as teardown and restores speech. Use --dry-run to see the targets.
+[tool.poe.tasks.redeploy]
+help = "Kill every running MCP server (ALL agents') and rebuild the binary"
+cmd = "python scripts/redeploy.py"
 
 # Ungated for the same reason: sconstruct runs sync_shared.sync(), which is what
 # repairs the doctor's "shared module synced" check.

@@ -36,12 +36,19 @@ from ..domain.ports.event_bus import EventBus
 from .ports.listener import Listener, ListenerClosed
 
 if TYPE_CHECKING:
+	from ..domain.controllers.commands.session_context import SessionContext
 	from ..domain.controllers.session import Session
 	from .ports.transport import Transport
 
 #: What plugin.py builds a session with (nvda version etc. are bound in the
 #: closure); BridgeServer only needs "a Transport becomes a Session".
 SessionFactory = Callable[["Transport"], "Session"]
+
+#: How long stop() waits for the server thread, since the caller is often NVDA's
+#: MAIN THREAD (the panic gesture). Generous next to a cooperative teardown that
+#: takes milliseconds once an open prompt window has been cancelled, and short
+#: enough that a screen reader never falls silent waiting for it.
+_STOP_JOIN_TIMEOUT: float = 5.0
 
 class ServerState(enum.Enum):
 	"""The observable state entry 9.1's dialog reflects (plain Enum: it never
@@ -131,6 +138,16 @@ class BridgeServer:
 		Must not be called from the server thread itself (it joins that thread) --
 		it is driven from the plugin's terminate/panic path and the 9.1 dialog,
 		never from inside a session.
+
+		The join is BOUNDED, because the caller is often NVDA's main thread: the
+		panic gesture ends up here, and a main thread held here is a screen reader
+		that has stopped speaking. Teardown is cooperative, so any handler that
+		blocks delays the thread's exit -- `Session.request_teardown` cancels an
+		open interaction window precisely so that wait cannot outlast this join, but
+		a bound is kept anyway. A future handler that blocks for its own reasons
+		must not be able to freeze NVDA, and losing the thread is the lesser harm:
+		it is a daemon, the listener is already closed, and the session's own
+		teardown still restores speech when it finally unwinds.
 		"""
 		with self._lock:
 			thread = self._thread
@@ -140,7 +157,7 @@ class BridgeServer:
 			session.request_teardown(TeardownReason.EXTERNAL)
 		self._listener.close()
 		if thread is not None:
-			thread.join()
+			thread.join(timeout=_STOP_JOIN_TIMEOUT)
 		with self._lock:
 			self._state = ServerState.STOPPED
 			self._endpoint = None
@@ -205,6 +222,18 @@ class BridgeServer:
 			# notifies STOPPED itself.
 			if not self._is_stopping():
 				self._notify()
+
+	def current_session_context(self) -> SessionContext | None:
+		"""The active session's context, or None. For the ack gesture.
+
+		Read under the lock like every other accessor here, because the caller is
+		NVDA's main thread and the writer is the accept loop.
+		"""
+		with self._lock:
+			session = self._active_session
+		if session is None:
+			return None
+		return session.session_context
 
 	def _is_stopping(self) -> bool:
 		with self._lock:

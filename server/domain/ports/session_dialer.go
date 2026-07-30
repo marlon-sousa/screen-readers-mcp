@@ -105,7 +105,7 @@ type ReaderConnection struct {
 	Focus     FocusInspector
 	State     StateInspector
 	Config    ConfigAccessor
-	Announcer Announcer
+	Interact Interact
 	Text      TextTyper
 }
 

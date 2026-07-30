@@ -4,18 +4,18 @@
 # This file imports NVDA and is therefore in pyright's ``ignore`` list (see
 # pyproject.toml): it is the thin edge, kept deliberately small, with all real
 # logic living in the strict-checked ``domain/`` and the adapters. It is
-# validated by the live-NVDA checklist (spec 0007, 9c), not by the type checker.
+# validated by the live-NVDA checklist (spec 0007, 9c, 11.2), not by the type
+# checker.
 #
 # ROLE: the composition root's NVDA end. On load it reads persisted config,
 # builds the matching Listener (named pipe by default; spec 0010 / 0011) and
-# starts the bridge if auto-start is enabled. A control dialog (spec 0011,
-# entry 9.1b PR C) will add a Tools menu item later.
+# starts the bridge if auto-start is enabled.
 # On unload, or on the panic gesture, it stops the server -- which tears down
 # any active session and thereby restores the user's synth.
 #
 # The per-connection wiring itself lives in wiring.build_session; this file
 # only chooses the real adapters and owns the NVDA lifecycle (init / terminate
-# / script).
+# / scripts).
 
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ from .adapters.nvda_announcer import NvdaAnnouncer
 from .adapters.nvda_log import NvdaLog
 from .adapters.nvda_log_capture import NvdaLogCapture
 from .adapters.nvda_session_signals import NvdaSessionSignals
+from .adapters.nvda_user_prompter import ACK_GESTURE, NvdaUserPrompter
 from .adapters.simple_event_bus import SimpleEventBus
 from .adapters.text_config_file import TextConfigFile
 from .domain.entities.connection_mode import ConnectionMode
@@ -103,6 +104,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		signals = NvdaSessionSignals()
 		announcer = NvdaAnnouncer()
 		log_capture = NvdaLogCapture(logs_dir)
+		user_prompter = NvdaUserPrompter()
 		self._event_bus = SimpleEventBus()
 
 		def make_session(transport):
@@ -114,6 +116,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				signals,
 				announcer,
 				log_capture,
+				user_prompter,
 				bridge_version=bridge_version,
 			)
 
@@ -202,6 +205,43 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		# teardown), so it is spoken through the now-unsuppressed synth.
 		# Translators: Announced after the panic gesture stops the bridge.
 		wx.CallAfter(ui.message, _("NVDA MCP bridge stopped"))
+
+	# -- acknowledgement gesture -----------------------------------------------
+
+	@script(
+		# Translators: Input help message for the NVDA MCP bridge acknowledgement command.
+		description=_(
+			"Acknowledge a prompt from the NVDA MCP bridge: tell the agent "
+			"you are done and hand control back"
+		),
+		# The prompter speaks this same combination as the instruction, so it is
+		# named in one place only (adapters/nvda_user_prompter.py).
+		gesture=f"kb:{ACK_GESTURE}",
+	)
+	def script_acknowledge(self, gesture) -> None:
+		# Find the active session's outstanding prompt and answer it.
+		# This runs on NVDA's main thread (it is an NVDA gesture), so it
+		# can safely write to the UserPrompt entity while the session
+		# thread polls it.
+		session = self._server.current_session_context()
+		if session is None:
+			# Translators: Announced when the acknowledgement gesture is pressed
+			# but no session is active.
+			wx.CallAfter(ui.message, _("No bridge session to acknowledge"))
+			return
+		prompt = session.get_outstanding_prompt()
+		if prompt is None:
+			# Translators: Announced when the acknowledgement gesture is pressed
+			# but no prompt is outstanding.
+			wx.CallAfter(ui.message, _("No prompt to acknowledge"))
+			return
+		prompt.answer()
+		# Confirm out loud. Silence would be indistinguishable from a keypress
+		# that never landed, and the agent's next poll is what actually resumes
+		# suppression -- up to its own timeout away -- so this message is the only
+		# feedback the tester gets at the moment they act.
+		# Translators: Announced when the acknowledgement gesture answers a prompt.
+		wx.CallAfter(ui.message, _("Acknowledged"))
 
 	def terminate(self) -> None:
 		self._server.stop()

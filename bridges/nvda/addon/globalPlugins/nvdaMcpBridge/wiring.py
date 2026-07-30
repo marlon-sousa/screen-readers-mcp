@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 	from .domain.ports.announcer import Announcer
 	from .domain.ports.log_capture import LogCapture
 	from .domain.ports.session_signals import SessionSignals
+	from .domain.ports.user_prompter import UserPrompter
 
 
 def build_session(
@@ -40,6 +41,7 @@ def build_session(
 	signals: SessionSignals,
 	announcer: Announcer,
 	log_capture: LogCapture,
+	user_prompter: UserPrompter,
 	*,
 	bridge_version: str = "unknown",
 	heartbeat_timeout: float = 30.0,
@@ -51,11 +53,12 @@ def build_session(
 	the JSON-lines channel, builds the command registry (whose hello handler
 	holds ``factory``), and hands the Session its ports -- including the session
 	``signals`` (start/end beeps), the ``announcer`` (the bridge's line to the
-	real synth, for the hello synth name and the announce hint channel), and
-	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009).
-	``log_capture`` is NVDA-facing like ``signals``/``announcer``, so it is a
-	parameter built at the edge (plugin.py), not constructed here -- wiring.py
-	stays pure.
+	real synth, for the hello synth name and the announce hint channel),
+	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
+	``user_prompter`` (presents prompts to the human during silent mode).
+	``log_capture``/``user_prompter`` are NVDA-facing like ``signals``/``announcer``,
+	so they are parameters built at the edge (plugin.py), not constructed here --
+	wiring.py stays pure.
 	"""
 	transcript = create_session_log(logs_dir)
 	channel = JsonLinesChannel(transport)
@@ -66,4 +69,6 @@ def build_session(
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
 	)
-	return Session(channel, transcript, clock, config, registry, signals, announcer, log_capture)
+	return Session(
+		channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter,
+	)

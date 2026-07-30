@@ -20,12 +20,14 @@ if TYPE_CHECKING:
 
 
 class FakeSpeechSource(SpeechSource):
-	"""Records start/stop and lets a test inject arbitrary speech."""
+	"""Records start/stop/suspend/resume and lets a test inject arbitrary speech."""
 
 	def __init__(self) -> None:
 		self.buffer: SpeechBuffer | None = None
 		self.started = 0
 		self.stopped = 0
+		self.suspended = 0
+		self.resumed = 0
 		#: Set by a test to prove teardown's guard runs restore even when an
 		#: earlier teardown step (a source stop) raises.
 		self.fail_stop = False
@@ -38,6 +40,12 @@ class FakeSpeechSource(SpeechSource):
 		self.stopped += 1
 		if self.fail_stop:
 			raise RuntimeError("speech source stop failed")
+
+	def suspend(self) -> None:
+		self.suspended += 1
+
+	def resume(self) -> None:
+		self.resumed += 1
 
 	def emit(self, text: str, *, finished: bool = True) -> None:
 		"""Inject a spoken line (as a one-string speech sequence)."""

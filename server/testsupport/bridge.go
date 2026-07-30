@@ -73,7 +73,7 @@ func EveryWireCapability() []wire.Capability {
 	return []wire.Capability{
 		wire.CapabilitySpeech, wire.CapabilityBraille, wire.CapabilityGestures,
 		wire.CapabilityFocus, wire.CapabilityState, wire.CapabilityConfig,
-		wire.CapabilityAnnounce, wire.CapabilityTyping,
+		wire.CapabilityInteract, wire.CapabilityTyping,
 	}
 }
 

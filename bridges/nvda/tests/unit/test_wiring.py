@@ -17,6 +17,7 @@ from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
 from fakes.transport import FakeTransport
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
@@ -33,7 +34,7 @@ def test_build_session_composes_a_working_stack(tmp_path: Path) -> None:
 
 	log_capture = FakeLogCapture()
 	session = build_session(
-		transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), log_capture
+		transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), log_capture, FakeUserPrompter()
 	)
 	assert isinstance(session, Session)
 	session.run()

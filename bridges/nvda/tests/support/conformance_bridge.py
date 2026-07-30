@@ -69,6 +69,7 @@ from fakes.adapter_factory import FakeAdapterFactory  # noqa: E402
 from fakes.announcer import FakeAnnouncer  # noqa: E402
 from fakes.log_capture import FakeLogCapture  # noqa: E402
 from fakes.session_signals import FakeSessionSignals  # noqa: E402
+from fakes.user_prompter import FakeUserPrompter  # noqa: E402
 
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, SessionFactory  # noqa: E402
 from nvdaMcpBridge.adapters.ports.listener import Listener  # noqa: E402
@@ -137,6 +138,7 @@ def _session_factory(logs_dir: Path) -> SessionFactory:
 			FakeSessionSignals(),
 			FakeAnnouncer(),
 			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	return build

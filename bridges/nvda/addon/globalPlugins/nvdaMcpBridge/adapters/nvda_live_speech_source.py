@@ -9,6 +9,8 @@
 #                _remoteClient uses). Live mode has no exact finish signal, so the
 #                SpeechBuffer's elapsed-time heuristic decides "finished".
 #
+# suspend/resume are no-ops in live mode because nothing was ever suppressed.
+#
 # On pyright's ignore list (imports NVDA). NVDA holds handlers weakly, so this
 # instance must outlive its registration -- the AdapterSet keeps it for the
 # session; stop() unregisters at teardown.
@@ -42,6 +44,12 @@ class NvdaLiveSpeechSource(SpeechSource):
 			pre_speechQueued.unregister(self._on_speech_queued)
 			self._registered = False
 		self._buffer = None
+
+	def suspend(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
+
+	def resume(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
 
 	def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:
 		buffer = self._buffer

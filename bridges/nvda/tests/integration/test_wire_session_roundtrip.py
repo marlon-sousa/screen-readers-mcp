@@ -20,6 +20,7 @@ from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.loopback_transport import loopback_pair
 from fakes.session_signals import FakeSessionSignals
+from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
@@ -48,7 +49,10 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 	signals = FakeSessionSignals()
 	announcer = FakeAnnouncer()
 	log_capture = FakeLogCapture()
-	session = build_session(bridge_end, factory, tmp_path, "2026.1.0", signals, announcer, log_capture)
+	user_prompter = FakeUserPrompter()
+	session = build_session(
+		bridge_end, factory, tmp_path, "2026.1.0", signals, announcer, log_capture, user_prompter,
+	)
 	agent = JsonLinesChannel(agent_end)
 
 	thread = threading.Thread(target=session.run, daemon=True)
@@ -83,19 +87,45 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		agent.write(_request(6, "announce", text="pressing bye now"))
 		assert _read_reply(agent)["result"] == {"ok": True}
 
+		# -- askUser / waitForUserReply (spec 0016) --------------------------
+		agent.write(_request(7, "askUser", prompt="plug in the display"))
+		ask_reply = _read_reply(agent)["result"]
+		ticket = ask_reply["ticket"]
+		assert len(ticket) == 12
+		# Speech suppression is suspended while the window is open.
+		assert factory.speech_source.suspended == 1
+		assert len(user_prompter.presented) == 1
+
+		# Poll once before the answer -- answered=false, window still open.
+		agent.write(_request(8, "waitForUserReply", ticket=ticket, timeout=0.0))
+		poll1 = _read_reply(agent)["result"]
+		assert poll1["answered"] is False
+
+		# The human answers (simulating the ack gesture via the entity).
+		prompt = session.session_context.get_outstanding_prompt()
+		assert prompt is not None
+		prompt.answer()
+
+		# Poll again -- answered=true, speech resumed, prompt cleared.
+		agent.write(_request(9, "waitForUserReply", ticket=ticket, timeout=0.0))
+		poll2 = _read_reply(agent)["result"]
+		assert poll2["answered"] is True
+		assert factory.speech_source.resumed == 1
+		assert session.session_context.get_outstanding_prompt() is None
+
 		# -- introspection commands (entry 11.1) -------------------------------
 		# Seed config fake before the session reads it.
 		factory.config_accessor.seed(["speech", "synth"], "espeak")
 
 		# getFocusInfo from the seeded fake.
-		agent.write(_request(8, "getFocusInfo"))
+		agent.write(_request(10, "getFocusInfo"))
 		focus = _read_reply(agent)["result"]
 		assert focus["name"] == "Test Button"
 		assert focus["role"] == "BUTTON"
 		assert focus["states"] == ["FOCUSABLE", "FOCUSED"]
 
 		# getState from the seeded fake.
-		agent.write(_request(9, "getState"))
+		agent.write(_request(11, "getState"))
 		state_reply = _read_reply(agent)
 		assert state_reply is not None, "no reply for getState"
 		assert state_reply.get("error") is None, f"getState error: {state_reply.get('error')}"
@@ -105,17 +135,17 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		assert state["sleepMode"] is False
 
 		# getConfig reads a pre-seeded key.
-		agent.write(_request(10, "getConfig", keyPath=["speech", "synth"]))
+		agent.write(_request(12, "getConfig", keyPath=["speech", "synth"]))
 		config_read = _read_reply(agent)["result"]
 		assert config_read == {"value": "espeak"}
 
 		# setConfig writes and returns the prior value.
-		agent.write(_request(11, "setConfig", keyPath=["speech", "synth"], value="sapi5"))
+		agent.write(_request(13, "setConfig", keyPath=["speech", "synth"], value="sapi5"))
 		config_write = _read_reply(agent)["result"]
 		assert config_write == {"value": "espeak"}
 
 		# Bye -> ack, then teardown stops capture (speech would flow again).
-		agent.write(_request(12, "bye"))
+		agent.write(_request(14, "bye"))
 		assert _read_reply(agent)["result"] == {"ok": True}
 	finally:
 		thread.join(timeout=5.0)

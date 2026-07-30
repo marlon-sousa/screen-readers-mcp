@@ -75,6 +75,10 @@ __all__ = [
 	"SetConfigParams",
 	"ConfigResult",
 	"AnnounceParams",
+	"AskUserParams",
+	"AskUserResult",
+	"WaitForUserReplyParams",
+	"WaitForUserReplyResult",
 	"AckResult",
 ]
 
@@ -144,7 +148,7 @@ class Capability(StrEnum):
 	FOCUS = "focus"
 	STATE = "state"
 	CONFIG = "config"
-	ANNOUNCE = "announce"
+	INTERACT = "interact"
 	TYPING = "typing"
 
 
@@ -187,6 +191,8 @@ class Command(StrEnum):
 	GET_CONFIG = "getConfig"
 	SET_CONFIG = "setConfig"
 	ANNOUNCE = "announce"
+	ASK_USER = "askUser"
+	WAIT_FOR_USER_REPLY = "waitForUserReply"
 	BYE = "bye"
 
 
@@ -591,6 +597,48 @@ class AckResult:
 	ok: bool = True
 
 
+@dataclass
+class AskUserParams:
+	"""Present a prompt to the human and suspend speech suppression.
+
+	Returns a ticket immediately so the handler does not block past the
+	heartbeat window. Pair with :class:`WaitForUserReplyParams`.
+	"""
+
+	prompt: str
+
+
+@dataclass
+class AskUserResult:
+	"""The ticket the agent polls with ``waitForUserReply``."""
+
+	ticket: str
+
+
+@dataclass
+class WaitForUserReplyParams:
+	"""Poll for the human's answer to a prompt identified by ``ticket``.
+
+	``timeout`` (default 30 s) bounds *this poll*, not the whole window.
+	The window's own deadline (300 s from ``askUser``) is the bridge's
+	business; the agent re-polls until ``answered`` is ``true`` or the
+	bridge returns an error for an expired ticket.
+	"""
+
+	ticket: str
+	timeout: float = 30.0
+
+
+@dataclass
+class WaitForUserReplyResult:
+	"""Whether the human answered, and what they said (always empty in stage 1)."""
+
+	answered: bool
+	#: Always empty in stage 1 (the acknowledgement gesture carries no text).
+	#: Ships so stage 2 (a dialog) populates it without a wire break.
+	text: str = ""
+
+
 # --- Command shapes: the contract's own command -> payload-types table --------
 
 
@@ -628,5 +676,7 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.GET_CONFIG: CommandShape(GetConfigParams, ConfigResult),
 	Command.SET_CONFIG: CommandShape(SetConfigParams, ConfigResult),
 	Command.ANNOUNCE: CommandShape(AnnounceParams, AckResult),
+	Command.ASK_USER: CommandShape(AskUserParams, AskUserResult),
+	Command.WAIT_FOR_USER_REPLY: CommandShape(WaitForUserReplyParams, WaitForUserReplyResult),
 	Command.BYE: CommandShape(None, AckResult),
 }

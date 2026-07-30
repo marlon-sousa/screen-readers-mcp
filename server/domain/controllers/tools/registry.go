@@ -52,8 +52,10 @@ func BuildRegistry() *Registry {
 		// Gated on `typing`.
 		&TypeText{},
 
-		// Gated on `announce`.
+		// Gated on `interact`.
 		&Announce{},
+		&AskUser{},
+		&WaitForUserReply{},
 
 		// Gated on `focus`.
 		&GetFocusInfo{},
