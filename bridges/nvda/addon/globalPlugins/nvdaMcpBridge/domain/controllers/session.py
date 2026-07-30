@@ -128,10 +128,23 @@ class Session:
 		The SessionContext's close() is wired to this, so a command (bye) and
 		session C's plugin terminate / panic gesture share one path. First
 		request wins.
+
+		Cancelling an open interaction window is part of honouring the request, not
+		a courtesy. Teardown is COOPERATIVE -- the loop notices at its next wakeup
+		-- and a handler blocked on `waitForUserReply` does not reach that wakeup
+		for as long as its poll lasts, up to MAX_POLL_TIMEOUT. Meanwhile the caller
+		may be NVDA's MAIN THREAD: the panic gesture calls BridgeServer.stop(),
+		which joins the session thread. Without this the panic gesture FREEZES NVDA
+		for the rest of the poll -- no speech at all -- which is the exact opposite
+		of what a tester pressing panic needs. Cancelling makes the in-flight
+		`wait()` raise at once, so the handler returns and the loop can see this.
 		"""
 		with self._external_lock:
 			if self._external_reason is None:
 				self._external_reason = reason
+		prompt = self._ctx.get_outstanding_prompt()
+		if prompt is not None:
+			prompt.cancel()
 
 	# -- the one dispatch loop ----------------------------------------------
 

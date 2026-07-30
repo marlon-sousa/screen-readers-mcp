@@ -31,6 +31,11 @@ class FakeChannel(MessageChannel):
 		self,
 		events: list[Any] | None = None,
 		*,
+		# FakeClock, not the Clock PORT, and deliberately: a scripted timeout
+		# ADVANCES time (ScriptedQueue.tick_timeout), and `advance` is not on the
+		# port -- no real clock can be moved. Widening this to Clock would only
+		# make the advance call untypeable, so a test that needs real sleeping
+		# elsewhere passes a FakeClock here and the real one to the Session.
 		clock: FakeClock | None = None,
 		timeout_advance: float = 5.0,
 		on_empty: str = "closed",

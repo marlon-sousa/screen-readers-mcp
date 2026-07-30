@@ -15,8 +15,11 @@
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+import pytest
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
@@ -31,9 +34,11 @@ from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
 
 from nvdaMcpBridge import protocol as p
+from nvdaMcpBridge.adapters.real_clock import RealClock
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES, build_command_registry
 from nvdaMcpBridge.domain.controllers.session import Session, SessionConfig, TeardownReason
+from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 
 
 # -- message builders --------------------------------------------------------
@@ -460,3 +465,84 @@ def test_config_restore_actually_restores_the_prior_value() -> None:
     # Restore brings it back.
     store.restore_all()
     assert store.get(["speech", "synth"]) == "espeak"
+
+
+def test_request_teardown_cancels_an_open_prompt_window() -> None:
+	# Found live, by pressing the panic gesture during an interaction window: NVDA
+	# went silent and stayed that way until the poll expired.
+	#
+	# Teardown is cooperative -- the loop honours it at its next wakeup -- and a
+	# handler sitting in waitForUserReply does not reach that wakeup for up to
+	# MAX_POLL_TIMEOUT. BridgeServer.stop() joins that thread, and the caller is
+	# NVDA's MAIN THREAD on the panic path, so the screen reader freezes for the
+	# rest of the poll. Cancelling the window as part of honouring the request is
+	# what lets the in-flight wait() return immediately.
+	clock = FakeClock()
+	registry = _fake_registry()
+	transcript = FakeTranscript()
+	signals = FakeSessionSignals()
+	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
+	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
+	session = Session(
+		channel, transcript, clock, config, registry, signals,
+		FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+	)
+	prompt = UserPrompt("do the thing", clock)
+	session.session_context.set_outstanding_prompt(prompt)
+
+	session.request_teardown(TeardownReason.EXTERNAL)
+
+	# The prompt is cancelled, so a poll blocked on it aborts at once rather than
+	# holding the loop -- and thus the joining main thread -- for its full timeout.
+	with pytest.raises(PromptExpired, match="cancelled"):
+		prompt.wait(timeout=1e9)
+	assert not prompt.answered
+
+
+def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
+	# The same failure from the other end, with a REAL thread and REAL sleeps,
+	# because the bug is about wall-clock time on NVDA's main thread and a fake
+	# clock cannot express it: FakeClock.sleep returns instantly, so a poll that
+	# would hang for a minute in production finishes before the test can look.
+	#
+	# The handler blocks on a window the way WaitForUserReplyHandler does, rather
+	# than going over the wire, because a scripted channel cannot know the ticket
+	# askUser has not issued yet.
+	clock = RealClock()
+
+	def block_on_the_window(ctx: Any, request: Any) -> p.AckResult:
+		prompt = UserPrompt("hold the session open", clock)
+		ctx.set_outstanding_prompt(prompt)
+		prompt.wait(60.0)  # a minute, unless teardown cuts it short
+		return p.AckResult()
+
+	handler = FakeCommandHandler()
+	handler.execute = block_on_the_window  # type: ignore[method-assign]
+	registry = _fake_registry(ping=handler)
+	# The channel gets a FakeClock because its clock only drives timeout advancing,
+	# which never happens here (on_empty="closed"); the SESSION and the prompt get
+	# the real one, because real sleeping is the whole point.
+	session = Session(
+		FakeChannel([hello(), command("ping", 2)], clock=FakeClock(), on_empty="closed"),
+		FakeTranscript(), clock,
+		SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9),
+		registry, FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+	)
+
+	thread = threading.Thread(target=session.run, daemon=True)
+	thread.start()
+	deadline = time.monotonic() + 5.0
+	while time.monotonic() < deadline and session.session_context.get_outstanding_prompt() is None:
+		time.sleep(0.02)
+	assert session.session_context.get_outstanding_prompt() is not None, "no window opened"
+
+	started = time.monotonic()
+	session.request_teardown(TeardownReason.EXTERNAL)
+	thread.join(timeout=5.0)
+	elapsed = time.monotonic() - started
+
+	assert not thread.is_alive(), "the session thread outlived a teardown request"
+	assert elapsed < 3.0, (
+		f"teardown took {elapsed:.1f}s with a window open; on the panic path that is "
+		"time NVDA spends silent, waiting for a poll nobody can answer"
+	)
