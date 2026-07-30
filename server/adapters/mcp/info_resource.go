@@ -112,7 +112,7 @@ func describe(sessions SessionSource) info {
 	document.Mode = session.Mode.String()
 	document.Synth = session.Synth
 	document.LogPath = session.LogPath
-	document.ReaderLogPath = session.ReaderLogPath
+	// ReaderLogPath superseded by 0020; always empty.
 	document.BridgeVersion = session.BridgeVersion
 	document.ProtocolVersion = session.ProtocolVersion
 	return document

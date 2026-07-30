@@ -67,6 +67,8 @@ const (
 	CommandAnnounce              Command = "announce"
 	CommandAskUser               Command = "askUser"
 	CommandWaitForUserReply      Command = "waitForUserReply"
+	CommandGetLog                Command = "getLog"
+	CommandSetLogLevel           Command = "setLogLevel"
 	CommandBye                   Command = "bye"
 )
 
@@ -93,6 +95,7 @@ const (
 	CapabilityConfig   Capability = "config"
 	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
+	CapabilityLog      Capability = "log"
 )
 
 // CaptureMode is a closed value set in the wire contract.
@@ -113,6 +116,8 @@ const (
 	LogLevelIO           LogLevel = "io"
 	LogLevelDebugwarning LogLevel = "debugwarning"
 	LogLevelInfo         LogLevel = "info"
+	LogLevelWarning      LogLevel = "warning"
+	LogLevelError        LogLevel = "error"
 )
 
 // AckResult is the wire shape of the same name.
@@ -181,6 +186,17 @@ type GetConfigParams struct {
 	KeyPath []string `json:"keyPath"`
 }
 
+// GetLogParams is the wire shape of the same name.
+type GetLogParams struct {
+	CommandId  *int      `json:"commandId,omitempty"`
+	Windows    *int      `json:"windows,omitempty"`
+	MinLevel   *LogLevel `json:"minLevel,omitempty"`
+	Contains   []string  `json:"contains,omitempty"`
+	Exclude    []string  `json:"exclude,omitempty"`
+	Fields     []string  `json:"fields,omitempty"`
+	MaxEntries *int      `json:"maxEntries,omitempty"`
+}
+
 // GetSpeechParams is the wire shape of the same name.
 type GetSpeechParams struct {
 	SinceIndex int `json:"sinceIndex"`
@@ -201,7 +217,6 @@ type HelloResult struct {
 	Mode            CaptureMode  `json:"mode"`
 	Synth           string       `json:"synth"`
 	LogPath         string       `json:"logPath"`
-	NVDALogPath     string       `json:"nvdaLogPath"`
 	BridgeVersion   *string      `json:"bridgeVersion,omitempty"`
 }
 
@@ -209,6 +224,23 @@ type HelloResult struct {
 type LastSpeechResult struct {
 	Text  string `json:"text"`
 	Index int    `json:"index"`
+}
+
+// LogLevelResult is the wire shape of the same name.
+type LogLevelResult struct {
+	Level    LogLevel `json:"level"`
+	Previous LogLevel `json:"previous"`
+}
+
+// LogSliceResult is the wire shape of the same name.
+type LogSliceResult struct {
+	Text            string   `json:"text"`
+	Entries         int      `json:"entries"`
+	Matched         int      `json:"matched"`
+	Truncated       bool     `json:"truncated"`
+	FromCommandId   int      `json:"fromCommandId"`
+	ToCommandId     int      `json:"toCommandId"`
+	CapturedAtLevel LogLevel `json:"capturedAtLevel"`
 }
 
 // NextIndexResult is the wire shape of the same name.
@@ -245,6 +277,11 @@ type Response struct {
 type SetConfigParams struct {
 	KeyPath []string        `json:"keyPath"`
 	Value   json.RawMessage `json:"value"`
+}
+
+// SetLogLevelParams is the wire shape of the same name.
+type SetLogLevelParams struct {
+	Level LogLevel `json:"level"`
 }
 
 // SpeechResult is the wire shape of the same name.

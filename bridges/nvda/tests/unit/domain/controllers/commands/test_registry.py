@@ -14,8 +14,8 @@ from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 
 
 def test_announced_capabilities_match_what_the_bridge_serves() -> None:
-    # All seven capability groups are now served with real ports and NVDA
-    # adapters (entry 11.1). The enum defines eight; the bridge serves them all.
+    # All nine capability groups are now served with real ports and NVDA
+    # adapters. LOG joined with entry 11.4 (spec 0020).
     assert NVDA_CAPABILITIES == (
         p.Capability.SPEECH,
         p.Capability.BRAILLE,
@@ -25,8 +25,9 @@ def test_announced_capabilities_match_what_the_bridge_serves() -> None:
         p.Capability.CONFIG,
         p.Capability.INTERACT,
         p.Capability.TYPING,
+        p.Capability.LOG,
     )
-    assert len(NVDA_CAPABILITIES) == 8
+    assert len(NVDA_CAPABILITIES) == 9
 
 
 def test_every_wire_command_has_a_handler() -> None:
@@ -60,4 +61,5 @@ def test_exactly_the_three_mutating_commands_are_marked() -> None:
         p.Command.TYPE_TEXT,
         p.Command.SET_CONFIG,
         p.Command.ASK_USER,
+        p.Command.SET_LOG_LEVEL,
     }

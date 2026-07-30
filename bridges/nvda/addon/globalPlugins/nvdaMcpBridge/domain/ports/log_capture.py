@@ -37,10 +37,38 @@ class LogCapture(ABC):
 	@property
 	@abstractmethod
 	def path(self) -> str:
-		"""Where the capture can be read; returned to the agent at ``hello``."""
+		"""Where the capture can be read; returned to the agent at ``hello``.
+
+		Superseded by 0020: the journal replaces the capture file.  Kept for the
+		transcript path only; 0009's ``nvdaLogPath`` is removed.
+		"""
 
 	@abstractmethod
 	def start(self, level: protocol.LogLevel | None) -> None: ...
 
 	@abstractmethod
 	def stop(self) -> None: ...
+
+	@property
+	@abstractmethod
+	def current_level(self) -> protocol.LogLevel:
+		"""The log floor currently in force (for ``capturedAtLevel`` reporting)."""
+
+	@abstractmethod
+	def set_level(self, level: protocol.LogLevel) -> None:
+		"""Raise or lower NVDA's logging floor (forwards from now; spec 0020)."""
+
+	@abstractmethod
+	def position(self) -> int:
+		"""The journal's current append position, for window bracketing."""
+
+	@abstractmethod
+	def slice(
+		self, start: int, end: int, *,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> protocol.LogSliceResult:
+		"""Return a formatted, filtered slice of ``[start, end)``."""

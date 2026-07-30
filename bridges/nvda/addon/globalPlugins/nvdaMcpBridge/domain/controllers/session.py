@@ -234,6 +234,16 @@ class Session:
 		if handler.resets_inactivity:
 			self._last_command_time = self._clock.monotonic()
 
+		# Record the log-journal position before dispatch, for commands that want
+		# a window (spec 0020). A handler that sets marks_log=False (getLog) is
+		# not itself marked, so the default anchor is never the getLog that just ran.
+		marks = handler.marks_log
+		start_pos = 0
+		captured_at: protocol.LogLevel | None = None
+		if marks:
+			start_pos = self._log_capture.position()
+			captured_at = self._log_capture.current_level
+
 		try:
 			result = handler.execute(self._ctx, request)
 		except (protocol.ValidationError, GestureError, ConfigError, CommandError) as exc:
@@ -242,6 +252,15 @@ class Session:
 		except Exception as exc:  # a handler blew up unexpectedly; the session survives
 			self._reply_command_error(request.id, str(exc))
 			return
+
+		if marks:
+			assert captured_at is not None  # always set when marks is True
+			end_pos = self._log_capture.position()
+			windows = self._ctx.command_windows
+			windows.append((request.id, start_pos, end_pos, captured_at))
+			# Keep the last 50.
+			if len(windows) > 50:
+				del windows[:-50]
 
 		self._reply(request.id, result)
 		if pre_hello:

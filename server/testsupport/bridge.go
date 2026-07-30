@@ -45,10 +45,9 @@ type BridgeOptions struct {
 	// scenario.
 	ProtocolVersion int
 
-	// Synth, LogPath and ReaderLogPath fill out the `hello` reply.
-	Synth         string
-	LogPath       string
-	ReaderLogPath string
+	// Synth and LogPath fill out the `hello` reply.
+	Synth   string
+	LogPath string
 }
 
 // FakeBridge serves the wire contract over one connection.
@@ -73,7 +72,7 @@ func EveryWireCapability() []wire.Capability {
 	return []wire.Capability{
 		wire.CapabilitySpeech, wire.CapabilityBraille, wire.CapabilityGestures,
 		wire.CapabilityFocus, wire.CapabilityState, wire.CapabilityConfig,
-		wire.CapabilityInteract, wire.CapabilityTyping,
+		wire.CapabilityInteract, wire.CapabilityTyping, wire.CapabilityLog,
 	}
 }
 
@@ -94,9 +93,6 @@ func NewFakeBridge(opts BridgeOptions) *FakeBridge {
 	}
 	if opts.LogPath == "" {
 		opts.LogPath = `C:\logs\session.log`
-	}
-	if opts.ReaderLogPath == "" {
-		opts.ReaderLogPath = `C:\logs\reader.log`
 	}
 	return &FakeBridge{opts: opts, handlers: map[wire.Command]func(json.RawMessage) (any, error){}}
 }
@@ -218,7 +214,6 @@ func (b *FakeBridge) helloResult() wire.HelloResult {
 		Mode:            wire.CaptureModeSilent,
 		Synth:           b.opts.Synth,
 		LogPath:         b.opts.LogPath,
-		NVDALogPath:     b.opts.ReaderLogPath,
 	}
 }
 

@@ -66,8 +66,7 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		# The multi-reader handshake fields arrive over the real wire (entry 8).
 		assert hello["result"]["reader"] == {"name": "nvda", "version": "2026.1.0"}
 		assert hello["result"]["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
-		assert hello["result"]["nvdaLogPath"] == log_capture.path
-
+		
 		# Echo an awkward payload -- byte-exact through encode/frame/decode/validate.
 		payload = {"u": "olá café \U0001f600", "nested": [1, 2, {"x": True}], "n": 3.5}
 		agent.write(_request(2, "echo", payload=payload))

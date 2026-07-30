@@ -46,7 +46,6 @@ def test_build_session_composes_a_working_stack(tmp_path: Path) -> None:
 	assert responses[0]["result"]["mode"] == "silent"
 	assert responses[0]["result"]["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert responses[0]["result"]["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
-	assert responses[0]["result"]["nvdaLogPath"] == log_capture.path
 	assert bytes(transport.outbox).endswith(b"\n")
 	# A real session transcript landed under logs_dir.
 	assert len(list(tmp_path.glob("session-*.log"))) == 1

@@ -82,11 +82,13 @@ var (
 		"get_config",                // config
 		"get_focus_info",            // focus
 		"get_last_speech",           // speech
+		"get_log",                   // log
 		"get_next_speech_index",     // speech
 		"get_speech",                // speech
 		"get_state",                 // state
 		"press_gesture",             // gestures
 		"set_config",                // config
+		"set_log_level",             // log
 		"type_text",                 // typing
 		"wait_for_speech",           // speech
 		"wait_for_speech_to_finish", // speech
@@ -185,16 +187,14 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	if session.Synth != fakeSynth {
 		t.Errorf("synth = %q, want %q", session.Synth, fakeSynth)
 	}
-	// Both log paths come back on fields the two sides name DIFFERENTLY
-	// (`nvdaLogPath` on the wire, `readerLogPath` in domain vocabulary), so an
-	// empty one here means the mapping, not the bridge.
-	if session.LogPath == "" || session.ReaderLogPath == "" {
-		t.Errorf("log paths = %q / %q, want both reported", session.LogPath, session.ReaderLogPath)
+	// The session transcript path is always reported.
+	if session.LogPath == "" {
+		t.Errorf("log path = %q, want it reported", session.LogPath)
 	}
 
 	want := []string{
 		"braille", "config", "focus", "gestures",
-		"interact", "speech", "state", "typing",
+		"interact", "log", "speech", "state", "typing",
 	}
 	got := slices.Clone(session.Capabilities)
 	slices.Sort(got)

@@ -28,6 +28,7 @@ from .get_braille import GetBrailleHandler
 from .get_config import GetConfigHandler
 from .get_focus_info import GetFocusInfoHandler
 from .get_last_speech import GetLastSpeechHandler
+from .get_log import GetLogHandler
 from .get_next_speech_index import GetNextSpeechIndexHandler
 from .get_speech import GetSpeechHandler
 from .get_state import GetStateHandler
@@ -35,6 +36,7 @@ from .hello import HelloHandler
 from .ping import PingHandler
 from .press_gesture import PressGestureHandler
 from .set_config import SetConfigHandler
+from .set_log_level import SetLogLevelHandler
 from .type_text import TypeTextHandler
 from .wait_for_speech import WaitForSpeechHandler
 from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
@@ -55,6 +57,7 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
     protocol.Capability.CONFIG,
     protocol.Capability.INTERACT,
     protocol.Capability.TYPING,
+    protocol.Capability.LOG,
 )
 
 
@@ -89,5 +92,7 @@ def build_command_registry(
         protocol.Command.GET_STATE: GetStateHandler(),
         protocol.Command.GET_CONFIG: GetConfigHandler(),
         protocol.Command.SET_CONFIG: SetConfigHandler(),
+        protocol.Command.GET_LOG: GetLogHandler(),
+        protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
     }
     return registry

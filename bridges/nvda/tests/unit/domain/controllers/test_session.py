@@ -150,8 +150,7 @@ def test_silent_hello_establishes_and_reports() -> None:
 	assert result["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert result["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 	assert result["logPath"] == run.transcript.path
-	assert result["nvdaLogPath"] == run.log_capture.path
-
+	
 
 def test_live_hello_establishes() -> None:
 	run = run_session([hello("live")])

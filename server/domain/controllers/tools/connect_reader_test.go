@@ -164,8 +164,8 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	if got.Mode != "silent" {
 		t.Errorf("mode = %q, want the mode hello established", got.Mode)
 	}
-	if got.LogPath == "" || got.ReaderLogPath == "" {
-		t.Errorf("log paths = %q / %q, want both reported", got.LogPath, got.ReaderLogPath)
+	if got.LogPath == "" {
+		t.Errorf("log path = %q, want it reported", got.LogPath)
 	}
 }
 

@@ -256,6 +256,8 @@ def test_command_set_matches_plan_v1() -> None:
 		"announce",
 		"askUser",
 		"waitForUserReply",
+		"getLog",
+		"setLogLevel",
 		"bye",
 	}
 	assert {c.value for c in p.Command} == expected
@@ -269,7 +271,6 @@ def test_hello_result_serializes_all_fields() -> None:
 		mode=p.CaptureMode.SILENT,
 		synth="oneCore",
 		logPath=r"C:\x\session.log",
-		nvdaLogPath=r"C:\x\nvda-log.log",
 	)
 	d = p.to_dict(hr)
 	assert set(d) == {
@@ -279,7 +280,6 @@ def test_hello_result_serializes_all_fields() -> None:
 		"mode",
 		"synth",
 		"logPath",
-		"nvdaLogPath",
 		"bridgeVersion",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
@@ -298,7 +298,6 @@ def test_hello_result_round_trips_reader_and_capabilities() -> None:
 		mode=p.CaptureMode.LIVE,
 		synth="oneCore",
 		logPath="/x/session.log",
-		nvdaLogPath="/x/nvda-log.log",
 	)
 	restored = p.from_dict(p.HelloResult, p.decode_message(p.encode_message(original)))
 	assert restored == original
@@ -316,6 +315,7 @@ def test_capabilities_cover_one_per_command_group() -> None:
 		"config",
 		"interact",
 		"typing",
+		"log",
 	}
 
 
@@ -330,7 +330,6 @@ def test_from_dict_rejects_unknown_capability() -> None:
 				"mode": "live",
 				"synth": "oneCore",
 				"logPath": "/x",
-				"nvdaLogPath": "/x/nvda-log.log",
 			},
 		)
 
@@ -339,7 +338,7 @@ def test_from_dict_rejects_unknown_capability() -> None:
 
 
 def test_log_levels_match_nvdas_own_valid_values() -> None:
-	assert {m.value for m in p.LogLevel} == {"debug", "io", "debugwarning", "info"}
+	assert {m.value for m in p.LogLevel} == {"debug", "io", "debugwarning", "info", "warning", "error"}
 
 
 def test_hello_params_default_log_level_is_none() -> None:

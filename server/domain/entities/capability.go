@@ -37,6 +37,7 @@ const (
 	CapabilityConfig   Capability = "config"
 	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
+	CapabilityLog      Capability = "log"
 )
 
 // Set is an immutable set of announced capabilities.

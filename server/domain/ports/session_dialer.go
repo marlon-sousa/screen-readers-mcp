@@ -105,8 +105,9 @@ type ReaderConnection struct {
 	Focus     FocusInspector
 	State     StateInspector
 	Config    ConfigAccessor
-	Interact Interact
-	Text      TextTyper
+	Interact   Interact
+	Text       TextTyper
+	ReaderLog  LogReader
 }
 
 // SessionDialer opens a session with one configured reader.

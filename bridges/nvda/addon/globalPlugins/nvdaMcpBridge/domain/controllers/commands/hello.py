@@ -30,6 +30,9 @@ if TYPE_CHECKING:
 
 class HelloHandler(CommandHandler):
 	available_before_hello = True
+	# hello starts the journal itself, so there is nothing to mark before it
+	# runs; its own window would always be empty (spec 0020).
+	marks_log = False
 
 	def __init__(
 		self,
@@ -81,6 +84,5 @@ class HelloHandler(CommandHandler):
 			mode=params.mode,
 			synth=synth,
 			logPath=ctx.transcript.path,
-			nvdaLogPath=ctx.log_capture.path,
 			bridgeVersion=self._bridge_version,
 		)

@@ -146,6 +146,15 @@ func (c ToolContext) Text() (ports.TextTyper, error) {
 	return c.Connection.Text, nil
 }
 
+// ReaderLog is the `log` capability, or a structured error.
+// Named ReaderLog because ToolContext already has a Log field (the server log).
+func (c ToolContext) ReaderLog() (ports.LogReader, error) {
+	if c.Connection == nil || c.Connection.ReaderLog == nil {
+		return nil, c.missing(entities.CapabilityLog)
+	}
+	return c.Connection.ReaderLog, nil
+}
+
 // missing builds the error, naming the connected reader when there is one --
 // which is what tells "nothing is connected" apart from "this reader cannot do
 // that", two situations with entirely different remedies.

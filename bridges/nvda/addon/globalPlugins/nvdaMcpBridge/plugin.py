@@ -103,7 +103,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		bridge_version = _addon_version()
 		signals = NvdaSessionSignals()
 		announcer = NvdaAnnouncer()
-		log_capture = NvdaLogCapture(logs_dir)
+		log_capture = NvdaLogCapture()
 		user_prompter = NvdaUserPrompter()
 		self._event_bus = SimpleEventBus()
 

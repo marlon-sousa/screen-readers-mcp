@@ -154,7 +154,6 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		Mode:            entities.CaptureMode(result.Mode),
 		Synth:           result.Synth,
 		LogPath:         result.LogPath,
-		ReaderLogPath:   result.NVDALogPath,
 		BridgeVersion:   derefOr(result.BridgeVersion, ""),
 		ProtocolVersion: result.ProtocolVersion,
 	}
@@ -184,6 +183,9 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	}
 	if capabilities.Has(entities.CapabilityConfig) {
 		connection.Config = client
+	}
+	if capabilities.Has(entities.CapabilityLog) {
+		connection.ReaderLog = client
 	}
 	if capabilities.Has(entities.CapabilityInteract) {
 		connection.Interact = client

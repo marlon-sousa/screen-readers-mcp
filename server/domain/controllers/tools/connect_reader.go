@@ -135,7 +135,6 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Mode:          session.Mode.String(),
 		Synth:         session.Synth,
 		LogPath:       session.LogPath,
-		ReaderLogPath: session.ReaderLogPath,
 		BridgeVersion: session.BridgeVersion,
 	}, nil
 }

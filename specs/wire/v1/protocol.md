@@ -100,10 +100,6 @@ Fault handling, all of which keep the session alive once established (§3):
    - `synth` — the name of the reader's current speech synthesizer.
    - `logPath` — absolute path to this session's human-readable transcript
      (the bridge's own record of session events — gestures, speech, open/close).
-   - `nvdaLogPath` — absolute path to this session's capture of the reader's
-     own diagnostic log, scoped to exactly this session (`hello` to
-     teardown) — a different artifact from `logPath`, always populated
-     regardless of whether `logLevel` was requested.
 4. After a successful handshake the session is **tolerant**: a failing command
    yields an error response and the session keeps running. Only the conditions in
    §6 (teardown) end it.
@@ -141,7 +137,8 @@ names one group:
 | `focus` | `getFocusInfo` |
 | `state` | `getState` |
 | `config` | `getConfig`, `setConfig` |
-| `announce` | `announce` |
+| `interact` | `announce`, `askUser`, `waitForUserReply` |
+| `log` | `getLog`, `setLogLevel` |
 
 Rules:
 
@@ -204,6 +201,25 @@ means the command takes no parameters. Summary:
   which the person can otherwise hear nothing. The bridge acknowledges that it
   spoke, never that anyone listened. There is no reply channel in v1.
 - `bye` → `{ ok: true }` — the server asks to end the session (§6).
+- `getLog` `{ commandId?, windows?, minLevel?, contains?, exclude?, fields?,
+  maxEntries? }` → `{ text, entries, matched, truncated, fromCommandId,
+  toCommandId, capturedAtLevel }` — return a filtered, formatted slice of the
+  reader's diagnostic log for one or more command windows (spec 0020). Anchored by
+  request id (defaults to the most recently marked command); `windows` counts back
+  from the anchor. Filters compose: `minLevel` drops records below a level,
+  `contains` keeps only matching messages, `exclude` drops matching modules or
+  messages, all case-insensitive. `fields` projects which columns to render
+  (default: time, level, module, message). Bounded by `maxEntries` (default 200);
+  reports `matched` (before the cap), `truncated` (when capped or the window aged
+  out of the ring), and `capturedAtLevel` (the floor in force while the window
+  was recorded — an empty slice at `capturedAtLevel: "info"` with
+  `minLevel: "debug"` means the records were never emitted, not that none exist).
+- `setLogLevel` `{ level }` → `{ level, previous }` — raise or lower the
+  reader's diagnostic logging floor for the rest of the session. Forwards only:
+  Python's logging decides at the *logger* whether a record exists, so a level
+  that was never emitted cannot be recovered. Downwards is free. This is a real
+  (if temporary) change to the reader; the level is restored at teardown on every
+  exit path (spec 0020, superseding 0009's hello-only level change).
 
 Reader-specific vocabulary — gesture ids, roles, states, config key paths, state
 values — is **opaque payload**: the server routes it without interpreting it, and

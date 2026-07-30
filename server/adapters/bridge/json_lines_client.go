@@ -310,6 +310,56 @@ func (c *JSONLinesClient) SetConfig(keyPath []string, value json.RawMessage) (js
 	return result.Value, nil
 }
 
+// --- the log capability port --------------------------------------------------
+
+func (c *JSONLinesClient) GetLog(params ports.GetLogParams) (ports.LogSliceResult, error) {
+	wireParams := wire.GetLogParams{}
+	if params.CommandID != nil {
+		wireParams.CommandId = params.CommandID
+	}
+	if params.Windows != 0 {
+		w := params.Windows
+		wireParams.Windows = &w
+	}
+	if params.MinLevel != nil {
+		lvl := wire.LogLevel(*params.MinLevel)
+		wireParams.MinLevel = &lvl
+	}
+	wireParams.Contains = params.Contains
+	wireParams.Exclude = params.Exclude
+	wireParams.Fields = params.Fields
+	if params.MaxEntries != 0 {
+		m := params.MaxEntries
+		wireParams.MaxEntries = &m
+	}
+	var wireResult wire.LogSliceResult
+	if err := c.call(wire.CommandGetLog, wireParams, &wireResult, DefaultCallTimeout); err != nil {
+		return ports.LogSliceResult{}, err
+	}
+	return ports.LogSliceResult{
+		Text:            wireResult.Text,
+		Entries:         wireResult.Entries,
+		Matched:         wireResult.Matched,
+		Truncated:       wireResult.Truncated,
+		FromCommandID:   wireResult.FromCommandId,
+		ToCommandID:     wireResult.ToCommandId,
+		CapturedAtLevel: string(wireResult.CapturedAtLevel),
+	}, nil
+}
+
+func (c *JSONLinesClient) SetLogLevel(level string) (ports.LogLevelResult, error) {
+	wireLevel := wire.LogLevel(level)
+	wireParams := wire.SetLogLevelParams{Level: wireLevel}
+	var wireResult wire.LogLevelResult
+	if err := c.call(wire.CommandSetLogLevel, wireParams, &wireResult, DefaultCallTimeout); err != nil {
+		return ports.LogLevelResult{}, err
+	}
+	return ports.LogLevelResult{
+		Level:    string(wireResult.Level),
+		Previous: string(wireResult.Previous),
+	}, nil
+}
+
 // --- the lifecycle port -------------------------------------------------------
 
 func (c *JSONLinesClient) Ping() error {
