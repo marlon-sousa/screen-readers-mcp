@@ -1,7 +1,7 @@
 # Spec 0016 — human-in-the-loop (entry 11.2)
 
-Status: **agreed in conversation 2026-07-29; ready to implement.** No code
-written.
+Status: **implemented 2026-07-29.** Code on `0016-human-in-the-loop` branch;
+PR #[PR].
 
 Scheduled **after** the real-world run (entry 11b) so the run could say whether
 the cheap shape below is enough before the expensive one is built. It ran, and

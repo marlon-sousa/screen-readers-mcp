@@ -351,11 +351,12 @@ rather than before it.
     beating both a manually activated and a trigger-driven profile switch — the
     claims `test_profile_override.py` was meant to cover and never has, since it
     needs NVDA's own interpreter and cannot run under pytest.
-11.2. **E, human-in-the-loop** (both lanes). The agent asks the tester for
-    something it cannot supply itself — a password, a CAPTCHA, a physical act —
-    and gets an answer back, without ending the session. Needs live NVDA. Spec:
-    `0016-human-in-the-loop.md` (**agreed 2026-07-29**; rides in 11.2's own PR,
-    together with the heartbeat fix it makes necessary). It was
+11.2. **E, human-in-the-loop** (both lanes). **Done** (#PR). The agent asks the
+    tester for something it cannot supply itself — a password, a CAPTCHA, a
+    physical act — and gets an answer back, without ending the session. Live
+    checklist in the PR body. Spec: `0016-human-in-the-loop.md` (agreed
+    2026-07-29; implemented with the heartbeat fix on `0016-human-in-the-loop`).
+    It was
     scheduled **after** the run so the run could say whether the cheap shape
     (announce, suspend suppression, acknowledgement gesture) suffices before a
     reply dialog is built: it ran, it does, and stage 2 stays unbuilt. The 11.1
