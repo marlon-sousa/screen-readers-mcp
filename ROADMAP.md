@@ -397,7 +397,11 @@ rather than before it.
     0020 rejected. Also extends a command's span to the *next* command, which is
     what makes a single window mean something again and retires 11.4's
     `capturedAtLevel` compromise. Needs live NVDA. Spec:
-    `0021-observing-the-log.md` (drafted 2026-07-30, awaiting review).
+    `0021-observing-the-log.md` (**agreed 2026-07-31**). Its one open question —
+    whether the journal coordinate belongs on braille entries and transcript
+    lines — was settled in review: braille yes, transcript no, because the
+    transcript outlives the journal and its reader is the human at the machine,
+    not the agent.
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).

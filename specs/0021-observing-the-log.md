@@ -1,6 +1,9 @@
 # 0021 — observing the log, not just slicing it
 
-Status: **drafted 2026-07-30**, awaiting review. Board entry **11.5**.
+Status: **agreed 2026-07-31**. Board entry **11.5**. Drafted 2026-07-30; the one
+open question it carried — whether the journal coordinate belongs on braille
+entries and transcript lines — was settled in review and is now a decision
+below (braille yes, transcript no).
 
 [0020](0020-log-slices-on-demand.md) answered *"what did command N log?"*. Running
 it against a real NVDA showed that the question an agent actually has, most of the
@@ -235,9 +238,44 @@ moment they were appended.** One integer per utterance, no fiction in anyone's
 log, and it makes the join exact rather than eyeballed — read the ring for what
 was said, the journal for what surrounded it, and the position to line them up.
 
-An **open question** deliberately left for review: whether the same coordinate
-should be added to braille entries and to transcript lines. It is the same idea
-and probably the same integer, but nothing has demanded it yet.
+### The coordinate goes on braille too, and not on the transcript
+
+Settled in review 2026-07-31. The question was whether the same integer belongs
+on braille entries and on transcript lines. **Braille yes, transcript no** — and
+the split is not a judgement call, it falls out of the lifetimes.
+
+**Braille takes it, for the reason speech does, unchanged.** `BrailleBuffer` is
+an `IndexedBuffer` exactly as `SpeechBuffer` is: addressed by index, read through
+`getBraille`, and dead at teardown. Same join problem, same fix, same rule about
+purity — the buffer takes the position as a value and never learns the journal
+exists.
+
+**The transcript does not, for three reasons.**
+
+1. **The lifetime is backwards.** The transcript *survives on disk*; the journal
+   *dies at teardown*. A position written into a transcript line is meaningless
+   by the time the transcript is read — next week, pasted into an issue. Speech
+   and braille have no such problem: ring and journal die together, and the join
+   happens while both are alive. The transcript is the one surface where this
+   coordinate would be dead on arrival.
+2. **The only party that could use it never sees it.** The coordinate exists to
+   join two things *the agent holds*: ring entries and journal slices. The agent
+   does not hold transcript lines — this spec rejects `getTranscript` and demotes
+   `logPath` to a file the agent may not even be able to open. A coordinate there
+   joins nothing for the only consumer that could act on it.
+3. **What outlives the session is not addressed by positions anyway.** After
+   teardown the transcript's companion is NVDA's own `nvda.log` — a file, not our
+   ring. A journal position does not index into it. The post-mortem case, where
+   a join is wanted most, is served by a timestamp, not a position.
+
+And the transcript is already the best-stamped of the three surfaces for exactly
+that join: `FileTranscript` writes `2026-07-31 09:02:58.612`, **with the date**,
+where NVDA's journal format is time-only. Adding `created` to records (below)
+therefore makes the transcript↔journal join exact for free, without touching the
+transcript at all. An integer per line would degrade a human narrative to buy
+something its timestamps already deliver better — the same principle that refuses
+to write fiction into `nvda.log`: do not damage a human artifact for a machine
+that is not reading it.
 
 ### Three surfaces, and what each is actually for
 
@@ -379,6 +417,10 @@ class SpeechEntry:             # existing; gains one field
     logPosition: int           # the journal position when this was captured
 
 @dataclass
+class BrailleEntry:            # existing; gains the same field, for the same reason
+    logPosition: int
+
+@dataclass
 class WaitForLogParams:
     timeout: float
     minLevel: LogLevel | None = None
@@ -417,10 +459,11 @@ an older bridge simply does not advertise them.
    goes, replaced by "opening a span closes the previous one".
 6. **`domain/controllers/commands/session_context.py`** — `command_windows` becomes
    `(command_id, start, level)`; the accessors follow.
-7. **`domain/entities/speech_buffer.py`** — each entry records the journal
+7. **`domain/entities/speech_buffer.py`** and
+   **`domain/entities/braille_buffer.py`** — each entry records the journal
    position it was captured at, so a ring entry can be placed on the log's
-   timeline. The buffer takes the position as a value; it does not learn about
-   the journal.
+   timeline. Both buffers take the position as a value; neither learns about the
+   journal. The transcript is deliberately untouched (see above).
 8. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
    `LogReader` port and the bridge client gain both. Separately, and needing no
    wire change, the server keeps its own session record from the traffic it
@@ -436,8 +479,10 @@ an older bridge simply does not advertise them.
 12. Session: spans are contiguous with no gaps; a span extends to the next marking
     command; `getLog` does not close the span it reads.
 13. Go tool tests and conformance for both new commands.
-14. Speech entries carry a journal position that actually falls inside the
-    window the utterance belongs to, in **both** capture modes.
+14. Speech **and braille** entries carry a journal position that actually falls
+    inside the window the utterance belongs to, in **both** capture modes. Plus
+    an architecture check that neither buffer imports or references the journal:
+    the position must arrive as a value, or the entity has stopped being pure.
 15. The server's own session record covers a whole session from its traffic
     alone, with no bridge call added.
 16. **Live** — the two shapes this entry exists for, which is where 11.4's model
@@ -467,6 +512,8 @@ an older bridge simply does not advertise them.
 9. In a **silent** session, take a speech entry's `logPosition` and read the
    journal around it: the surrounding events are there even though the
    `Speaking` record itself is not, which is the whole point of the coordinate.
+   Repeat with a braille entry's `logPosition` on a braille display, or on the
+   braille viewer if no display is to hand.
 
 ## Out of scope
 
