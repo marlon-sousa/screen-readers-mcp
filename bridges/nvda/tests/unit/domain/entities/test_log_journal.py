@@ -386,4 +386,9 @@ def test_wire_level_for_maps_nvdas_numbers(level_no: int, expected: str) -> None
 def test_filter_only_levels_are_not_settable() -> None:
 	# warning/error exist in the enum to serve minLevel; setting NVDA's own floor
 	# to either would silence warnings in the user's nvda.log.
-	assert SETTABLE_LEVELS == {"debug", "io", "debugwarning", "info"}
+	# SIM300 is suppressed on the next line: it reads SETTABLE_LEVELS as "the
+	# constant" because the name is screaming-snake-case, and moves it right --
+	# producing the Yoda condition the rule exists to prevent. Here the all-caps
+	# name is the SUBJECT under test and the set literal is the expectation, so
+	# subject-first is the correct order.
+	assert SETTABLE_LEVELS == {"debug", "io", "debugwarning", "info"}  # noqa: SIM300

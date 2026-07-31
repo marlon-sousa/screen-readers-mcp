@@ -8,7 +8,6 @@
 from __future__ import annotations
 
 from fakes.adapter_factory import FakeAdapterFactory
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES, build_command_registry
 

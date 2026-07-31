@@ -113,6 +113,12 @@ ignore = [
 "tests/integration/test_profile_override.py" = ["E402"]
 "tests/unit/domain/controllers/commands/test_hello.py" = ["E402"]
 
+# Same shape, different mechanism: this one installs a STUB `logHandler` module
+# into sys.modules before importing the adapter, which does `from logHandler
+# import Formatter, log` at module level. Import it first and you import NVDA's
+# real logHandler, which does not exist headlessly.
+"tests/unit/adapters/test_nvda_log_capture.py" = ["E402"]
+
 [tool.pyright]
 pythonVersion = "3.13"       # NVDA 2026.1 embeds CPython 3.13
 pythonPlatform = "Windows"
