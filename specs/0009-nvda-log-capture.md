@@ -1,5 +1,13 @@
 # Spec 0009 — bridge: NVDA log capture per session
 
+> **Superseded in part by [0020](0020-log-slices-on-demand.md) (entry 11.4).**
+> The per-session capture FILE and its `nvdaLogPath` are removed there: the level
+> raise is global, so NVDA's own `nvda.log` already holds identical records, and
+> the session transcript's timestamps bracket the window inside it. What survives
+> is this spec's temporary level change and its restore-on-teardown, whose trigger
+> moves from `hello` to a command, plus an in-memory journal the agent can slice.
+
+
 Agreed 2026-07-21 (conversation). ROADMAP lane 1, entry 9.2 (a C follow-up,
 alongside entry 9.1).
 

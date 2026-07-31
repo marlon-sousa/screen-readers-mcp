@@ -54,7 +54,6 @@ type statusSession struct {
 	Mode          string   `json:"mode"`
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
-	ReaderLogPath string   `json:"readerLogPath"`
 	BridgeVersion string   `json:"bridgeVersion,omitempty"`
 	ProtocolVer   int      `json:"protocolVersion"`
 }
@@ -112,8 +111,7 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 			Mode:          session.Mode.String(),
 			Synth:         session.Synth,
 			LogPath:       session.LogPath,
-			ReaderLogPath: session.ReaderLogPath,
-			BridgeVersion: session.BridgeVersion,
+				BridgeVersion: session.BridgeVersion,
 			ProtocolVer:   session.ProtocolVersion,
 		}
 	}

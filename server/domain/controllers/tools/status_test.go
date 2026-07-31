@@ -30,7 +30,6 @@ type statusAnswer struct {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	} `json:"session"`
 }
 
@@ -109,8 +108,8 @@ func TestALiveSessionIsProvedByARealRoundTrip(t *testing.T) {
 	if len(answer.Session.Capabilities) != len(testsupport.EveryCapability()) {
 		t.Errorf("capabilities = %v, want every capability", answer.Session.Capabilities)
 	}
-	if answer.Session.LogPath == "" || answer.Session.ReaderLogPath == "" {
-		t.Error("both session log paths must be reported")
+	if answer.Session.LogPath == "" {
+		t.Error("session log path must be reported")
 	}
 }
 

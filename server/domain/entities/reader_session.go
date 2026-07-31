@@ -41,11 +41,6 @@ type ReaderSession struct {
 	// bridge.
 	LogPath string
 
-	// ReaderLogPath is this session's capture of the READER's own diagnostic
-	// log. The wire calls this field `nvdaLogPath`; the domain does not carry
-	// a reader's name in a field name.
-	ReaderLogPath string
-
 	// BridgeVersion is the BRIDGE's own version -- the add-on's, not the
 	// reader's (that is Reader.Version). Worth carrying because the bridge is
 	// installed separately from the code under test: a live run talks to

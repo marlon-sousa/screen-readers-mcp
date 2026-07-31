@@ -37,7 +37,12 @@ from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.real_clock import RealClock
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES, build_command_registry
-from nvdaMcpBridge.domain.controllers.session import Session, SessionConfig, TeardownReason
+from nvdaMcpBridge.domain.controllers.session import (
+	MAX_COMMAND_WINDOWS,
+	Session,
+	SessionConfig,
+	TeardownReason,
+)
 from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 
 
@@ -132,7 +137,11 @@ def _error(response: dict[str, Any]) -> str:
 def _fake_registry(**handlers: FakeCommandHandler) -> dict[str, CommandHandler]:
 	"""A registry with a stand-in hello (so tests can reach ESTABLISHED) plus
 	whatever fake handlers a mechanics test wants."""
-	registry: dict[str, CommandHandler] = {p.Command.HELLO: FakeCommandHandler(available_before_hello=True)}
+	# marks_log=False mirrors the real HelloHandler: hello STARTS the journal, so
+	# it has nothing to bracket and never becomes a getLog anchor.
+	registry: dict[str, CommandHandler] = {
+		p.Command.HELLO: FakeCommandHandler(available_before_hello=True, marks_log=False)
+	}
 	registry.update(handlers)
 	return registry
 
@@ -150,8 +159,7 @@ def test_silent_hello_establishes_and_reports() -> None:
 	assert result["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert result["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 	assert result["logPath"] == run.transcript.path
-	assert result["nvdaLogPath"] == run.log_capture.path
-
+	
 
 def test_live_hello_establishes() -> None:
 	run = run_session([hello("live")])
@@ -376,6 +384,160 @@ def test_unreadable_message_mid_session_is_noted_and_survives() -> None:
 	assert any(event[0] == "note" for event in run.transcript.events)
 	# The unreadable line draws no reply, so the ping ack is the second response.
 	assert _result(run.responses()[1]) == {"ok": True}
+
+
+# -- command log windows (spec 0020) -----------------------------------------
+#
+# The Session is the only place that knows when a command starts and finishes, so
+# it is the only place that can bracket one. These tests drive that through fake
+# handlers whose on_execute writes into the journal at the one moment that lands
+# records INSIDE the window being measured.
+
+
+def _windows(run: Run) -> list[tuple[int, int, int, p.LogLevel]]:
+	return run.session.session_context.command_windows
+
+
+def _feeder(*messages: str) -> Any:
+	"""An on_execute that logs *messages* while the command is running."""
+
+	def feed(ctx: Any) -> None:
+		for message in messages:
+			ctx.log_capture.feed(message)
+
+	return feed
+
+
+def test_a_command_gets_a_window_bracketing_what_it_logged() -> None:
+	capture = FakeLogCapture()
+	registry = _fake_registry(work=FakeCommandHandler(on_execute=_feeder("during the command")))
+	run = run_session([hello(), command("work", 2)], registry=registry, log_capture=capture)
+
+	windows = _windows(run)
+	assert len(windows) == 1
+	command_id, start, end, _level = windows[0]
+	assert command_id == 2
+	assert end - start == 1  # exactly the one record logged while it ran
+
+
+def test_windows_are_disjoint_from_their_neighbours() -> None:
+	# The core claim of the feature: "the log for command 2" is never contaminated
+	# by command 3, even when NVDA logs continuously through both.
+	capture = FakeLogCapture()
+	registry = _fake_registry(
+		first=FakeCommandHandler(on_execute=_feeder("a", "b")),
+		second=FakeCommandHandler(on_execute=_feeder("c")),
+	)
+	run = run_session(
+		[hello(), command("first", 2), command("second", 3)],
+		registry=registry,
+		log_capture=capture,
+	)
+
+	windows = _windows(run)
+	assert [w[0] for w in windows] == [2, 3]
+	assert windows[0][1:3] == (0, 2)
+	assert windows[1][1:3] == (2, 3)
+	# Disjoint by construction: one window's end is never past the next one's start.
+	assert windows[0][2] <= windows[1][1]
+
+
+def test_a_failed_command_still_gets_its_window() -> None:
+	# "This command just failed, show me what NVDA logged while it ran" is the case
+	# spec 0020 exists for, so the failure path must still leave the window
+	# addressable by request id -- an error reply is not a reason to lose it.
+	capture = FakeLogCapture()
+	registry = _fake_registry(
+		boom=FakeCommandHandler(
+			on_execute=_feeder("the interesting line"), error=RuntimeError("kaboom")
+		),
+	)
+	run = run_session([hello(), command("boom", 2)], registry=registry, log_capture=capture)
+
+	assert "kaboom" in _error(run.responses()[1])
+	windows = _windows(run)
+	assert [w[0] for w in windows] == [2]
+	assert windows[0][2] - windows[0][1] == 1
+
+
+def test_a_command_error_also_gets_its_window() -> None:
+	capture = FakeLogCapture()
+	registry = _fake_registry(
+		nope=FakeCommandHandler(on_execute=_feeder("why it failed"), error=CommandError("no")),
+	)
+	run = run_session([hello(), command("nope", 2)], registry=registry, log_capture=capture)
+
+	assert [w[0] for w in _windows(run)] == [2]
+
+
+def test_a_handler_that_does_not_mark_gets_no_window() -> None:
+	# getLog sets marks_log False; otherwise the default anchor would always be the
+	# getLog that just ran, whose window is empty by construction.
+	capture = FakeLogCapture()
+	registry = _fake_registry(
+		peek=FakeCommandHandler(marks_log=False),
+		work=FakeCommandHandler(),
+	)
+	run = run_session(
+		[hello(), command("work", 2), command("peek", 3)],
+		registry=registry,
+		log_capture=capture,
+	)
+
+	assert [w[0] for w in _windows(run)] == [2]
+
+
+def test_hello_does_not_mark_its_own_window() -> None:
+	# hello STARTS the journal, so there is nothing to bracket before it runs.
+	run = run_session([hello()])
+	assert _windows(run) == []
+
+
+def test_the_window_records_the_level_in_force_when_it_was_taken() -> None:
+	capture = FakeLogCapture()
+	registry = _fake_registry(work=FakeCommandHandler())
+	run = run_session(
+		[{"id": 1, "cmd": "hello", "params": {"mode": "silent", "protocolVersion": p.PROTOCOL_VERSION, "logLevel": "debug"}},
+		 command("work", 2)],
+		registry=registry,
+		log_capture=capture,
+	)
+
+	# The fake hello in _fake_registry does not start capture, so the floor is the
+	# stand-in NVDA's own -- what matters is that SOMETHING truthful is recorded
+	# per window rather than a default invented at read time.
+	assert _windows(run)[0][3] is capture.current_level
+
+
+def test_only_the_last_fifty_windows_are_kept() -> None:
+	# Bounded because a session can run for hours; 50 is deep enough to reach the
+	# command that failed several commands ago.
+	capture = FakeLogCapture()
+	registry = _fake_registry(work=FakeCommandHandler())
+	events: list[Any] = [hello()]
+	events.extend(command("work", index) for index in range(2, 2 + MAX_COMMAND_WINDOWS + 10))
+	run = run_session(events, registry=registry, log_capture=capture)
+
+	windows = _windows(run)
+	assert len(windows) == MAX_COMMAND_WINDOWS
+	# The OLDEST are dropped, so the most recent command is always reachable.
+	assert windows[-1][0] == 1 + MAX_COMMAND_WINDOWS + 10
+
+
+def test_a_journal_that_cannot_be_read_costs_the_window_not_the_command() -> None:
+	# A broken capture must never turn a working command into a failed one: the
+	# window is a diagnostic, the command is the job.
+	class BrokenCapture(FakeLogCapture):
+		def position(self) -> int:
+			raise RuntimeError("journal is gone")
+
+	registry = _fake_registry(work=FakeCommandHandler())
+	run = run_session(
+		[hello(), command("work", 2)], registry=registry, log_capture=BrokenCapture()
+	)
+
+	assert _result(run.responses()[1]) == {"ok": True}
+	assert _windows(run) == []
 
 
 # -- lifecycle commands through dispatch -------------------------------------

@@ -53,6 +53,11 @@ class CommandHandler(ABC):
 	#: enumeration test is what makes forgetting visible.
 	mutates_reader: bool = False
 
+	#: Whether the Session records a log-journal window for this command.
+	#: ``GetLogHandler`` sets this False so a ``getLog`` call does not become its
+	#: own anchor (spec 0020) -- the same shape as ``resets_inactivity``.
+	marks_log: bool = True
+
 	@abstractmethod
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		"""Run the command and return its wire result, or raise to fail it."""

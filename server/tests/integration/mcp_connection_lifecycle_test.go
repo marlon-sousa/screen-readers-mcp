@@ -114,7 +114,6 @@ func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	}
 	result.Decode(t, &connected)
 
@@ -129,8 +128,8 @@ func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 	if connected.Mode != "silent" {
 		t.Errorf("mode = %q, want silent", connected.Mode)
 	}
-	if connected.LogPath == "" || connected.ReaderLogPath == "" {
-		t.Error("both session log paths must be reported")
+	if connected.LogPath == "" {
+		t.Error("session log path must be reported")
 	}
 	if got := h.Bridge.Received(); len(got) == 0 || got[0] != wire.CommandHello {
 		t.Errorf("the bridge was sent %v; hello must come first", got)

@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from ...entities.braille_buffer import BrailleBuffer
+from ...entities.log_journal import SETTABLE_LEVELS
 from ...entities.speech_buffer import SpeechBuffer
 from .command_handler import CommandError, CommandHandler
 
@@ -30,6 +31,9 @@ if TYPE_CHECKING:
 
 class HelloHandler(CommandHandler):
 	available_before_hello = True
+	# hello starts the journal itself, so there is nothing to mark before it
+	# runs; its own window would always be empty (spec 0020).
+	marks_log = False
 
 	def __init__(
 		self,
@@ -49,6 +53,15 @@ class HelloHandler(CommandHandler):
 			raise CommandError(
 				f"protocol version mismatch: bridge speaks {protocol.PROTOCOL_VERSION}, "
 				f"client sent {params.protocolVersion}"
+			)
+		# Same refusal as setLogLevel, for the same reason: `warning`/`error` are
+		# getLog filters, and setting NVDA's floor to one would silence warnings in
+		# the user's own nvda.log for the whole session (spec 0020).
+		if params.logLevel is not None and params.logLevel.value not in SETTABLE_LEVELS:
+			valid = ", ".join(sorted(SETTABLE_LEVELS))
+			raise CommandError(
+				f"log level {params.logLevel.value!r} cannot be set on the reader: "
+				f"want one of {valid}"
 			)
 		ctx.transcript.open()
 		# Capture is always on (spec 0009); logLevel, if set, additionally bumps
@@ -81,6 +94,5 @@ class HelloHandler(CommandHandler):
 			mode=params.mode,
 			synth=synth,
 			logPath=ctx.transcript.path,
-			nvdaLogPath=ctx.log_capture.path,
 			bridgeVersion=self._bridge_version,
 		)

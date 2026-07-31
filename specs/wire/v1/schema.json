@@ -182,6 +182,85 @@
       ],
       "additionalProperties": true
     },
+    "GetLogParams": {
+      "type": "object",
+      "properties": {
+        "commandId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "windows": {
+          "type": "integer"
+        },
+        "minLevel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "debug",
+                "io",
+                "debugwarning",
+                "info",
+                "warning",
+                "error"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contains": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "exclude": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "maxEntries": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
     "GetSpeechParams": {
       "type": "object",
       "properties": {
@@ -215,7 +294,9 @@
                 "debug",
                 "io",
                 "debugwarning",
-                "info"
+                "info",
+                "warning",
+                "error"
               ]
             },
             {
@@ -251,7 +332,8 @@
               "state",
               "config",
               "interact",
-              "typing"
+              "typing",
+              "log"
             ]
           }
         },
@@ -268,9 +350,6 @@
         "logPath": {
           "type": "string"
         },
-        "nvdaLogPath": {
-          "type": "string"
-        },
         "bridgeVersion": {
           "type": "string"
         }
@@ -281,8 +360,7 @@
         "capabilities",
         "mode",
         "synth",
-        "logPath",
-        "nvdaLogPath"
+        "logPath"
       ],
       "additionalProperties": true
     },
@@ -299,6 +377,82 @@
       "required": [
         "text",
         "index"
+      ],
+      "additionalProperties": true
+    },
+    "LogLevelResult": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "io",
+            "debugwarning",
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "previous": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "io",
+            "debugwarning",
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "level",
+        "previous"
+      ],
+      "additionalProperties": true
+    },
+    "LogSliceResult": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "entries": {
+          "type": "integer"
+        },
+        "matched": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "fromCommandId": {
+          "type": "integer"
+        },
+        "toCommandId": {
+          "type": "integer"
+        },
+        "capturedAtLevel": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "io",
+            "debugwarning",
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "text",
+        "entries",
+        "matched",
+        "truncated",
+        "fromCommandId",
+        "toCommandId",
+        "capturedAtLevel"
       ],
       "additionalProperties": true
     },
@@ -402,6 +556,26 @@
       "required": [
         "keyPath",
         "value"
+      ],
+      "additionalProperties": true
+    },
+    "SetLogLevelParams": {
+      "type": "object",
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": [
+            "debug",
+            "io",
+            "debugwarning",
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "level"
       ],
       "additionalProperties": true
     },
@@ -704,6 +878,22 @@
       },
       "result": {
         "$ref": "#/$defs/WaitForUserReplyResult"
+      }
+    },
+    "getLog": {
+      "params": {
+        "$ref": "#/$defs/GetLogParams"
+      },
+      "result": {
+        "$ref": "#/$defs/LogSliceResult"
+      }
+    },
+    "setLogLevel": {
+      "params": {
+        "$ref": "#/$defs/SetLogLevelParams"
+      },
+      "result": {
+        "$ref": "#/$defs/LogLevelResult"
       }
     },
     "bye": {

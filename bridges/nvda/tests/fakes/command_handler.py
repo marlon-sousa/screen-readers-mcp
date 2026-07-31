@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandHandler
@@ -31,15 +31,23 @@ class FakeCommandHandler(CommandHandler):
 		error: Exception | None = None,
 		resets_inactivity: bool = True,
 		available_before_hello: bool = False,
+		marks_log: bool = True,
+		on_execute: Callable[[SessionContext], None] | None = None,
 	) -> None:
 		self._result = result if result is not None else p.AckResult()
 		self._error = error
 		self.resets_inactivity = resets_inactivity
 		self.available_before_hello = available_before_hello
+		self.marks_log = marks_log
+		# Runs INSIDE the dispatch, so a window test can put records in the journal
+		# at the one moment that lands them between this command's two marks.
+		self._on_execute = on_execute
 		self.calls: list[p.Request] = []
 
 	def execute(self, ctx: SessionContext, request: p.Request) -> Any:
 		self.calls.append(request)
+		if self._on_execute is not None:
+			self._on_execute(ctx)
 		if self._error is not None:
 			raise self._error
 		return self._result

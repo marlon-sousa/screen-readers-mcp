@@ -79,6 +79,10 @@ __all__ = [
 	"AskUserResult",
 	"WaitForUserReplyParams",
 	"WaitForUserReplyResult",
+	"GetLogParams",
+	"SetLogLevelParams",
+	"LogLevelResult",
+	"LogSliceResult",
 	"AckResult",
 ]
 
@@ -129,6 +133,8 @@ class LogLevel(StrEnum):
 	IO = "io"
 	DEBUGWARNING = "debugwarning"
 	INFO = "info"
+	WARNING = "warning"
+	ERROR = "error"
 
 
 class Capability(StrEnum):
@@ -150,6 +156,7 @@ class Capability(StrEnum):
 	CONFIG = "config"
 	INTERACT = "interact"
 	TYPING = "typing"
+	LOG = "log"
 
 
 class BrowseMode(StrEnum):
@@ -193,6 +200,8 @@ class Command(StrEnum):
 	ANNOUNCE = "announce"
 	ASK_USER = "askUser"
 	WAIT_FOR_USER_REPLY = "waitForUserReply"
+	GET_LOG = "getLog"
+	SET_LOG_LEVEL = "setLogLevel"
 	BYE = "bye"
 
 
@@ -425,8 +434,8 @@ class HelloResult:
 	logPath: str
 	#: Absolute path to this session's NVDA-log capture -- a tee of NVDA's own
 	#: log, scoped to exactly this session (distinct from `logPath`, the
-	#: bridge's own transcript; see spec 0009).
-	nvdaLogPath: str
+	#: bridge's own transcript; see spec 0009). Superseded by 0020: the
+	#: journal replaces the capture file; query via getLog.
 	#: The BRIDGE's own version -- the add-on's, not the reader's (that is
 	#: ``reader.version``). Reported because the bridge is installed separately
 	#: from the code under test: a live-NVDA run talks to whatever build was
@@ -639,6 +648,54 @@ class WaitForUserReplyResult:
 	text: str = ""
 
 
+@dataclass
+class GetLogParams:
+	"""Parameters for ``getLog``: anchor, window count, filters and projection."""
+	#: The request id whose window to anchor on. Defaults to the most recently
+	#: marked command.
+	commandId: int | None = None
+	#: How many command windows to include, counting back from the anchor.
+	windows: int = 1
+	minLevel: LogLevel | None = None
+	contains: list[str] | None = None
+	exclude: list[str] | None = None
+	#: Which fields to render per record. Default: time, level, module, message.
+	fields: list[str] | None = None
+	maxEntries: int = 200
+
+
+@dataclass
+class SetLogLevelParams:
+	"""Raise NVDA's own logging floor for the rest of the session."""
+	level: LogLevel
+
+
+@dataclass
+class LogLevelResult:
+	"""The level now in force, and what it replaced."""
+	level: LogLevel
+	previous: LogLevel
+
+
+@dataclass
+class LogSliceResult:
+	"""A bounded slice of the log journal for one or more command windows."""
+	#: Formatted text, one record per line, like a slice of nvda.log.
+	text: str
+	#: Number of records in ``text``.
+	entries: int
+	#: Number of records that passed the filters, before ``maxEntries``.
+	matched: int
+	#: True when ``matched > entries``, or the window had aged out of the ring.
+	truncated: bool
+	#: The anchor command's id (what was asked for, or the default).
+	fromCommandId: int
+	#: The farthest command id included.
+	toCommandId: int
+	#: The floor in force while this window was recorded.
+	capturedAtLevel: LogLevel
+
+
 # --- Command shapes: the contract's own command -> payload-types table --------
 
 
@@ -678,5 +735,7 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.ANNOUNCE: CommandShape(AnnounceParams, AckResult),
 	Command.ASK_USER: CommandShape(AskUserParams, AskUserResult),
 	Command.WAIT_FOR_USER_REPLY: CommandShape(WaitForUserReplyParams, WaitForUserReplyResult),
+	Command.GET_LOG: CommandShape(GetLogParams, LogSliceResult),
+	Command.SET_LOG_LEVEL: CommandShape(SetLogLevelParams, LogLevelResult),
 	Command.BYE: CommandShape(None, AckResult),
 }

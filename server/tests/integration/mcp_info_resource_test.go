@@ -65,11 +65,16 @@ func TestTheInfoResourceReportsTheConnectedReader(t *testing.T) {
 		t.Fatalf("capabilities = %v, want what the reader announced", document["capabilities"])
 	}
 
-	// Both session artifacts are reported as PATHS. Their contents are
-	// deliberately not exposed as resources in v1.
-	if document["logPath"] == nil || document["readerLogPath"] == nil {
-		t.Errorf("log paths = %v / %v, want both",
-			document["logPath"], document["readerLogPath"])
+	// The transcript is reported as a PATH; its contents are deliberately not
+	// exposed as a resource in v1. The reader's own log is NOT a path any more
+	// (spec 0020 superseded 0009's capture file), so this document must carry
+	// no readerLogPath at all rather than an empty one.
+	if document["logPath"] == nil {
+		t.Errorf("logPath = %v, want the session transcript's path", document["logPath"])
+	}
+	if _, present := document["readerLogPath"]; present {
+		t.Errorf("readerLogPath = %v, want it absent: 0020 replaced the capture file "+
+			"with the journal behind get_log", document["readerLogPath"])
 	}
 	if document["protocolVersion"] == nil {
 		t.Error("protocolVersion is missing")

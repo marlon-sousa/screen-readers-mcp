@@ -143,7 +143,6 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 		Capabilities  []string `json:"capabilities"`
 		Mode          string   `json:"mode"`
 		LogPath       string   `json:"logPath"`
-		ReaderLogPath string   `json:"readerLogPath"`
 	}
 	encoded, _ := json.Marshal(result)
 	if err := json.Unmarshal(encoded, &got); err != nil {
@@ -164,8 +163,8 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	if got.Mode != "silent" {
 		t.Errorf("mode = %q, want the mode hello established", got.Mode)
 	}
-	if got.LogPath == "" || got.ReaderLogPath == "" {
-		t.Errorf("log paths = %q / %q, want both reported", got.LogPath, got.ReaderLogPath)
+	if got.LogPath == "" {
+		t.Errorf("log path = %q, want it reported", got.LogPath)
 	}
 }
 

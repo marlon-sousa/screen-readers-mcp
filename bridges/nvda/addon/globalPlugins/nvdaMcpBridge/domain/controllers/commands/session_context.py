@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
+	from .... import protocol
 	from ...entities.braille_buffer import BrailleBuffer
 	from ...entities.speech_buffer import SpeechBuffer
 	from ...entities.user_prompt import UserPrompt
@@ -64,6 +65,9 @@ class SessionContext:
 		self.adapters: AdapterSet | None = None
 		#: At most one outstanding ask at a time.
 		self._outstanding_prompt: UserPrompt | None = None
+		#: The last 50 command windows: each is (command_id, start_pos, end_pos,
+		#: captured_at_level). Written by the Session, read by GetLogHandler.
+		self.command_windows: list[tuple[int, int, int, protocol.LogLevel]] = []
 
 	def close(self, reason: TeardownReason) -> None:
 		"""Ask the session to end with ``reason`` (used by bye and the panic path).
@@ -73,6 +77,28 @@ class SessionContext:
 		thread) share one path.
 		"""
 		self._close(reason)
+
+	def command_window_index(self, command_id: int) -> int | None:
+		"""Return the list index for *command_id*, or None if not found."""
+		for i, (cid, _start, _end, _level) in enumerate(self.command_windows):
+			if cid == command_id:
+				return i
+		return None
+
+	def command_windows_for(
+		self, anchor_index: int, count: int
+	) -> list[tuple[int, int, int, protocol.LogLevel]]:
+		"""Return up to *count* windows counting back from *anchor_index*.
+
+		A negative *anchor_index* means "from the end" (Python slice semantics).
+		"""
+		# Normalise a negative index.
+		if anchor_index < 0:
+			anchor_index = len(self.command_windows) + anchor_index
+		if anchor_index < 0 or anchor_index >= len(self.command_windows):
+			return []
+		start = max(0, anchor_index - count + 1)
+		return self.command_windows[start : anchor_index + 1]
 
 	@property
 	def speech_buffer(self) -> SpeechBuffer:

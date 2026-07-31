@@ -48,7 +48,6 @@ func TestDialEstablishesASessionFromHello(t *testing.T) {
 		Reader:        wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 		Synth:         "espeak",
 		LogPath:       `C:\logs\session.log`,
-		ReaderLogPath: `C:\logs\nvda.log`,
 	})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
 
@@ -63,11 +62,6 @@ func TestDialEstablishesASessionFromHello(t *testing.T) {
 	}
 	if connection.Session.Synth != "espeak" {
 		t.Errorf("synth = %q, want the reader's own", connection.Session.Synth)
-	}
-	// The wire calls this `nvdaLogPath`; the domain does not carry a reader's
-	// name in a field name, and the mapping is this adapter's job.
-	if connection.Session.ReaderLogPath != `C:\logs\nvda.log` {
-		t.Errorf("reader log path = %q", connection.Session.ReaderLogPath)
 	}
 	if got := fake.Received(); len(got) == 0 || got[0] != wire.CommandHello {
 		t.Errorf("first command = %v, want hello to be sent first", got)

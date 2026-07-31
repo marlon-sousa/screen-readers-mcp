@@ -57,8 +57,7 @@ def test_silent_hello_builds_and_reports(clock: FakeClock) -> None:
 	assert result.reader == p.ReaderInfo(name="nvda", version="2026.1.0")
 	assert result.capabilities == list(NVDA_CAPABILITIES)
 	assert result.logPath == transcript.path
-	assert result.nvdaLogPath == log_capture.path
-
+	
 	# No logLevel requested -- capture still starts, just with no level change.
 	assert log_capture.events == [("start", None)]
 

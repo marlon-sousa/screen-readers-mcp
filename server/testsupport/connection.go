@@ -38,6 +38,7 @@ type Connection struct {
 	Config    *fakes.FakeConfigAccessor
 	Interact  *fakes.FakeInteractPort
 	Text      *fakes.FakeTextTyper
+	LogReader *fakes.FakeLogReader
 }
 
 // NewConnection builds a session for a reader announcing exactly these
@@ -61,7 +62,6 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 			Mode:            entities.CaptureSilent,
 			Synth:           "fakesynth",
 			LogPath:         `C:\logs\session.log`,
-			ReaderLogPath:   `C:\logs\reader.log`,
 			ProtocolVersion: 1,
 		},
 		Endpoint:  entities.Endpoint{Kind: entities.TransportPipe, Address: reader + "McpBridge"},
@@ -100,6 +100,10 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 		built.Text = fakes.NewFakeTextTyper()
 		built.Connection.Text = built.Text
 	}
+	if set.Has(entities.CapabilityLog) {
+		built.LogReader = fakes.NewFakeLogReader()
+		built.Connection.ReaderLog = built.LogReader
+	}
 	return built
 }
 
@@ -110,5 +114,6 @@ func EveryCapability() []entities.Capability {
 		entities.CapabilitySpeech, entities.CapabilityBraille, entities.CapabilityGestures,
 		entities.CapabilityFocus, entities.CapabilityState, entities.CapabilityConfig,
 		entities.CapabilityInteract, entities.CapabilityTyping,
+		entities.CapabilityLog,
 	}
 }
