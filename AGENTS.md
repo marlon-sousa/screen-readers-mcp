@@ -629,13 +629,21 @@ Two things that gate had to fix, worth knowing because both were invisible:
   prints the offenders and then **exits 0**, so the obvious one-liner is a gate
   that can never fail.
 
-The two things ruff does *not* cover, both vendored from the NVDA AddonTemplate
-scaffold and both excluded deliberately: `bridges/nvda/site_scons/` and
-`bridges/nvda/sconstruct`. Reformatting upstream's code only makes the next
-scaffold sync noisy. `sconstruct` was previously in ruff's `include` with a
-per-file `F821` ignore — so the config *claimed* it was linted while no gate
-ever pointed ruff at it. That is now an explicit `exclude`, which is what was
-actually happening.
+**Every gate lints a DIRECTORY, never a list of files — deny-list, not
+allow-list.** Both holes above were allow-list holes: a gate that named paths,
+so a file at a path nobody had thought of was ungated and looked fine. Naming
+paths only covers files that already exist, which is the wrong set; the risk is
+the file that does not exist yet — the one a contributor or a model is about to
+add. Verified by planting space-indented files in nine locations, two of them in
+directories that did not previously exist: with file lists, three slipped
+through silently; with `.`, none do.
+
+So if something must not be linted, **exclude it, and say why at the exclusion**
+— adding a path to an exclude list should feel like a decision, where adding one
+to an allow-list feels like nothing at all. Two things are excluded today, both
+vendored from the NVDA AddonTemplate scaffold, because reformatting upstream's
+code only makes the next scaffold sync noisy: `bridges/nvda/site_scons/` and
+`bridges/nvda/sconstruct`.
 
 The rule set is **chosen, not inherited**: `select` is listed explicitly in all
 three configs, because ruff's defaults have widened across releases and a
@@ -645,6 +653,20 @@ bump.
 
 ### Notes for agents specifically
 
+- **`uv run poe dev` is the gate. Nothing is "done", "working" or "verified"
+  until it has passed, and you ran it.** Not a suite you picked, not the tests
+  you happened to touch — the whole thing, ~1 min. Reporting success on a subset
+  is the single most expensive mistake made in this repo, because the subset is
+  always chosen by the same reasoning that wrote the bug. If it is red, say so
+  and paste the failure; a red gate reported honestly costs a minute, and a
+  green claim over a red gate costs whoever finds out next.
+  - Touched `server/`? `poe dev` will fail the stale-binary check by design —
+    `uv run poe redeploy`, then run it again. **Redeploy whenever it asks; the
+    maintainer has standing approval for this.** Skipping it means you are
+    driving the OLD server against the NEW bridge, and the symptom is a field
+    that looks like it was never sent.
+  - `poe live` is NOT part of the gate and never runs unattended: it drives the
+    maintainer's real screen reader. Ask first, every time.
 - **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep
   honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
   both ignored and both enormous. One careless `grep -r` returns hundreds of

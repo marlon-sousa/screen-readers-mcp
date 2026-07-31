@@ -55,7 +55,12 @@ include = ["*.py"]
 # path list (`ruff check addon tests buildVars.py sync_shared.py`) never pointed
 # ruff at it. Nothing ran, and the ignore made it look deliberate. Excluding it
 # outright is the same outcome the gate already had, said out loud.
-exclude = [".git", "__pycache__", "sconstruct"]
+#
+# site_scons/ is here for the same reason. It was excluded only at the REPO ROOT
+# config, which does not govern this directory -- harmless while the gate named
+# four explicit paths, but the gate now lints `.`, so this is what actually
+# keeps upstream's code out of it.
+exclude = [".git", "__pycache__", "sconstruct", "site_scons"]
 
 [tool.ruff.format]
 indent-style = "tab"

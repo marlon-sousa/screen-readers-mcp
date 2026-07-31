@@ -36,9 +36,20 @@ package = false
 [tool.ruff]
 line-length = 110
 extend-exclude = [
-	# Vendored from the NVDA AddonTemplate scaffold: upstream's code, upstream's
-	# formatting. Reformatting it would only make the next scaffold sync noisy.
-	"bridges/nvda/site_scons",
+	# These two carry their OWN ruff config and their own gate (`shared-lint`,
+	# `bridge-lint`). Excluded here so each file is linted once, by the config
+	# that governs it -- this task's job is everything else, whatever it turns
+	# out to be.
+	"shared",
+	"bridges",
+	# Ruff 0.16 formats Python code blocks INSIDE Markdown. Not here: the
+	# snippets in AGENTS.md and specs/ are illustrative, and several are aligned
+	# by hand to make a point (the two-clocks example lines its comments up so
+	# the mistake is visible at a glance). The specs are documents of record for
+	# decisions already taken -- reformatting a design's sample code to this
+	# repo's house style would rewrite the record to no benefit, and would churn
+	# every spec the first time it ran.
+	"*.md",
 ]
 
 [tool.ruff.format]
@@ -152,19 +163,19 @@ sequence = [
 help = "ruff check + format check, the NVDA bridge"
 deps = ["check"]
 sequence = [
-	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff check addon tests buildVars.py sync_shared.py" },
-	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff format --check addon tests buildVars.py sync_shared.py" },
+	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff check ." },
+	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff format --check ." },
 ]
 
-# The dev scripts, which no project's config reached until this branch: shared/
-# and bridges/nvda/ each carry their own ruff config and everything between them
-# was linted by nothing. Run under the ROOT config, next to which they live.
-[tool.poe.tasks.scripts-lint]
-help = "ruff check + format check, the dev scripts"
+# EVERYTHING outside shared/ and bridges/nvda/ -- today the dev scripts, tomorrow
+# whatever someone adds. Deliberately `.` and not `scripts`: see the note on
+# allow-lists above [tool.poe.tasks.lint].
+[tool.poe.tasks.repo-lint]
+help = "ruff check + format check, everything outside the two Python projects"
 deps = ["check"]
 sequence = [
-	{ cmd = "uv run --python 3.13 --with ruff python -m ruff check scripts" },
-	{ cmd = "uv run --python 3.13 --with ruff python -m ruff format --check scripts" },
+	{ cmd = "uv run --python 3.13 --with ruff python -m ruff check ." },
+	{ cmd = "uv run --python 3.13 --with ruff python -m ruff format --check ." },
 ]
 
 # The format check is HALF of what linting is for, and it was missing until this
@@ -172,9 +183,23 @@ sequence = [
 # and so nothing anywhere told a contributor -- human or model -- that a file was
 # misformatted. Every file added in PR #46 arrived space-indented in a tab repo
 # and no gate said a word.
+#
+# THE THREE LANES BELOW LINT DIRECTORIES, NOT FILE LISTS, AND THAT IS THE POINT.
+# Every hole this repo has had was an ALLOW-LIST hole: a gate that named paths,
+# so a file at a path nobody thought of was ungated and looked fine. `scripts/`
+# went unlinted that way for the project's whole life; `sconstruct` sat in a
+# config that claimed to lint it while no gate pointed ruff at it. Both were
+# found by accident.
+#
+# Naming paths only ever covers the files you already know about, which is the
+# wrong set: the risk is the file that does NOT exist yet. Verified by planting
+# space-indented files in nine locations, including two directories that did not
+# previously exist -- with file lists three slipped through, with `.` none do.
+# So: lint the tree, and EXCLUDE what must not be linted, with the reason stated
+# at the exclusion. Adding a path here should feel like a decision.
 [tool.poe.tasks.lint]
 help = "ruff check + format check, every Python file in the repo"
-sequence = ["shared-lint", "bridge-lint", "scripts-lint"]
+sequence = ["shared-lint", "bridge-lint", "repo-lint"]
 
 [tool.poe.tasks.go]
 help = "Go build, vet, unit and integration tests"
@@ -302,7 +327,7 @@ sequence = ["go", "go-fmt", "go-staticcheck", "gate-binding", "go-linux"]
 
 [tool.poe.tasks.ci-bridge]
 help = "The `nvda-bridge` CI job: sync, headless tests, types, lint"
-sequence = ["sync", "bridge", "bridge-types", "bridge-lint", "scripts-lint"]
+sequence = ["sync", "bridge", "bridge-types", "bridge-lint", "repo-lint"]
 
 [tool.poe.tasks.ci-conformance]
 help = "The `conformance` CI job: the real Go binary against the real Python bridge"

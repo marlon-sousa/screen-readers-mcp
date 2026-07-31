@@ -26,6 +26,11 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 110
 
+# Ruff 0.16 formats Python code blocks inside Markdown. Excluded for the same
+# reason as at the repo root: doc snippets are illustrative, sometimes aligned
+# by hand to make a point, and reformatting them buys nothing.
+extend-exclude = ["*.md"]
+
 [tool.ruff.format]
 indent-style = "tab"
 
