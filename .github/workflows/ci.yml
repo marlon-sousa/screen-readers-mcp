@@ -58,7 +58,9 @@ jobs:
       # Python project. It is the price of the job's contents having one
       # definition, and it is a few seconds.
       - uses: astral-sh/setup-uv@v5
-      # Build, vet, unit and integration tests, staticcheck (PINNED in the task
+      # Build, vet, unit and integration tests, gofmt (which nothing checked
+      # until now -- neither `go vet` nor staticcheck has an opinion about
+      # layout, and it was holding two files), staticcheck (PINNED in the task
       # -- this used to be `go install ...@latest`, which let an upstream release
       # turn the repo red with no commit of ours behind it, and the bisect starts
       # by hunting for a change that does not exist), the wire-binding drift

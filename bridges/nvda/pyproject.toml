@@ -44,8 +44,18 @@ markers = [
 line-length = 110
 
 builtins = ["_", "ngettext", "pgettext", "npgettext"]
-include = ["*.py", "sconstruct"]
-exclude = [".git", "__pycache__"]
+include = ["*.py"]
+
+# sconstruct joins site_scons/ (excluded at the repo root) as VENDORED from the
+# NVDA AddonTemplate scaffold: upstream's code, upstream's formatting, and
+# reformatting it would only make the next scaffold sync noisy for no gain.
+#
+# It used to be listed in `include` above, with a per-file F821 ignore for the
+# globals scons injects -- so the config CLAIMED it was linted while the gate's
+# path list (`ruff check addon tests buildVars.py sync_shared.py`) never pointed
+# ruff at it. Nothing ran, and the ignore made it look deliberate. Excluding it
+# outright is the same outcome the gate already had, said out loud.
+exclude = [".git", "__pycache__", "sconstruct"]
 
 [tool.ruff.format]
 indent-style = "tab"
@@ -83,8 +93,6 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"sconstruct" = ["F821"]
-
 # buildVars.py is NVDA's add-on manifest in Python form: addon_info carries the
 # summary and description the add-on store DISPLAYS, as single strings. Wrapping
 # them would change what a user reads in the store, so the length stands.

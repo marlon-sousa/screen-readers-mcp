@@ -621,6 +621,21 @@ Two things that gate had to fix, worth knowing because both were invisible:
   their own ruff config, and everything between them — the dev scripts,
   `sync_shared.py`, `buildVars.py` — fell through the gap. The root
   `pyproject.toml` now covers it with the same rule set.
+- **Go formatting was checked by nothing either.** Neither `go vet` nor
+  staticcheck has an opinion about layout, so the Go half had the same hole the
+  Python half just closed — and it was holding two files, a struct field and a
+  map entry added without realigning the block around them. `poe go-fmt` runs in
+  `ci-server` now. It is a script rather than one command because `gofmt -l`
+  prints the offenders and then **exits 0**, so the obvious one-liner is a gate
+  that can never fail.
+
+The two things ruff does *not* cover, both vendored from the NVDA AddonTemplate
+scaffold and both excluded deliberately: `bridges/nvda/site_scons/` and
+`bridges/nvda/sconstruct`. Reformatting upstream's code only makes the next
+scaffold sync noisy. `sconstruct` was previously in ruff's `include` with a
+per-file `F821` ignore — so the config *claimed* it was linted while no gate
+ever pointed ruff at it. That is now an explicit `exclude`, which is what was
+actually happening.
 
 The rule set is **chosen, not inherited**: `select` is listed explicitly in all
 three configs, because ruff's defaults have widened across releases and a

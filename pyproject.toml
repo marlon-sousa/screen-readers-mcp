@@ -199,6 +199,15 @@ cmd = "go -C server run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./..."
 # anticipated (a TalkBack or VoiceOver bridge), so this is a SUPPORTED
 # configuration and not just CI hygiene -- which is why it belongs in a task a
 # developer can run, rather than only in the workflow.
+# Neither `go vet` nor staticcheck has an opinion about layout, so Go formatting
+# was checked by NOTHING while the Python half grew a `ruff format --check` gate.
+# It was holding two files when this landed -- a struct field and a map entry
+# added without realigning the block, which is exactly what gofmt is for.
+[tool.poe.tasks.go-fmt]
+help = "gofmt check over the server"
+deps = ["check"]
+cmd = "python scripts/gofmt_check.py"
+
 [tool.poe.tasks.go-linux]
 help = "Server builds on Linux, without the named-pipe leaf"
 deps = ["check"]
@@ -288,8 +297,8 @@ help = "The `shared` CI job: wire-contract tests, types, lint, schema gate"
 sequence = ["shared", "shared-types", "shared-lint", "gate-schema"]
 
 [tool.poe.tasks.ci-server]
-help = "The `server` CI job: build, vet, tests, staticcheck, binding gate, Linux build"
-sequence = ["go", "go-staticcheck", "gate-binding", "go-linux"]
+help = "The `server` CI job: build, vet, tests, gofmt, staticcheck, binding gate, Linux build"
+sequence = ["go", "go-fmt", "go-staticcheck", "gate-binding", "go-linux"]
 
 [tool.poe.tasks.ci-bridge]
 help = "The `nvda-bridge` CI job: sync, headless tests, types, lint"
