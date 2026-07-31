@@ -38,6 +38,16 @@ ROOT = Path(__file__).resolve().parent.parent
 PY_PROJECTS = ("shared", "bridges/nvda")
 PY_TOOLS = ("pytest", "pyright", "ruff")
 
+
+def on_ci() -> bool:
+	"""Is this a CI runner rather than somebody's desktop?
+
+	Set by GitHub Actions on every runner, and by every other CI host worth the
+	name. Export ``CI=1`` locally to rehearse what CI will do.
+	"""
+	return bool(os.environ.get("CI"))
+
+
 OK, WARN, FAIL = "ok", "warn", "fail"
 
 
@@ -473,13 +483,25 @@ def main() -> int:
 		repair()
 
 	results: list[Result] = []
-	results += check_binaries()
-	results.append(check_bare_python())
-	results += check_addon_build_deps()
+	# The MACHINE checks -- "is this workstation set up to work the repo". On CI
+	# they are the wrong question, and asking it is what kept `poe` out of the
+	# workflow: the `shared` job installs uv and nothing else, so the required
+	# `go`/`rg` would abort it before a single test ran. CI does not need them.
+	# Its environment is DECLARED, in ci.yml's setup steps, and when something is
+	# missing the step that wanted it fails immediately naming the tool -- there
+	# is no mystery for a doctor to diagnose. The doctor's value is on a desktop
+	# that drifted, which a fresh runner cannot have done.
+	#
+	# The REPO checks below the guard are asked everywhere, because they are
+	# facts about the checkout rather than about the machine.
+	if not on_ci():
+		results += check_binaries()
+		results.append(check_bare_python())
+		results += check_addon_build_deps()
+		results.append(check_server_binary())
 	results += check_pyright_venv_config()
 	results.append(check_shared_synced())
-	results.append(check_server_binary())
-	if not args.quick:
+	if not args.quick and not on_ci():
 		# These spawn a uv environment per tool per project -- a few seconds,
 		# which is fine for `poe doctor` and far too slow to sit in front of
 		# every `poe bridge`. The quick set still catches the failures that

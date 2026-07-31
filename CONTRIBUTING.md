@@ -55,15 +55,22 @@ subproject, so the directory you run from is always the same one:
 
 ```sh
 uv run poe doctor    # is this machine able to work the repo? run this first
-uv run poe ci        # everything CI runs, in CI's order (~30s)
+uv run poe dev       # the doctor, then everything CI runs (~1 min)
 uv run poe bridge    # just the bridge suite, for a fast inner loop (~5s)
 uv run poe           # list every task
 ```
 
-`poe ci` is what to run before opening a PR. Every task first runs a fast
+`poe dev` is what to run before opening a PR. Every task first runs a fast
 environment check and **refuses to run if it fails** — a broken toolchain makes
 passing and failing tests equally uninformative, so it is better to stop than to
 hand you a result you cannot trust. `uv run poe fix` repairs the common causes.
+
+CI runs the same tasks, one per job (`poe ci-shared`, `ci-server`, `ci-bridge`,
+`ci-conformance`); `poe ci` is all four. The only difference from `dev` is that
+CI skips the questions about your machine — a fresh runner cannot have drifted,
+and its toolchain is declared in the workflow. So **if you want to change what
+CI checks, change `pyproject.toml`**, not `.github/workflows/ci.yml`: that way
+you can prove it locally instead of discovering it after a push.
 
 Live-NVDA tests are **excluded by default** and are not part of `ci`. They drive
 the real NVDA on your machine — pressing gestures, opening dialogs, typing into

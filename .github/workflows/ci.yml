@@ -7,6 +7,19 @@ name: CI
 # checkout) silently parks every PR on "Expected - waiting for status to be
 # reported" until someone edits the repo settings to match. Keep the detail in
 # STEP names, which are free to change. Do not "improve" these names.
+#
+# WHAT EACH JOB RUNS LIVES IN pyproject.toml, NOT HERE. Every job below installs
+# a toolchain and then calls exactly one task -- `uv run poe ci-<job>`. This file
+# used to spell out the commands itself, which meant there were two definitions
+# of "green" that had to be kept in step by hand, and they drifted: `poe ci` grew
+# a lint task the workflow never ran, the workflow's ruff step covered `addon
+# tests` while poe covered two more files, and staticcheck and the Linux build
+# existed ONLY here -- so a developer could not run them at all and first learned
+# of a failure from a red PR.
+#
+# The practical rule: a change to WHAT CI checks is a change to pyproject.toml,
+# where it can be run and proved before it is pushed. This file changes only when
+# a job needs a different TOOLCHAIN.
 
 on:
   push:
@@ -17,44 +30,22 @@ jobs:
   shared:
     name: shared
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: shared
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - name: Tests (wire contract)
-        run: uv run --python 3.13 pytest -q
-      - name: Pyright
-        run: uv run --python 3.13 pyright
-      # Formatting is HALF of this, and it was the missing half: `ruff check`
-      # says nothing about indentation, so a file could be space-indented in a
-      # tab repo and pass every gate. Both run here and in `poe lint`.
-      - name: Ruff (lint + format)
-        run: |
-          uv run --python 3.13 --with ruff ruff check .
-          uv run --python 3.13 --with ruff ruff format --check .
-      # Drift gate: the published JSON Schema is generated from the dataclasses,
-      # so regenerating it must leave the committed file byte-identical. If a
-      # protocol change forgot to regenerate, git diff makes CI red.
-      - name: Wire schema is up to date
-        # bash on purpose: the Windows-runner default shell (PowerShell) re-encodes
-        # redirected stdout (UTF-16 + BOM), which would corrupt the byte compare.
-        shell: bash
-        run: |
-          uv run --python 3.13 python -m nvda_mcp_wire.schema > ../specs/wire/v1/schema.json
-          git diff --exit-code -- ../specs/wire/v1/schema.json
+      # Wire-contract tests, pyright, ruff (lint AND format), and the gate that
+      # the committed schema.json still matches protocol.py. No Go toolchain
+      # here on purpose -- `ci-shared` must not reach for one, and this job is
+      # what proves it hasn't started to.
+      - name: poe ci-shared
+        run: uv run poe ci-shared
 
   # Go since entry 10a (spec 0013). The JOB NAME is unchanged on purpose --
   # branch protection matches required checks by the literal name, so the
-  # language change is invisible to the merge gate. The detail lives in the step
-  # names, which are free to change.
+  # language change is invisible to the merge gate.
   server:
     name: server
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: server
     steps:
       - uses: actions/checkout@v4
       # 1.25 since 10b: the official MCP Go SDK declares `go 1.25.0`, so the
@@ -63,37 +54,18 @@ jobs:
         with:
           go-version: '1.25'
           cache-dependency-path: server/go.sum
-      - name: Build
-        run: go build ./...
-      - name: Tests (unit)
-        run: go test ./...
-      # The headless and real-transport tiers: a fake bridge speaking real wire
-      # frames over a real loopback socket and a real named pipe. Opt-in by tag
-      # so the unit run above stays fast.
-      - name: Tests (integration, real transports)
-        run: go test -tags integration ./...
-      - name: Vet
-        run: go vet ./...
-      - name: Staticcheck
-        run: |
-          go install honnef.co/go/tools/cmd/staticcheck@latest
-          staticcheck ./...
-      # Drift gate, mirroring the `shared` job's: the wire binding is GENERATED
-      # from the published schema, so regenerating it must leave the committed
-      # files byte-identical. This is what replaces the same-bytes guarantee the
-      # two Python halves used to get for free.
-      - name: Wire binding is up to date
-        shell: bash
-        run: |
-          go generate ./adapters/wire
-          git diff --exit-code -- adapters/wire
-      # The named-pipe leaf must compile OUT cleanly: a non-Windows server host
-      # is anticipated (a TalkBack or VoiceOver bridge), so this is a supported
-      # configuration and not just CI hygiene.
-      - name: Builds on Linux, without the pipe leaf
-        run: go build ./...
-        env:
-          GOOS: linux
+      # uv is here to run poe, not to run Python tooling -- this job has no
+      # Python project. It is the price of the job's contents having one
+      # definition, and it is a few seconds.
+      - uses: astral-sh/setup-uv@v5
+      # Build, vet, unit and integration tests, staticcheck (PINNED in the task
+      # -- this used to be `go install ...@latest`, which let an upstream release
+      # turn the repo red with no commit of ours behind it, and the bisect starts
+      # by hunting for a change that does not exist), the wire-binding drift
+      # gate, and the Linux build proving the named-pipe leaf compiles OUT for a
+      # future non-Windows host.
+      - name: poe ci-server
+        run: uv run poe ci-server
 
   # Cross-language conformance (entry 10c, spec 0013 deliverable 19). The one
   # job where BOTH implementations of specs/wire/v1/ are real: the Go server
@@ -111,7 +83,7 @@ jobs:
   # NEW JOB NAME, therefore a new required-check decision: branch protection
   # matches required status checks by literal name, so adding this to
   # required_status_checks is a deliberate settings edit made AFTER the job has
-  # reported once (ci.yml's header, and AGENTS.md's gotcha).
+  # reported once (this file's header, and AGENTS.md's gotcha).
   conformance:
     name: conformance
     runs-on: windows-latest
@@ -127,35 +99,23 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Build the server
-        working-directory: server
-        run: go build ./...
-      # -count=1 so a cached PASS can never stand in for a run that did not
-      # actually reach the bridge.
-      - name: Conformance against the real Python bridge (pipe and TCP)
-        working-directory: server
-        run: go test -tags conformance -count=1 -v ./tests/conformance/
+      - uses: astral-sh/setup-uv@v5
+      # -count=1 lives in the task, so a cached PASS can never stand in for a run
+      # that did not actually reach the bridge.
+      - name: poe ci-conformance
+        run: uv run poe ci-conformance
 
   nvda-bridge:
     name: nvda-bridge
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: bridges/nvda
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      # The domain is pure (no NVDA); the NVDA edge is in pyright's ignore list,
-      # so no NVDA source checkout or stubs are needed.
-      - name: Sync shared wire module into addon
-        run: python sync_shared.py
-      - name: Tests (headless bridge core)
-        run: uv run --python 3.13 --with pytest pytest -q
-      - name: Pyright
-        run: uv run --python 3.13 --with pyright --with pytest pyright
-      # See the `shared` job: the format check is the half that was missing, and
-      # it is why PR #46 could add a dozen space-indented files to a tab repo.
-      - name: Ruff (lint + format)
-        run: |
-          uv run --python 3.13 --with ruff ruff check addon tests
-          uv run --python 3.13 --with ruff ruff format --check addon tests
+      # Syncs the shared wire module into the addon, then the headless bridge
+      # tests, pyright, and ruff over the addon, the tests, buildVars.py,
+      # sync_shared.py AND the dev scripts -- the last of which no project's
+      # config reached until the lint gate landed. The domain is pure (no NVDA)
+      # and the NVDA edge is in pyright's ignore list, so no NVDA source
+      # checkout and no stubs are needed.
+      - name: poe ci-bridge
+        run: uv run poe ci-bridge

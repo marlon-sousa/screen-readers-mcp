@@ -4,7 +4,11 @@
 # where neither a contributor nor an agent can run it.
 #
 #     uv run poe doctor    <- run this FIRST, before anything else
-#     uv run poe ci        <- everything CI runs, in CI's order
+#     uv run poe dev       <- the doctor, then everything CI runs. The one to
+#                             run before saying something works.
+#     uv run poe ci        <- what CI itself calls, job by job (`poe ci-shared`
+#                             and friends). Same work, minus the questions about
+#                             your machine that a fresh runner cannot answer.
 #
 # Tasks deliberately use `python -m <tool>` rather than the console scripts
 # (`pytest`, `pyright`). On Windows a console script is a "trampoline" exe with
@@ -49,6 +53,22 @@ ignore = [
 
 # poe runs tasks from the directory holding this file, so every task names its
 # own subproject and none depends on where you happened to be standing.
+#
+# TWO ENTRY POINTS, one body of work:
+#
+#     uv run poe dev   <- what a DEVELOPER runs: the full doctor, then `ci`
+#     uv run poe ci    <- what CI runs, and all `dev` runs after the doctor
+#
+# They differ only in the environment contract. `dev` first asks whether THIS
+# WORKSTATION is fit to work the repo -- Go present, ripgrep present, venvs
+# intact, the MCP server binary not stale -- because a desktop drifts and the
+# resulting failures name everything except their cause. A CI runner is built
+# from ci.yml every time and cannot have drifted, so `ci` asks nothing about the
+# machine and runs the work itself. That is the whole difference; the tasks
+# underneath are the same tasks, called by both.
+#
+# Interpreter pins (`--python 3.13`) live on the tasks rather than in ci.yml, so
+# the version CI tests on is a property of the repo and not of the workflow.
 
 [tool.poe.tasks.doctor]
 help = "Check the dev environment is sane. RUN THIS FIRST."
@@ -63,11 +83,23 @@ help = "Repair the dev environment (reinstall the project venvs)"
 cmd = "python scripts/doctor.py --fix"
 
 # -- the individual suites, for a fast inner loop ----------------------------
+#
+# Split PER PROJECT, not per tool, because that is how CI's jobs are split: the
+# `shared` job has no Go toolchain and the `server` job has no uv, so a task
+# spanning both could not be called by either. The cross-project aggregates
+# (`types`, `lint`, `gates`) are still here, further down, for typing by hand.
+
+# Ungated, by the same rule as build-server and redeploy below: sconstruct's
+# sync is the REMEDIATION for the doctor's own "shared module synced" failure,
+# and a remediation gated on the condition it remediates can never run.
+[tool.poe.tasks.sync]
+help = "Copy the shared wire module into the addon (what sconstruct does first)"
+cmd = "uv run --directory bridges/nvda --python 3.13 python sync_shared.py"
 
 [tool.poe.tasks.bridge]
 help = "Bridge headless tests (the usual inner loop)"
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q"
+cmd = "uv run --directory bridges/nvda --python 3.13 --with pytest python -m pytest -q"
 
 [tool.poe.tasks.live]
 help = "DRIVES YOUR REAL NVDA: gestures, typed text, config changes. Opt-in only."
@@ -87,33 +119,62 @@ cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'liv
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"
 deps = ["check"]
-cmd = "uv run --directory shared --with pytest python -m pytest -q"
+cmd = "uv run --directory shared --python 3.13 --with pytest python -m pytest -q"
+
+[tool.poe.tasks.shared-types]
+help = "pyright strict, the shared wire contract"
+deps = ["check"]
+cmd = "uv run --directory shared --python 3.13 --with pytest --with pyright python -m pyright"
+
+[tool.poe.tasks.bridge-types]
+help = "pyright strict, the NVDA bridge"
+deps = ["check"]
+cmd = "uv run --directory bridges/nvda --python 3.13 --with pytest --with pyright python -m pyright"
 
 [tool.poe.tasks.types]
 help = "pyright strict, both Python projects"
-deps = ["check"]
-sequence = [
-	{ cmd = "uv run --directory shared --with pytest --with pyright python -m pyright" },
-	{ cmd = "uv run --directory bridges/nvda --with pytest --with pyright python -m pyright" },
-]
+sequence = ["shared-types", "bridge-types"]
 
 # The format check is HALF of what this task is for, and it was missing: the help
 # below has always claimed it, `ci` never ran this task at all, and so nothing
 # anywhere told a contributor -- human or model -- that a file was misformatted.
 # Every file added in PR #46 arrived space-indented in a tab repo and no gate
 # said a word. Both halves run here now, and `ci` runs the task.
-[tool.poe.tasks.lint]
-help = "ruff check + format check, both Python projects"
+[tool.poe.tasks.shared-lint]
+help = "ruff check + format check, the shared wire contract"
 deps = ["check"]
 sequence = [
-	{ cmd = "uv run --directory shared --with ruff python -m ruff check ." },
-	{ cmd = "uv run --directory shared --with ruff python -m ruff format --check ." },
-	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests buildVars.py sync_shared.py" },
-	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff format --check addon tests buildVars.py sync_shared.py" },
-	# The dev scripts, which no project's config reached until now.
-	{ cmd = "uv run --with ruff python -m ruff check scripts" },
-	{ cmd = "uv run --with ruff python -m ruff format --check scripts" },
+	{ cmd = "uv run --directory shared --python 3.13 --with ruff python -m ruff check ." },
+	{ cmd = "uv run --directory shared --python 3.13 --with ruff python -m ruff format --check ." },
 ]
+
+[tool.poe.tasks.bridge-lint]
+help = "ruff check + format check, the NVDA bridge"
+deps = ["check"]
+sequence = [
+	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff check addon tests buildVars.py sync_shared.py" },
+	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff format --check addon tests buildVars.py sync_shared.py" },
+]
+
+# The dev scripts, which no project's config reached until this branch: shared/
+# and bridges/nvda/ each carry their own ruff config and everything between them
+# was linted by nothing. Run under the ROOT config, next to which they live.
+[tool.poe.tasks.scripts-lint]
+help = "ruff check + format check, the dev scripts"
+deps = ["check"]
+sequence = [
+	{ cmd = "uv run --python 3.13 --with ruff python -m ruff check scripts" },
+	{ cmd = "uv run --python 3.13 --with ruff python -m ruff format --check scripts" },
+]
+
+# The format check is HALF of what linting is for, and it was missing until this
+# branch: the help text has always claimed it, `ci` never ran the task at all,
+# and so nothing anywhere told a contributor -- human or model -- that a file was
+# misformatted. Every file added in PR #46 arrived space-indented in a tab repo
+# and no gate said a word.
+[tool.poe.tasks.lint]
+help = "ruff check + format check, every Python file in the repo"
+sequence = ["shared-lint", "bridge-lint", "scripts-lint"]
 
 [tool.poe.tasks.go]
 help = "Go build, vet, unit and integration tests"
@@ -124,6 +185,25 @@ sequence = [
 	{ cmd = "go -C server test ./..." },
 	{ cmd = "go -C server test -tags integration ./..." },
 ]
+
+# PINNED, where ci.yml had `go install ...@latest`. At @latest a staticcheck
+# release turns this repo red with no commit of ours behind it, and the bisect
+# starts by looking for a change that does not exist. `go run pkg@version` needs
+# no go.mod entry, so the pin costs nothing.
+[tool.poe.tasks.go-staticcheck]
+help = "staticcheck over the server (pinned version)"
+deps = ["check"]
+cmd = "go -C server run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./..."
+
+# The named-pipe leaf must compile OUT cleanly: a non-Windows server host is
+# anticipated (a TalkBack or VoiceOver bridge), so this is a SUPPORTED
+# configuration and not just CI hygiene -- which is why it belongs in a task a
+# developer can run, rather than only in the workflow.
+[tool.poe.tasks.go-linux]
+help = "Server builds on Linux, without the named-pipe leaf"
+deps = ["check"]
+cmd = "go -C server build ./..."
+env = { GOOS = "linux" }
 
 # -- builds ------------------------------------------------------------------
 #
@@ -170,19 +250,63 @@ sequence = ["build-server", "build-addon"]
 
 # -- the gates that catch generated-artifact drift ---------------------------
 
+# Split along the same line as CI's jobs: the schema gate needs uv and no Go,
+# the binding gate needs Go and no uv. See scripts/drift.py's main().
+[tool.poe.tasks.gate-schema]
+help = "The committed schema.json still matches protocol.py"
+deps = ["check"]
+cmd = "python scripts/drift.py --schema"
+
+[tool.poe.tasks.gate-binding]
+help = "The committed Go wire binding still matches the schema"
+deps = ["check"]
+cmd = "python scripts/drift.py --binding"
+
 [tool.poe.tasks.gates]
 help = "Schema and wire-binding drift gates"
-deps = ["check"]
-cmd = "python scripts/drift.py"
+sequence = ["gate-schema", "gate-binding"]
 
 [tool.poe.tasks.conformance]
 help = "Cross-language tier: the real Go binary against the real Python bridge (slow)"
 deps = ["check"]
 cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
 
+# -- the CI jobs -------------------------------------------------------------
+#
+# ONE TASK PER JOB IN .github/workflows/ci.yml, named after it, and the workflow
+# step is nothing but `uv run poe ci-<job>`. That is the point of the split: a
+# job's contents are here, in a file anyone can run, instead of in YAML that can
+# only be executed by pushing. Keep the pairing 1:1 -- if a job gains work, it
+# gains it in the task, not in a new workflow step.
+#
+# Each job carries only the toolchain its own workflow file installs, so no task
+# below may reach for one its job does not have: `ci-shared` has uv and no Go,
+# `ci-server` has Go and no uv.
+
+[tool.poe.tasks.ci-shared]
+help = "The `shared` CI job: wire-contract tests, types, lint, schema gate"
+sequence = ["shared", "shared-types", "shared-lint", "gate-schema"]
+
+[tool.poe.tasks.ci-server]
+help = "The `server` CI job: build, vet, tests, staticcheck, binding gate, Linux build"
+sequence = ["go", "go-staticcheck", "gate-binding", "go-linux"]
+
+[tool.poe.tasks.ci-bridge]
+help = "The `nvda-bridge` CI job: sync, headless tests, types, lint"
+sequence = ["sync", "bridge", "bridge-types", "bridge-lint", "scripts-lint"]
+
+[tool.poe.tasks.ci-conformance]
+help = "The `conformance` CI job: the real Go binary against the real Python bridge"
+sequence = ["conformance"]
+
 # -- the whole thing ---------------------------------------------------------
 
 [tool.poe.tasks.ci]
-help = "Everything CI runs, in CI's order. Green here means green there."
-sequence = ["doctor", "shared", "bridge", "types", "lint", "gates", "go", "conformance"]
+help = "Everything CI runs, in CI's order. No machine checks -- see `dev`."
+sequence = ["ci-shared", "ci-server", "ci-bridge", "ci-conformance"]
+ignore_fail = false
+
+[tool.poe.tasks.dev]
+help = "What to run before saying something works: the doctor, then everything CI runs."
+sequence = ["doctor", "ci"]
 ignore_fail = false
