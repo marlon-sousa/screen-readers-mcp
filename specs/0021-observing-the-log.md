@@ -265,69 +265,61 @@ already correlate without anyone duplicating anything. What is missing is never
 content — it is a shared coordinate, which is why speech entries gain
 `logPosition` above rather than the journal gaining speech text.
 
-### The transcript is still filesystem-bound, and that contradicts the bridge
+### Two records, not one — and the transcript stays where it is
 
-`connect_reader` hands the agent `logPath` and nothing else. That is verbatim the
-complaint 0020 opens with about `nvda.log` — *"what the agent receives is a path,
+`connect_reader` hands the agent `logPath` and nothing else, which is verbatim
+0020's opening complaint about `nvda.log`: *"what the agent receives is a path,
 and reading it means reading the whole file"*, and *"reading the file also assumes
-the agent and the reader share a filesystem. Nothing else in this project assumes
-that: the bridge exists precisely because the reader's environment is reachable
-only through it."* We fixed that for NVDA's log and left our own record behind.
+the agent and the reader share a filesystem"*. The obvious conclusion is that the
+transcript should cross the wire too. **It should not**, and working out why
+settles what the agent actually needs.
 
-**But the naive fix is wrong**, and the reason is the lifetime column above.
-During a session the transcript is *redundant for the agent*: it knows the
-commands it sent, and the ring holds every utterance, unbounded and indexed. A
-`getTranscript` the agent calls mid-session would mostly return what it already
-has. The transcript's unique value arrives exactly when the session ends and the
-ring and journal are destroyed — and at that moment there is no session left to
-answer a command.
+**The MCP server runs on the agent's side.** It is spawned by the MCP client, so
+its filesystem is already the agent's filesystem. A record the *server* writes
+needs no transmission at all — no new command, no paging, no ordering constraint
+on teardown, no guard against a half-finished transfer. And the server can build
+it from what already passes through its hands: it sent every command and saw
+every response. It also survives a bridge that dies abruptly, where a bridge-side
+file is stranded on a machine nothing can reach any more.
 
-So the consumer is the **server at teardown**, not the agent mid-session:
+**But it cannot replace the reader-side transcript**, for three reasons, the last
+of which is decisive:
 
-```mermaid
-sequenceDiagram
-    accTitle: How the session transcript reaches the agent without a shared filesystem
-    accDescr: The agent calls disconnect reader. Before sending bye, the server pulls the transcript from the bridge in bounded pages using a cursor, receiving lines and a next position until the bridge reports no more. The server then sends bye and the bridge tears the session down, destroying the speech ring and the journal. The transcript the server captured is published as an MCP resource, so the agent can read the finished session narrative afterwards even though the bridge is gone and its file was never on the agent's filesystem.
-    participant Agent
-    participant Server as MCP server
-    participant Bridge
-    Agent->>Server: disconnect_reader
-    loop until the bridge reports no more lines
-        Server->>Bridge: getTranscript { sincePosition }
-        Bridge-->>Server: { lines, nextPosition, complete }
-    end
-    Server->>Bridge: bye
-    Bridge-->>Server: session torn down; ring and journal destroyed
-    Server-->>Agent: transcript published as an MCP resource
-```
+1. **Speech completeness.** The bridge sees every utterance; the server sees only
+   what the agent fetched. `Transcript`'s own docstring is explicit that it is
+   written bridge-side so it is *"complete even if the agent never fetched some
+   speech"* — and in a silent run, where nobody heard anything, that record is
+   the tester's only reconstruction of what was said.
+2. **The audience is the human at the reader.** A blind tester looking for what
+   happened looks on their own machine, with their own tools. A file on the
+   agent's machine may be on a different computer entirely.
+3. **Timestamp fidelity.** The bridge stamps speech at capture. A server could
+   only stamp it at *fetch* — batched, later, in fetch order — which destroys the
+   adjacency that makes the file worth reading. `09:02:58.612 GESTURE tab`
+   followed by `09:02:58.626 SPEECH` is the whole value; a server-written timeline
+   would carry accurate gesture times beside fictional speech times, which is
+   worse than not having it.
 
-- **`getTranscript { sincePosition?, maxLines? }` → `{ lines, nextPosition, complete }`**
-  on the bridge, deliberately the **same cursor idiom** as `getLog`, so one
-  addressing model covers both readable streams instead of two.
-- **The server pulls it during `disconnect_reader`, before `bye`**, in bounded
-  pages, and publishes it as an **MCP resource** beside the session info resource
-  the server already serves (`adapters/mcp/info_resource.go`). That is the moment
-  it stops being redundant, and the only moment the file is still reachable.
-- **`logPath` stays**, demoted in the docs to a local convenience for the human at
-  the reader — never a contract an agent should depend on, because for a remote
-  bridge it names a file on a machine the agent cannot open.
+So there are **two artifacts with two audiences**, and conflating them was the
+error:
 
-Transmitting it is safe by construction: `Transcript.typed()` records a **length,
-never the text** (spec 0016), precisely because `typeText` is how a secret would
-be entered. There is nothing in a transcript that was not already judged fit to
-write to disk.
+| record | audience | written by | how it is reached |
+|---|---|---|---|
+| session transcript | the human at the reader | bridge, at capture time | `logPath`, on the reader's disk |
+| session record | the agent | server, from its own traffic | already on the agent's filesystem |
 
-Two costs, stated. A long session's transcript is not small, so the pull is paged
-and the server may cap what it retains. And a teardown that has to complete a
-transfer first is a teardown that can fail differently — so the pull is
-**guarded**: a failed or partial fetch degrades to "no transcript resource", never
-to a session that will not close. Teardown's existing rule stands, that every step
-is individually guarded and the channel closes regardless.
+**`getTranscript` is therefore rejected.** The single case for transmitting was
+"the agent wants the complete record, including speech it never fetched" — and
+that already has a cheaper answer with a command that exists today:
+`getSpeech(sinceIndex: 0)` returns the entire ring, unbounded and indexed, at any
+point before `bye`. An agent that wants a complete record can complete its own,
+with no new wire surface at all.
 
-**Open question for review:** whether this deserves to be its own entry rather
-than riding in 11.5. It shares the cursor, which is the argument for keeping it
-here; it is a second stream and a server-side resource, which is the argument for
-splitting it.
+What changes is documentation, not protocol: **`logPath` is demoted** to what it
+is — a convenience naming the human's artifact on the reader's machine — and
+explicitly *not* a contract an agent should depend on, since for a remote bridge
+it names a file the agent cannot open. The server-side session record is the
+agent's answer, and it costs nothing to build.
 
 ### A single marker explains the silence in the user's own log
 
@@ -363,7 +355,6 @@ float per record; `_estimate_size`'s accounting barely notices.
 class Command(StrEnum):
     GET_LOG_POSITION = "getLogPosition"
     WAIT_FOR_LOG = "waitForLog"
-    GET_TRANSCRIPT = "getTranscript"
 
 @dataclass
 class GetLogParams:            # 0020's, extended
@@ -382,17 +373,6 @@ class LogSliceResult:          # 0020's, extended
     nextPosition: int          # pass as sincePosition to continue the tail
     # text / entries / matched / truncated / fromCommandId / toCommandId /
     # capturedAtLevel are unchanged
-
-@dataclass
-class GetTranscriptParams:
-    sincePosition: int = 0     # line index; same cursor idiom as getLog
-    maxLines: int = 500
-
-@dataclass
-class TranscriptResult:
-    lines: list[str]
-    nextPosition: int
-    complete: bool             # False while more lines remain to page
 
 @dataclass
 class SpeechEntry:             # existing; gains one field
@@ -441,33 +421,25 @@ an older bridge simply does not advertise them.
    position it was captured at, so a ring entry can be placed on the log's
    timeline. The buffer takes the position as a value; it does not learn about
    the journal.
-8. **`domain/ports/transcript.py`** — gains `read(since, max_lines)`; the file
-   adapter reads its own lines back, and `path` is demoted in the docs to a
-   local convenience.
-9. **`domain/controllers/commands/get_transcript.py`** — `marks_log = False`,
-   like every other read.
-10. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
-    `LogReader` port and the bridge client gain both. The connection controller
-    pulls the transcript during `disconnect_reader`, **before** `bye`, guarded
-    so a failed pull never blocks teardown, and publishes it as an MCP resource
-    beside the session info one.
+8. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
+   `LogReader` port and the bridge client gain both. Separately, and needing no
+   wire change, the server keeps its own session record from the traffic it
+   already handles, and publishes it beside the session info resource.
 
 ## Tests
 
-8. Journal: `slice_since`, `slice_last_seconds`, an aged-out `sincePosition`
+9. Journal: `slice_since`, `slice_last_seconds`, an aged-out `sincePosition`
    reporting truncation, epoch time surviving the ring.
-9. `GetLogHandler`: each anchor, and that supplying two is refused.
-10. `WaitForLogHandler`: a match, a timeout, and that a long wait does not trip the
+10. `GetLogHandler`: each anchor, and that supplying two is refused.
+11. `WaitForLogHandler`: a match, a timeout, and that a long wait does not trip the
     watchdogs.
-11. Session: spans are contiguous with no gaps; a span extends to the next marking
+12. Session: spans are contiguous with no gaps; a span extends to the next marking
     command; `getLog` does not close the span it reads.
-12. Go tool tests and conformance for both new commands.
-13. Speech entries carry a journal position that actually falls inside the
+13. Go tool tests and conformance for both new commands.
+14. Speech entries carry a journal position that actually falls inside the
     window the utterance belongs to, in **both** capture modes.
-14. `getTranscript` pages with the cursor, reports `complete`, and a transcript
-    pulled at teardown matches the file on disk line for line.
-15. A bridge that fails or stalls the transcript pull still tears down cleanly,
-    and the session simply has no transcript resource.
+15. The server's own session record covers a whole session from its traffic
+    alone, with no bridge call added.
 16. **Live** — the two shapes this entry exists for, which is where 11.4's model
     failed: a trigger followed by a poll loop while the consequences arrive, and a
     human-driven session found via `lastSeconds`.
@@ -490,12 +462,9 @@ an older bridge simply does not advertise them.
 7. On a busy session, poll slower than the ring turns over: `truncated: true`
    rather than a silent gap. Use `debug`, not `io` — at 12, `io` excludes the
    DEBUG records that actually flood.
-8. Run a silent session, disconnect, then read the transcript **as an MCP
-   resource** with the bridge gone: the narrative is complete and no path was
-   ever opened by the agent.
-9. NVDA's own log carries one `speech suppressed` marker at the start of that
+8. NVDA's own log carries one `speech suppressed` marker at the start of that
    session and one `restored` at the end, and nothing per utterance.
-10. In a **silent** session, take a speech entry's `logPosition` and read the
+9. In a **silent** session, take a speech entry's `logPosition` and read the
    journal around it: the surrounding events are there even though the
    `Speaking` record itself is not, which is the whole point of the coordinate.
 
@@ -506,9 +475,9 @@ an older bridge simply does not advertise them.
 - Absolute timestamp queries. `lastSeconds` covers the case without a clock-format
   agreement; positions cover everything needing precision.
 - Regular expressions, still. Substrings cover the cases and cannot hang the reader.
-- Transcripts of *previous* sessions. The server publishes the one it pulled at
-  teardown; older files stay on the reader's disk for the human, and hunting
-  through them is not a wire concern.
+- Moving the session transcript across the wire (see above). It stays the
+  human's artifact on the reader's disk; the agent's equivalent is the
+  server's own record, which needs no protocol.
 - Cross-session history. The journal remains session-scoped; the answer for
   post-mortems is NVDA's own `nvda.log`, bracketed by the transcript's timestamps.
 
