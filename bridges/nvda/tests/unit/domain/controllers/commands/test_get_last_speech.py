@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request, speech_with
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.get_last_speech import GetLastSpeechHandler
+from support.context import make_context, request, speech_with
 
 
 def test_get_last_speech(clock: FakeClock) -> None:

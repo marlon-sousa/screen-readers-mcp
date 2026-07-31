@@ -24,49 +24,49 @@ from .nvda_main_thread import run_on_main
 
 
 class NvdaStateInspector(StateInspector):
-    """Reads speech mode, sleep mode, input help, and browse mode on NVDA's main thread."""
+	"""Reads speech mode, sleep mode, input help, and browse mode on NVDA's main thread."""
 
-    def state(self) -> ReaderState:
-        return run_on_main(self._read_state, block=True)
+	def state(self) -> ReaderState:
+		return run_on_main(self._read_state, block=True)
 
-    @staticmethod
-    def _read_state() -> ReaderState:
-        # Speech mode: speech.getState().speechMode.name -- one of "off", "beeps",
-        # "talk", "onDemand". Re-exported from speech/__init__.py.
-        speech_mode = speech.getState().speechMode.name
+	@staticmethod
+	def _read_state() -> ReaderState:
+		# Speech mode: speech.getState().speechMode.name -- one of "off", "beeps",
+		# "talk", "onDemand". Re-exported from speech/__init__.py.
+		speech_mode = speech.getState().speechMode.name
 
-        # Sleep mode from the focus object (api.getFocusObject().sleepMode).
-        focus = api.getFocusObject()
-        sleep_mode = bool(focus.sleepMode) if focus is not None and hasattr(focus, "sleepMode") else False
+		# Sleep mode from the focus object (api.getFocusObject().sleepMode).
+		focus = api.getFocusObject()
+		sleep_mode = bool(focus.sleepMode) if focus is not None and hasattr(focus, "sleepMode") else False
 
-        # Input help: True while NVDA+1 is active (gestures described, not performed).
-        input_help = bool(inputCore.manager.isInputHelpActive)
+		# Input help: True while NVDA+1 is active (gestures described, not performed).
+		input_help = bool(inputCore.manager.isInputHelpActive)
 
-        # Browse mode: tri-state derivation from the focus object's treeInterceptor.
-        browse_mode = _derive_browse_mode(focus)
+		# Browse mode: tri-state derivation from the focus object's treeInterceptor.
+		browse_mode = _derive_browse_mode(focus)
 
-        return ReaderState(
-            browse_mode=browse_mode,
-            speech_mode=speech_mode,
-            sleep_mode=sleep_mode,
-            input_help=input_help,
-        )
+		return ReaderState(
+			browse_mode=browse_mode,
+			speech_mode=speech_mode,
+			sleep_mode=sleep_mode,
+			input_help=input_help,
+		)
 
 
 def _derive_browse_mode(focus: object) -> str:
-    """Derive the browse/focus/none tri-state from the focus object.
+	"""Derive the browse/focus/none tri-state from the focus object.
 
-    NVDA's own ``browseMode.reportPassThrough`` reads
-    ``treeInterceptor.passThrough``, so:
-    - No treeInterceptor at all → ``"none"`` (neither mode applies).
-    - Has a treeInterceptor, passThrough is False → ``"browse"``.
-    - Has a treeInterceptor, passThrough is True → ``"focus"``.
-    """
-    if focus is None or not hasattr(focus, "treeInterceptor"):
-        return "none"
-    ti = focus.treeInterceptor  # type: ignore[union-attr]
-    if ti is None:
-        return "none"
-    if not hasattr(ti, "passThrough"):
-        return "none"
-    return "focus" if bool(ti.passThrough) else "browse"  # type: ignore[union-attr]
+	NVDA's own ``browseMode.reportPassThrough`` reads
+	``treeInterceptor.passThrough``, so:
+	- No treeInterceptor at all → ``"none"`` (neither mode applies).
+	- Has a treeInterceptor, passThrough is False → ``"browse"``.
+	- Has a treeInterceptor, passThrough is True → ``"focus"``.
+	"""
+	if focus is None or not hasattr(focus, "treeInterceptor"):
+		return "none"
+	ti = focus.treeInterceptor  # type: ignore[union-attr]
+	if ti is None:
+		return "none"
+	if not hasattr(ti, "passThrough"):
+		return "none"
+	return "focus" if bool(ti.passThrough) else "browse"  # type: ignore[union-attr]

@@ -9,19 +9,22 @@ from fakes.clock import FakeClock
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-from support.context import RecordingClose, speech_with
-
 from nvdaMcpBridge.domain.controllers.commands.session_context import SessionContext
 from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
+from support.context import RecordingClose, speech_with
 
 
 def _bare(clock: FakeClock) -> SessionContext:
-	return SessionContext(clock, FakeTranscript(), RecordingClose(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter())
+	return SessionContext(
+		clock, FakeTranscript(), RecordingClose(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
+	)
 
 
 def test_close_delegates_the_reason(clock: FakeClock) -> None:
 	close = RecordingClose()
-	ctx = SessionContext(clock, FakeTranscript(), close, FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter())
+	ctx = SessionContext(
+		clock, FakeTranscript(), close, FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
+	)
 	ctx.close(TeardownReason.CLIENT_BYE)
 	assert close.reasons == [TeardownReason.CLIENT_BYE]
 

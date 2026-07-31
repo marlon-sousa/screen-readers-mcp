@@ -29,17 +29,17 @@ from .nvda_text_typer import NvdaTextTyper
 
 
 class NvdaAdapterFactory(AdapterFactory):
-    """Assembles the real NVDA-backed AdapterSet for the negotiated capture mode."""
+	"""Assembles the real NVDA-backed AdapterSet for the negotiated capture mode."""
 
-    def build(self, mode: protocol.CaptureMode) -> AdapterSet:
-        silent = mode is protocol.CaptureMode.SILENT
-        speech_source = NvdaSilentSpeechSource() if silent else NvdaLiveSpeechSource()
-        return AdapterSet(
-            speech_source=speech_source,
-            braille_source=NvdaBrailleSource(),
-            gesture_sender=NvdaGestureSender(),
-            text_typer=NvdaTextTyper(),
-            focus_inspector=NvdaFocusInspector(),
-            state_inspector=NvdaStateInspector(),
-            config_accessor=NvdaConfigAccessor(),
-        )
+	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
+		silent = mode is protocol.CaptureMode.SILENT
+		speech_source = NvdaSilentSpeechSource() if silent else NvdaLiveSpeechSource()
+		return AdapterSet(
+			speech_source=speech_source,
+			braille_source=NvdaBrailleSource(),
+			gesture_sender=NvdaGestureSender(),
+			text_typer=NvdaTextTyper(),
+			focus_inspector=NvdaFocusInspector(),
+			state_inspector=NvdaStateInspector(),
+			config_accessor=NvdaConfigAccessor(),
+		)

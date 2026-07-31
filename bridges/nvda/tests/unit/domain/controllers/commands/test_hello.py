@@ -8,9 +8,8 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
-from support.context import make_context
-
 from nvdaMcpBridge import protocol as p
+from support.context import make_context
 
 #: Stand-in for the installed add-on version reported in hello.
 BRIDGE_VERSION = "9.9.9-test"
@@ -19,9 +18,7 @@ from nvdaMcpBridge.domain.controllers.commands.hello import HelloHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 
 
-def _hello(
-	mode: str, version: int = p.PROTOCOL_VERSION, *, log_level: p.LogLevel | None = None
-) -> p.Request:
+def _hello(mode: str, version: int = p.PROTOCOL_VERSION, *, log_level: p.LogLevel | None = None) -> p.Request:
 	params: dict[str, object] = {"mode": mode, "protocolVersion": version}
 	if log_level is not None:
 		params["logLevel"] = log_level.value
@@ -57,7 +54,7 @@ def test_silent_hello_builds_and_reports(clock: FakeClock) -> None:
 	assert result.reader == p.ReaderInfo(name="nvda", version="2026.1.0")
 	assert result.capabilities == list(NVDA_CAPABILITIES)
 	assert result.logPath == transcript.path
-	
+
 	# No logLevel requested -- capture still starts, just with no level change.
 	assert log_capture.events == [("start", None)]
 

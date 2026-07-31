@@ -10,11 +10,11 @@
 
 from __future__ import annotations
 
+from .. import protocol
 from ..domain.entities.connection_mode import ConnectionMode
 from .named_pipe_listener import NamedPipeListener
 from .ports.listener import Listener
 from .tcp_listener import TcpListener
-from .. import protocol
 
 
 def build_listener(mode: ConnectionMode) -> Listener:

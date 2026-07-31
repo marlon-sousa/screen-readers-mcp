@@ -13,17 +13,17 @@ from nvdaMcpBridge.domain.ports.state_inspector import ReaderState, StateInspect
 
 
 class FakeStateInspector(StateInspector):
-    """Returns a configurable ReaderState; records every call."""
+	"""Returns a configurable ReaderState; records every call."""
 
-    def __init__(self) -> None:
-        self.calls: list[None] = []
-        self.reader_state: ReaderState = ReaderState(
-            browse_mode="none",
-            speech_mode="talk",
-            sleep_mode=False,
-            input_help=False,
-        )
+	def __init__(self) -> None:
+		self.calls: list[None] = []
+		self.reader_state: ReaderState = ReaderState(
+			browse_mode="none",
+			speech_mode="talk",
+			sleep_mode=False,
+			input_help=False,
+		)
 
-    def state(self) -> ReaderState:
-        self.calls.append(None)
-        return self.reader_state
+	def state(self) -> ReaderState:
+		self.calls.append(None)
+		return self.reader_state

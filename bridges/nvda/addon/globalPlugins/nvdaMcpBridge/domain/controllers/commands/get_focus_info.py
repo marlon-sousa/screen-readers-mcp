@@ -18,16 +18,16 @@ from .... import protocol
 from .command_handler import CommandHandler
 
 if TYPE_CHECKING:
-    from .session_context import SessionContext
+	from .session_context import SessionContext
 
 
 class GetFocusInfoHandler(CommandHandler):
-    def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
-        info = ctx.adapter_set.focus_inspector.focus_info()
-        return protocol.FocusInfoResult(
-            name=info.name,
-            role=info.role,
-            states=info.states,
-            value=info.value,
-            appModule=info.app_module,
-        )
+	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
+		info = ctx.adapter_set.focus_inspector.focus_info()
+		return protocol.FocusInfoResult(
+			name=info.name,
+			role=info.role,
+			states=info.states,
+			value=info.value,
+			appModule=info.app_module,
+		)

@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import braille_with, make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.get_braille import GetBrailleHandler
+from support.context import braille_with, make_context, request
 
 
 def test_get_braille_reads_since_index(clock: FakeClock) -> None:

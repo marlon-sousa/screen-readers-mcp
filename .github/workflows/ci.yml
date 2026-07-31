@@ -27,6 +27,13 @@ jobs:
         run: uv run --python 3.13 pytest -q
       - name: Pyright
         run: uv run --python 3.13 pyright
+      # Formatting is HALF of this, and it was the missing half: `ruff check`
+      # says nothing about indentation, so a file could be space-indented in a
+      # tab repo and pass every gate. Both run here and in `poe lint`.
+      - name: Ruff (lint + format)
+        run: |
+          uv run --python 3.13 --with ruff ruff check .
+          uv run --python 3.13 --with ruff ruff format --check .
       # Drift gate: the published JSON Schema is generated from the dataclasses,
       # so regenerating it must leave the committed file byte-identical. If a
       # protocol change forgot to regenerate, git diff makes CI red.
@@ -146,3 +153,9 @@ jobs:
         run: uv run --python 3.13 --with pytest pytest -q
       - name: Pyright
         run: uv run --python 3.13 --with pyright --with pytest pyright
+      # See the `shared` job: the format check is the half that was missing, and
+      # it is why PR #46 could add a dozen space-indented files to a tab repo.
+      - name: Ruff (lint + format)
+        run: |
+          uv run --python 3.13 --with ruff ruff check addon tests
+          uv run --python 3.13 --with ruff ruff format --check addon tests

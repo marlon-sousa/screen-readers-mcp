@@ -43,56 +43,56 @@ from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
 from .wait_for_user_reply import WaitForUserReplyHandler
 
 if TYPE_CHECKING:
-    from ...ports.adapter_factory import AdapterFactory
+	from ...ports.adapter_factory import AdapterFactory
 
 #: The command groups the NVDA bridge serves (spec 0007). All eight groups are
 #: live: interact (announce, askUser, waitForUserReply), speech, braille,
 #: gestures, focus, state, config, and typing.
 NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
-    protocol.Capability.SPEECH,
-    protocol.Capability.BRAILLE,
-    protocol.Capability.GESTURES,
-    protocol.Capability.FOCUS,
-    protocol.Capability.STATE,
-    protocol.Capability.CONFIG,
-    protocol.Capability.INTERACT,
-    protocol.Capability.TYPING,
-    protocol.Capability.LOG,
+	protocol.Capability.SPEECH,
+	protocol.Capability.BRAILLE,
+	protocol.Capability.GESTURES,
+	protocol.Capability.FOCUS,
+	protocol.Capability.STATE,
+	protocol.Capability.CONFIG,
+	protocol.Capability.INTERACT,
+	protocol.Capability.TYPING,
+	protocol.Capability.LOG,
 )
 
 
 def build_command_registry(
-    factory: AdapterFactory, nvda_version: str, bridge_version: str = "unknown"
+	factory: AdapterFactory, nvda_version: str, bridge_version: str = "unknown"
 ) -> dict[str, CommandHandler]:
-    """Construct the command -> handler map for a bridge (one per process).
+	"""Construct the command -> handler map for a bridge (one per process).
 
-    This is the NVDA bridge, so it stamps its reader identity here: name
-    ``"nvda"``, the version wiring passed, and the capabilities it actually
-    serves (:data:`NVDA_CAPABILITIES` -- all eight groups).
-    """
-    reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
-    capabilities = list(NVDA_CAPABILITIES)
-    registry: dict[str, CommandHandler] = {
-        protocol.Command.HELLO: HelloHandler(factory, reader, capabilities, bridge_version),
-        protocol.Command.BYE: ByeHandler(),
-        protocol.Command.PING: PingHandler(),
-        protocol.Command.ECHO: EchoHandler(),
-        protocol.Command.PRESS_GESTURE: PressGestureHandler(),
-        protocol.Command.TYPE_TEXT: TypeTextHandler(),
-        protocol.Command.GET_SPEECH: GetSpeechHandler(),
-        protocol.Command.GET_LAST_SPEECH: GetLastSpeechHandler(),
-        protocol.Command.GET_NEXT_SPEECH_INDEX: GetNextSpeechIndexHandler(),
-        protocol.Command.WAIT_FOR_SPEECH: WaitForSpeechHandler(),
-        protocol.Command.WAIT_FOR_SPEECH_TO_FINISH: WaitForSpeechToFinishHandler(),
-        protocol.Command.GET_BRAILLE: GetBrailleHandler(),
-        protocol.Command.ANNOUNCE: AnnounceHandler(),
-        protocol.Command.ASK_USER: AskUserHandler(),
-        protocol.Command.WAIT_FOR_USER_REPLY: WaitForUserReplyHandler(),
-        protocol.Command.GET_FOCUS_INFO: GetFocusInfoHandler(),
-        protocol.Command.GET_STATE: GetStateHandler(),
-        protocol.Command.GET_CONFIG: GetConfigHandler(),
-        protocol.Command.SET_CONFIG: SetConfigHandler(),
-        protocol.Command.GET_LOG: GetLogHandler(),
-        protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
-    }
-    return registry
+	This is the NVDA bridge, so it stamps its reader identity here: name
+	``"nvda"``, the version wiring passed, and the capabilities it actually
+	serves (:data:`NVDA_CAPABILITIES` -- all eight groups).
+	"""
+	reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
+	capabilities = list(NVDA_CAPABILITIES)
+	registry: dict[str, CommandHandler] = {
+		protocol.Command.HELLO: HelloHandler(factory, reader, capabilities, bridge_version),
+		protocol.Command.BYE: ByeHandler(),
+		protocol.Command.PING: PingHandler(),
+		protocol.Command.ECHO: EchoHandler(),
+		protocol.Command.PRESS_GESTURE: PressGestureHandler(),
+		protocol.Command.TYPE_TEXT: TypeTextHandler(),
+		protocol.Command.GET_SPEECH: GetSpeechHandler(),
+		protocol.Command.GET_LAST_SPEECH: GetLastSpeechHandler(),
+		protocol.Command.GET_NEXT_SPEECH_INDEX: GetNextSpeechIndexHandler(),
+		protocol.Command.WAIT_FOR_SPEECH: WaitForSpeechHandler(),
+		protocol.Command.WAIT_FOR_SPEECH_TO_FINISH: WaitForSpeechToFinishHandler(),
+		protocol.Command.GET_BRAILLE: GetBrailleHandler(),
+		protocol.Command.ANNOUNCE: AnnounceHandler(),
+		protocol.Command.ASK_USER: AskUserHandler(),
+		protocol.Command.WAIT_FOR_USER_REPLY: WaitForUserReplyHandler(),
+		protocol.Command.GET_FOCUS_INFO: GetFocusInfoHandler(),
+		protocol.Command.GET_STATE: GetStateHandler(),
+		protocol.Command.GET_CONFIG: GetConfigHandler(),
+		protocol.Command.SET_CONFIG: SetConfigHandler(),
+		protocol.Command.GET_LOG: GetLogHandler(),
+		protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
+	}
+	return registry

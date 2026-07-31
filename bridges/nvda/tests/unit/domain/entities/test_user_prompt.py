@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import pytest
 from fakes.clock import FakeClock
-
 from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 
 
@@ -41,10 +40,12 @@ def test_wait_returns_true_after_answer(clock: FakeClock) -> None:
 	prompt = UserPrompt("do the thing", clock)
 	# Inject the answer as a side effect of the clock's sleep.
 	original_sleep = clock.sleep
+
 	def sleep_with_answer(seconds: float) -> None:
 		original_sleep(seconds)
 		if not prompt.answered:
 			prompt.answer()
+
 	clock.sleep = sleep_with_answer  # type: ignore[method-assign]
 	assert prompt.wait(timeout=1.0) is True
 

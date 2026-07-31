@@ -53,8 +53,7 @@ class IniBridgeConfig(BridgeConfig):
 			return ConnectionMode(raw)
 		except ValueError:
 			self._log.warning(
-				f"nvdaMcpBridge: unrecognised connection mode {raw!r}; "
-				f"using default ({DEFAULT.value})"
+				f"nvdaMcpBridge: unrecognised connection mode {raw!r}; using default ({DEFAULT.value})"
 			)
 			return DEFAULT
 
@@ -83,9 +82,7 @@ class IniBridgeConfig(BridgeConfig):
 			try:
 				parser.read_string(raw)
 			except configparser.Error:
-				self._log.warning(
-					"nvdaMcpBridge: corrupt config.ini; using defaults"
-				)
+				self._log.warning("nvdaMcpBridge: corrupt config.ini; using defaults")
 		return parser
 
 	def _ensure_section(self, parser: configparser.ConfigParser) -> None:

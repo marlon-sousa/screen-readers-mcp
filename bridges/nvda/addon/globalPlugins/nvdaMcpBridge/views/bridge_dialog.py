@@ -14,9 +14,11 @@
 
 from __future__ import annotations
 
-from gui import guiHelper
+from typing import TYPE_CHECKING
+
 import ui
 import wx
+from gui import guiHelper
 from logHandler import log
 
 from ..adapters.bridge_server import BridgeServer, ServerState
@@ -25,6 +27,10 @@ from ..domain.entities.connection_mode import ConnectionMode
 from ..domain.ports.bridge_config import BridgeConfig
 from ..domain.ports.event_bus import EventBus
 
+if TYPE_CHECKING:
+	# Only for the annotations below: importing plugin.py at runtime would pull
+	# NVDA's globalPluginHandler in, and this module is imported by it.
+	from ..plugin import GlobalPlugin
 
 # -- combo helpers ---------------------------------------------------------------
 
@@ -78,7 +84,7 @@ class BridgeDialog(wx.Dialog):
 		self._event_bus = event_bus
 
 		# Hold a reference to the plugin for start_server().
-		self._plugin: "GlobalPlugin | None" = None
+		self._plugin: GlobalPlugin | None = None
 
 		# Track previous state so we can announce transitions.
 		self._last_state: ServerState | None = None
@@ -97,7 +103,7 @@ class BridgeDialog(wx.Dialog):
 
 	# -- plugin back-reference --------------------------------------------------
 
-	def set_plugin(self, plugin: "GlobalPlugin") -> None:
+	def set_plugin(self, plugin: GlobalPlugin) -> None:
 		"""Give the dialog a back-reference to the plugin so Start can call
 		``plugin.start_server(mode)``."""
 		self._plugin = plugin
@@ -116,9 +122,7 @@ class BridgeDialog(wx.Dialog):
 			_("TCP"),
 		]
 		# Translators: Label above the connection mode combo box.
-		self._mode_combo = main_helper.addLabeledControl(
-			_("Connection mode:"), wx.Choice, choices=choices
-		)
+		self._mode_combo = main_helper.addLabeledControl(_("Connection mode:"), wx.Choice, choices=choices)
 		self._mode_combo.Bind(wx.EVT_CHOICE, self._on_mode_changed)
 
 		# 2. Auto-start checkbox

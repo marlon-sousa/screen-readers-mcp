@@ -34,8 +34,8 @@ import json
 import sys
 import tempfile
 import uuid
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 _SUPPORT_DIR = Path(__file__).resolve().parent
 _TESTS_DIR = _SUPPORT_DIR.parent
@@ -70,7 +70,6 @@ from fakes.announcer import FakeAnnouncer  # noqa: E402
 from fakes.log_capture import FakeLogCapture  # noqa: E402
 from fakes.session_signals import FakeSessionSignals  # noqa: E402
 from fakes.user_prompter import FakeUserPrompter  # noqa: E402
-
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, SessionFactory  # noqa: E402
 from nvdaMcpBridge.adapters.ports.listener import Listener  # noqa: E402
 from nvdaMcpBridge.adapters.ports.transport import Transport  # noqa: E402
@@ -155,7 +154,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 	args = parser.parse_args(argv)
 
 	transport: str = args.transport
-	logs_dir = Path(args.logs_dir) if args.logs_dir else Path(tempfile.mkdtemp(prefix="nvda-mcp-conformance-"))
+	logs_dir = (
+		Path(args.logs_dir) if args.logs_dir else Path(tempfile.mkdtemp(prefix="nvda-mcp-conformance-"))
+	)
 
 	server = BridgeServer(_build_listener(transport), _session_factory(logs_dir))
 	server.start()

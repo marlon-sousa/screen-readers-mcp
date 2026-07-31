@@ -23,7 +23,6 @@ from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
 from fakes.user_prompter import FakeUserPrompter
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, ServerState
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
@@ -74,7 +73,14 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
-			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
+			transport,
+			factory,
+			tmp_path,
+			"2026.1.0",
+			FakeSessionSignals(),
+			FakeAnnouncer(),
+			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	listener = TcpListener("127.0.0.1", 0)

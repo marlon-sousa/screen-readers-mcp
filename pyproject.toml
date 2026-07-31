@@ -159,5 +159,5 @@ cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
 
 [tool.poe.tasks.ci]
 help = "Everything CI runs, in CI's order. Green here means green there."
-sequence = ["doctor", "shared", "bridge", "types", "gates", "go", "conformance"]
+sequence = ["doctor", "shared", "bridge", "types", "lint", "gates", "go", "conformance"]
 ignore_fail = false

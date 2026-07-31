@@ -29,17 +29,17 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class ReaderState:
-    """A snapshot of the reader's mode-state, all sent as stable names."""
+	"""A snapshot of the reader's mode-state, all sent as stable names."""
 
-    browse_mode: str  # "browse" | "focus" | "none"
-    speech_mode: str  # "talk" | "off" | "beeps" | "onDemand"
-    sleep_mode: bool
-    input_help: bool
+	browse_mode: str  # "browse" | "focus" | "none"
+	speech_mode: str  # "talk" | "off" | "beeps" | "onDemand"
+	sleep_mode: bool
+	input_help: bool
 
 
 class StateInspector(ABC):
-    """Answers "what mode is the reader in right now?"."""
+	"""Answers "what mode is the reader in right now?"."""
 
-    @abstractmethod
-    def state(self) -> ReaderState:
-        """Return the current reader state snapshot."""
+	@abstractmethod
+	def state(self) -> ReaderState:
+		"""Return the current reader state snapshot."""

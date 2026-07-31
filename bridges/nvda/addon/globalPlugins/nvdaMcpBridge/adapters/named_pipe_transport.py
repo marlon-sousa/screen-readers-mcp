@@ -83,7 +83,7 @@ OPEN_EXISTING: Final = 3
 #: A read/write end never gets EOF from anything but these -- the pipe
 #: analogue of SocketTransport treating "any OTHER OSError" as a dropped peer.
 _EOF_ERRORS: Final = frozenset(
-    {ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED, ERROR_NO_DATA, ERROR_OPERATION_ABORTED}
+	{ERROR_BROKEN_PIPE, ERROR_PIPE_NOT_CONNECTED, ERROR_NO_DATA, ERROR_OPERATION_ABORTED}
 )
 
 

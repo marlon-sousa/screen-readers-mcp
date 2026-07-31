@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nvdaMcpBridge.adapters.keyboard_gesture_name import bare_key_name
 
 

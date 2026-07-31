@@ -132,7 +132,10 @@ class NvdaLogCapture(LogCapture):
 		return self._journal.mark()
 
 	def slice(
-		self, start: int, end: int, *,
+		self,
+		start: int,
+		end: int,
+		*,
 		min_level: protocol.LogLevel | None = None,
 		contains: list[str] | None = None,
 		exclude: list[str] | None = None,
@@ -140,7 +143,8 @@ class NvdaLogCapture(LogCapture):
 		max_entries: int = 200,
 	) -> tuple[str, int, int, bool]:
 		return self._journal.slice(
-			start, end,
+			start,
+			end,
 			min_level=min_level.value if min_level else None,
 			contains=contains,
 			exclude=exclude,

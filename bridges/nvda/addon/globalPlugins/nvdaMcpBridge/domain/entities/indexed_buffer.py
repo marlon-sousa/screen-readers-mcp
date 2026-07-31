@@ -24,7 +24,8 @@
 from __future__ import annotations
 
 import threading
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
 	from ..ports.clock import Clock

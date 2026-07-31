@@ -7,11 +7,10 @@ import pytest
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.transcript import FakeTranscript
-from support.context import adapters_from, make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.type_text import TypeTextHandler
 from nvdaMcpBridge.domain.ports.text_typer import TypingError
+from support.context import adapters_from, make_context, request
 
 
 def _typed_events(transcript: FakeTranscript) -> list[tuple[object, ...]]:

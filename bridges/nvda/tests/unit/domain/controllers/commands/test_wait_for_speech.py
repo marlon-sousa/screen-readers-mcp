@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request, speech_with
-
 from nvdaMcpBridge.domain.controllers.commands.wait_for_speech import WaitForSpeechHandler
+from support.context import make_context, request, speech_with
 
 
 def test_wait_for_speech_found(clock: FakeClock) -> None:

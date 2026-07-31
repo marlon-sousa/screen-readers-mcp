@@ -30,8 +30,7 @@ class AskUserHandler(CommandHandler):
 		prompt = UserPrompt(params.prompt, ctx.clock)
 		if not ctx.set_outstanding_prompt(prompt):
 			raise CommandError(
-				"a prompt is already outstanding; wait for it or let it expire "
-				"before asking another"
+				"a prompt is already outstanding; wait for it or let it expire before asking another"
 			)
 
 		ctx.suspend_speech()

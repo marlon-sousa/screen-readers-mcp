@@ -45,9 +45,7 @@ DEFAULT_FIELDS: tuple[str, ...] = ("time", "level", "module", "message")
 #: Every field a slice may render. An unknown name is an error rather than a
 #: silent omission: a typo'd projection would otherwise return plausible-looking
 #: text with a column quietly missing.
-FIELD_NAMES: frozenset[str] = frozenset(
-	{"time", "level", "module", "message", "thread", "thread_id"}
-)
+FIELD_NAMES: frozenset[str] = frozenset({"time", "level", "module", "message", "thread", "thread_id"})
 
 #: Map wire log-level names to NVDA's own logger level numbers, for comparison.
 #: These are NVDA's numbers, not guesses: ``logHandler.Logger`` imports the

@@ -26,7 +26,6 @@ from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
 from fakes.user_prompter import FakeUserPrompter
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters import named_pipe_transport
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, ServerState
@@ -81,7 +80,14 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
-			transport, factory, tmp_path, "2026.1.0", FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
+			transport,
+			factory,
+			tmp_path,
+			"2026.1.0",
+			FakeSessionSignals(),
+			FakeAnnouncer(),
+			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	pipe_name = _unique_pipe_name()
@@ -151,7 +157,8 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 			"2026.1.0",
 			FakeSessionSignals(),
 			FakeAnnouncer(),
-			FakeLogCapture(), FakeUserPrompter(),
+			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	server = BridgeServer(NamedPipeListener(_unique_pipe_name()), session_factory)
@@ -175,7 +182,8 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 			"2026.1.0",
 			FakeSessionSignals(),
 			FakeAnnouncer(),
-			FakeLogCapture(), FakeUserPrompter(),
+			FakeLogCapture(),
+			FakeUserPrompter(),
 		)
 
 	pipe_name = _unique_pipe_name()

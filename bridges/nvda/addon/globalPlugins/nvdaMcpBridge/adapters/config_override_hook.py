@@ -38,7 +38,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 #: Validates and coerces a value being written to an overridden key, mirroring
 #: what NVDA's own __setitem__ would have done. Supplied by the caller (it needs
@@ -65,7 +66,7 @@ def _hook_getitem(self: Any, key: Any, checkValidity: bool = True) -> Any:
 	overrides = _active
 	if not overrides:
 		return _original_getitem(self, key, checkValidity)
-	full_path = self.path + (key,)  # type: ignore[attr-defined]
+	full_path = (*self.path, key)  # type: ignore[attr-defined]
 	if full_path in overrides:
 		return overrides[full_path]
 	return _original_getitem(self, key, checkValidity)
@@ -81,7 +82,7 @@ def _hook_setitem(self: Any, key: Any, val: Any) -> None:
 	"""
 	overrides = _active
 	if overrides:
-		full_path = self.path + (key,)  # type: ignore[attr-defined]
+		full_path = (*self.path, key)  # type: ignore[attr-defined]
 		if full_path in overrides:
 			overrides[full_path] = _coerce(full_path, val) if _coerce else val
 			return
@@ -100,7 +101,7 @@ def install(
 	themselves (which would make ``remove`` a no-op and leak the override
 	forever).
 	"""
-	global _active, _coerce, _original_getitem, _original_setitem, _target_class  # noqa: PLW0603
+	global _active, _coerce, _original_getitem, _original_setitem, _target_class
 	_active = overrides
 	_coerce = coerce
 	if _target_class is not None:
@@ -114,7 +115,7 @@ def install(
 
 def remove() -> None:
 	"""Remove both hooks, restoring the originals. Idempotent."""
-	global _active, _coerce, _original_getitem, _original_setitem, _target_class  # noqa: PLW0603
+	global _active, _coerce, _original_getitem, _original_setitem, _target_class
 	_active = None
 	_coerce = None
 	if _target_class is None:

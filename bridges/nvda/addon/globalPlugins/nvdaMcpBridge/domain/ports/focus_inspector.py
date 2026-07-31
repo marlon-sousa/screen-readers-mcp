@@ -21,24 +21,24 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class FocusInfo:
-    """A snapshot of the current focus object, encoding its role and states as
-    stable enum names (not display strings, which are localized)."""
+	"""A snapshot of the current focus object, encoding its role and states as
+	stable enum names (not display strings, which are localized)."""
 
-    name: str
-    role: str
-    states: list[str]
-    value: str | None
-    app_module: str | None
+	name: str
+	role: str
+	states: list[str]
+	value: str | None
+	app_module: str | None
 
 
 class FocusInspector(ABC):
-    """Answers "what is NVDA focused on right now?"."""
+	"""Answers "what is NVDA focused on right now?"."""
 
-    @abstractmethod
-    def focus_info(self) -> FocusInfo:
-        """Return the current focus snapshot.
+	@abstractmethod
+	def focus_info(self) -> FocusInfo:
+		"""Return the current focus snapshot.
 
-        A null focus (nothing focused) yields an empty ``FocusInfo`` (all fields
-        defaulted) rather than raising, so an agent can check for it with a
-        normal assertion.
-        """
+		A null focus (nothing focused) yields an empty ``FocusInfo`` (all fields
+		defaulted) rather than raising, so an agent can check for it with a
+		normal assertion.
+		"""

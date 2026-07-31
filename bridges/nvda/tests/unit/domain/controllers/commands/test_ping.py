@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.ping import PingHandler
+from support.context import make_context, request
 
 
 def test_ping_returns_ack(clock: FakeClock) -> None:

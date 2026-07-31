@@ -55,17 +55,13 @@ class WaitForUserReplyHandler(CommandHandler):
 		except PromptExpired:
 			ctx.resume_speech()
 			ctx.clear_outstanding_prompt()
-			ctx.transcript.note(
-				f"askUser: prompt {prompt.ticket!r} expired before answer"
-			)
+			ctx.transcript.note(f"askUser: prompt {prompt.ticket!r} expired before answer")
 			return protocol.WaitForUserReplyResult(answered=False)
 
 		if answered:
 			ctx.resume_speech()
 			ctx.clear_outstanding_prompt()
-			ctx.transcript.note(
-				f"askUser: prompt {prompt.ticket!r} answered"
-			)
+			ctx.transcript.note(f"askUser: prompt {prompt.ticket!r} answered")
 			return protocol.WaitForUserReplyResult(answered=True, text=prompt.text)
 
 		# Poll miss: the window is still open but nothing yet.

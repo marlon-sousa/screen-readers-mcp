@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 from fakes.file_writer import FakeFileWriter
-
 from nvdaMcpBridge.adapters.file_transcript import FileTranscript, create_session_log
 
 

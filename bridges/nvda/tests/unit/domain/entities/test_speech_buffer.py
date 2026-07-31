@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import pytest
 from fakes.clock import FakeClock
-
 from nvdaMcpBridge.domain.entities.speech_buffer import SPEECH_FINISHED_SECONDS, SpeechBuffer
 
 

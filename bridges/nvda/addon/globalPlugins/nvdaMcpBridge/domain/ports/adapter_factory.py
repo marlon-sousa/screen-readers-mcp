@@ -33,20 +33,20 @@ from .text_typer import TextTyper
 
 @dataclass(frozen=True)
 class AdapterSet:
-    """The mode-specific collaborators the Session drives during a session."""
+	"""The mode-specific collaborators the Session drives during a session."""
 
-    speech_source: SpeechSource
-    braille_source: BrailleSource
-    gesture_sender: GestureSender
-    text_typer: TextTyper
-    focus_inspector: FocusInspector
-    state_inspector: StateInspector
-    config_accessor: ConfigAccessor
+	speech_source: SpeechSource
+	braille_source: BrailleSource
+	gesture_sender: GestureSender
+	text_typer: TextTyper
+	focus_inspector: FocusInspector
+	state_inspector: StateInspector
+	config_accessor: ConfigAccessor
 
 
 class AdapterFactory(ABC):
-    """Builds the :class:`AdapterSet` for a capture mode, known only after hello."""
+	"""Builds the :class:`AdapterSet` for a capture mode, known only after hello."""
 
-    @abstractmethod
-    def build(self, mode: protocol.CaptureMode) -> AdapterSet:
-        """Construct the collaborators for ``mode``."""
+	@abstractmethod
+	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
+		"""Construct the collaborators for ``mode``."""

@@ -11,18 +11,17 @@
 from __future__ import annotations
 
 import time
-from typing import Callable
+from collections.abc import Callable
 
+from fakes.event_bus import FakeEventBus
 from fakes.listener import FakeListener
 from fakes.transport import FakeTransport
-from support.session import FakeSession
-
 from nvdaMcpBridge.adapters.bridge_server import BridgeServer, ServerState, ServerStatus
 from nvdaMcpBridge.adapters.ports.transport import Transport
 from nvdaMcpBridge.domain.controllers.session import Session
 from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
 from nvdaMcpBridge.domain.entities.bridge_events import BridgeEvent, BridgeEventType
-from fakes.event_bus import FakeEventBus
+from support.session import FakeSession
 
 
 class RecordingFactory:
@@ -265,9 +264,7 @@ def test_emits_server_status_when_client_connects() -> None:
 	server.start()
 	try:
 		listener.connect(FakeTransport())
-		_wait_until(lambda: any(
-			e.payload.state is ServerState.SESSION_ACTIVE for e in bus.events
-		))
+		_wait_until(lambda: any(e.payload.state is ServerState.SESSION_ACTIVE for e in bus.events))
 	finally:
 		server.stop()
 
@@ -283,9 +280,7 @@ def test_emits_server_status_when_client_disconnects() -> None:
 		_wait_until(_in_state(server, ServerState.SESSION_ACTIVE))
 		factory.sessions[0].finish()
 		_wait_until(_in_state(server, ServerState.LISTENING))
-		assert any(
-			e.payload.state is ServerState.LISTENING for e in bus.events
-		)
+		assert any(e.payload.state is ServerState.LISTENING for e in bus.events)
 	finally:
 		server.stop()
 

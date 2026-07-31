@@ -3,19 +3,20 @@
 
 from __future__ import annotations
 
-from nvdaMcpBridge.adapters.ini_bridge_config import IniBridgeConfig
-from nvdaMcpBridge.domain.entities.connection_mode import DEFAULT, ConnectionMode
 from fakes.config_file import FakeConfigFile
 from fakes.log import FakeLog
-
+from nvdaMcpBridge.adapters.ini_bridge_config import IniBridgeConfig
+from nvdaMcpBridge.domain.entities.connection_mode import DEFAULT, ConnectionMode
 
 # -- helpers ------------------------------------------------------------------
+
 
 def _ini(mode: str = "namedPipe", auto_start: str = "false") -> str:
 	return f"[nvdaMcpBridge]\nconnectionMode = {mode}\nautoStart = {auto_start}\n"
 
 
 # -- defaults (no file) -------------------------------------------------------
+
 
 def test_defaults_when_file_does_not_exist() -> None:
 	cfg = IniBridgeConfig(FakeConfigFile(None), FakeLog())
@@ -30,6 +31,7 @@ def test_defaults_when_file_is_empty() -> None:
 
 
 # -- read ---------------------------------------------------------------------
+
 
 def test_reads_connection_mode() -> None:
 	cfg = IniBridgeConfig(FakeConfigFile(_ini(mode="loopbackTcp")), FakeLog())
@@ -48,6 +50,7 @@ def test_unrecognised_mode_falls_back_to_default() -> None:
 
 # -- write --------------------------------------------------------------------
 
+
 def test_writes_connection_mode() -> None:
 	f = FakeConfigFile(_ini())
 	cfg = IniBridgeConfig(f, FakeLog())
@@ -64,6 +67,7 @@ def test_writes_auto_start() -> None:
 
 # -- corrupt file -------------------------------------------------------------
 
+
 def test_corrupt_file_returns_defaults() -> None:
 	cfg = IniBridgeConfig(FakeConfigFile("this is not valid ini {{{"), FakeLog())
 	assert cfg.get_connection_mode() is DEFAULT
@@ -71,6 +75,7 @@ def test_corrupt_file_returns_defaults() -> None:
 
 
 # -- round-trip ---------------------------------------------------------------
+
 
 def test_round_trip_connection_mode() -> None:
 	f = FakeConfigFile(None)

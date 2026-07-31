@@ -651,6 +651,7 @@ class WaitForUserReplyResult:
 @dataclass
 class GetLogParams:
 	"""Parameters for ``getLog``: anchor, window count, filters and projection."""
+
 	#: The request id whose window to anchor on. Defaults to the most recently
 	#: marked command.
 	commandId: int | None = None
@@ -667,12 +668,14 @@ class GetLogParams:
 @dataclass
 class SetLogLevelParams:
 	"""Raise NVDA's own logging floor for the rest of the session."""
+
 	level: LogLevel
 
 
 @dataclass
 class LogLevelResult:
 	"""The level now in force, and what it replaced."""
+
 	level: LogLevel
 	previous: LogLevel
 
@@ -680,6 +683,7 @@ class LogLevelResult:
 @dataclass
 class LogSliceResult:
 	"""A bounded slice of the log journal for one or more command windows."""
+
 	#: Formatted text, one record per line, like a slice of nvda.log.
 	text: str
 	#: Number of records in ``text``.

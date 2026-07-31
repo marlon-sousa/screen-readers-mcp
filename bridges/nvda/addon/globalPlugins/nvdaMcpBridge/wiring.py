@@ -70,5 +70,13 @@ def build_session(
 		inactivity_timeout=inactivity_timeout,
 	)
 	return Session(
-		channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter,
+		channel,
+		transcript,
+		clock,
+		config,
+		registry,
+		signals,
+		announcer,
+		log_capture,
+		user_prompter,
 	)

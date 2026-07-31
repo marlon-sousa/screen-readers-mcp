@@ -21,7 +21,6 @@ from fakes.log_capture import FakeLogCapture
 from fakes.loopback_transport import loopback_pair
 from fakes.session_signals import FakeSessionSignals
 from fakes.user_prompter import FakeUserPrompter
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
@@ -51,7 +50,14 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 	log_capture = FakeLogCapture()
 	user_prompter = FakeUserPrompter()
 	session = build_session(
-		bridge_end, factory, tmp_path, "2026.1.0", signals, announcer, log_capture, user_prompter,
+		bridge_end,
+		factory,
+		tmp_path,
+		"2026.1.0",
+		signals,
+		announcer,
+		log_capture,
+		user_prompter,
 	)
 	agent = JsonLinesChannel(agent_end)
 
@@ -66,7 +72,7 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		# The multi-reader handshake fields arrive over the real wire (entry 8).
 		assert hello["result"]["reader"] == {"name": "nvda", "version": "2026.1.0"}
 		assert hello["result"]["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
-		
+
 		# Echo an awkward payload -- byte-exact through encode/frame/decode/validate.
 		payload = {"u": "olá café \U0001f600", "nested": [1, 2, {"x": True}], "n": 3.5}
 		agent.write(_request(2, "echo", payload=payload))

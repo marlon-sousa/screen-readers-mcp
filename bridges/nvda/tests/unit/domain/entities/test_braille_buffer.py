@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import pytest
 from fakes.clock import FakeClock
-
 from nvdaMcpBridge.domain.entities.braille_buffer import BrailleBuffer
 
 

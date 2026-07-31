@@ -8,10 +8,9 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-from support.context import adapters_from, make_context, request
-
 from nvdaMcpBridge.domain.controllers.commands.ask_user import AskUserHandler
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
+from support.context import adapters_from, make_context, request
 
 
 def _make_ctx(clock: FakeClock):

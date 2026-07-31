@@ -4,10 +4,9 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request, speech_with
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.get_speech import GetSpeechHandler
+from support.context import make_context, request, speech_with
 
 
 def test_get_speech_reads_since_index(clock: FakeClock) -> None:

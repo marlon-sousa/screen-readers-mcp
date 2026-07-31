@@ -63,7 +63,10 @@ class LogCapture(ABC):
 
 	@abstractmethod
 	def slice(
-		self, start: int, end: int, *,
+		self,
+		start: int,
+		end: int,
+		*,
 		min_level: protocol.LogLevel | None = None,
 		contains: list[str] | None = None,
 		exclude: list[str] | None = None,

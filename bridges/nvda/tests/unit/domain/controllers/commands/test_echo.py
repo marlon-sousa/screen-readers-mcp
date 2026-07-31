@@ -5,10 +5,9 @@ from __future__ import annotations
 
 import pytest
 from fakes.clock import FakeClock
-from support.context import make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.echo import EchoHandler
+from support.context import make_context, request
 
 
 @pytest.mark.parametrize(

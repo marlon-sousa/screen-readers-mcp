@@ -85,6 +85,16 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "sconstruct" = ["F821"]
 
+# E402 (import not at top) is STRUCTURAL in these four: each puts globalPlugins
+# on sys.path, or syncs the shared wire module in, before it can import
+# `nvdaMcpBridge.*` at all -- so the imports genuinely cannot come first. Listed
+# here rather than as a `# noqa: E402` on each of the fourteen import lines,
+# because the reason belongs to the file, not to the line.
+"tests/integration/test_live_nvda_e2e.py" = ["E402"]
+"tests/integration/test_live_nvda_pipe_e2e.py" = ["E402"]
+"tests/integration/test_profile_override.py" = ["E402"]
+"tests/unit/domain/controllers/commands/test_hello.py" = ["E402"]
+
 [tool.pyright]
 pythonVersion = "3.13"       # NVDA 2026.1 embeds CPython 3.13
 pythonPlatform = "Windows"

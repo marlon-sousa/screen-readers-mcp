@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request, speech_with
-
 from nvdaMcpBridge.domain.controllers.commands.get_next_speech_index import GetNextSpeechIndexHandler
+from support.context import make_context, request, speech_with
 
 
 def test_next_index_moves_as_speech_arrives(clock: FakeClock) -> None:

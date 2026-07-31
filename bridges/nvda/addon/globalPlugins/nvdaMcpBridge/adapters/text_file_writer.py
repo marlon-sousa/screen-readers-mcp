@@ -39,7 +39,11 @@ class TextFileWriter(FileWriter):
 	def open(self) -> None:
 		self._path.parent.mkdir(parents=True, exist_ok=True)
 		# buffering=1 is line buffering: a crash cannot lose the tail.
-		self._file = open(self._path, "w", encoding="utf-8", buffering=1)
+		# SIM115 is suppressed below because the handle is deliberately
+		# long-lived: it stays open for the whole session and is closed by
+		# close(), so a context manager here would shut the file before the
+		# first line was ever written.
+		self._file = open(self._path, "w", encoding="utf-8", buffering=1)  # noqa: SIM115
 
 	def write_line(self, text: str) -> None:
 		if self._file is None:

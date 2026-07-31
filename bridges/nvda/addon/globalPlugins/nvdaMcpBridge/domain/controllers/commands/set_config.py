@@ -19,13 +19,13 @@ from .... import protocol
 from .command_handler import CommandHandler
 
 if TYPE_CHECKING:
-    from .session_context import SessionContext
+	from .session_context import SessionContext
 
 
 class SetConfigHandler(CommandHandler):
-    mutates_reader = True
+	mutates_reader = True
 
-    def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
-        params = protocol.from_dict(protocol.SetConfigParams, request.params)
-        prior = ctx.adapter_set.config_accessor.set(params.keyPath, params.value)
-        return protocol.ConfigResult(value=prior)
+	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
+		params = protocol.from_dict(protocol.SetConfigParams, request.params)
+		prior = ctx.adapter_set.config_accessor.set(params.keyPath, params.value)
+		return protocol.ConfigResult(value=prior)
