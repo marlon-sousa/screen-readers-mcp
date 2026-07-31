@@ -25,11 +25,11 @@ type statusAnswer struct {
 	Live      *bool  `json:"live"`
 	LiveError string `json:"liveError"`
 	Session   *struct {
-		Reader        string   `json:"reader"`
-		Endpoint      string   `json:"endpoint"`
-		Capabilities  []string `json:"capabilities"`
-		Mode          string   `json:"mode"`
-		LogPath       string   `json:"logPath"`
+		Reader       string   `json:"reader"`
+		Endpoint     string   `json:"endpoint"`
+		Capabilities []string `json:"capabilities"`
+		Mode         string   `json:"mode"`
+		LogPath      string   `json:"logPath"`
 	} `json:"session"`
 }
 

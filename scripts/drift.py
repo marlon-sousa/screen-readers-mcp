@@ -20,6 +20,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -42,7 +43,12 @@ def schema_gate() -> bool:
 	# together turns a working generator into "did not emit JSON".
 	code, out, err = _run(
 		[
-			"uv", "run", "--directory", str(ROOT / "shared"), "python", "-c",
+			"uv",
+			"run",
+			"--directory",
+			str(ROOT / "shared"),
+			"python",
+			"-c",
 			"import json;from nvda_mcp_wire.schema import build_wire_schema;"
 			"print(json.dumps(build_wire_schema()))",
 		]
@@ -92,13 +98,29 @@ def binding_gate() -> bool:
 
 
 def main() -> int:
-	ok = schema_gate()
-	ok = binding_gate() and ok
+	# Selectable because the two gates need different toolchains, and CI splits
+	# its jobs along exactly that line: the schema gate needs only Python, the
+	# binding gate needs Go. Running both in the `shared` job would drag a Go
+	# toolchain into it for one command; running both in `server` would drag in
+	# uv. Each job asks for the half it is already equipped for, and a developer
+	# with everything installed just runs `poe gates` and gets both.
+	parser = argparse.ArgumentParser(description="Check generated artifacts against their sources.")
+	parser.add_argument("--schema", action="store_true", help="only the JSON schema gate (needs uv)")
+	parser.add_argument("--binding", action="store_true", help="only the Go wire-binding gate (needs go)")
+	args = parser.parse_args()
+	# Neither flag means both, so the bare invocation keeps its old meaning.
+	both = not (args.schema or args.binding)
+
+	ok = True
+	if both or args.schema:
+		ok = schema_gate() and ok
+	if both or args.binding:
+		ok = binding_gate() and ok
 	print()
 	if not ok:
 		print("Drift detected. A generated artifact no longer matches its source.")
 		return 1
-	print("No drift: both generated artifacts match their source.")
+	print("No drift: every gate that ran matches its source.")
 	return 0
 
 

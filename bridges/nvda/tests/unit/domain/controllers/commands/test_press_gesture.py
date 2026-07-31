@@ -7,11 +7,10 @@ import pytest
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.transcript import FakeTranscript
-from support.context import adapters_from, make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.press_gesture import PressGestureHandler
 from nvdaMcpBridge.domain.ports.gesture_sender import GestureError
+from support.context import adapters_from, make_context, request
 
 
 def _gestures(transcript: FakeTranscript) -> list[tuple[object, ...]]:

@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import RecordingClose, make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.bye import ByeHandler
 from nvdaMcpBridge.domain.controllers.teardown_reason import TeardownReason
+from support.context import RecordingClose, make_context, request
 
 
 def test_bye_acks_and_asks_to_close(clock: FakeClock) -> None:

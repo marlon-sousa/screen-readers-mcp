@@ -111,7 +111,7 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 			Mode:          session.Mode.String(),
 			Synth:         session.Synth,
 			LogPath:       session.LogPath,
-				BridgeVersion: session.BridgeVersion,
+			BridgeVersion: session.BridgeVersion,
 			ProtocolVer:   session.ProtocolVersion,
 		}
 	}

@@ -34,56 +34,56 @@ def _empty_dict() -> dict[str, Any]:
 
 
 __all__ = [
-	"PROTOCOL_VERSION",
-	"DEFAULT_PORT",
-	"DEFAULT_PIPE_NAME",
-	"CaptureMode",
-	"LogLevel",
-	"Capability",
-	"BrowseMode",
-	"Command",
-	"CommandShape",
 	"COMMAND_SHAPES",
-	"ReaderInfo",
-	"ValidationError",
-	"from_dict",
-	"to_dict",
-	"encode_message",
-	"decode_message",
-	"Request",
-	"ErrorInfo",
-	"Response",
-	"HelloParams",
-	"HelloResult",
-	"EchoParams",
-	"EchoResult",
-	"PressGestureParams",
-	"TypeParams",
-	"GetSpeechParams",
-	"SpeechResult",
-	"LastSpeechResult",
-	"NextIndexResult",
-	"WaitForSpeechParams",
-	"WaitForSpeechResult",
-	"WaitToFinishParams",
-	"WaitToFinishResult",
-	"GetBrailleParams",
-	"BrailleResult",
-	"FocusInfoResult",
-	"StateResult",
-	"GetConfigParams",
-	"SetConfigParams",
-	"ConfigResult",
+	"DEFAULT_PIPE_NAME",
+	"DEFAULT_PORT",
+	"PROTOCOL_VERSION",
+	"AckResult",
 	"AnnounceParams",
 	"AskUserParams",
 	"AskUserResult",
-	"WaitForUserReplyParams",
-	"WaitForUserReplyResult",
+	"BrailleResult",
+	"BrowseMode",
+	"Capability",
+	"CaptureMode",
+	"Command",
+	"CommandShape",
+	"ConfigResult",
+	"EchoParams",
+	"EchoResult",
+	"ErrorInfo",
+	"FocusInfoResult",
+	"GetBrailleParams",
+	"GetConfigParams",
 	"GetLogParams",
-	"SetLogLevelParams",
+	"GetSpeechParams",
+	"HelloParams",
+	"HelloResult",
+	"LastSpeechResult",
+	"LogLevel",
 	"LogLevelResult",
 	"LogSliceResult",
-	"AckResult",
+	"NextIndexResult",
+	"PressGestureParams",
+	"ReaderInfo",
+	"Request",
+	"Response",
+	"SetConfigParams",
+	"SetLogLevelParams",
+	"SpeechResult",
+	"StateResult",
+	"TypeParams",
+	"ValidationError",
+	"WaitForSpeechParams",
+	"WaitForSpeechResult",
+	"WaitForUserReplyParams",
+	"WaitForUserReplyResult",
+	"WaitToFinishParams",
+	"WaitToFinishResult",
+	"decode_message",
+	"encode_message",
+	"from_dict",
+	"to_dict",
 ]
 
 
@@ -651,6 +651,7 @@ class WaitForUserReplyResult:
 @dataclass
 class GetLogParams:
 	"""Parameters for ``getLog``: anchor, window count, filters and projection."""
+
 	#: The request id whose window to anchor on. Defaults to the most recently
 	#: marked command.
 	commandId: int | None = None
@@ -667,12 +668,14 @@ class GetLogParams:
 @dataclass
 class SetLogLevelParams:
 	"""Raise NVDA's own logging floor for the rest of the session."""
+
 	level: LogLevel
 
 
 @dataclass
 class LogLevelResult:
 	"""The level now in force, and what it replaced."""
+
 	level: LogLevel
 	previous: LogLevel
 
@@ -680,6 +683,7 @@ class LogLevelResult:
 @dataclass
 class LogSliceResult:
 	"""A bounded slice of the log journal for one or more command windows."""
+
 	#: Formatted text, one record per line, like a slice of nvda.log.
 	text: str
 	#: Number of records in ``text``.

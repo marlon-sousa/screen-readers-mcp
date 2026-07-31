@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 from fakes.clock import FakeClock
-from support.context import make_context, request, speech_with
-
 from nvdaMcpBridge.domain.controllers.commands.wait_for_speech_to_finish import (
 	WaitForSpeechToFinishHandler,
 )
+from support.context import make_context, request, speech_with
 
 
 def test_finished_once_speech_is_done(clock: FakeClock) -> None:

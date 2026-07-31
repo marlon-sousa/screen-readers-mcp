@@ -8,14 +8,13 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-from support.context import adapters_from, make_context, request
-
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
 from nvdaMcpBridge.domain.controllers.commands.wait_for_user_reply import (
 	MAX_POLL_TIMEOUT,
 	WaitForUserReplyHandler,
 )
 from nvdaMcpBridge.domain.entities.user_prompt import UserPrompt
+from support.context import adapters_from, make_context, request
 
 
 def _make_ctx(clock: FakeClock):
@@ -107,14 +106,12 @@ def test_poll_timeout_is_clamped_below_the_inactivity_window(clock: FakeClock) -
 	# short of the window's own 300 s deadline, so the window is still open.
 	assert elapsed == pytest.approx(MAX_POLL_TIMEOUT, abs=1.0)
 	assert ctx.get_outstanding_prompt() is prompt
-	assert any(
-		event[0] == "note" and "clamped" in event[1] for event in transcript.events
-	), f"the clamp was not recorded in the transcript: {transcript.events}"
+	assert any(event[0] == "note" and "clamped" in event[1] for event in transcript.events), (
+		f"the clamp was not recorded in the transcript: {transcript.events}"
+	)
 
 
 def test_no_outstanding_prompt_is_error(clock: FakeClock) -> None:
 	ctx, _, _ = _make_ctx(clock)
 	with pytest.raises(CommandError, match="no outstanding prompt"):
-		WaitForUserReplyHandler().execute(
-			ctx, request("waitForUserReply", ticket="anything", timeout=0.0)
-		)
+		WaitForUserReplyHandler().execute(ctx, request("waitForUserReply", ticket="anything", timeout=0.0))

@@ -16,11 +16,11 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 import pytest
-
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
 from fakes.clock import FakeClock
@@ -32,7 +32,6 @@ from fakes.script import TIMEOUT_EVENT
 from fakes.session_signals import FakeSessionSignals
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.real_clock import RealClock
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
@@ -44,7 +43,6 @@ from nvdaMcpBridge.domain.controllers.session import (
 	TeardownReason,
 )
 from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
-
 
 # -- message builders --------------------------------------------------------
 
@@ -110,7 +108,9 @@ def run_session(
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
 	)
-	session = Session(channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter)
+	session = Session(
+		channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter
+	)
 	if start:
 		session.run()
 	return Run(
@@ -159,7 +159,7 @@ def test_silent_hello_establishes_and_reports() -> None:
 	assert result["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert result["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 	assert result["logPath"] == run.transcript.path
-	
+
 
 def test_live_hello_establishes() -> None:
 	run = run_session([hello("live")])
@@ -448,9 +448,7 @@ def test_a_failed_command_still_gets_its_window() -> None:
 	# addressable by request id -- an error reply is not a reason to lose it.
 	capture = FakeLogCapture()
 	registry = _fake_registry(
-		boom=FakeCommandHandler(
-			on_execute=_feeder("the interesting line"), error=RuntimeError("kaboom")
-		),
+		boom=FakeCommandHandler(on_execute=_feeder("the interesting line"), error=RuntimeError("kaboom")),
 	)
 	run = run_session([hello(), command("boom", 2)], registry=registry, log_capture=capture)
 
@@ -497,8 +495,14 @@ def test_the_window_records_the_level_in_force_when_it_was_taken() -> None:
 	capture = FakeLogCapture()
 	registry = _fake_registry(work=FakeCommandHandler())
 	run = run_session(
-		[{"id": 1, "cmd": "hello", "params": {"mode": "silent", "protocolVersion": p.PROTOCOL_VERSION, "logLevel": "debug"}},
-		 command("work", 2)],
+		[
+			{
+				"id": 1,
+				"cmd": "hello",
+				"params": {"mode": "silent", "protocolVersion": p.PROTOCOL_VERSION, "logLevel": "debug"},
+			},
+			command("work", 2),
+		],
 		registry=registry,
 		log_capture=capture,
 	)
@@ -532,9 +536,7 @@ def test_a_journal_that_cannot_be_read_costs_the_window_not_the_command() -> Non
 			raise RuntimeError("journal is gone")
 
 	registry = _fake_registry(work=FakeCommandHandler())
-	run = run_session(
-		[hello(), command("work", 2)], registry=registry, log_capture=BrokenCapture()
-	)
+	run = run_session([hello(), command("work", 2)], registry=registry, log_capture=BrokenCapture())
 
 	assert _result(run.responses()[1]) == {"ok": True}
 	assert _windows(run) == []
@@ -579,7 +581,15 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
 	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
 	session = Session(
-		channel, transcript, clock, config, registry, signals, FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter()
+		channel,
+		transcript,
+		clock,
+		config,
+		registry,
+		signals,
+		FakeAnnouncer(),
+		FakeLogCapture(),
+		FakeUserPrompter(),
 	)
 
 	thread = threading.Thread(target=session.run)
@@ -597,36 +607,36 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 
 
 def test_teardown_restores_config_keys() -> None:
-    """After a normal session, teardown calls config_accessor.restore_all."""
-    factory = FakeAdapterFactory()
-    factory.config_accessor.seed(["speech", "synth"], "espeak")
-    run_session([hello("silent")], factory=factory)
-    # restore_all was called during teardown.
-    assert factory.config_accessor.restore_calls >= 1
+	"""After a normal session, teardown calls config_accessor.restore_all."""
+	factory = FakeAdapterFactory()
+	factory.config_accessor.seed(["speech", "synth"], "espeak")
+	run_session([hello("silent")], factory=factory)
+	# restore_all was called during teardown.
+	assert factory.config_accessor.restore_calls >= 1
 
 
 def test_teardown_restores_config_even_when_earlier_step_raised() -> None:
-    """Config restore still runs after a speech source stop raises."""
-    factory = FakeAdapterFactory()
-    factory.config_accessor.seed(["speech", "synth"], "espeak")
-    factory.speech_source.fail_stop = True
-    run = run_session([hello("silent")], factory=factory)
-    # Even though speech_source.stop raised, config restore still ran.
-    assert factory.config_accessor.restore_calls >= 1
-    assert run.channel.closed is True
+	"""Config restore still runs after a speech source stop raises."""
+	factory = FakeAdapterFactory()
+	factory.config_accessor.seed(["speech", "synth"], "espeak")
+	factory.speech_source.fail_stop = True
+	run = run_session([hello("silent")], factory=factory)
+	# Even though speech_source.stop raised, config restore still ran.
+	assert factory.config_accessor.restore_calls >= 1
+	assert run.channel.closed is True
 
 
 def test_config_restore_actually_restores_the_prior_value() -> None:
-    """restore_all restores modified keys to their original values."""
-    # Test the fake directly, independent of session teardown.
-    store = FakeConfigAccessor()
-    store.seed(["speech", "synth"], "espeak")
-    # Write modifies the value in memory and records the prior.
-    store.set(["speech", "synth"], "sapi5")
-    assert store.get(["speech", "synth"]) == "sapi5"
-    # Restore brings it back.
-    store.restore_all()
-    assert store.get(["speech", "synth"]) == "espeak"
+	"""restore_all restores modified keys to their original values."""
+	# Test the fake directly, independent of session teardown.
+	store = FakeConfigAccessor()
+	store.seed(["speech", "synth"], "espeak")
+	# Write modifies the value in memory and records the prior.
+	store.set(["speech", "synth"], "sapi5")
+	assert store.get(["speech", "synth"]) == "sapi5"
+	# Restore brings it back.
+	store.restore_all()
+	assert store.get(["speech", "synth"]) == "espeak"
 
 
 def test_request_teardown_cancels_an_open_prompt_window() -> None:
@@ -646,8 +656,15 @@ def test_request_teardown_cancels_an_open_prompt_window() -> None:
 	channel = FakeChannel([hello()], clock=clock, on_empty="timeout", timeout_advance=1.0)
 	config = SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9)
 	session = Session(
-		channel, transcript, clock, config, registry, signals,
-		FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+		channel,
+		transcript,
+		clock,
+		config,
+		registry,
+		signals,
+		FakeAnnouncer(),
+		FakeLogCapture(),
+		FakeUserPrompter(),
 	)
 	prompt = UserPrompt("do the thing", clock)
 	session.session_context.set_outstanding_prompt(prompt)
@@ -686,9 +703,14 @@ def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
 	# the real one, because real sleeping is the whole point.
 	session = Session(
 		FakeChannel([hello(), command("ping", 2)], clock=FakeClock(), on_empty="closed"),
-		FakeTranscript(), clock,
+		FakeTranscript(),
+		clock,
 		SessionConfig(nvda_version="x", heartbeat_timeout=1e9, inactivity_timeout=1e9),
-		registry, FakeSessionSignals(), FakeAnnouncer(), FakeLogCapture(), FakeUserPrompter(),
+		registry,
+		FakeSessionSignals(),
+		FakeAnnouncer(),
+		FakeLogCapture(),
+		FakeUserPrompter(),
 	)
 
 	thread = threading.Thread(target=session.run, daemon=True)

@@ -40,9 +40,7 @@ class NvdaAnnouncer(Announcer):
 		return run_on_main(self._read_name, block=True) or ""
 
 	def announce(self, text: str) -> None:
-		run_on_main(
-			lambda: cue_and_speak([text], hz=_CUE_HZ, ms=_CUE_MS, gap_ms=_CUE_GAP_MS)
-		)
+		run_on_main(lambda: cue_and_speak([text], hz=_CUE_HZ, ms=_CUE_MS, gap_ms=_CUE_GAP_MS))
 
 	@staticmethod
 	def _read_name() -> str:

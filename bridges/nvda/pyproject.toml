@@ -44,17 +44,80 @@ markers = [
 line-length = 110
 
 builtins = ["_", "ngettext", "pgettext", "npgettext"]
-include = ["*.py", "sconstruct"]
-exclude = [".git", "__pycache__"]
+include = ["*.py"]
+
+# sconstruct joins site_scons/ (excluded at the repo root) as VENDORED from the
+# NVDA AddonTemplate scaffold: upstream's code, upstream's formatting, and
+# reformatting it would only make the next scaffold sync noisy for no gain.
+#
+# It used to be listed in `include` above, with a per-file F821 ignore for the
+# globals scons injects -- so the config CLAIMED it was linted while the gate's
+# path list (`ruff check addon tests buildVars.py sync_shared.py`) never pointed
+# ruff at it. Nothing ran, and the ignore made it look deliberate. Excluding it
+# outright is the same outcome the gate already had, said out loud.
+#
+# site_scons/ is here for the same reason. It was excluded only at the REPO ROOT
+# config, which does not govern this directory -- harmless while the gate named
+# four explicit paths, but the gate now lints `.`, so this is what actually
+# keeps upstream's code out of it.
+exclude = [".git", "__pycache__", "sconstruct", "site_scons"]
 
 [tool.ruff.format]
 indent-style = "tab"
 
 [tool.ruff.lint]
-ignore = ["W191"]
+# CHOSEN, not inherited. Ruff's default selection has widened across releases --
+# 0.16 turns on bandit (S), blind-except (BLE), datetimez (DTZ) and pep8-naming
+# (N) among others -- so a project with no `select` is enforcing whatever the
+# installed ruff happens to ship, and a version bump silently changes the rules.
+# Listing them makes a change to what this repo enforces a deliberate edit.
+select = [
+	"F",   # pyflakes -- undefined names, unused imports: real errors
+	"E",   # pycodestyle errors, incl. E501 line length and E402 import placement
+	"W",   # pycodestyle warnings
+	"I",   # import sorting -- mechanical, and the thing that drifts most
+	"UP",  # pyupgrade -- hold to the 3.13 NVDA actually embeds
+	"B",   # bugbear -- real bug shapes
+	"SIM", # simplify
+	"RUF", # ruff's own, including unused-noqa
+]
+
+# Deliberately NOT selected, each because it fights something this codebase does
+# on purpose:
+#   N   -- the package is `nvdaMcpBridge`; camelCase is NVDA's add-on convention.
+#   BLE -- Session._guard and every adapter stop() catch broadly on purpose, so a
+#          failing teardown step can never skip the ones after it.
+#   S   -- same guard idiom (S110 try-except-pass).
+#   DTZ -- session filenames and transcript stamps are deliberately local time.
+#   PL  -- pylint's refactor opinions are not this project's house style.
+ignore = [
+	"W191",   # tabs ARE the house style; [tool.ruff.format] enforces them
+	"SIM105", # try/except/pass in teardown is deliberate and carries a comment
+	          # explaining why. contextlib.suppress would read better and is worth
+	          # its own pass over the stop() paths, not a drive-by here.
+]
 
 [tool.ruff.lint.per-file-ignores]
-"sconstruct" = ["F821"]
+# buildVars.py is NVDA's add-on manifest in Python form: addon_info carries the
+# summary and description the add-on store DISPLAYS, as single strings. Wrapping
+# them would change what a user reads in the store, so the length stands.
+"buildVars.py" = ["E501"]
+
+# E402 (import not at top) is STRUCTURAL in these four: each puts globalPlugins
+# on sys.path, or syncs the shared wire module in, before it can import
+# `nvdaMcpBridge.*` at all -- so the imports genuinely cannot come first. Listed
+# here rather than as a `# noqa: E402` on each of the fourteen import lines,
+# because the reason belongs to the file, not to the line.
+"tests/integration/test_live_nvda_e2e.py" = ["E402"]
+"tests/integration/test_live_nvda_pipe_e2e.py" = ["E402"]
+"tests/integration/test_profile_override.py" = ["E402"]
+"tests/unit/domain/controllers/commands/test_hello.py" = ["E402"]
+
+# Same shape, different mechanism: this one installs a STUB `logHandler` module
+# into sys.modules before importing the adapter, which does `from logHandler
+# import Formatter, log` at module level. Import it first and you import NVDA's
+# real logHandler, which does not exist headlessly.
+"tests/unit/adapters/test_nvda_log_capture.py" = ["E402"]
 
 [tool.pyright]
 pythonVersion = "3.13"       # NVDA 2026.1 embeds CPython 3.13

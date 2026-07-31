@@ -60,8 +60,7 @@ class HelloHandler(CommandHandler):
 		if params.logLevel is not None and params.logLevel.value not in SETTABLE_LEVELS:
 			valid = ", ".join(sorted(SETTABLE_LEVELS))
 			raise CommandError(
-				f"log level {params.logLevel.value!r} cannot be set on the reader: "
-				f"want one of {valid}"
+				f"log level {params.logLevel.value!r} cannot be set on the reader: want one of {valid}"
 			)
 		ctx.transcript.open()
 		# Capture is always on (spec 0009); logLevel, if set, additionally bumps

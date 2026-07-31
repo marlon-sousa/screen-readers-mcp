@@ -85,20 +85,30 @@ class FakeLogCapture(LogCapture):
 		return self._journal.mark()
 
 	def slice(
-		self, start: int, end: int, *,
+		self,
+		start: int,
+		end: int,
+		*,
 		min_level: p.LogLevel | None = None,
 		contains: list[str] | None = None,
 		exclude: list[str] | None = None,
 		fields: list[str] | None = None,
 		max_entries: int = 200,
 	) -> tuple[str, int, int, bool]:
-		self.slice_calls.append(_SliceCall(
-			start=start, end=end,
-			min_level=min_level, contains=contains,
-			exclude=exclude, fields=fields, max_entries=max_entries,
-		))
+		self.slice_calls.append(
+			_SliceCall(
+				start=start,
+				end=end,
+				min_level=min_level,
+				contains=contains,
+				exclude=exclude,
+				fields=fields,
+				max_entries=max_entries,
+			)
+		)
 		return self._journal.slice(
-			start, end,
+			start,
+			end,
 			min_level=min_level.value if min_level else None,
 			contains=contains,
 			exclude=exclude,
@@ -125,8 +135,12 @@ class FakeLogCapture(LogCapture):
 	def _level_number(level: p.LogLevel) -> int:
 		"""NVDA's logger number for a wire level (IO is 12, above DEBUG's 10)."""
 		return {
-			"debug": 10, "io": 12, "debugwarning": 15,
-			"info": 20, "warning": 30, "error": 40,
+			"debug": 10,
+			"io": 12,
+			"debugwarning": 15,
+			"info": 20,
+			"warning": 30,
+			"error": 40,
 		}[level.value]
 
 	def _record(self, name: str, *args: Any) -> None:
@@ -134,14 +148,29 @@ class FakeLogCapture(LogCapture):
 		if name in self._fail_on:
 			raise RuntimeError(f"log capture failing on {name}")
 
-	def feed(self, message: str, *, level_no: int = 20, level_name: str = "INFO",
-	         module: str = "test.module", timestamp: str = "12:00:00.000",
-	         thread: str = "MainThread", thread_id: int = 1) -> None:
+	def feed(
+		self,
+		message: str,
+		*,
+		level_no: int = 20,
+		level_name: str = "INFO",
+		module: str = "test.module",
+		timestamp: str = "12:00:00.000",
+		thread: str = "MainThread",
+		thread_id: int = 1,
+	) -> None:
 		"""Add a record to the journal (for tests that need content to slice)."""
 		self._journal.append(level_no, level_name, module, message, timestamp, thread, thread_id)
 
-	def feed_record(self, level_no: int, level_name: str, module: str, message: str,
-	                timestamp: str = "12:00:00.000", thread: str = "MainThread",
-	                thread_id: int = 1) -> None:
+	def feed_record(
+		self,
+		level_no: int,
+		level_name: str,
+		module: str,
+		message: str,
+		timestamp: str = "12:00:00.000",
+		thread: str = "MainThread",
+		thread_id: int = 1,
+	) -> None:
 		"""Add a fully specified record to the journal."""
 		self._journal.append(level_no, level_name, module, message, timestamp, thread, thread_id)

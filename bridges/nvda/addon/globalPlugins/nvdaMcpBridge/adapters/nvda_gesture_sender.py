@@ -51,7 +51,7 @@ class NvdaGestureSender(GestureSender):
 		def _emulate() -> None:
 			try:
 				inputCore.manager.emulateGesture(gesture)
-			except Exception as exc:  # noqa: BLE001 -- reported back as a GestureError
+			except Exception as exc:
 				failure.append(exc)
 			finally:
 				done.set()

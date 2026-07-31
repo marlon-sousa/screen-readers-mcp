@@ -198,9 +198,7 @@ def test_the_installed_addon_is_the_one_in_this_checkout() -> None:
 	try:
 		hello = _hello(agent, "silent")
 		expected = _expected_bridge_version()
-		rebuild = (
-			"rebuild and reinstall the add-on (cd bridges/nvda && scons), then restart NVDA"
-		)
+		rebuild = "rebuild and reinstall the add-on (cd bridges/nvda && scons), then restart NVDA"
 		# A build predating this field omits it entirely -- which IS the stale
 		# case, and the commonest one, so it gets the same clear message rather
 		# than a KeyError from the middle of a fixture.
@@ -257,7 +255,6 @@ def test_two_sequential_sessions_on_one_server() -> None:
 			agent.close()
 	assert synths[0] == synths[1]
 	assert synths[0]  # a real synth name, stable across sessions
-
 
 
 class _RunDialog:
@@ -380,9 +377,7 @@ def test_set_config_roundtrip_and_restore() -> None:
 	agent = _dial()
 	try:
 		_hello(agent, "silent")
-		original = agent.result(
-			"getConfig", keyPath=_caps_key(agent)
-		)["value"]
+		original = agent.result("getConfig", keyPath=_caps_key(agent))["value"]
 
 		flipped = not bool(original)
 		prior = agent.result(
@@ -390,16 +385,10 @@ def test_set_config_roundtrip_and_restore() -> None:
 			keyPath=_caps_key(agent),
 			value=flipped,
 		)["value"]
-		assert prior == original, (
-			f"setConfig should return prior {original}, got {prior}"
-		)
+		assert prior == original, f"setConfig should return prior {original}, got {prior}"
 
-		current = agent.result(
-			"getConfig", keyPath=_caps_key(agent)
-		)["value"]
-		assert current == flipped, (
-			f"getConfig should see override {flipped}, got {current}"
-		)
+		current = agent.result("getConfig", keyPath=_caps_key(agent))["value"]
+		assert current == flipped, f"getConfig should see override {flipped}, got {current}"
 
 		agent.result("bye")
 	finally:
@@ -409,12 +398,8 @@ def test_set_config_roundtrip_and_restore() -> None:
 	agent2 = _dial()
 	try:
 		_hello(agent2, "silent")
-		restored = agent2.result(
-			"getConfig", keyPath=_caps_key(agent2)
-		)["value"]
-		assert restored == original, (
-			f"new session should see original {original}, got {restored}"
-		)
+		restored = agent2.result("getConfig", keyPath=_caps_key(agent2))["value"]
+		assert restored == original, f"new session should see original {original}, got {restored}"
 		agent2.result("bye")
 	finally:
 		agent2.close()
@@ -717,9 +702,7 @@ def test_an_unanswered_window_expires_and_the_session_survives() -> None:
 		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
 		time.sleep(0.5)
 		after = agent.result("getNextSpeechIndex")["index"]
-		assert after > before, (
-			"nothing was captured after the window expired, so suppression never resumed"
-		)
+		assert after > before, "nothing was captured after the window expired, so suppression never resumed"
 
 		# Item 9, stated as an assertion: the session is still the same one, still
 		# serving, after five minutes -- neither watchdog fired.

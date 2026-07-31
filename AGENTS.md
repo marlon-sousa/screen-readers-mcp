@@ -507,17 +507,34 @@ first.
 One definition of "green", runnable locally and in CI:
 
 ```sh
-uv run poe ci            # everything, in CI's order — ~30s
+uv run poe dev           # the doctor, then everything CI runs — ~1 min
+uv run poe ci            # what CI itself calls; same work, no machine checks
 uv run poe bridge        # bridge headless tests (the usual inner loop)
 uv run poe shared        # shared wire-contract tests
 uv run poe types         # pyright strict, both Python projects
+uv run poe lint          # ruff check AND format check, every Python file
 uv run poe go            # go build, vet, test, -tags integration
 uv run poe gates         # schema + wire-binding drift
 uv run poe conformance   # the real Go binary against the real Python bridge
-uv run poe lint          # ruff (see the caveat below)
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
 uv run poe build         # both deliverables: the server binary and the .nvda-addon
 ```
+
+**`.github/workflows/ci.yml` no longer spells out any commands.** Each job
+installs a toolchain and calls one task — `uv run poe ci-shared`, `ci-server`,
+`ci-bridge`, `ci-conformance`, one per job, named after it. So **a change to
+what CI checks is a change to `pyproject.toml`**, which you can run and prove
+before pushing; the workflow changes only when a job needs a different
+toolchain. Keep the job↔task pairing 1:1.
+
+That unification is not cosmetic. While the two lists were maintained by hand
+they drifted, in both directions: `poe ci` grew a `lint` task the workflow never
+ran, the workflow's ruff step covered `addon tests` while poe covered two more
+files, and **staticcheck and the Linux build existed only in the workflow** — so
+no developer could run them, and the first sign of a failure was a red PR.
+`staticcheck` is also now pinned; at `@latest` an upstream release turns the
+repo red with no commit of ours behind it, and the bisect begins by hunting for
+a change that does not exist.
 
 **Rebuild the server binary after touching `server/`.** `.mcp.json` spawns
 `server/screenreader-mcp.exe`, so an agent that edits Go code and then drives
@@ -539,13 +556,30 @@ blind developer that is not a nuisance, it is losing control of the machine.
 They are now marked `live_nvda` and excluded by `addopts`; running them is an
 explicit act. Never add them to `ci`.
 
-`poe ci` is the one to run before saying something works. It is deliberately the
-same set, in the same order, that `.github/workflows/ci.yml` runs.
+`poe dev` is the one to run before saying something works: the full doctor, then
+exactly what CI runs.
 
-Every task except `doctor`, `fix` and `check` itself is gated on `check` (the
-fast doctor subset, ~1s, silent when it passes). The three diagnostics are
-exempt on purpose: gating the tool that reports a broken environment on that
-same environment would make the breakage unreportable.
+**`dev` and `ci` differ only in what they assume about the machine.** `dev` asks
+first whether *this workstation* is fit to work the repo — Go and ripgrep
+present, venvs intact, the MCP server binary not stale — because a desktop
+drifts, and the failures that follow name everything except their cause. A
+runner is rebuilt from `ci.yml` every time and cannot have drifted, so `ci`
+skips those questions and does the work. Under `CI` (set by GitHub Actions, and
+by anything else worth the name) the doctor drops the machine checks by itself;
+export `CI=1` locally to rehearse a runner. This is what kept `poe` out of the
+workflow for so long: the `shared` job installs uv and nothing else, so the
+*required* `go` and `rg` aborted it before a single test ran.
+
+The checks that survive under `CI` are the ones about the *checkout* rather than
+the machine: pyright's venv configuration, and the addon's copy of the wire
+module matching `shared/`.
+
+Every task except `doctor`, `fix`, `check` and the remediations is gated on
+`check` (the fast doctor subset, ~1s, silent when it passes). The diagnostics
+are exempt on purpose: gating the tool that reports a broken environment on that
+same environment would make the breakage unreportable. The remediations —
+`build-server`, `redeploy`, `sync` — are exempt by the same rule, since each one
+*repairs* a condition the doctor fails on, and gating it would deadlock.
 
 **Tool minimums are floors, never pins.** The doctor fails a tool that is *below*
 the version this repo needs and is silent about anything newer, so upgrading is
@@ -572,16 +606,67 @@ either dropping `uv run` in front of `poe` (which reintroduces the Windows
 console-script trampoline this file's header warns about) or turning every `cmd`
 task into a `shell` task. Both cost more than the warning does.
 
-**`poe lint` is not part of `poe ci`, and that is honest, not an oversight.**
-Ruff is configured and now installed, but no CI workflow has ever run it and
-there is a pre-existing backlog of violations (mostly import ordering and the
-tab/space split across older files). Until that backlog is cleared, a green
-`poe lint` is not achievable and wiring it into `ci` would just train people to
-ignore a red gate. Specs that list "ruff green" in their definition of done are
-describing an intent, not a gate that runs.
+**`poe lint` is now a real gate, and the format check is half of it.** The
+backlog that once justified leaving ruff out is cleared: every Python file in
+the repo — 179 of them, across `shared/`, `bridges/nvda/` and `scripts/` — is
+clean and formatted, and `ci` fails on a new violation. Specs that list "ruff
+green" in their definition of done now describe something that actually runs.
+
+Two things that gate had to fix, worth knowing because both were invisible:
+
+- **`ruff check` says nothing about indentation.** Only `ruff format --check`
+  does, and nothing ran it, so a file could arrive space-indented in a tab repo
+  and pass every gate — which is exactly how PR #46 added a dozen of them.
+- **`scripts/` was linted by nothing.** `shared/` and `bridges/nvda/` each carry
+  their own ruff config, and everything between them — the dev scripts,
+  `sync_shared.py`, `buildVars.py` — fell through the gap. The root
+  `pyproject.toml` now covers it with the same rule set.
+- **Go formatting was checked by nothing either.** Neither `go vet` nor
+  staticcheck has an opinion about layout, so the Go half had the same hole the
+  Python half just closed — and it was holding two files, a struct field and a
+  map entry added without realigning the block around them. `poe go-fmt` runs in
+  `ci-server` now. It is a script rather than one command because `gofmt -l`
+  prints the offenders and then **exits 0**, so the obvious one-liner is a gate
+  that can never fail.
+
+**Every gate lints a DIRECTORY, never a list of files — deny-list, not
+allow-list.** Both holes above were allow-list holes: a gate that named paths,
+so a file at a path nobody had thought of was ungated and looked fine. Naming
+paths only covers files that already exist, which is the wrong set; the risk is
+the file that does not exist yet — the one a contributor or a model is about to
+add. Verified by planting space-indented files in nine locations, two of them in
+directories that did not previously exist: with file lists, three slipped
+through silently; with `.`, none do.
+
+So if something must not be linted, **exclude it, and say why at the exclusion**
+— adding a path to an exclude list should feel like a decision, where adding one
+to an allow-list feels like nothing at all. Two things are excluded today, both
+vendored from the NVDA AddonTemplate scaffold, because reformatting upstream's
+code only makes the next scaffold sync noisy: `bridges/nvda/site_scons/` and
+`bridges/nvda/sconstruct`.
+
+The rule set is **chosen, not inherited**: `select` is listed explicitly in all
+three configs, because ruff's defaults have widened across releases and a
+project with no `select` enforces whatever version happens to be installed.
+Changing what this repo enforces should be a deliberate edit, not a version
+bump.
 
 ### Notes for agents specifically
 
+- **`uv run poe dev` is the gate. Nothing is "done", "working" or "verified"
+  until it has passed, and you ran it.** Not a suite you picked, not the tests
+  you happened to touch — the whole thing, ~1 min. Reporting success on a subset
+  is the single most expensive mistake made in this repo, because the subset is
+  always chosen by the same reasoning that wrote the bug. If it is red, say so
+  and paste the failure; a red gate reported honestly costs a minute, and a
+  green claim over a red gate costs whoever finds out next.
+  - Touched `server/`? `poe dev` will fail the stale-binary check by design —
+    `uv run poe redeploy`, then run it again. **Redeploy whenever it asks; the
+    maintainer has standing approval for this.** Skipping it means you are
+    driving the OLD server against the NEW bridge, and the symptom is a field
+    that looks like it was never sent.
+  - `poe live` is NOT part of the gate and never runs unattended: it drives the
+    maintainer's real screen reader. Ask first, every time.
 - **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep
   honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
   both ignored and both enormous. One careless `grep -r` returns hundreds of

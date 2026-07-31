@@ -16,7 +16,6 @@ from typing import Any
 import pytest
 from fakes.script import CLOSED_EVENT, TIMEOUT_EVENT
 from fakes.transport import FakeTransport
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
 from nvdaMcpBridge.domain.ports.message_channel import TIMEOUT, ChannelClosed

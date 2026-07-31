@@ -138,11 +138,11 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	}
 
 	var got struct {
-		Reader        string   `json:"reader"`
-		Endpoint      string   `json:"endpoint"`
-		Capabilities  []string `json:"capabilities"`
-		Mode          string   `json:"mode"`
-		LogPath       string   `json:"logPath"`
+		Reader       string   `json:"reader"`
+		Endpoint     string   `json:"endpoint"`
+		Capabilities []string `json:"capabilities"`
+		Mode         string   `json:"mode"`
+		LogPath      string   `json:"logPath"`
 	}
 	encoded, _ := json.Marshal(result)
 	if err := json.Unmarshal(encoded, &got); err != nil {

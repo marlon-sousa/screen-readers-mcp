@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Sequence
+from collections.abc import Sequence
 
 from nvdaMcpBridge.domain.ports.text_typer import TextTyper, TypingError
 

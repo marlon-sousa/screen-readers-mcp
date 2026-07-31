@@ -156,9 +156,9 @@ type node struct {
 // plain string: a new closed value set in the contract deserves a deliberate
 // name, and failing the generator is how that decision gets asked for.
 var enumNames = map[string]string{
-	"live|silent":                "CaptureMode",
-	"browse|focus|none":         "BrowseMode",
-	"debug|debugwarning|error|info|io|warning": "LogLevel",
+	"live|silent":       "CaptureMode",
+	"browse|focus|none": "BrowseMode",
+	"debug|debugwarning|error|info|io|warning":                       "LogLevel",
 	"braille|config|focus|gestures|interact|log|speech|state|typing": "Capability",
 }
 

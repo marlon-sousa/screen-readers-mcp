@@ -12,7 +12,8 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandHandler

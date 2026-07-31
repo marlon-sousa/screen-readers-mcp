@@ -26,11 +26,24 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 110
 
+# Ruff 0.16 formats Python code blocks inside Markdown. Excluded for the same
+# reason as at the repo root: doc snippets are illustrative, sometimes aligned
+# by hand to make a point, and reformatting them buys nothing.
+extend-exclude = ["*.md"]
+
 [tool.ruff.format]
 indent-style = "tab"
 
 [tool.ruff.lint]
-ignore = ["W191"]  # tabs, per the NVDA/addon house style
+# Kept identical to bridges/nvda/pyproject.toml on purpose: protocol.py is
+# COPIED into the add-on by sync_shared, so the same bytes are linted in two
+# projects and must not be able to pass one and fail the other. See that file
+# for why each family is in or out.
+select = ["F", "E", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+	"W191",   # tabs, per the NVDA/addon house style
+	"SIM105", # deliberate try/except/pass, commented at each site
+]
 
 [tool.pyright]
 pythonVersion = "3.11"

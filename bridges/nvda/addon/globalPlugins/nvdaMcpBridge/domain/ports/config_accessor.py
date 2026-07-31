@@ -25,45 +25,45 @@ from typing import Any
 
 
 class ConfigError(Exception):
-    """A key path the reader does not define, or a value its schema rejects."""
+	"""A key path the reader does not define, or a value its schema rejects."""
 
 
 class ConfigAccessor(ABC):
-    """Reads the reader's config and layers session-scoped overrides over it."""
+	"""Reads the reader's config and layers session-scoped overrides over it."""
 
-    @abstractmethod
-    def get(self, key_path: list[str]) -> Any:
-        """Read the effective value at ``key_path`` (e.g. ``["speech", "synth"]``).
+	@abstractmethod
+	def get(self, key_path: list[str]) -> Any:
+		"""Read the effective value at ``key_path`` (e.g. ``["speech", "synth"]``).
 
-        Effective means: this session's override if one is set, otherwise the
-        reader's own profile-resolved value.
+		Effective means: this session's override if one is set, otherwise the
+		reader's own profile-resolved value.
 
-        Raises :class:`ConfigError` if the path is invalid.
-        """
+		Raises :class:`ConfigError` if the path is invalid.
+		"""
 
-    @abstractmethod
-    def set(self, key_path: list[str], value: Any) -> Any:
-        """Override ``key_path`` with ``value`` for the rest of the session.
+	@abstractmethod
+	def set(self, key_path: list[str], value: Any) -> Any:
+		"""Override ``key_path`` with ``value`` for the rest of the session.
 
-        The reader's stored configuration is NOT written -- the override is a
-        read-time layer that every consumer of the reader's config sees, and it
-        sits above the profile stack, so switching profiles mid-session cannot
-        displace it. It dies with ``restore_all`` or with the process.
+		The reader's stored configuration is NOT written -- the override is a
+		read-time layer that every consumer of the reader's config sees, and it
+		sits above the profile stack, so switching profiles mid-session cannot
+		displace it. It dies with ``restore_all`` or with the process.
 
-        ``value`` is validated and coerced against the reader's own schema
-        first, so an override can never inject a type the reader would have
-        refused to store.
+		``value`` is validated and coerced against the reader's own schema
+		first, so an override can never inject a type the reader would have
+		refused to store.
 
-        Returns the **prior** effective value at that path, captured on the
-        first override of that key.
-        Raises :class:`ConfigError` if the path or the value is rejected.
-        """
+		Returns the **prior** effective value at that path, captured on the
+		first override of that key.
+		Raises :class:`ConfigError` if the path or the value is rejected.
+		"""
 
-    @abstractmethod
-    def restore_all(self) -> None:
-        """Drop every override this session set, restoring the reader's own values.
+	@abstractmethod
+	def restore_all(self) -> None:
+		"""Drop every override this session set, restoring the reader's own values.
 
-        Nothing was ever written, so this is a discard rather than a rewrite.
-        Called at session teardown, on every exit path. Idempotent: the second
-        call is a no-op.
-        """
+		Nothing was ever written, so this is a discard rather than a rewrite.
+		Called at session teardown, on every exit path. Idempotent: the second
+		call is a no-op.
+		"""

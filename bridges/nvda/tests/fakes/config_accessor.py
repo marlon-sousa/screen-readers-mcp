@@ -16,47 +16,47 @@ from nvdaMcpBridge.domain.ports.config_accessor import ConfigAccessor, ConfigErr
 
 
 class FakeConfigAccessor(ConfigAccessor):
-    """Stores and restores config values; records calls for assertions."""
+	"""Stores and restores config values; records calls for assertions."""
 
-    def __init__(self) -> None:
-        self._store: dict[tuple[str, ...], Any] = {}
-        self._prior: dict[tuple[str, ...], Any] = {}
-        self._restored = False
-        self.get_calls: list[list[str]] = []
-        self.set_calls: list[tuple[list[str], Any]] = []
-        self.restore_calls: int = 0
+	def __init__(self) -> None:
+		self._store: dict[tuple[str, ...], Any] = {}
+		self._prior: dict[tuple[str, ...], Any] = {}
+		self._restored = False
+		self.get_calls: list[list[str]] = []
+		self.set_calls: list[tuple[list[str], Any]] = []
+		self.restore_calls: int = 0
 
-    def get(self, key_path: list[str]) -> Any:
-        self.get_calls.append(key_path)
-        key = tuple(key_path)
-        if key not in self._store:
-            raise ConfigError(f"unknown key: {key_path!r}")
-        return self._store[key]
+	def get(self, key_path: list[str]) -> Any:
+		self.get_calls.append(key_path)
+		key = tuple(key_path)
+		if key not in self._store:
+			raise ConfigError(f"unknown key: {key_path!r}")
+		return self._store[key]
 
-    def set(self, key_path: list[str], value: Any) -> Any:
-        self.set_calls.append((key_path, value))
-        key = tuple(key_path)
-        if key not in self._store:
-            raise ConfigError(f"unknown key: {key_path!r}")
-        prior = self._store[key]
-        if key not in self._prior:
-            self._prior[key] = prior
-        self._store[key] = value
-        return prior
+	def set(self, key_path: list[str], value: Any) -> Any:
+		self.set_calls.append((key_path, value))
+		key = tuple(key_path)
+		if key not in self._store:
+			raise ConfigError(f"unknown key: {key_path!r}")
+		prior = self._store[key]
+		if key not in self._prior:
+			self._prior[key] = prior
+		self._store[key] = value
+		return prior
 
-    def restore_all(self) -> None:
-        self.restore_calls += 1
-        if self._restored:
-            return
-        self._restored = True
-        for key, prior_value in self._prior.items():
-            self._store[key] = prior_value
+	def restore_all(self) -> None:
+		self.restore_calls += 1
+		if self._restored:
+			return
+		self._restored = True
+		for key, prior_value in self._prior.items():
+			self._store[key] = prior_value
 
-    def seed(self, key_path: list[str], value: Any) -> None:
-        """Seed a key so a test can read it without first writing it."""
-        self._store[tuple(key_path)] = value
+	def seed(self, key_path: list[str], value: Any) -> None:
+		"""Seed a key so a test can read it without first writing it."""
+		self._store[tuple(key_path)] = value
 
-    @property
-    def store(self) -> dict[tuple[str, ...], Any]:
-        """Direct read access so a test can verify values after teardown."""
-        return dict(self._store)
+	@property
+	def store(self) -> dict[tuple[str, ...], Any]:
+		"""Direct read access so a test can verify values after teardown."""
+		return dict(self._store)

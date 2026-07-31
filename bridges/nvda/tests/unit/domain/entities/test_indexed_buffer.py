@@ -12,7 +12,6 @@ from typing import Any
 
 import pytest
 from fakes.clock import FakeClock
-
 from nvdaMcpBridge.domain.entities.indexed_buffer import IndexedBuffer
 
 

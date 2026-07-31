@@ -33,23 +33,23 @@ from .named_pipe_transport import (
 	FILE_FLAG_OVERLAPPED,
 	INVALID_HANDLE_VALUE,
 	KERNEL32,
+	OVERLAPPED,
 	PIPE_ACCESS_DUPLEX,
 	PIPE_READMODE_BYTE,
 	PIPE_REJECT_REMOTE_CLIENTS,
 	PIPE_TYPE_BYTE,
 	PIPE_UNLIMITED_INSTANCES,
+	SECURITY_ATTRIBUTES,
 	WAIT_OBJECT_0,
 	WAIT_TIMEOUT,
-	OVERLAPPED,
-	SECURITY_ATTRIBUTES,
 	NamedPipeTransport,
 	create_event,
 	free_security_descriptor,
 	owner_only_security_attributes,
 )
+from .named_pipe_transport import DEFAULT_POLL_TIMEOUT as _DEFAULT_RECV_TIMEOUT
 from .ports.listener import Listener, ListenerClosed
 from .ports.transport import Transport
-from .named_pipe_transport import DEFAULT_POLL_TIMEOUT as _DEFAULT_RECV_TIMEOUT
 
 #: Poll window for accept: how long it blocks before reporting TimeoutError, so
 #: the server thread can notice a stop request -- same meaning as

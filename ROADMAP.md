@@ -417,6 +417,27 @@ incomplete:
   listening), and took over a blind maintainer's machine mid-task twice before
   being marked `live_nvda` and excluded by default.
 
+- **2026-07-31** — the lint gate, and CI actually calling it. Ruff's rule set is
+  now **chosen** in all three configs rather than inherited from whatever
+  version is installed; the whole tree (179 files) was brought under it; and
+  `ruff format --check` — the half that catches indentation, and the half that
+  was missing — runs in `ci`. That gap is why PR #46 could add a dozen
+  space-indented files to a tab repo without a single gate objecting, and the
+  dev scripts turned out to be linted by *nothing*, falling between `shared/`
+  and `bridges/nvda/`.
+
+  The same PR made `.github/workflows/ci.yml` stop duplicating commands: each
+  job now installs a toolchain and calls one task (`poe ci-shared`, `ci-server`,
+  `ci-bridge`, `ci-conformance`). Two hand-maintained definitions of "green" had
+  drifted in both directions — `poe ci` ran a lint task the workflow did not,
+  while **staticcheck and the Linux build existed only in the workflow**, so no
+  developer could run them. What made the unification possible was splitting
+  `poe dev` (asks whether *this workstation* is fit: Go, ripgrep, intact venvs,
+  a fresh server binary) from `poe ci` (does not, because a runner is rebuilt
+  from the workflow every time and cannot have drifted). Those machine checks
+  were the blocker: the `shared` job installs uv and nothing else, so the
+  required `go` and `rg` aborted it before a single test ran.
+
 ## Principles — **Decided**
 
 - PRs are short: one component + its port(s) + unit tests; nothing lands

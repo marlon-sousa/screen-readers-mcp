@@ -42,99 +42,99 @@ from .nvda_main_thread import run_on_main
 
 
 class NvdaConfigAccessor(ConfigAccessor):
-    """Session-scoped config override map; never writes to config.conf."""
+	"""Session-scoped config override map; never writes to config.conf."""
 
-    def __init__(self) -> None:
-        self._overrides: dict[tuple[str, ...], Any] = {}
-        self._prior: dict[tuple[str, ...], Any] = {}
-        self._restored = False
+	def __init__(self) -> None:
+		self._overrides: dict[tuple[str, ...], Any] = {}
+		self._prior: dict[tuple[str, ...], Any] = {}
+		self._restored = False
 
-    def get(self, key_path: list[str]) -> Any:
-        key = tuple(key_path)
-        if key in self._overrides:
-            return self._overrides[key]
-        return run_on_main(lambda: self._get_from_conf(key_path), block=True)
+	def get(self, key_path: list[str]) -> Any:
+		key = tuple(key_path)
+		if key in self._overrides:
+			return self._overrides[key]
+		return run_on_main(lambda: self._get_from_conf(key_path), block=True)
 
-    def set(self, key_path: list[str], value: Any) -> Any:
-        key = tuple(key_path)
+	def set(self, key_path: list[str], value: Any) -> Any:
+		key = tuple(key_path)
 
-        # Read the prior (effective) value on first write to this key, and
-        # validate/coerce the new one -- both touch config.conf, so both run on
-        # the main thread in one hop rather than two.
-        def _prepare() -> tuple[Any, Any]:
-            prior = self._prior[key] if key in self._prior else self._get_from_conf(key_path)
-            return prior, self._validated(key_path, value)
+		# Read the prior (effective) value on first write to this key, and
+		# validate/coerce the new one -- both touch config.conf, so both run on
+		# the main thread in one hop rather than two.
+		def _prepare() -> tuple[Any, Any]:
+			prior = self._prior[key] if key in self._prior else self._get_from_conf(key_path)
+			return prior, self._validated(key_path, value)
 
-        prior, coerced = run_on_main(_prepare, block=True)
-        self._prior.setdefault(key, prior)
+		prior, coerced = run_on_main(_prepare, block=True)
+		self._prior.setdefault(key, prior)
 
-        # Install the hooks on first set(), lending them this session's map and
-        # the same confspec check, so a value NVDA's GUI writes back into an
-        # overridden key is coerced exactly as one arriving via setConfig is.
-        install(AggregatedSection, self._overrides, self._coerce_for_hook)
-        self._overrides[key] = coerced
-        return self._prior[key]
+		# Install the hooks on first set(), lending them this session's map and
+		# the same confspec check, so a value NVDA's GUI writes back into an
+		# overridden key is coerced exactly as one arriving via setConfig is.
+		install(AggregatedSection, self._overrides, self._coerce_for_hook)
+		self._overrides[key] = coerced
+		return self._prior[key]
 
-    def restore_all(self) -> None:
-        if self._restored:
-            return
-        # Clear and unhook BEFORE claiming success: if either step raises, the
-        # session's teardown guard swallows it, and a flag already flipped to
-        # True would leave an override live while reporting it restored.
-        self._overrides.clear()
-        remove()
-        self._restored = True
+	def restore_all(self) -> None:
+		if self._restored:
+			return
+		# Clear and unhook BEFORE claiming success: if either step raises, the
+		# session's teardown guard swallows it, and a flag already flipped to
+		# True would leave an override live while reporting it restored.
+		self._overrides.clear()
+		remove()
+		self._restored = True
 
-    # -- helpers --------------------------------------------------------------
+	# -- helpers --------------------------------------------------------------
 
-    @staticmethod
-    def _coerce_for_hook(key_path: tuple[str, ...], value: Any) -> Any:
-        """Validate a hooked write, but never fail one.
+	@staticmethod
+	def _coerce_for_hook(key_path: tuple[str, ...], value: Any) -> Any:
+		"""Validate a hooked write, but never fail one.
 
-        The write is already happening -- typically NVDA's own settings GUI
-        saving a panel -- and there is no caller to hand an error to. So a value
-        the confspec rejects is stored as given rather than raised on: the
-        session keeps its override, the dialog keeps working, and the blast
-        radius is one in-memory value that dies at teardown. Rejection is for
-        ``setConfig``, which HAS a caller to tell.
-        """
-        try:
-            return NvdaConfigAccessor._validated(list(key_path), value)
-        except ConfigError:
-            return value
+		The write is already happening -- typically NVDA's own settings GUI
+		saving a panel -- and there is no caller to hand an error to. So a value
+		the confspec rejects is stored as given rather than raised on: the
+		session keeps its override, the dialog keeps working, and the blast
+		radius is one in-memory value that dies at teardown. Rejection is for
+		``setConfig``, which HAS a caller to tell.
+		"""
+		try:
+			return NvdaConfigAccessor._validated(list(key_path), value)
+		except ConfigError:
+			return value
 
-    @staticmethod
-    def _get_from_conf(key_path: list[str]) -> Any:
-        """Read a value from NVDA's config (profile-aware)."""
-        try:
-            node: Any = config.conf
-            for key in key_path:
-                node = node[key]
-            return node
-        except (KeyError, TypeError, AttributeError) as exc:
-            raise ConfigError(f"invalid config key path {key_path!r}: {exc}") from exc
+	@staticmethod
+	def _get_from_conf(key_path: list[str]) -> Any:
+		"""Read a value from NVDA's config (profile-aware)."""
+		try:
+			node: Any = config.conf
+			for key in key_path:
+				node = node[key]
+			return node
+		except (KeyError, TypeError, AttributeError) as exc:
+			raise ConfigError(f"invalid config key path {key_path!r}: {exc}") from exc
 
-    @staticmethod
-    def _validated(key_path: list[str], value: Any) -> Any:
-        """Vet ``value`` against the confspec for ``key_path``; return it coerced.
+	@staticmethod
+	def _validated(key_path: list[str], value: Any) -> Any:
+		"""Vet ``value`` against the confspec for ``key_path``; return it coerced.
 
-        Mirrors what NVDA itself does on a real write. A path with no confspec
-        entry (NVDA allows unspecced keys) is passed through unchanged -- there
-        is no schema to check it against, and refusing would be stricter than
-        NVDA is with its own writes.
-        """
-        try:
-            spec: Any = config.conf.spec
-            for key in key_path:
-                spec = spec[key]
-        except (KeyError, TypeError, AttributeError):
-            return value
-        if not spec or isinstance(spec, dict):
-            # A section, not a leaf: there is no scalar check to apply.
-            return value
-        try:
-            return config.conf.validator.check(spec, value)
-        except ValidateError as exc:
-            raise ConfigError(
-                f"config value {value!r} rejected for {key_path!r} (spec {spec!r}): {exc}"
-            ) from exc
+		Mirrors what NVDA itself does on a real write. A path with no confspec
+		entry (NVDA allows unspecced keys) is passed through unchanged -- there
+		is no schema to check it against, and refusing would be stricter than
+		NVDA is with its own writes.
+		"""
+		try:
+			spec: Any = config.conf.spec
+			for key in key_path:
+				spec = spec[key]
+		except (KeyError, TypeError, AttributeError):
+			return value
+		if not spec or isinstance(spec, dict):
+			# A section, not a leaf: there is no scalar check to apply.
+			return value
+		try:
+			return config.conf.validator.check(spec, value)
+		except ValidateError as exc:
+			raise ConfigError(
+				f"config value {value!r} rejected for {key_path!r} (spec {spec!r}): {exc}"
+			) from exc

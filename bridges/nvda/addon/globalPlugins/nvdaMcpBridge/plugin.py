@@ -152,7 +152,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			return
 		# Translators: Menu item in NVDA's Tools menu to open the NVDA MCP Bridge dialog.
 		self._tools_menu_item = tools_menu.Append(
-			wx.ID_ANY, _("NVDA MCP &Bridge…"),
+			wx.ID_ANY,
+			_("NVDA MCP &Bridge…"),
 		)
 		gui.mainFrame.sysTrayIcon.Bind(
 			wx.EVT_MENU, lambda evt: self._show_bridge_dialog(), self._tools_menu_item
@@ -211,8 +212,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 	@script(
 		# Translators: Input help message for the NVDA MCP bridge acknowledgement command.
 		description=_(
-			"Acknowledge a prompt from the NVDA MCP bridge: tell the agent "
-			"you are done and hand control back"
+			"Acknowledge a prompt from the NVDA MCP bridge: tell the agent you are done and hand control back"
 		),
 		# The prompter speaks this same combination as the instruction, so it is
 		# named in one place only (adapters/nvda_user_prompter.py).

@@ -10,7 +10,6 @@ import pytest
 
 from nvda_mcp_wire import protocol as p
 
-
 # --- from_dict: happy paths --------------------------------------------------
 
 
@@ -79,7 +78,9 @@ def test_missing_required_field_raises_with_name() -> None:
 
 
 def test_wrong_scalar_type_raises_with_path() -> None:
-	with pytest.raises(p.ValidationError, match="HelloParams.protocolVersion"):
+	# Escaped: the dot is meant literally, and `match=` is a regex -- unescaped it
+	# would also pass for "HelloParamsXprotocolVersion".
+	with pytest.raises(p.ValidationError, match=r"HelloParams\.protocolVersion"):
 		p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": "one"})
 
 

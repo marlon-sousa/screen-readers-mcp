@@ -6,10 +6,9 @@ from __future__ import annotations
 import pytest
 from fakes.announcer import FakeAnnouncer
 from fakes.clock import FakeClock
-from support.context import make_context, request
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.announce import AnnounceHandler
+from support.context import make_context, request
 
 
 def test_announce_speaks_the_text_and_acks(clock: FakeClock) -> None:

@@ -43,9 +43,7 @@ class NvdaUserPrompter(UserPrompter):
 	def present(self, prompt: str, ticket: str) -> None:
 		# Translators: Spoken after an agent's question, naming the gesture that
 		# answers it. {gesture} is a key combination, e.g. "NVDA control shift a".
-		instruction = _("Press {gesture} when you are done.").format(
-			gesture=ACK_GESTURE.replace("+", " ")
-		)
+		instruction = _("Press {gesture} when you are done.").format(gesture=ACK_GESTURE.replace("+", " "))
 		# One utterance, so the synth cannot put the instruction before the
 		# question or interleave the two.
 		run_on_main(

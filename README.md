@@ -57,7 +57,7 @@ From the repo root:
 
 ```sh
 uv run poe doctor    # check the machine can work the repo -- run this first
-uv run poe ci        # every headless suite, type check and drift gate (~30s)
+uv run poe dev       # every headless suite, type check, lint and drift gate (~1 min)
 uv run poe bridge    # just the bridge suite, for a fast inner loop
 uv run poe           # list every task
 
@@ -65,7 +65,7 @@ uv run poe build            # the server binary and the .nvda-addon
 ```
 
 `poe live` exists too, and is the only task that touches your machine: it drives
-a real NVDA. It is excluded from `ci` and from the default test run.
+a real NVDA. It is excluded from `dev`, from `ci`, and from the default test run.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the underlying commands.
 

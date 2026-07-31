@@ -119,8 +119,13 @@ def test_a_record_that_cannot_be_rendered_is_dropped_not_raised() -> None:
 	journal = LogJournal()
 	handler = JournalHandler(journal)
 	record = logging.LogRecord(
-		"NVDA", logging.INFO, "somewhere.py", 1,
-		"two placeholders %s %s", ("only-one-arg",), None,
+		"NVDA",
+		logging.INFO,
+		"somewhere.py",
+		1,
+		"two placeholders %s %s",
+		("only-one-arg",),
+		None,
 	)
 
 	handler.emit(record)  # must not raise

@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import enum
 import threading
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any
 
 from ... import protocol
 from ..ports.config_accessor import ConfigError
@@ -96,7 +97,12 @@ class Session:
 		self._log_capture = log_capture
 
 		self._ctx = SessionContext(
-			clock, transcript, self.request_teardown, announcer, log_capture, user_prompter,
+			clock,
+			transcript,
+			self.request_teardown,
+			announcer,
+			log_capture,
+			user_prompter,
 		)
 		self._state = _State.PRE_HELLO
 
@@ -275,9 +281,7 @@ class Session:
 			# beep failure never breaks the just-established session.
 			self._guard(self._signals.session_started)
 
-	def _close_window(
-		self, request_id: int, start_pos: int, captured_at: protocol.LogLevel
-	) -> None:
+	def _close_window(self, request_id: int, start_pos: int, captured_at: protocol.LogLevel) -> None:
 		"""Append this command's finished log window, keeping the last N."""
 		windows = self._ctx.command_windows
 		windows.append((request_id, start_pos, self._log_capture.position(), captured_at))

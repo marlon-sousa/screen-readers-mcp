@@ -27,8 +27,9 @@ from __future__ import annotations
 
 import enum
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 from ..domain.controllers.teardown_reason import TeardownReason
 from ..domain.entities.bridge_events import BridgeEvent, BridgeEventType
@@ -49,6 +50,7 @@ SessionFactory = Callable[["Transport"], "Session"]
 #: takes milliseconds once an open prompt window has been cancelled, and short
 #: enough that a screen reader never falls silent waiting for it.
 _STOP_JOIN_TIMEOUT: float = 5.0
+
 
 class ServerState(enum.Enum):
 	"""The observable state entry 9.1's dialog reflects (plain Enum: it never

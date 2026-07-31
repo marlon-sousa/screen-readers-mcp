@@ -38,6 +38,16 @@ ROOT = Path(__file__).resolve().parent.parent
 PY_PROJECTS = ("shared", "bridges/nvda")
 PY_TOOLS = ("pytest", "pyright", "ruff")
 
+
+def on_ci() -> bool:
+	"""Is this a CI runner rather than somebody's desktop?
+
+	Set by GitHub Actions on every runner, and by every other CI host worth the
+	name. Export ``CI=1`` locally to rehearse what CI will do.
+	"""
+	return bool(os.environ.get("CI"))
+
+
 OK, WARN, FAIL = "ok", "warn", "fail"
 
 
@@ -52,7 +62,11 @@ class Result:
 def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 	try:
 		done = subprocess.run(
-			args, cwd=cwd, capture_output=True, text=True, timeout=180,
+			args,
+			cwd=cwd,
+			capture_output=True,
+			text=True,
+			timeout=180,
 		)
 	except (OSError, subprocess.TimeoutExpired) as exc:
 		return 1, str(exc)
@@ -72,42 +86,56 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 #: ones, and a comparison that gives wrong answers is worse than no comparison.
 BINARIES = (
 	(
-		"uv", True, (0, 5, 0),
+		"uv",
+		True,
+		(0, 5, 0),
 		"runs every Python task; 0.5 is where dependency-groups landed",
 		"https://docs.astral.sh/uv/getting-started/",
 	),
 	(
-		"go", True, (1, 25, 0),
+		"go",
+		True,
+		(1, 25, 0),
 		"builds and tests the MCP server; the minimum is server/go.mod's own",
 		"https://go.dev/dl/",
 	),
 	("git", True, (2, 30), "version control", "https://git-scm.com/downloads"),
 	(
-		"rg", True, (13, 0),
+		"rg",
+		True,
+		(13, 0),
 		"without it a search falls back to grep -r, which does NOT honour "
 		".gitignore and so reads .venv and __pycache__ -- thousands of "
 		"irrelevant lines per search",
 		"winget install BurntSushi.ripgrep.MSVC",
 	),
 	(
-		"scons", False, (4, 0),
+		"scons",
+		False,
+		(4, 0),
 		"builds the .nvda-addon",
 		"pip install scons  (into the interpreter you build addons with)",
 	),
 	(
-		"msgfmt", False, None,
+		"msgfmt",
+		False,
+		None,
 		"gettext: scons compiles the addon's .po files into .mo with it",
 		"winget install GnuWin32.GetText  (or the gettext-tools MSYS2 package)",
 	),
 	("xgettext", False, None, "gettext: extracts the addon's translatable strings", "same as msgfmt"),
 	(
-		"gh", False, (2, 55),
+		"gh",
+		False,
+		(2, 55),
 		"PR and issue work. BELOW 2.55 `gh pr edit` fails with the Projects-classic "
 		"deprecation error and every body/title edit needs a REST workaround",
 		"winget upgrade GitHub.cli",
 	),
 	(
-		"pwsh", False, (7, 0),
+		"pwsh",
+		False,
+		(7, 0),
 		"PowerShell 7. The Windows PowerShell 5.1 this box defaults to has no "
 		"&& or ||, and wraps every native stderr line in a multi-line ErrorRecord "
 		"-- verbose, slow to read, and it reports failure on exit code 0",
@@ -178,7 +206,11 @@ def _scons_interpreter() -> Path | None:
 	# Both a venv and a CPython install put console scripts in Scripts/ (or
 	# bin/) with the interpreter one level up.
 	scripts = Path(found).resolve().parent
-	for candidate in (scripts.parent / "python.exe", scripts.parent / "bin" / "python", scripts.parent / "python"):
+	for candidate in (
+		scripts.parent / "python.exe",
+		scripts.parent / "bin" / "python",
+		scripts.parent / "python",
+	):
 		if candidate.is_file():
 			return candidate
 	return None
@@ -271,14 +303,22 @@ def check_dev_tools() -> list[Result]:
 	for project in PY_PROJECTS:
 		directory = ROOT / project
 		if not (directory / ".venv").is_dir():
-			out.append(
-				Result(FAIL, f"{project}: venv", "missing", "uv run poe fix")
-			)
+			out.append(Result(FAIL, f"{project}: venv", "missing", "uv run poe fix"))
 			continue
 		for tool in PY_TOOLS:
 			code, detail = _run(
-				["uv", "run", "--directory", str(directory), "--with", tool,
-				 "python", "-m", tool, "--version"],
+				[
+					"uv",
+					"run",
+					"--directory",
+					str(directory),
+					"--with",
+					tool,
+					"python",
+					"-m",
+					tool,
+					"--version",
+				],
 			)
 			if code == 0:
 				out.append(Result(OK, f"{project}: {tool}", detail.splitlines()[0] if detail else "ok"))
@@ -304,8 +344,7 @@ def check_trampolines() -> list[Result]:
 	out: list[Result] = []
 	for project in PY_PROJECTS:
 		code, detail = _run(
-			["uv", "run", "--directory", str(ROOT / project), "--with", "pytest",
-			 "pytest", "--version"],
+			["uv", "run", "--directory", str(ROOT / project), "--with", "pytest", "pytest", "--version"],
 		)
 		if code == 0:
 			out.append(Result(OK, f"{project}: console scripts", "resolve"))
@@ -444,13 +483,25 @@ def main() -> int:
 		repair()
 
 	results: list[Result] = []
-	results += check_binaries()
-	results.append(check_bare_python())
-	results += check_addon_build_deps()
+	# The MACHINE checks -- "is this workstation set up to work the repo". On CI
+	# they are the wrong question, and asking it is what kept `poe` out of the
+	# workflow: the `shared` job installs uv and nothing else, so the required
+	# `go`/`rg` would abort it before a single test ran. CI does not need them.
+	# Its environment is DECLARED, in ci.yml's setup steps, and when something is
+	# missing the step that wanted it fails immediately naming the tool -- there
+	# is no mystery for a doctor to diagnose. The doctor's value is on a desktop
+	# that drifted, which a fresh runner cannot have done.
+	#
+	# The REPO checks below the guard are asked everywhere, because they are
+	# facts about the checkout rather than about the machine.
+	if not on_ci():
+		results += check_binaries()
+		results.append(check_bare_python())
+		results += check_addon_build_deps()
+		results.append(check_server_binary())
 	results += check_pyright_venv_config()
 	results.append(check_shared_synced())
-	results.append(check_server_binary())
-	if not args.quick:
+	if not args.quick and not on_ci():
 		# These spawn a uv environment per tool per project -- a few seconds,
 		# which is fine for `poe doctor` and far too slow to sit in front of
 		# every `poe bridge`. The quick set still catches the failures that

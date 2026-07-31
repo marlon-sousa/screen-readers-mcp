@@ -15,7 +15,6 @@ from fakes.announcer import FakeAnnouncer
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.domain.controllers.commands.session_context import SessionContext
 from nvdaMcpBridge.domain.entities.braille_buffer import BrailleBuffer

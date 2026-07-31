@@ -12,18 +12,18 @@ from nvdaMcpBridge.domain.ports.focus_inspector import FocusInfo, FocusInspector
 
 
 class FakeFocusInspector(FocusInspector):
-    """Returns a configurable FocusInfo; records every call."""
+	"""Returns a configurable FocusInfo; records every call."""
 
-    def __init__(self) -> None:
-        self.calls: list[None] = []
-        self.info: FocusInfo = FocusInfo(
-            name="Test Button",
-            role="BUTTON",
-            states=["FOCUSABLE", "FOCUSED"],
-            value=None,
-            app_module="test_app",
-        )
+	def __init__(self) -> None:
+		self.calls: list[None] = []
+		self.info: FocusInfo = FocusInfo(
+			name="Test Button",
+			role="BUTTON",
+			states=["FOCUSABLE", "FOCUSED"],
+			value=None,
+			app_module="test_app",
+		)
 
-    def focus_info(self) -> FocusInfo:
-        self.calls.append(None)
-        return self.info
+	def focus_info(self) -> FocusInfo:
+		self.calls.append(None)
+		return self.info

@@ -13,16 +13,15 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable, TypeVar
+from collections.abc import Callable
+from typing import Any
 
 import wx
-
-_T = TypeVar("_T")
 
 _MAIN_THREAD_TIMEOUT: float = 10.0
 
 
-def run_on_main(func: Callable[[], _T], *, block: bool = False) -> _T | None:
+def run_on_main[T](func: Callable[[], T], *, block: bool = False) -> T | None:
 	"""Run ``func`` on NVDA's main thread; return its result when ``block``."""
 	if wx.IsMainThread():
 		return func()

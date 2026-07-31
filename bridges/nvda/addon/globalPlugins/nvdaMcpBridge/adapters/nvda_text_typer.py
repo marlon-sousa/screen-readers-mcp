@@ -66,7 +66,7 @@ class NvdaTextTyper(TextTyper):
 				for unit in units:
 					_send_unicode_event(unit, key_up=False)
 					_send_unicode_event(unit, key_up=True)
-			except Exception as exc:  # noqa: BLE001 -- reported back as a TypingError
+			except Exception as exc:
 				failure.append(exc)
 			finally:
 				done.set()
