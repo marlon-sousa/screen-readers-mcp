@@ -385,8 +385,11 @@ turns a confusing retry loop into one obvious next call.
    `capturedAtLevel: "info"`; then `set_log_level("debug")`, re-run the command,
    and the same slice request has the debug records. Raising is forwards only, and
    this is the check that says so out loud.
-6. A slice from a busy `io` session reports `truncated: true` rather than
-   returning megabytes.
+6. A slice from a busy session reports `truncated: true` rather than returning
+   megabytes. Use **`debug`**, not `io`: at 12, `io` excludes the DEBUG records
+   that actually flood (see amendment 6). Verified 2026-07-30 — twenty seconds of
+   browsing at `debug` gave `matched: 1368, entries: 200, truncated: true`, an
+   8.8 KB payload against 62.8 KB uncapped.
 7. `set_log_level` restores NVDA's own level at teardown — verify in NVDA's
    General settings that it reads what it did before the session.
 
@@ -451,6 +454,14 @@ the code actually does stay separately readable.
    produced by a `formatTime` that deliberately avoids `time.localtime`. Both are
    borrowed from NVDA rather than restated, so a slice lines up with the log a
    human would diff it against.
+
+   One consequence is worth stating plainly, because this entry's own checklist
+   assumed the opposite: **an `io` floor is NARROWER than a `debug` one.** At 12
+   it excludes every DEBUG record — `evtTracker`'s per-event flood included — so
+   `debug` is the verbose level and `io` is the selective one. Measured on
+   2026-07-30 over twenty seconds of real browsing: `debug` produced 1368
+   records, `io` 64, and **silent** mode 39, since suppressing speech at the
+   `speak()` filter means NVDA never logs `speech.speech.speak` at all.
 
 An unknown `fields` entry or `minLevel` is also now an error rather than a silent
 omission: a typo'd projection otherwise returns plausible text with a column
