@@ -25,6 +25,28 @@ dev = ["poethepoet>=0.30"]
 [tool.uv]
 package = false
 
+# The dev scripts are first-party code and were linted by nothing: shared/ and
+# bridges/nvda/ each carry their own ruff config, and everything outside them --
+# scripts/, sync_shared.py, buildVars.py -- fell between the two. Same rule set
+# as both, for the same reason they match each other.
+[tool.ruff]
+line-length = 110
+extend-exclude = [
+	# Vendored from the NVDA AddonTemplate scaffold: upstream's code, upstream's
+	# formatting. Reformatting it would only make the next scaffold sync noisy.
+	"bridges/nvda/site_scons",
+]
+
+[tool.ruff.format]
+indent-style = "tab"
+
+[tool.ruff.lint]
+select = ["F", "E", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+	"W191",   # tabs, the house style
+	"SIM105", # deliberate try/except/pass, commented at each site
+]
+
 # poe runs tasks from the directory holding this file, so every task names its
 # own subproject and none depends on where you happened to be standing.
 
@@ -86,8 +108,11 @@ deps = ["check"]
 sequence = [
 	{ cmd = "uv run --directory shared --with ruff python -m ruff check ." },
 	{ cmd = "uv run --directory shared --with ruff python -m ruff format --check ." },
-	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests" },
-	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff format --check addon tests" },
+	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests buildVars.py sync_shared.py" },
+	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff format --check addon tests buildVars.py sync_shared.py" },
+	# The dev scripts, which no project's config reached until now.
+	{ cmd = "uv run --with ruff python -m ruff check scripts" },
+	{ cmd = "uv run --with ruff python -m ruff format --check scripts" },
 ]
 
 [tool.poe.tasks.go]

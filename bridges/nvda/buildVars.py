@@ -4,7 +4,6 @@
 from site_scons.site_tools.NVDATool.typings import AddonInfo, BrailleTables, SymbolDictionaries
 from site_scons.site_tools.NVDATool.utils import _
 
-
 addon_info = AddonInfo(
 	addon_name="nvdaMcpBridge",
 	# Translators: Summary/title for this add-on.
@@ -42,7 +41,7 @@ The add-on is inert until a session connects: it never swaps your synthesizer or
 pythonSources: list[str] = [
 	"addon/globalPlugins/nvdaMcpBridge/**/*.py",
 ]
-i18nSources: list[str] = pythonSources + ["buildVars.py"]
+i18nSources: list[str] = [*pythonSources, "buildVars.py"]
 
 # Paths are relative to the addon directory when building the bundle.
 excludedFiles: list[str] = [

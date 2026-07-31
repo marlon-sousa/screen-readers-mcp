@@ -42,7 +42,12 @@ def schema_gate() -> bool:
 	# together turns a working generator into "did not emit JSON".
 	code, out, err = _run(
 		[
-			"uv", "run", "--directory", str(ROOT / "shared"), "python", "-c",
+			"uv",
+			"run",
+			"--directory",
+			str(ROOT / "shared"),
+			"python",
+			"-c",
 			"import json;from nvda_mcp_wire.schema import build_wire_schema;"
 			"print(json.dumps(build_wire_schema()))",
 		]

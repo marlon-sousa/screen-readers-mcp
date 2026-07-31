@@ -85,6 +85,11 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "sconstruct" = ["F821"]
 
+# buildVars.py is NVDA's add-on manifest in Python form: addon_info carries the
+# summary and description the add-on store DISPLAYS, as single strings. Wrapping
+# them would change what a user reads in the store, so the length stands.
+"buildVars.py" = ["E501"]
+
 # E402 (import not at top) is STRUCTURAL in these four: each puts globalPlugins
 # on sys.path, or syncs the shared wire module in, before it can import
 # `nvdaMcpBridge.*` at all -- so the imports genuinely cannot come first. Listed
