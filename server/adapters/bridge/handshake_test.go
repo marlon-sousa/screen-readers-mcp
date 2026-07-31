@@ -45,9 +45,9 @@ func silent() ports.SessionOptions {
 
 func TestDialEstablishesASessionFromHello(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
-		Reader:        wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
-		Synth:         "espeak",
-		LogPath:       `C:\logs\session.log`,
+		Reader:  wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+		Synth:   "espeak",
+		LogPath: `C:\logs\session.log`,
 	})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
 
