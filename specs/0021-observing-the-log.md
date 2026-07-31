@@ -181,6 +181,72 @@ The last span has no end yet; it is sliced to the journal's current position.
 Re-reads are monotonic supersets, never contradictory, which is what a tail should
 be. An agent that reads too early gets a partial answer and more on the next call.
 
+### Silent mode blinds the log, and that is our own doing
+
+Measured 2026-07-30, identical browsing of one site for twenty seconds:
+
+| session | records journalled |
+|---|---|
+| `debug`, live | 1368 |
+| `io`, live | 64 |
+| `io`, silent | 39 |
+
+The silent figure is low because of **us**, not NVDA. `NvdaSilentSpeechSource`
+registers on `filter_speechSequence`, which NVDA applies at `speech/speech.py:1096`
+and empties; `speak()` then returns before reaching its own
+`log.io("Speaking %r")` at line 1165. So a silent session removes NVDA's speech
+records from the log entirely — including from the user's own `nvda.log`.
+
+This matters beyond a missing convenience: 0020 justified deleting 0009's capture
+file on the grounds that *"the level raise is global, so NVDA's own nvda.log
+already holds identical records"*. In a **silent** session that is partly false,
+and false because the bridge is standing there. The fallback 0020 leans on is
+degraded by the very session most likely to need it.
+
+Two things follow, and one of them is a refusal.
+
+**Do NOT synthesise the record into NVDA's log.** Writing `Speaking [...]` when
+nothing was spoken makes a shared artifact — the file the user reads and pastes
+into issues — assert something untrue. A bridge that leaves a gap in that file is
+better than one that fills the gap with fiction.
+
+**Do NOT duplicate the speech content into the journal either.** It is already
+captured, in a better place: every suppressed sequence goes into the
+`SpeechBuffer` and is readable through `getSpeech`, indexed and ordered, which is
+strictly more structured than a formatted `Speaking %r` line.
+
+### What the agent wants is a shared coordinate, not a second copy
+
+Asked directly which surface an agent would rather read speech from — the log or
+the speech ring — the honest answer is **both, because they answer different
+questions**, and the split is sharp:
+
+- The **ring** answers *what was said*. It is the oracle: indexed, deterministic
+  under silent capture, and already served by `waitForSpeech` without polling.
+- The **log** answers *when it was said relative to everything else*. Its unique
+  value is adjacency, not content — 11.4's central finding was legible only as
+  `executeGesture (…56.033)` followed by `speech.speak (…56.034)`, and no speech
+  buffer could ever have shown that one-millisecond gap.
+
+Which means duplicating speech text into the journal would buy the *less* useful
+half. What is actually missing is the ability to place a ring entry on the log's
+timeline. So: **speech buffer entries carry the journal position captured at the
+moment they were appended.** One integer per utterance, no fiction in anyone's
+log, and it makes the join exact rather than eyeballed — read the ring for what
+was said, the journal for what surrounded it, and the position to line them up.
+
+An **open question** deliberately left for review: whether the same coordinate
+should be added to braille entries and to transcript lines. It is the same idea
+and probably the same integer, but nothing has demanded it yet.
+
+### The mode trade-off has to be said out loud
+
+`connect_reader`'s mode description, and 0020's, should state it plainly, because
+it is a trap that has already cost one wrong conclusion: **silent buys
+deterministic capture and costs log fidelity; live buys a faithful log and costs
+determinism.** An agent debugging *"why did it say the wrong thing?"* may well
+want live for exactly that reason.
+
 ### Records carry epoch time
 
 `lastSeconds` needs a numeric time to compare against, and the journal currently
@@ -213,6 +279,10 @@ class LogSliceResult:          # 0020's, extended
     nextPosition: int          # pass as sincePosition to continue the tail
     # text / entries / matched / truncated / fromCommandId / toCommandId /
     # capturedAtLevel are unchanged
+
+@dataclass
+class SpeechEntry:             # existing; gains one field
+    logPosition: int           # the journal position when this was captured
 
 @dataclass
 class WaitForLogParams:
@@ -253,7 +323,11 @@ an older bridge simply does not advertise them.
    goes, replaced by "opening a span closes the previous one".
 6. **`domain/controllers/commands/session_context.py`** — `command_windows` becomes
    `(command_id, start, level)`; the accessors follow.
-7. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
+7. **`domain/entities/speech_buffer.py`** — each entry records the journal
+   position it was captured at, so a ring entry can be placed on the log's
+   timeline. The buffer takes the position as a value; it does not learn about
+   the journal.
+8. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
    `LogReader` port and the bridge client gain both.
 
 ## Tests
@@ -266,7 +340,9 @@ an older bridge simply does not advertise them.
 11. Session: spans are contiguous with no gaps; a span extends to the next marking
     command; `getLog` does not close the span it reads.
 12. Go tool tests and conformance for both new commands.
-13. **Live** — the two shapes this entry exists for, which is where 11.4's model
+13. Speech entries carry a journal position that actually falls inside the
+    window the utterance belongs to, in **both** capture modes.
+14. **Live** — the two shapes this entry exists for, which is where 11.4's model
     failed: a trigger followed by a poll loop while the consequences arrive, and a
     human-driven session found via `lastSeconds`.
 
@@ -285,8 +361,12 @@ an older bridge simply does not advertise them.
    position taken beforehand.
 6. `waitForLog { minLevel: "error", timeout: 30 }`, then provoke an error: it
    returns at the moment it happens, with a usable position.
-7. On a busy `io` session, poll slower than the ring turns over: `truncated: true`
-   rather than a silent gap.
+7. On a busy session, poll slower than the ring turns over: `truncated: true`
+   rather than a silent gap. Use `debug`, not `io` — at 12, `io` excludes the
+   DEBUG records that actually flood.
+8. In a **silent** session, take a speech entry's `logPosition` and read the
+   journal around it: the surrounding events are there even though the
+   `Speaking` record itself is not, which is the whole point of the coordinate.
 
 ## Out of scope
 
