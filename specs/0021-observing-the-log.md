@@ -239,6 +239,108 @@ An **open question** deliberately left for review: whether the same coordinate
 should be added to braille entries and to transcript lines. It is the same idea
 and probably the same integer, but nothing has demanded it yet.
 
+### Three surfaces, and what each is actually for
+
+Written down because this got confused twice in one review conversation. A
+session produces three records of what happened, and they are not
+interchangeable:
+
+| surface | answers | addressed by | lifetime |
+|---|---|---|---|
+| **speech ring** | *what was said* | index (`sinceIndex`) | dies at teardown |
+| **transcript** | *what the session did*, one ordered narrative | line / position | **survives on disk** |
+| **journal** | *what the reader did internally* | position, time, command span | dies at teardown |
+
+The ring is the oracle — append-only and **unbounded** within a session
+(`IndexedBuffer`), so nothing ages out of it while the session lives. The journal
+is the diagnosis, and the only one that is a bounded ring. The transcript is the
+narrative, in the bridge's own vocabulary, and the only one that outlives the
+session.
+
+The temptation each time is to copy content between them. Resist it: the ring
+already holds every utterance in better shape than a log line, and the transcript
+already interleaves gestures with speech on the **same clock** the journal stamps
+with, so `GESTURE tab` at `09:02:58.612` and `SPEECH '...'` at `09:02:58.626`
+already correlate without anyone duplicating anything. What is missing is never
+content — it is a shared coordinate, which is why speech entries gain
+`logPosition` above rather than the journal gaining speech text.
+
+### The transcript is still filesystem-bound, and that contradicts the bridge
+
+`connect_reader` hands the agent `logPath` and nothing else. That is verbatim the
+complaint 0020 opens with about `nvda.log` — *"what the agent receives is a path,
+and reading it means reading the whole file"*, and *"reading the file also assumes
+the agent and the reader share a filesystem. Nothing else in this project assumes
+that: the bridge exists precisely because the reader's environment is reachable
+only through it."* We fixed that for NVDA's log and left our own record behind.
+
+**But the naive fix is wrong**, and the reason is the lifetime column above.
+During a session the transcript is *redundant for the agent*: it knows the
+commands it sent, and the ring holds every utterance, unbounded and indexed. A
+`getTranscript` the agent calls mid-session would mostly return what it already
+has. The transcript's unique value arrives exactly when the session ends and the
+ring and journal are destroyed — and at that moment there is no session left to
+answer a command.
+
+So the consumer is the **server at teardown**, not the agent mid-session:
+
+```mermaid
+sequenceDiagram
+    accTitle: How the session transcript reaches the agent without a shared filesystem
+    accDescr: The agent calls disconnect reader. Before sending bye, the server pulls the transcript from the bridge in bounded pages using a cursor, receiving lines and a next position until the bridge reports no more. The server then sends bye and the bridge tears the session down, destroying the speech ring and the journal. The transcript the server captured is published as an MCP resource, so the agent can read the finished session narrative afterwards even though the bridge is gone and its file was never on the agent's filesystem.
+    participant Agent
+    participant Server as MCP server
+    participant Bridge
+    Agent->>Server: disconnect_reader
+    loop until the bridge reports no more lines
+        Server->>Bridge: getTranscript { sincePosition }
+        Bridge-->>Server: { lines, nextPosition, complete }
+    end
+    Server->>Bridge: bye
+    Bridge-->>Server: session torn down; ring and journal destroyed
+    Server-->>Agent: transcript published as an MCP resource
+```
+
+- **`getTranscript { sincePosition?, maxLines? }` → `{ lines, nextPosition, complete }`**
+  on the bridge, deliberately the **same cursor idiom** as `getLog`, so one
+  addressing model covers both readable streams instead of two.
+- **The server pulls it during `disconnect_reader`, before `bye`**, in bounded
+  pages, and publishes it as an **MCP resource** beside the session info resource
+  the server already serves (`adapters/mcp/info_resource.go`). That is the moment
+  it stops being redundant, and the only moment the file is still reachable.
+- **`logPath` stays**, demoted in the docs to a local convenience for the human at
+  the reader — never a contract an agent should depend on, because for a remote
+  bridge it names a file on a machine the agent cannot open.
+
+Transmitting it is safe by construction: `Transcript.typed()` records a **length,
+never the text** (spec 0016), precisely because `typeText` is how a secret would
+be entered. There is nothing in a transcript that was not already judged fit to
+write to disk.
+
+Two costs, stated. A long session's transcript is not small, so the pull is paged
+and the server may cap what it retains. And a teardown that has to complete a
+transfer first is a teardown that can fail differently — so the pull is
+**guarded**: a failed or partial fetch degrades to "no transcript resource", never
+to a session that will not close. Teardown's existing rule stands, that every step
+is individually guarded and the channel closes regardless.
+
+**Open question for review:** whether this deserves to be its own entry rather
+than riding in 11.5. It shares the cursor, which is the argument for keeping it
+here; it is a second stream and a server-side resource, which is the argument for
+splitting it.
+
+### A single marker explains the silence in the user's own log
+
+Independent of everything above, and cheap: emit **one** record into NVDA's log
+when a silent session starts, and one when it ends —
+`nvdaMcpBridge: speech suppressed for this session` / `restored`. Zero
+per-utterance cost, honestly attributed to us, and it means a human opening their
+own `nvda.log` next week is not baffled by a stretch with no speech in it. Right
+now that gap is unexplained and reads like an NVDA fault.
+
+This is the *only* thing this entry writes into NVDA's log, and it is deliberately
+about the session, not about any utterance.
+
 ### The mode trade-off has to be said out loud
 
 `connect_reader`'s mode description, and 0020's, should state it plainly, because
@@ -261,6 +363,7 @@ float per record; `_estimate_size`'s accounting barely notices.
 class Command(StrEnum):
     GET_LOG_POSITION = "getLogPosition"
     WAIT_FOR_LOG = "waitForLog"
+    GET_TRANSCRIPT = "getTranscript"
 
 @dataclass
 class GetLogParams:            # 0020's, extended
@@ -279,6 +382,17 @@ class LogSliceResult:          # 0020's, extended
     nextPosition: int          # pass as sincePosition to continue the tail
     # text / entries / matched / truncated / fromCommandId / toCommandId /
     # capturedAtLevel are unchanged
+
+@dataclass
+class GetTranscriptParams:
+    sincePosition: int = 0     # line index; same cursor idiom as getLog
+    maxLines: int = 500
+
+@dataclass
+class TranscriptResult:
+    lines: list[str]
+    nextPosition: int
+    complete: bool             # False while more lines remain to page
 
 @dataclass
 class SpeechEntry:             # existing; gains one field
@@ -327,8 +441,16 @@ an older bridge simply does not advertise them.
    position it was captured at, so a ring entry can be placed on the log's
    timeline. The buffer takes the position as a value; it does not learn about
    the journal.
-8. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
-   `LogReader` port and the bridge client gain both.
+8. **`domain/ports/transcript.py`** — gains `read(since, max_lines)`; the file
+   adapter reads its own lines back, and `path` is demoted in the docs to a
+   local convenience.
+9. **`domain/controllers/commands/get_transcript.py`** — `marks_log = False`,
+   like every other read.
+10. **Server** — `get_log_position` and `wait_for_log` tools, gated on `log`; the
+    `LogReader` port and the bridge client gain both. The connection controller
+    pulls the transcript during `disconnect_reader`, **before** `bye`, guarded
+    so a failed pull never blocks teardown, and publishes it as an MCP resource
+    beside the session info one.
 
 ## Tests
 
@@ -342,7 +464,11 @@ an older bridge simply does not advertise them.
 12. Go tool tests and conformance for both new commands.
 13. Speech entries carry a journal position that actually falls inside the
     window the utterance belongs to, in **both** capture modes.
-14. **Live** — the two shapes this entry exists for, which is where 11.4's model
+14. `getTranscript` pages with the cursor, reports `complete`, and a transcript
+    pulled at teardown matches the file on disk line for line.
+15. A bridge that fails or stalls the transcript pull still tears down cleanly,
+    and the session simply has no transcript resource.
+16. **Live** — the two shapes this entry exists for, which is where 11.4's model
     failed: a trigger followed by a poll loop while the consequences arrive, and a
     human-driven session found via `lastSeconds`.
 
@@ -364,7 +490,12 @@ an older bridge simply does not advertise them.
 7. On a busy session, poll slower than the ring turns over: `truncated: true`
    rather than a silent gap. Use `debug`, not `io` — at 12, `io` excludes the
    DEBUG records that actually flood.
-8. In a **silent** session, take a speech entry's `logPosition` and read the
+8. Run a silent session, disconnect, then read the transcript **as an MCP
+   resource** with the bridge gone: the narrative is complete and no path was
+   ever opened by the agent.
+9. NVDA's own log carries one `speech suppressed` marker at the start of that
+   session and one `restored` at the end, and nothing per utterance.
+10. In a **silent** session, take a speech entry's `logPosition` and read the
    journal around it: the surrounding events are there even though the
    `Speaking` record itself is not, which is the whole point of the coordinate.
 
@@ -375,6 +506,9 @@ an older bridge simply does not advertise them.
 - Absolute timestamp queries. `lastSeconds` covers the case without a clock-format
   agreement; positions cover everything needing precision.
 - Regular expressions, still. Substrings cover the cases and cannot hang the reader.
+- Transcripts of *previous* sessions. The server publishes the one it pulled at
+  teardown; older files stay on the reader's disk for the human, and hunting
+  through them is not a wire concern.
 - Cross-session history. The journal remains session-scoped; the answer for
   post-mortems is NVDA's own `nvda.log`, bracketed by the transcript's timestamps.
 
