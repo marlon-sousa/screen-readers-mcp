@@ -51,7 +51,36 @@ exclude = [".git", "__pycache__"]
 indent-style = "tab"
 
 [tool.ruff.lint]
-ignore = ["W191"]
+# CHOSEN, not inherited. Ruff's default selection has widened across releases --
+# 0.16 turns on bandit (S), blind-except (BLE), datetimez (DTZ) and pep8-naming
+# (N) among others -- so a project with no `select` is enforcing whatever the
+# installed ruff happens to ship, and a version bump silently changes the rules.
+# Listing them makes a change to what this repo enforces a deliberate edit.
+select = [
+	"F",   # pyflakes -- undefined names, unused imports: real errors
+	"E",   # pycodestyle errors, incl. E501 line length and E402 import placement
+	"W",   # pycodestyle warnings
+	"I",   # import sorting -- mechanical, and the thing that drifts most
+	"UP",  # pyupgrade -- hold to the 3.13 NVDA actually embeds
+	"B",   # bugbear -- real bug shapes
+	"SIM", # simplify
+	"RUF", # ruff's own, including unused-noqa
+]
+
+# Deliberately NOT selected, each because it fights something this codebase does
+# on purpose:
+#   N   -- the package is `nvdaMcpBridge`; camelCase is NVDA's add-on convention.
+#   BLE -- Session._guard and every adapter stop() catch broadly on purpose, so a
+#          failing teardown step can never skip the ones after it.
+#   S   -- same guard idiom (S110 try-except-pass).
+#   DTZ -- session filenames and transcript stamps are deliberately local time.
+#   PL  -- pylint's refactor opinions are not this project's house style.
+ignore = [
+	"W191",   # tabs ARE the house style; [tool.ruff.format] enforces them
+	"SIM105", # try/except/pass in teardown is deliberate and carries a comment
+	          # explaining why. contextlib.suppress would read better and is worth
+	          # its own pass over the stop() paths, not a drive-by here.
+]
 
 [tool.ruff.lint.per-file-ignores]
 "sconstruct" = ["F821"]

@@ -75,12 +75,19 @@ sequence = [
 	{ cmd = "uv run --directory bridges/nvda --with pytest --with pyright python -m pyright" },
 ]
 
+# The format check is HALF of what this task is for, and it was missing: the help
+# below has always claimed it, `ci` never ran this task at all, and so nothing
+# anywhere told a contributor -- human or model -- that a file was misformatted.
+# Every file added in PR #46 arrived space-indented in a tab repo and no gate
+# said a word. Both halves run here now, and `ci` runs the task.
 [tool.poe.tasks.lint]
 help = "ruff check + format check, both Python projects"
 deps = ["check"]
 sequence = [
 	{ cmd = "uv run --directory shared --with ruff python -m ruff check ." },
+	{ cmd = "uv run --directory shared --with ruff python -m ruff format --check ." },
 	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff check addon tests" },
+	{ cmd = "uv run --directory bridges/nvda --with ruff python -m ruff format --check addon tests" },
 ]
 
 [tool.poe.tasks.go]
