@@ -170,12 +170,31 @@ sequence = [
 # EVERYTHING outside shared/ and bridges/nvda/ -- today the dev scripts, tomorrow
 # whatever someone adds. Deliberately `.` and not `scripts`: see the note on
 # allow-lists above [tool.poe.tasks.lint].
+#
+# `--no-project` is LOAD-BEARING, and is the one thing about this file that CI
+# proved and a local run could not. Every other lane passes `--directory <proj>`
+# and so acts on that subproject's environment. This one has no subproject, so
+# without it uv targets the ROOT environment -- which is the environment hosting
+# the running poe process. Ask uv to reconcile that env (a `--python` pin is
+# enough) and it tries to rebuild it, and Windows refuses to delete `Scripts`
+# while its own python.exe is executing it:
+#
+#     error: failed to remove directory `...\.venv\Scripts`:
+#     Access is denied. (os error 5)
+#
+# Locally this passed, because the root .venv already matched and uv had nothing
+# to rebuild -- a green run that proved only that this machine was already in the
+# right state. `--no-project` builds an ephemeral env instead, so the lane cannot
+# touch the one it is running inside, whatever state that is in.
+#
+# The interpreter pin is dropped with it, and costs nothing: ruff takes its
+# target version from `requires-python`, not from the interpreter running it.
 [tool.poe.tasks.repo-lint]
 help = "ruff check + format check, everything outside the two Python projects"
 deps = ["check"]
 sequence = [
-	{ cmd = "uv run --python 3.13 --with ruff python -m ruff check ." },
-	{ cmd = "uv run --python 3.13 --with ruff python -m ruff format --check ." },
+	{ cmd = "uv run --no-project --with ruff python -m ruff check ." },
+	{ cmd = "uv run --no-project --with ruff python -m ruff format --check ." },
 ]
 
 # The format check is HALF of what linting is for, and it was missing until this
