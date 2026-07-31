@@ -382,6 +382,22 @@ rather than before it.
     2026-07-30; rides in 11.4's own PR).
     **Taken before 11.3** deliberately: it pays for itself in every later live
     session, 11.3's own included, and 11.3's spec is still awaiting review.
+11.5. **E, observing the log** (both lanes). The agent marks the present moment,
+    then asks what has arrived *since it last looked* — instead of only being able
+    to ask what a given command logged. Comes straight out of 11.4's live run,
+    which found two things its model cannot serve. A command window closes when the
+    handler returns, but NVDA does the work a millisecond later on its own thread,
+    so one window holds `inputCore.executeGesture` and little else; and the cases
+    that matter most have **no commands at all** — a trigger whose consequences
+    arrive over the next fifteen seconds, or "watch what I do, a bug is about to
+    appear", where the human is driving and nothing the agent issues is what gets
+    logged. Adds a mark (`getLogPosition`), a caller-held cursor
+    (`sincePosition`/`nextPosition`), `lastSeconds` for "it just happened", and
+    `waitForLog` — the `waitForSpeech` shape, so it stays pull rather than the push
+    0020 rejected. Also extends a command's span to the *next* command, which is
+    what makes a single window mean something again and retires 11.4's
+    `capturedAtLevel` compromise. Needs live NVDA. Spec:
+    `0021-observing-the-log.md` (drafted 2026-07-30, awaiting review).
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).
