@@ -69,6 +69,8 @@ func BuildRegistry() *Registry {
 
 		// Gated on `log`.
 		&GetLog{},
+		&GetLogPosition{},
+		&WaitForLog{},
 		&SetLogLevel{},
 	)
 }

@@ -25,3 +25,13 @@ class Clock(ABC):
 	@abstractmethod
 	def sleep(self, seconds: float) -> None:
 		"""Block for ``seconds`` (a fake may make this an instant clock advance)."""
+
+	@abstractmethod
+	def time(self) -> float:
+		"""Wall-clock epoch seconds, comparable to a log record's ``created``.
+
+		Distinct from :meth:`monotonic`: this is what ``getLogPosition``'s
+		``time`` field and ``lastSeconds`` (spec 0021) need, since both must line
+		up against timestamps recorded elsewhere (NVDA's log records, via Python
+		``logging``, stamp ``created`` in this same epoch).
+		"""

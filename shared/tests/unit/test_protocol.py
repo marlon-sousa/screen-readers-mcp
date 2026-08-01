@@ -183,7 +183,8 @@ def test_echo_payload_survives_the_full_stack(payload: Any) -> None:
 
 
 def test_encode_non_ascii_preserved() -> None:
-	raw = p.encode_message(p.SpeechResult(text="olá café", fromIndex=0, toIndex=1))
+	entry = p.SpeechEntry(text="olá café", index=1, logPosition=0)
+	raw = p.encode_message(p.SpeechResult(entries=[entry], fromIndex=0, toIndex=2))
 	assert "olá café" in raw.decode("utf-8")
 
 
@@ -258,6 +259,8 @@ def test_command_set_matches_plan_v1() -> None:
 		"askUser",
 		"waitForUserReply",
 		"getLog",
+		"getLogPosition",
+		"waitForLog",
 		"setLogLevel",
 		"bye",
 	}

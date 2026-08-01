@@ -92,7 +92,11 @@ func TestACommandSlowerThanThePollIntervalSurvivesOverARealPipe(t *testing.T) {
 		// Comfortably past the poll window, and still far inside the client's
 		// call budget: the only thing that can fail this is the seam.
 		time.Sleep(6 * adapterports.PollInterval)
-		return wire.SpeechResult{Text: "spoken slowly", FromIndex: 0, ToIndex: 1}, nil
+		return wire.SpeechResult{
+			Entries:   []wire.SpeechEntry{{Text: "spoken slowly", Index: 1, LogPosition: 12}},
+			FromIndex: 0,
+			ToIndex:   1,
+		}, nil
 	})
 	name := listenPipe(t, fake, "screenreaderMcpSlowTestBridge")
 
@@ -109,8 +113,8 @@ func TestACommandSlowerThanThePollIntervalSurvivesOverARealPipe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a slow command over a real pipe: %v", err)
 	}
-	if captured.Text != "spoken slowly" {
-		t.Errorf("text = %q, want the slow answer", captured.Text)
+	if len(captured.Entries) != 1 || captured.Entries[0].Text != "spoken slowly" {
+		t.Errorf("entries = %+v, want the slow answer", captured.Entries)
 	}
 }
 

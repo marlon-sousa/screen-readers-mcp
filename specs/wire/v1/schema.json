@@ -48,11 +48,34 @@
       ],
       "additionalProperties": true
     },
-    "BrailleResult": {
+    "BrailleEntry": {
       "type": "object",
       "properties": {
         "text": {
           "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "logPosition": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "text",
+        "index",
+        "logPosition"
+      ],
+      "additionalProperties": true
+    },
+    "BrailleResult": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/BrailleEntry"
+          }
         },
         "fromIndex": {
           "type": "integer"
@@ -62,7 +85,7 @@
         }
       },
       "required": [
-        "text",
+        "entries",
         "fromIndex",
         "toIndex"
       ],
@@ -197,6 +220,26 @@
         },
         "windows": {
           "type": "integer"
+        },
+        "sincePosition": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastSeconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "minLevel": {
           "anyOf": [
@@ -372,6 +415,9 @@
         },
         "index": {
           "type": "integer"
+        },
+        "logPosition": {
+          "type": "integer"
         }
       },
       "required": [
@@ -412,6 +458,22 @@
       ],
       "additionalProperties": true
     },
+    "LogPositionResult": {
+      "type": "object",
+      "properties": {
+        "position": {
+          "type": "integer"
+        },
+        "time": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "position",
+        "time"
+      ],
+      "additionalProperties": true
+    },
     "LogSliceResult": {
       "type": "object",
       "properties": {
@@ -427,10 +489,7 @@
         "truncated": {
           "type": "boolean"
         },
-        "fromCommandId": {
-          "type": "integer"
-        },
-        "toCommandId": {
+        "nextPosition": {
           "type": "integer"
         },
         "capturedAtLevel": {
@@ -443,6 +502,26 @@
             "warning",
             "error"
           ]
+        },
+        "fromCommandId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "toCommandId": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -450,8 +529,7 @@
         "entries",
         "matched",
         "truncated",
-        "fromCommandId",
-        "toCommandId",
+        "nextPosition",
         "capturedAtLevel"
       ],
       "additionalProperties": true
@@ -579,11 +657,34 @@
       ],
       "additionalProperties": true
     },
-    "SpeechResult": {
+    "SpeechEntry": {
       "type": "object",
       "properties": {
         "text": {
           "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "logPosition": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "text",
+        "index",
+        "logPosition"
+      ],
+      "additionalProperties": true
+    },
+    "SpeechResult": {
+      "type": "object",
+      "properties": {
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SpeechEntry"
+          }
         },
         "fromIndex": {
           "type": "integer"
@@ -593,7 +694,7 @@
         }
       },
       "required": [
-        "text",
+        "entries",
         "fromIndex",
         "toIndex"
       ],
@@ -640,6 +741,65 @@
       ],
       "additionalProperties": true
     },
+    "WaitForLogParams": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "number"
+        },
+        "minLevel": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "debug",
+                "io",
+                "debugwarning",
+                "info",
+                "warning",
+                "error"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contains": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "WaitForLogResult": {
+      "type": "object",
+      "properties": {
+        "found": {
+          "type": "boolean"
+        },
+        "position": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "found",
+        "position"
+      ],
+      "additionalProperties": true
+    },
     "WaitForSpeechParams": {
       "type": "object",
       "properties": {
@@ -676,6 +836,9 @@
         },
         "text": {
           "type": "string"
+        },
+        "logPosition": {
+          "type": "integer"
         }
       },
       "required": [
@@ -886,6 +1049,20 @@
       },
       "result": {
         "$ref": "#/$defs/LogSliceResult"
+      }
+    },
+    "getLogPosition": {
+      "params": null,
+      "result": {
+        "$ref": "#/$defs/LogPositionResult"
+      }
+    },
+    "waitForLog": {
+      "params": {
+        "$ref": "#/$defs/WaitForLogParams"
+      },
+      "result": {
+        "$ref": "#/$defs/WaitForLogResult"
       }
     },
     "setLogLevel": {

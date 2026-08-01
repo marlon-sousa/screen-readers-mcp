@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
@@ -30,17 +31,36 @@ import (
 // Stateless between calls: the context is built fresh each time from the
 // controller's current connection, so a tool can never be handed a session that
 // ended between the client's tools/list and this call.
+//
+// It is also where the server's own session record is written (spec 0021), for
+// the reason it exists at all: this is the SINGLE route from an MCP request to a
+// tool, so recording here sees every call by construction rather than by fifteen
+// tools each remembering to. Nothing is asked of the bridge to build it -- the
+// traffic already passes through this process.
 type Dispatcher struct {
 	registry *Registry
 	control  ConnectionControl
 	clock    ports.Clock
 	log      ports.Log
+	record   *entities.SessionRecord
 }
 
 // NewDispatcher builds the dispatcher.
-func NewDispatcher(registry *Registry, control ConnectionControl, clock ports.Clock, log ports.Log) *Dispatcher {
-	return &Dispatcher{registry: registry, control: control, clock: clock, log: log}
+func NewDispatcher(
+	registry *Registry,
+	control ConnectionControl,
+	clock ports.Clock,
+	log ports.Log,
+	record *entities.SessionRecord,
+) *Dispatcher {
+	if record == nil {
+		record = entities.NewSessionRecord()
+	}
+	return &Dispatcher{registry: registry, control: control, clock: clock, log: log, record: record}
 }
+
+// Record is the server's own account of this session, for whatever publishes it.
+func (d *Dispatcher) Record() *entities.SessionRecord { return d.record }
 
 // ErrUnknownTool is a call for a name no tool in the registry has. It should be
 // unreachable through the MCP adapter, which only ever dispatches names it took
@@ -63,6 +83,10 @@ func (d *Dispatcher) Execute(name string, params json.RawMessage) (any, error) {
 	}
 
 	result, err := tool.Execute(d.context(name), params)
+	// Recorded whichever way it went: a failed call is frequently the most
+	// interesting line in the record, and one that vanished from it would leave
+	// an unexplained gap between two successes.
+	d.recordCall(name, params, result, err)
 	if err != nil && errors.Is(err, ports.ErrConnectionLost) {
 		d.log.Infof("tool %q found the connection gone; re-checking it", name)
 		// Verify pings, fails the same way, and RECORDS the loss: the tools
@@ -71,6 +95,28 @@ func (d *Dispatcher) Execute(name string, params json.RawMessage) (any, error) {
 		_ = d.control.Verify()
 	}
 	return result, err
+}
+
+// recordCall adds one line to the server's own session record.
+//
+// Nothing here may fail the call: this is a diagnostic, and a result that cannot
+// be marshalled (which no tool's result should be) costs its own line rather
+// than the answer the agent asked for.
+func (d *Dispatcher) recordCall(name string, params json.RawMessage, result any, err error) {
+	call := entities.RecordedCall{
+		At:     d.clock.Now(),
+		Tool:   name,
+		Params: string(params),
+	}
+	if err != nil {
+		call.Failed = true
+		call.Error = err.Error()
+	} else if encoded, marshalErr := json.Marshal(result); marshalErr == nil {
+		call.Result = string(encoded)
+	} else {
+		call.Result = fmt.Sprintf("<unrenderable result: %v>", marshalErr)
+	}
+	d.record.Add(call)
 }
 
 // context is the per-call bundle.

@@ -21,15 +21,14 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from ...entities.user_prompt import PromptExpired
-from .command_handler import CommandError, CommandHandler
+from .command_handler import MAX_POLL_TIMEOUT, CommandError, CommandHandler
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
 
-#: The longest a single poll may block, comfortably inside the 120 s
-#: command-inactivity window (SessionConfig.inactivity_timeout). The window's own
-#: 300 s lifetime is unaffected -- the agent simply polls again.
-MAX_POLL_TIMEOUT: float = 110.0
+# MAX_POLL_TIMEOUT is the shared cap on any blocking command (command_handler.py).
+# The prompt window's own 300 s lifetime is unaffected by it: a clamped poll
+# simply means the agent polls again.
 
 
 class WaitForUserReplyHandler(CommandHandler):

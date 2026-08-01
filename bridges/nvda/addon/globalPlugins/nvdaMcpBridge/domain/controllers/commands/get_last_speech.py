@@ -17,4 +17,10 @@ if TYPE_CHECKING:
 class GetLastSpeechHandler(CommandHandler):
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		text, index = ctx.speech_buffer.get_last()
-		return protocol.LastSpeechResult(text=text, index=index)
+		return protocol.LastSpeechResult(
+			text=text,
+			index=index,
+			# The coordinate that places this utterance on the log's timeline
+			# (spec 0021); 0 for the sentinel, which no utterance ever occupies.
+			logPosition=ctx.speech_buffer.log_position_at(index),
+		)

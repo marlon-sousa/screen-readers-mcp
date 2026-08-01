@@ -8,8 +8,10 @@
 # slices).
 # BUILT BY: NvdaLogCapture (one per process, cleared each session via reset()).
 #
-# Records are (level_no, level_name, module, message, timestamp, thread, thread_id)
-# tuples. The ring is bounded at 10 000 records; older ones age out, and a slice
+# Records are (level_no, level_name, module, message, timestamp, thread, thread_id,
+# created) tuples, ``created`` being epoch seconds alongside NVDA's own time-only
+# formatted timestamp -- lastSeconds needs something it can subtract (spec 0021).
+# The ring is bounded at 10 000 records; older ones age out, and a slice
 # that spans aged-out records reports ``truncated: true``. A 4 MB secondary cap is
 # tracked approximately via the cumulated length of each record's formatted line;
 # whichever cap fires first wins.
@@ -89,8 +91,12 @@ class LogJournal:
 	"""Bounded in-memory ring of structured NVDA log records."""
 
 	def __init__(self) -> None:
-		# The ring: each entry is (level_no, level_name, module, message, timestamp, thread, thread_id).
-		self._records: deque[tuple[int, str, str, str, str, str, int]] = deque()
+		# The ring: each entry is (level_no, level_name, module, message, timestamp,
+		# thread, thread_id, created). ``created`` is epoch seconds (Python
+		# logging's own LogRecord.created), kept alongside the formatted,
+		# time-only ``timestamp`` because lastSeconds needs something it can
+		# subtract (spec 0021).
+		self._records: deque[tuple[int, str, str, str, str, str, int, float]] = deque()
 		# Monotonic append counter; every append increments it, even when the ring
 		# drops old records. This is the value mark() returns, and the coordinate
 		# space slice() uses.
@@ -112,9 +118,10 @@ class LogJournal:
 		timestamp: str,
 		thread: str,
 		thread_id: int,
+		created: float = 0.0,
 	) -> None:
 		"""Add one record to the ring, evicting the oldest if at capacity."""
-		record = (level_no, level_name, module, message, timestamp, thread, thread_id)
+		record = (level_no, level_name, module, message, timestamp, thread, thread_id, created)
 		self._records.append(record)
 		self._next_position += 1
 		self._byte_size += self._estimate_size(record)
@@ -164,7 +171,7 @@ class LogJournal:
 		contains_lower = [c.lower() for c in contains] if contains else None
 		exclude_lower = [e.lower() for e in exclude] if exclude else None
 
-		filtered: list[tuple[int, str, str, str, str, str, int]] = []
+		filtered: list[tuple[int, str, str, str, str, str, int, float]] = []
 		for rec in surviving:
 			if min_level_no is not None and rec[0] < min_level_no:
 				continue
@@ -186,6 +193,96 @@ class LogJournal:
 
 		lines = [self._format(rec, use_fields) for rec in filtered]
 		return ("\n".join(lines), len(filtered), matched, truncated)
+
+	def slice_since(
+		self,
+		position: int,
+		*,
+		min_level: str | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		"""``slice(position, mark())`` -- everything from *position* to now.
+
+		The ``sincePosition`` anchor (spec 0021): the caller holds the cursor, so
+		reading never consumes -- re-issuing the same *position* is idempotent.
+		"""
+		return self.slice(
+			position,
+			self._next_position,
+			min_level=min_level,
+			contains=contains,
+			exclude=exclude,
+			fields=fields,
+			max_entries=max_entries,
+		)
+
+	def slice_last_seconds(
+		self,
+		seconds: float,
+		now: float,
+		*,
+		min_level: str | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		"""Everything recorded in the last *seconds*, relative to *now* (epoch).
+
+		The ``lastSeconds`` anchor (spec 0021): "it just happened" needs a
+		relative window, not a position the caller never took. Finds the first
+		surviving record at or after the cutoff and slices from there to now;
+		no surviving record after the cutoff slices an empty, valid range at the
+		ring's current position rather than raising.
+		"""
+		cutoff = now - seconds
+		start = self._next_position
+		for offset, rec in enumerate(self._records):
+			if rec[7] >= cutoff:
+				start = self._oldest_position + offset
+				break
+		return self.slice(
+			start,
+			self._next_position,
+			min_level=min_level,
+			contains=contains,
+			exclude=exclude,
+			fields=fields,
+			max_entries=max_entries,
+		)
+
+	def find_since(
+		self,
+		start: int,
+		*,
+		min_level: str | None = None,
+		contains: list[str] | None = None,
+	) -> tuple[int, str] | None:
+		"""The first record at/after *start* that matches, formatted; else ``None``.
+
+		Backs ``waitForLog``'s poll loop: unlike :meth:`slice`, which aggregates a
+		whole range, this returns exactly the one record that satisfied the
+		wait, at :data:`DEFAULT_FIELDS`. The returned position is one past the
+		match (mark()'s own convention: callable straight back in as the next
+		``sincePosition`` to continue reading after it).
+		"""
+		min_level_no = self._level_number(min_level)
+		contains_lower = [c.lower() for c in contains] if contains else None
+
+		first = max(start, self._oldest_position)
+		offset = first - self._oldest_position
+		for order, rec in enumerate(islice(self._records, offset, None), start=first):
+			if min_level_no is not None and rec[0] < min_level_no:
+				continue
+			if contains_lower is not None:
+				msg_lower = rec[3].lower()
+				if not any(c in msg_lower for c in contains_lower):
+					continue
+			return order + 1, self._format(rec, DEFAULT_FIELDS)
+		return None
 
 	# -- helpers ---------------------------------------------------------------
 
@@ -220,7 +317,7 @@ class LogJournal:
 
 	@staticmethod
 	def _format(
-		rec: tuple[int, str, str, str, str, str, int],
+		rec: tuple[int, str, str, str, str, str, int, float],
 		fields: tuple[str, ...],
 	) -> str:
 		"""Render one record, in NVDA's own log shape, with the selected fields.
@@ -230,7 +327,7 @@ class LogJournal:
 		``message`` starts its own line -- so the full field set reproduces an
 		nvda.log line exactly and a projection is that line with tokens removed.
 		"""
-		_level_no, level_name, module, message, timestamp, thread, thread_id = rec
+		_level_no, level_name, module, message, timestamp, thread, thread_id, _created = rec
 		selected = frozenset(fields)
 		head: list[str] = []
 		if "level" in selected:
@@ -254,7 +351,7 @@ class LogJournal:
 
 	@staticmethod
 	def _estimate_size(
-		rec: tuple[int, str, str, str, str, str, int],
+		rec: tuple[int, str, str, str, str, str, int, float],
 	) -> int:
 		"""Rough byte estimate: level name + module + message + timestamp + overhead."""
 		return len(rec[1]) + len(rec[2]) + len(rec[3]) + len(rec[4]) + len(rec[5]) + 100

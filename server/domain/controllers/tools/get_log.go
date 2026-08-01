@@ -5,14 +5,18 @@
 // USES: ports.LogReader, through ToolContext.ReaderLog().
 // LISTED BY: registry.go.
 //
-// Returns a filtered, formatted slice of the reader's diagnostic log for one
-// or more command windows. The agent can filter by level, by message content,
-// and by module/message exclusion, and can project which fields to render.
+// Returns a filtered, formatted slice of the reader's diagnostic log, anchored
+// one of three mutually exclusive ways (spec 0021): since_position (a cursor the
+// caller holds, so reads never consume), last_seconds (relative to now, for "it
+// just happened" with no mark taken beforehand), or command_id/windows (0020's
+// command-span anchor, still the default). The agent can filter by level, by
+// message content, and by module/message exclusion, and can project which fields
+// to render.
 //
-// The capture level reported is the floor that was in force while the window
-// was recorded; an empty slice with capturedAtLevel above the requested
-// minLevel tells the agent that the records it wants were never emitted,
-// rather than that none exist -- the two have entirely different remedies.
+// The capture level reported is the floor that was in force for the span; an
+// empty slice with capturedAtLevel above the requested minLevel tells the agent
+// that the records it wants were never emitted, rather than that none exist --
+// the two have entirely different remedies.
 
 package tools
 
@@ -32,12 +36,24 @@ func (t *GetLog) Name() string                    { return "get_log" }
 func (t *GetLog) Capability() entities.Capability { return entities.CapabilityLog }
 
 func (t *GetLog) Description() string {
-	return "Return a filtered, formatted slice of the screen reader's own diagnostic log " +
-		"for one or more command windows. The log is bracketed by command -- each command " +
-		"records the journal position before and after dispatch, so you can ask for " +
-		"\"what NVDA logged while press_gesture id 7 ran\" and get exactly that window, " +
-		"with nothing from before or after. Parameters: commandId (defaults to the most " +
-		"recently marked command), windows (how many command windows to include, counting " +
+	return "Return a filtered, formatted slice of the screen reader's own diagnostic log. " +
+		"There are THREE mutually exclusive ways to say which records you want, and " +
+		"supplying more than one is an error. (1) sincePosition: read forward from a " +
+		"mark taken earlier with get_log_position, or from a previous call's " +
+		"nextPosition, or from the logPosition on a speech or braille entry. Nothing " +
+		"is consumed, so re-issuing the same position with a different filter returns " +
+		"the same records re-filtered -- this is the anchor to use when watching a " +
+		"human drive the reader, or when polling while consequences arrive. " +
+		"(2) lastSeconds: everything from N seconds ago until now, for \"that just " +
+		"happened\" when no mark was taken. (3) commandId/windows: the log is also " +
+		"partitioned by command -- each command's span runs from when it was " +
+		"dispatched until the NEXT command was dispatched -- so you can ask for " +
+		"\"what NVDA logged for press_gesture id 7\" and get everything attributed to " +
+		"it, including the work it caused after the call returned. Note that " +
+		"attribution is by most-recent-command, not by causation: think for thirty " +
+		"seconds after a keypress and those thirty seconds land in that keypress's " +
+		"span. Parameters: sincePosition, lastSeconds, commandId (defaults to the most " +
+		"recently marked command), windows (how many command spans to include, counting " +
 		"back from the anchor; default 1), minLevel (drop records below this level -- " +
 		"the LogLevel enum includes 'warning' and 'error' as filter-only values), " +
 		"contains (keep only records whose message contains any of these substrings, " +
@@ -46,8 +62,13 @@ func (t *GetLog) Description() string {
 		"['time','level','module','message'] -- use ['level','message'] for the compact " +
 		"form), maxEntries (default 200). Returns formatted text (like a slice of " +
 		"nvda.log), the entry count, how many matched before the cap, whether the " +
-		"result was truncated, the command id range covered, and capturedAtLevel -- " +
-		"the floor in force while the window was recorded. IMPORTANT: a log level " +
+		"result was truncated, nextPosition (pass it back as sincePosition to " +
+		"continue the tail with no gap and no repeat), the command id range covered " +
+		"(absent when anchored by position or time, since such a read is " +
+		"attributable to no single command), and capturedAtLevel -- the floor in " +
+		"force for the span. truncated:true on a sincePosition read means the " +
+		"records you asked for aged out of the ring before you read them, which is " +
+		"how a poll loop learns it fell behind. IMPORTANT: a log level " +
 		"cannot be raised retroactively. If NVDA's logger was at INFO when a command " +
 		"ran, DEBUG records were never created and no filter can recover them. The " +
 		"remedy is set_log_level, re-run the command, then get_log. capturedAtLevel " +
@@ -58,14 +79,24 @@ func (t *GetLog) InputSchema() json.RawMessage {
 	return json.RawMessage(`{
 		"type": "object",
 		"properties": {
+			"sincePosition": {
+				"type": "integer",
+				"minimum": 0,
+				"description": "Read forward from this journal position. Mutually exclusive with lastSeconds and commandId. Reading never consumes, so the same position can be re-read with a different filter."
+			},
+			"lastSeconds": {
+				"type": "number",
+				"exclusiveMinimum": 0,
+				"description": "Read everything from this many seconds ago until now. Mutually exclusive with sincePosition and commandId."
+			},
 			"commandId": {
 				"type": "integer",
-				"description": "The request id whose window to anchor on. Defaults to the most recently marked command."
+				"description": "The request id whose span to anchor on. Defaults to the most recently marked command. Mutually exclusive with sincePosition and lastSeconds."
 			},
 			"windows": {
 				"type": "integer",
 				"default": 1,
-				"description": "How many command windows to include, counting back from the anchor."
+				"description": "How many command spans to include, counting back from the anchor. Belongs to commandId only -- sending it with sincePosition or lastSeconds is refused, since those already say how far back to read."
 			},
 			"minLevel": {
 				"type": "string",
@@ -98,13 +129,18 @@ func (t *GetLog) InputSchema() json.RawMessage {
 }
 
 type getLogRequest struct {
-	CommandID  *int     `json:"commandId"`
-	Windows    int      `json:"windows"`
-	MinLevel   *string  `json:"minLevel"`
-	Contains   []string `json:"contains"`
-	Exclude    []string `json:"exclude"`
-	Fields     []string `json:"fields"`
-	MaxEntries int      `json:"maxEntries"`
+	// Pointers, so "not asked for" is distinguishable from position 0 or zero
+	// seconds -- the anchors are mutually exclusive, and a zero value that read
+	// as "asked for" would silently collide with the default anchor.
+	SincePosition *int     `json:"sincePosition"`
+	LastSeconds   *float64 `json:"lastSeconds"`
+	CommandID     *int     `json:"commandId"`
+	Windows       int      `json:"windows"`
+	MinLevel      *string  `json:"minLevel"`
+	Contains      []string `json:"contains"`
+	Exclude       []string `json:"exclude"`
+	Fields        []string `json:"fields"`
+	MaxEntries    int      `json:"maxEntries"`
 }
 
 func (t *GetLog) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -116,13 +152,18 @@ func (t *GetLog) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
 	if err := decodeParams(params, &request); err != nil {
 		return nil, err
 	}
+	// The anchors are forwarded as given. The bridge owns the "at most one"
+	// rule and refuses the rest; deciding it here as well would put the same
+	// judgement in two places, and they would eventually disagree.
 	return logPort.GetLog(ports.GetLogParams{
-		CommandID:  request.CommandID,
-		Windows:    request.Windows,
-		MinLevel:   request.MinLevel,
-		Contains:   request.Contains,
-		Exclude:    request.Exclude,
-		Fields:     request.Fields,
-		MaxEntries: request.MaxEntries,
+		SincePosition: request.SincePosition,
+		LastSeconds:   request.LastSeconds,
+		CommandID:     request.CommandID,
+		Windows:       request.Windows,
+		MinLevel:      request.MinLevel,
+		Contains:      request.Contains,
+		Exclude:       request.Exclude,
+		Fields:        request.Fields,
+		MaxEntries:    request.MaxEntries,
 	})
 }

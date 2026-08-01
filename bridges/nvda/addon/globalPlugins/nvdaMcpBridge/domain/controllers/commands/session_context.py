@@ -46,10 +46,14 @@ class SessionContext:
 		announcer: Announcer,
 		log_capture: LogCapture,
 		user_prompter: UserPrompter,
+		teardown_requested: Callable[[], bool] | None = None,
 	) -> None:
 		self.clock = clock
 		self.transcript = transcript
 		self._close = close
+		#: Whether somebody has asked this session to end. Defaults to "never",
+		#: so a hand-built context in a test needs no wiring for it.
+		self._teardown_requested = teardown_requested or (lambda: False)
 		#: The bridge's line to the reader's real synth: read its name (hello) and
 		#: speak hints through it (announce), even during silent capture. Always
 		#: present -- it never depends on hello.
@@ -66,9 +70,13 @@ class SessionContext:
 		self.adapters: AdapterSet | None = None
 		#: At most one outstanding ask at a time.
 		self._outstanding_prompt: UserPrompt | None = None
-		#: The last 50 command windows: each is (command_id, start_pos, end_pos,
-		#: captured_at_level). Written by the Session, read by GetLogHandler.
-		self.command_windows: list[tuple[int, int, int, protocol.LogLevel]] = []
+		#: The last 50 command windows: each is (command_id, start_pos,
+		#: captured_at_level). Written by the Session when a marking command is
+		#: dispatched. There is no stored end (spec 0021): a span runs from its
+		#: own start to the NEXT marking command's start, or to the journal's
+		#: current position for the still-open last one -- see
+		#: command_windows_for, which computes it lazily.
+		self.command_windows: list[tuple[int, int, protocol.LogLevel]] = []
 
 	def close(self, reason: TeardownReason) -> None:
 		"""Ask the session to end with ``reason`` (used by bye and the panic path).
@@ -79,9 +87,25 @@ class SessionContext:
 		"""
 		self._close(reason)
 
+	def teardown_requested(self) -> bool:
+		"""Whether the session has been asked to end, for a BLOCKING handler to poll.
+
+		Teardown is cooperative: the loop honours a request at its next wakeup,
+		which a handler blocked for its whole timeout does not reach. Meanwhile
+		the requester may be NVDA's MAIN THREAD -- the panic gesture calls
+		BridgeServer.stop(), which joins the session thread -- so a long wait that
+		ignored this would freeze the reader for the rest of its timeout, which is
+		the exact opposite of what a tester pressing panic needs.
+
+		``waitForUserReply`` solves the same problem by having the request CANCEL
+		the outstanding prompt; a wait with no such entity behind it (waitForLog)
+		polls this instead.
+		"""
+		return self._teardown_requested()
+
 	def command_window_index(self, command_id: int) -> int | None:
 		"""Return the list index for *command_id*, or None if not found."""
-		for i, (cid, _start, _end, _level) in enumerate(self.command_windows):
+		for i, (cid, _start, _level) in enumerate(self.command_windows):
 			if cid == command_id:
 				return i
 		return None
@@ -89,17 +113,30 @@ class SessionContext:
 	def command_windows_for(
 		self, anchor_index: int, count: int
 	) -> list[tuple[int, int, int, protocol.LogLevel]]:
-		"""Return up to *count* windows counting back from *anchor_index*.
+		"""Return up to *count* windows counting back from *anchor_index*, spans included.
 
 		A negative *anchor_index* means "from the end" (Python slice semantics).
+		Each returned tuple is ``(command_id, start, end, captured_at_level)``:
+		the end is not stored (spec 0021) -- window *i*'s span runs to window
+		*i + 1*'s start, or to the journal's current position for the last,
+		still-open one, computed here rather than carried by every entry.
 		"""
 		# Normalise a negative index.
 		if anchor_index < 0:
 			anchor_index = len(self.command_windows) + anchor_index
 		if anchor_index < 0 or anchor_index >= len(self.command_windows):
 			return []
-		start = max(0, anchor_index - count + 1)
-		return self.command_windows[start : anchor_index + 1]
+		start_idx = max(0, anchor_index - count + 1)
+		selected = self.command_windows[start_idx : anchor_index + 1]
+		result: list[tuple[int, int, int, protocol.LogLevel]] = []
+		for i, (command_id, start, level) in enumerate(selected, start=start_idx):
+			end = (
+				self.command_windows[i + 1][1]
+				if i + 1 < len(self.command_windows)
+				else self.log_capture.position()
+			)
+			result.append((command_id, start, end, level))
+		return result
 
 	@property
 	def speech_buffer(self) -> SpeechBuffer:

@@ -69,7 +69,11 @@ func TestSpeechSinceMapsTheWireResultIntoDomainVocabulary(t *testing.T) {
 		if params.SinceIndex != 7 {
 			t.Errorf("sinceIndex = %d, want 7", params.SinceIndex)
 		}
-		return wire.SpeechResult{Text: "button", FromIndex: 7, ToIndex: 9}, nil
+		return wire.SpeechResult{
+			Entries:   []wire.SpeechEntry{{Text: "button", Index: 8, LogPosition: 41}},
+			FromIndex: 7,
+			ToIndex:   9,
+		}, nil
 	})
 
 	got, err := client.SpeechSince(7)
@@ -77,7 +81,13 @@ func TestSpeechSinceMapsTheWireResultIntoDomainVocabulary(t *testing.T) {
 		t.Fatalf("SpeechSince: %v", err)
 	}
 
-	want := ports.SpeechRange{Text: "button", FromIndex: 7, ToIndex: 9}
+	// The coordinate rides all the way through (spec 0021): one entry per
+	// utterance, each keeping its own index and journal position.
+	want := ports.SpeechRange{
+		Entries:   []ports.SpeechEntry{{Text: "button", Index: 8, LogPosition: 41}},
+		FromIndex: 7,
+		ToIndex:   9,
+	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("speech range (-want +got):\n%s", diff)
 	}

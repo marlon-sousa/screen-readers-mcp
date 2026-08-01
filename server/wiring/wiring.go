@@ -24,6 +24,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/config"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
@@ -112,7 +113,13 @@ func Build(opts Options) (*Server, error) {
 		endpoints, probe, dialer, mcpServer, registry.Catalog(), clock, log,
 	)
 
-	mcpServer.Bind(tools.NewDispatcher(registry, connection, clock, log), connection)
+	// One record for the process's whole life, built from the traffic the
+	// dispatcher already handles (spec 0021) and published beside the info
+	// resource. Nothing is asked of the bridge to keep it.
+	mcpServer.Bind(
+		tools.NewDispatcher(registry, connection, clock, log, entities.NewSessionRecord()),
+		connection,
+	)
 
 	return &Server{
 		MCP:        mcpServer,

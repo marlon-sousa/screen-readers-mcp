@@ -1,5 +1,9 @@
 # Unit tests for domain/controllers/commands/get_braille.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
+#
+# Braille takes the coordinate too (spec 0021): a display refresh is exactly the
+# kind of thing an agent needs to line up against the log, and the entry shape is
+# the same as speech's for the same reason.
 
 from __future__ import annotations
 
@@ -13,5 +17,15 @@ def test_get_braille_reads_since_index(clock: FakeClock) -> None:
 	ctx = make_context(clock, braille=braille_with(clock, "find: x"))
 	result = GetBrailleHandler().execute(ctx, request("getBraille", sinceIndex=0))
 	assert isinstance(result, p.BrailleResult)
-	assert "find:" in result.text
+	assert [entry.text for entry in result.entries] == ["find: x"]
 	assert result.fromIndex == 0
+
+
+def test_each_entry_carries_its_index_and_journal_position(clock: FakeClock) -> None:
+	ctx = make_context(
+		clock,
+		braille=braille_with(clock, "find: x", "find: xy", log_positions=[12, 30]),
+	)
+	result = GetBrailleHandler().execute(ctx, request("getBraille", sinceIndex=0))
+	assert isinstance(result, p.BrailleResult)
+	assert [(entry.index, entry.logPosition) for entry in result.entries] == [(1, 12), (2, 30)]

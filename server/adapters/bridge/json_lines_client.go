@@ -141,6 +141,7 @@ type JSONLinesClient struct {
 var (
 	_ ports.SpeechReader     = (*JSONLinesClient)(nil)
 	_ ports.BrailleReader    = (*JSONLinesClient)(nil)
+	_ ports.LogReader        = (*JSONLinesClient)(nil)
 	_ ports.GestureSender    = (*JSONLinesClient)(nil)
 	_ ports.FocusInspector   = (*JSONLinesClient)(nil)
 	_ ports.StateInspector   = (*JSONLinesClient)(nil)
@@ -155,6 +156,59 @@ func NewJSONLinesClient(transport adapterports.Transport, clock ports.Clock, log
 	return &JSONLinesClient{transport: transport, clock: clock, log: log, nextID: 1}
 }
 
+// --- wire -> domain mapping helpers -------------------------------------------
+
+// speechEntries maps captured utterances into domain vocabulary, coordinate and
+// all. The wire carries one entry per utterance since spec 0021, each with the
+// journal position it was captured at, so the mapping is one to one -- there is
+// nothing to join and nothing to drop.
+func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
+	mapped := make([]ports.SpeechEntry, 0, len(entries))
+	for _, e := range entries {
+		mapped = append(mapped, ports.SpeechEntry{Text: e.Text, Index: e.Index, LogPosition: e.LogPosition})
+	}
+	return mapped
+}
+
+// brailleEntries is speechEntries for braille updates.
+func brailleEntries(entries []wire.BrailleEntry) []ports.BrailleEntry {
+	mapped := make([]ports.BrailleEntry, 0, len(entries))
+	for _, e := range entries {
+		mapped = append(mapped, ports.BrailleEntry{Text: e.Text, Index: e.Index, LogPosition: e.LogPosition})
+	}
+	return mapped
+}
+
+// copyInt copies a nullable wire int, so the domain never aliases wire memory.
+// Absent stays absent: a getLog anchored by position or time is attributable to
+// no command, and command id 0 is a real id, so nil and 0 are different answers.
+func copyInt(v *int) *int {
+	if v == nil {
+		return nil
+	}
+	copied := *v
+	return &copied
+}
+
+// derefInt reads a wire field that is nullable only because it carries a DEFAULT
+// -- logPosition on the single-entry speech results, whose default is the same 0
+// the domain uses for "no coordinate". Distinct from copyInt above, where absent
+// is a meaningful answer the domain has to keep.
+func derefInt(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+// derefString is derefInt for a defaulted string field.
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 // --- the capability ports, in domain vocabulary -------------------------------
 
 func (c *JSONLinesClient) SpeechSince(sinceIndex int) (ports.SpeechRange, error) {
@@ -163,7 +217,11 @@ func (c *JSONLinesClient) SpeechSince(sinceIndex int) (ports.SpeechRange, error)
 	if err != nil {
 		return ports.SpeechRange{}, err
 	}
-	return ports.SpeechRange{Text: result.Text, FromIndex: result.FromIndex, ToIndex: result.ToIndex}, nil
+	return ports.SpeechRange{
+		Entries:   speechEntries(result.Entries),
+		FromIndex: result.FromIndex,
+		ToIndex:   result.ToIndex,
+	}, nil
 }
 
 func (c *JSONLinesClient) LastSpeech() (ports.LastSpeech, error) {
@@ -171,7 +229,7 @@ func (c *JSONLinesClient) LastSpeech() (ports.LastSpeech, error) {
 	if err := c.call(wire.CommandGetLastSpeech, nil, &result, DefaultCallTimeout); err != nil {
 		return ports.LastSpeech{}, err
 	}
-	return ports.LastSpeech{Text: result.Text, Index: result.Index}, nil
+	return ports.LastSpeech{Text: result.Text, Index: result.Index, LogPosition: derefInt(result.LogPosition)}, nil
 }
 
 func (c *JSONLinesClient) NextSpeechIndex() (int, error) {
@@ -196,7 +254,12 @@ func (c *JSONLinesClient) WaitForSpeech(wait ports.SpeechWait) (ports.SpeechMatc
 	if err := c.call(wire.CommandWaitForSpeech, params, &result, waitBudget(wait.Timeout)); err != nil {
 		return ports.SpeechMatch{}, err
 	}
-	return ports.SpeechMatch{Found: result.Found, Index: result.Index, Text: result.Text}, nil
+	return ports.SpeechMatch{
+		Found:       result.Found,
+		Index:       result.Index,
+		Text:        result.Text,
+		LogPosition: derefInt(result.LogPosition),
+	}, nil
 }
 
 func (c *JSONLinesClient) WaitForSpeechToFinish(timeout time.Duration) (bool, error) {
@@ -218,7 +281,11 @@ func (c *JSONLinesClient) BrailleSince(sinceIndex int) (ports.BrailleRange, erro
 	if err != nil {
 		return ports.BrailleRange{}, err
 	}
-	return ports.BrailleRange{Text: result.Text, FromIndex: result.FromIndex, ToIndex: result.ToIndex}, nil
+	return ports.BrailleRange{
+		Entries:   brailleEntries(result.Entries),
+		FromIndex: result.FromIndex,
+		ToIndex:   result.ToIndex,
+	}, nil
 }
 
 func (c *JSONLinesClient) PressGestures(ids []string) error {
@@ -314,6 +381,14 @@ func (c *JSONLinesClient) SetConfig(keyPath []string, value json.RawMessage) (js
 
 func (c *JSONLinesClient) GetLog(params ports.GetLogParams) (ports.LogSliceResult, error) {
 	wireParams := wire.GetLogParams{}
+	// The three anchors are mutually exclusive; the bridge refuses more than one,
+	// so they are forwarded as given rather than reconciled into a precedence
+	// rule here -- two places deciding that would be one too many.
+	wireParams.SincePosition = copyInt(params.SincePosition)
+	if params.LastSeconds != nil {
+		seconds := *params.LastSeconds
+		wireParams.LastSeconds = &seconds
+	}
 	if params.CommandID != nil {
 		wireParams.CommandId = params.CommandID
 	}
@@ -341,10 +416,39 @@ func (c *JSONLinesClient) GetLog(params ports.GetLogParams) (ports.LogSliceResul
 		Entries:         wireResult.Entries,
 		Matched:         wireResult.Matched,
 		Truncated:       wireResult.Truncated,
-		FromCommandID:   wireResult.FromCommandId,
-		ToCommandID:     wireResult.ToCommandId,
+		NextPosition:    wireResult.NextPosition,
+		FromCommandID:   copyInt(wireResult.FromCommandId),
+		ToCommandID:     copyInt(wireResult.ToCommandId),
 		CapturedAtLevel: string(wireResult.CapturedAtLevel),
 	}, nil
+}
+
+func (c *JSONLinesClient) LogPosition() (ports.LogPosition, error) {
+	var result wire.LogPositionResult
+	if err := c.call(wire.CommandGetLogPosition, nil, &result, DefaultCallTimeout); err != nil {
+		return ports.LogPosition{}, err
+	}
+	return ports.LogPosition{Position: result.Position, Time: result.Time}, nil
+}
+
+func (c *JSONLinesClient) WaitForLog(wait ports.LogWait) (ports.LogMatch, error) {
+	params := wire.WaitForLogParams{Contains: wait.Contains}
+	if wait.Timeout > 0 {
+		seconds := wait.Timeout.Seconds()
+		params.Timeout = &seconds
+	}
+	if wait.MinLevel != nil {
+		level := wire.LogLevel(*wait.MinLevel)
+		params.MinLevel = &level
+	}
+	// waitBudget, like waitForSpeech: the call timeout has to outlast the wait the
+	// caller asked for, or the transport gives up on a bridge that is doing
+	// exactly what it was told.
+	var result wire.WaitForLogResult
+	if err := c.call(wire.CommandWaitForLog, params, &result, waitBudget(wait.Timeout)); err != nil {
+		return ports.LogMatch{}, err
+	}
+	return ports.LogMatch{Found: result.Found, Position: result.Position, Text: derefString(result.Text)}, nil
 }
 
 func (c *JSONLinesClient) SetLogLevel(level string) (ports.LogLevelResult, error) {

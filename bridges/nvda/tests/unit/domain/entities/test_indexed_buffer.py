@@ -24,9 +24,10 @@ class _StubBuffer(IndexedBuffer):
 	def _render(self, entry: Any) -> str:
 		return entry if isinstance(entry, str) else ""
 
-	def append(self, text: str) -> None:
+	def append(self, text: str, log_position: int = 0) -> None:
 		with self._lock:
 			self._entries.append(text)
+			self._log_positions.append(log_position)
 			self._last_time = self._clock.monotonic()
 
 
@@ -57,21 +58,47 @@ def test_append_advances_indices_and_next_index_is_the_bookmark(buffer: _StubBuf
 # -- range reads --------------------------------------------------------------
 
 
-def test_get_since_returns_half_open_range_and_joins_nonempty(buffer: _StubBuffer) -> None:
+def test_entries_since_returns_half_open_range_and_drops_empties(buffer: _StubBuffer) -> None:
 	start = buffer.next_index()
 	buffer.append("one")
-	buffer.append("")  # empty entry is skipped in the joined text
+	buffer.append("")  # empty entry is skipped
 	buffer.append("two")
-	text, from_index, to_index = buffer.get_since(start)
-	assert text == "one\ntwo"
+	entries, from_index, to_index = buffer.entries_since(start)
+	assert [e[0] for e in entries] == ["one", "two"]
 	assert (from_index, to_index) == (1, 4)
 
 
-def test_get_since_clamps_a_stale_or_negative_bookmark(buffer: _StubBuffer) -> None:
+def test_each_entry_carries_the_index_it_actually_occupies(buffer: _StubBuffer) -> None:
+	# Why the entry has to carry its own index (spec 0021): the empty entry at 2 is
+	# dropped, so "two" is the SECOND item in the list but index 3. A caller could
+	# not have derived that from fromIndex, which is what made a parallel list of
+	# positions -- or a single position on a joined blob -- unusable.
+	buffer.append("one")
+	buffer.append("")
+	buffer.append("two")
+	entries, _from_index, _to_index = buffer.entries_since(1)
+	assert [(text, index) for text, index, _pos in entries] == [("one", 1), ("two", 3)]
+
+
+def test_each_entry_carries_the_log_position_it_was_captured_at(buffer: _StubBuffer) -> None:
+	buffer.append("one", 17)
+	buffer.append("two", 42)
+	entries, _from_index, _to_index = buffer.entries_since(1)
+	assert [pos for _text, _index, pos in entries] == [17, 42]
+
+
+def test_an_entry_appended_without_a_position_reports_zero(buffer: _StubBuffer) -> None:
+	# The position is a plain default, not a required argument: a capture path that
+	# has no journal to ask (or a test that does not care) still appends.
+	buffer.append("one")
+	assert buffer.entries_since(1)[0][0][2] == 0
+
+
+def test_entries_since_clamps_a_stale_or_negative_bookmark(buffer: _StubBuffer) -> None:
 	buffer.append("a")
 	# A bookmark from a previous session must not raise.
-	assert buffer.get_since(-5)[1] == 0
-	assert buffer.get_since(999) == ("", 999, 2)
+	assert buffer.entries_since(-5)[1] == 0
+	assert buffer.entries_since(999) == ([], 999, 2)
 
 
 # -- the wait loop ------------------------------------------------------------

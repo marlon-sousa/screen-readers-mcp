@@ -27,9 +27,9 @@ import (
 // everyGatedTool is what a reader announcing every capability should see.
 var everyGatedTool = []string{
 	"announce", "ask_user", "get_braille", "get_config", "get_focus_info",
-	"get_last_speech", "get_log", "get_next_speech_index", "get_speech",
-	"get_state", "press_gesture", "set_config", "set_log_level",
-	"type_text", "wait_for_speech", "wait_for_speech_to_finish",
+	"get_last_speech", "get_log", "get_log_position", "get_next_speech_index",
+	"get_speech", "get_state", "press_gesture", "set_config", "set_log_level",
+	"type_text", "wait_for_log", "wait_for_speech", "wait_for_speech_to_finish",
 	"wait_for_user_reply",
 }
 
@@ -72,19 +72,33 @@ func TestConnectingPublishesTheGatedToolsAndDisconnectingRetractsThem(t *testing
 
 	// A real gated call, over the whole stack, answered by the bridge.
 	h.Bridge.Handle(wire.CommandGetSpeech, func(json.RawMessage) (any, error) {
-		return wire.SpeechResult{Text: "Edit  blank", FromIndex: 0, ToIndex: 1}, nil
+		return wire.SpeechResult{
+			Entries:   []wire.SpeechEntry{{Text: "Edit  blank", Index: 1, LogPosition: 12}},
+			FromIndex: 0,
+			ToIndex:   1,
+		}, nil
 	})
 	speech := h.Call(t, "get_speech", map[string]any{"since_index": 0})
 	if speech.IsError {
 		t.Fatalf("get_speech failed: %s", speech.Text)
 	}
 	var window struct {
-		Text    string `json:"text"`
-		ToIndex int    `json:"toIndex"`
+		Entries []struct {
+			Text        string `json:"text"`
+			Index       int    `json:"index"`
+			LogPosition int    `json:"logPosition"`
+		} `json:"entries"`
+		ToIndex int `json:"toIndex"`
 	}
 	speech.Decode(t, &window)
-	if window.Text != "Edit  blank" || window.ToIndex != 1 {
+	if len(window.Entries) != 1 || window.Entries[0].Text != "Edit  blank" || window.ToIndex != 1 {
 		t.Errorf("get_speech = %+v, want the bridge's own answer", window)
+	}
+	// End to end over the real MCP surface: the journal coordinate reaches the
+	// AGENT, not just the domain -- it is what makes get_log's since_position
+	// usable from a speech entry (spec 0021).
+	if window.Entries[0].LogPosition != 12 {
+		t.Errorf("logPosition = %d, want the 12 the bridge sent", window.Entries[0].LogPosition)
 	}
 
 	if got := h.Call(t, "disconnect_reader", nil); got.IsError {

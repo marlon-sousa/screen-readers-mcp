@@ -108,6 +108,16 @@ def _hello(agent: Agent, mode: str) -> dict[str, Any]:
 	return agent.result("hello", mode=mode, protocolVersion=p.PROTOCOL_VERSION)
 
 
+def _spoken(speech: dict[str, Any]) -> str:
+	"""The utterances in a getSpeech result, joined for a readable assertion.
+
+	The wire carries one entry per utterance since spec 0021 (each with its own
+	index and journal position); joining here keeps these tests about "did NVDA
+	actually say something" rather than about the result's shape.
+	"""
+	return "\n".join(entry["text"] for entry in speech["entries"])
+
+
 # -- handshake (checklist 1, 5) ----------------------------------------------
 
 
@@ -139,8 +149,10 @@ def test_silent_session_captures_a_gesture_and_finishes() -> None:
 		# so finish is the buffer's ~1s elapsed heuristic; give it the window.
 		assert agent.result("waitForSpeechToFinish", timeout=3.0)["finished"] is True
 		speech = agent.result("getSpeech", sinceIndex=start)
-		assert speech["text"].strip(), "the gesture should have been captured as speech"
+		assert _spoken(speech).strip(), "the gesture should have been captured as speech"
 		assert speech["toIndex"] > speech["fromIndex"]
+		# Every utterance carries the journal coordinate the join needs (spec 0021).
+		assert all(entry["logPosition"] >= 0 for entry in speech["entries"])
 		agent.result("bye")
 	finally:
 		agent.close()
@@ -193,7 +205,7 @@ def test_live_session_captures_without_swapping() -> None:
 		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
 		# The buffer's elapsed-time heuristic decides finish; allow the window.
 		agent.result("waitForSpeechToFinish", timeout=3.0)
-		assert agent.result("getSpeech", sinceIndex=start)["text"].strip()
+		assert _spoken(agent.result("getSpeech", sinceIndex=start)).strip()
 		agent.result("bye")
 	finally:
 		agent.close()

@@ -48,6 +48,11 @@ class IndexedBuffer:
 		self._clock = clock
 		self._lock = threading.RLock()
 		self._entries: list[Any] = [self._sentinel()]
+		#: The journal position captured alongside each entry, same length and
+		#: index as ``_entries`` (spec 0021) -- a plain value handed in by
+		#: whoever calls ``append``, so this buffer never learns the journal
+		#: exists.
+		self._log_positions: list[int] = [0]
 		self._last_time: float = clock.monotonic()
 
 	def _sentinel(self) -> Any:
@@ -73,19 +78,41 @@ class IndexedBuffer:
 			index = len(self._entries) - 1
 			return self._render(self._entries[index]), index
 
-	def get_since(self, index: int) -> tuple[str, int, int]:
-		"""Rendered text of every entry from ``index`` to now.
+	def log_position_at(self, index: int) -> int:
+		"""The journal position recorded for the entry at *index*, or 0.
 
-		Returns ``(text, fromIndex, toIndex)`` where the range is half-open
-		``[fromIndex, toIndex)``; ``text`` joins the non-empty entries with
-		newlines. A negative or out-of-range ``index`` is clamped into range so
-		a stale bookmark can never raise.
+		The single-entry reads (``getLastSpeech``, ``waitForSpeech``) get their
+		coordinate through here rather than through the entry tuples, since they
+		already know the index they matched. An out-of-range index reports 0 --
+		the sentinel's value -- so a stale bookmark can never raise (spec 0021).
+		"""
+		with self._lock:
+			if 0 <= index < len(self._log_positions):
+				return self._log_positions[index]
+			return 0
+
+	def entries_since(self, index: int) -> tuple[list[tuple[str, int, int]], int, int]:
+		"""Non-empty rendered entries from ``index`` to now, each with its own index.
+
+		Returns ``(entries, fromIndex, toIndex)``: ``fromIndex``/``toIndex`` span
+		the whole half-open range ``[fromIndex, toIndex)`` requested, exactly as
+		before, but each surviving entry is now a ``(text, index, logPosition)``
+		triple carrying the index it actually occupies -- so which entry
+		rendered which line is explicit rather than inferred. An empty rendering
+		is skipped, same as the old joined text was; the index gap that leaves
+		is exactly why a position could not be recovered from ``fromIndex`` alone
+		(spec 0021). A negative or out-of-range ``index`` is clamped into range
+		so a stale bookmark can never raise.
 		"""
 		with self._lock:
 			start = max(0, index)
-			rendered = [self._render(e) for e in self._entries[start:]]
-			text = "\n".join(t for t in rendered if t and not t.isspace())
-			return text, start, len(self._entries)
+			to_index = len(self._entries)
+			entries: list[tuple[str, int, int]] = []
+			for i in range(start, to_index):
+				text = self._render(self._entries[i])
+				if text and not text.isspace():
+					entries.append((text, i, self._log_positions[i]))
+			return entries, start, to_index
 
 	def _wait(self, predicate: Callable[[], bool], timeout: float) -> bool:
 		"""Poll ``predicate`` until it is true or ``timeout`` seconds elapse.

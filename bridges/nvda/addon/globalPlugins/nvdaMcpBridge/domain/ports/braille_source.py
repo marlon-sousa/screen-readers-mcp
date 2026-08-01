@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -22,8 +23,14 @@ class BrailleSource(ABC):
 	"""Feeds captured braille updates into a :class:`BrailleBuffer`."""
 
 	@abstractmethod
-	def start(self, buffer: BrailleBuffer) -> None:
-		"""Begin capturing into ``buffer`` (register the braille hook)."""
+	def start(self, buffer: BrailleBuffer, log_position: Callable[[], int]) -> None:
+		"""Begin capturing into ``buffer`` (register the braille hook).
+
+		``log_position`` returns the journal's current append position; each
+		capture calls it at the moment of capture and passes the result to
+		``buffer.append`` (spec 0021), so a ring entry can later be placed on the
+		log's timeline. The buffer itself never learns the journal exists.
+		"""
 
 	@abstractmethod
 	def stop(self) -> None:

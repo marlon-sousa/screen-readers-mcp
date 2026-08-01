@@ -382,6 +382,65 @@ rather than before it.
     2026-07-30; rides in 11.4's own PR).
     **Taken before 11.3** deliberately: it pays for itself in every later live
     session, 11.3's own included, and 11.3's spec is still awaiting review.
+11.5. **E, observing the log** (both lanes). **Implemented; live checklist run
+    2026-08-01** (27 checks green, no failures — see `scripts/live_test.py`
+    scenarios `log` and `logsilent`). The agent marks the present moment,
+    then asks what has arrived *since it last looked* — instead of only being able
+    to ask what a given command logged. Comes straight out of 11.4's live run,
+    which found two things its model cannot serve. A command window closes when the
+    handler returns, but NVDA does the work a millisecond later on its own thread,
+    so one window holds `inputCore.executeGesture` and little else; and the cases
+    that matter most have **no commands at all** — a trigger whose consequences
+    arrive over the next fifteen seconds, or "watch what I do, a bug is about to
+    appear", where the human is driving and nothing the agent issues is what gets
+    logged. Adds a mark (`getLogPosition`), a caller-held cursor
+    (`sincePosition`/`nextPosition`), `lastSeconds` for "it just happened", and
+    `waitForLog` — the `waitForSpeech` shape, so it stays pull rather than the push
+    0020 rejected. Also extends a command's span to the *next* command, which is
+    what makes a single window mean something again and retires 11.4's
+    `capturedAtLevel` compromise. Needs live NVDA. Spec:
+    `0021-observing-the-log.md` (**agreed 2026-07-31**). Its one open question —
+    whether the journal coordinate belongs on braille entries and transcript
+    lines — was settled in review: braille yes, transcript no, because the
+    transcript outlives the journal and its reader is the human at the machine,
+    not the agent.
+    The live run confirmed the thing 11.4 could not do: a gesture's span now
+    holds `speech.speech.speak` and `tones.beep` alongside
+    `inputCore.executeGesture`. Item 6 is closed both ways: the agent causes a
+    real NVDA ERROR itself (`logerror`) and wakes on it in 3.2 s, and the human
+    causes one while the agent watches (`logwatch`), which is the case the
+    command was written for. Only a braille entry's coordinate is untested, for
+    want of a display.
+    **It also turned up a client-compatibility exposure that is NOT this
+    entry's to fix:** the capability-gated tools are advertised only through
+    `tools/list_changed`, and a client that ignores that notification connects
+    successfully and then sees no tools at all — observed in Claude Code during
+    this very run, which is why the checklist had to be driven through
+    `scripts/live_test.py`. The failure is silent and points at the wrong
+    component, since `connect_reader` returns success with a full capability
+    list. Its own entry, below.
+11.6. **E, a connected session an agent cannot use** (server lane). Found live on
+    2026-08-01 while running 11.5's checklist. Every capability-gated tool
+    reaches the agent through one `tools/list_changed` notification emitted when
+    `connect_reader` succeeds (spec 0013). A client that does not act on that
+    notification handshakes fine and then has **nothing to call** — the whole
+    gated surface is invisible. This is not hypothetical and not an exotic
+    client: it happened in Claude Code, the server's primary target, which is
+    why 11.5's checklist had to be driven through `scripts/live_test.py`
+    instead. What makes it worth an entry rather than a footnote is the shape of
+    the failure: `connect_reader` returns success *with a full capability list*,
+    so the agent has every reason to believe it is connected and concludes the
+    server or the bridge is broken. Nothing anywhere says "your client must
+    support list_changed". Options, cheapest first, to be argued in the spec
+    rather than picked here: (a) say so at the point of failure — the connect
+    result names the tools that should now be present, and `status` repeats it,
+    which fixes nothing but makes it diagnosable in one round; (b) one
+    always-present dispatcher tool that forwards to a gated one by name, which
+    works on any client but undercuts gating; (c) advertise everything always
+    and fail the gated ones with "connect first", which is client-independent
+    but throws away 11.1's benefit that an agent sees only the tools its reader
+    actually supports. Needs a spec conversation: it revisits a decision spec
+    0013 made deliberately. Spec: needed.
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).

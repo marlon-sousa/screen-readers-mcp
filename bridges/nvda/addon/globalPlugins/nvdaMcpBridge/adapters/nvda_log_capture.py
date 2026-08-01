@@ -34,6 +34,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING
 
 from logHandler import Formatter, log
@@ -77,6 +78,7 @@ class JournalHandler(logging.Handler):
 				self._formatter.formatTime(record),
 				record.threadName or "",
 				record.thread or 0,
+				record.created,
 			)
 		except Exception:
 			self.handleError(record)
@@ -150,6 +152,58 @@ class NvdaLogCapture(LogCapture):
 			exclude=exclude,
 			fields=fields,
 			max_entries=max_entries,
+		)
+
+	def slice_since(
+		self,
+		position: int,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		return self._journal.slice_since(
+			position,
+			min_level=min_level.value if min_level else None,
+			contains=contains,
+			exclude=exclude,
+			fields=fields,
+			max_entries=max_entries,
+		)
+
+	def slice_last_seconds(
+		self,
+		seconds: float,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		return self._journal.slice_last_seconds(
+			seconds,
+			time.time(),
+			min_level=min_level.value if min_level else None,
+			contains=contains,
+			exclude=exclude,
+			fields=fields,
+			max_entries=max_entries,
+		)
+
+	def find_since(
+		self,
+		start: int,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+	) -> tuple[int, str] | None:
+		return self._journal.find_since(
+			start,
+			min_level=min_level.value if min_level else None,
+			contains=contains,
 		)
 
 	def set_level(self, level: protocol.LogLevel) -> None:

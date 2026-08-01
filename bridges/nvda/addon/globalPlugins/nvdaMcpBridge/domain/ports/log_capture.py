@@ -79,3 +79,43 @@ class LogCapture(ABC):
 		ids the window belongs to, so building the wire result here would mean
 		inventing the id fields and having the handler overwrite them.
 		"""
+
+	@abstractmethod
+	def slice_since(
+		self,
+		position: int,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		"""The ``sincePosition`` anchor (spec 0021): ``slice(position, now)``."""
+
+	@abstractmethod
+	def slice_last_seconds(
+		self,
+		seconds: float,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+		exclude: list[str] | None = None,
+		fields: list[str] | None = None,
+		max_entries: int = 200,
+	) -> tuple[str, int, int, bool]:
+		"""The ``lastSeconds`` anchor (spec 0021): everything in the last *seconds*."""
+
+	@abstractmethod
+	def find_since(
+		self,
+		start: int,
+		*,
+		min_level: protocol.LogLevel | None = None,
+		contains: list[str] | None = None,
+	) -> tuple[int, str] | None:
+		"""The first record at/after *start* matching, formatted; else ``None``.
+
+		Backs ``waitForLog``'s poll loop -- ``(position, text)`` for exactly the
+		one record that matched, not an aggregated slice.
+		"""

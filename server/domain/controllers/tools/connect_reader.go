@@ -51,7 +51,7 @@ func (t *ConnectReader) InputSchema() json.RawMessage {
 		"mode": {
 			"type": "string",
 			"enum": ["silent", "live"],
-			"description": "How speech is captured for this whole session. \"silent\" captures speech deterministically while the user hears nothing; \"live\" leaves the real synthesizer speaking and captures by observation, so ordering and timing are best-effort. Use \"silent\" for automated testing."
+			"description": "How speech is captured for this whole session. \"silent\" captures speech deterministically while the user hears nothing; \"live\" leaves the real synthesizer speaking and captures by observation, so ordering and timing are best-effort. THE TRADE-OFF: silent buys deterministic capture and COSTS LOG FIDELITY, because suppressing speech before the synthesizer also stops the reader reaching its own 'speaking' log line -- a silent session's get_log holds substantially fewer records than the same work done live. Live buys a faithful log and costs determinism. Use \"silent\" for automated testing; consider \"live\" when you are debugging WHY the reader said the wrong thing and need the log to show what surrounded it."
 		},
 		"log_level": {
 			"type": "string",
@@ -80,7 +80,14 @@ type connectResult struct {
 	Capabilities  []string `json:"capabilities"`
 	Mode          string   `json:"mode"`
 	Synth         string   `json:"synth"`
-	LogPath       string   `json:"logPath"`
+	// LogPath names the READER-SIDE session transcript, and it is a convenience
+	// rather than a contract to depend on (spec 0021): the artifact is written
+	// for the human at the reader, on the reader's disk, so for a remote bridge
+	// it names a file this agent cannot open. An agent wanting its own complete
+	// record calls get_speech with since_index 0 -- the ring is unbounded within
+	// a session -- or reads screenreader://session-record, which this server
+	// keeps from its own traffic.
+	LogPath string `json:"logPath"`
 	// The BRIDGE build answering, distinct from the reader version above. A
 	// live run talks to whatever add-on build is installed, so an agent that
 	// sees odd behaviour can check this before blaming the code.

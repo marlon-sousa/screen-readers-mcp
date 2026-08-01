@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from nvdaMcpBridge.domain.ports.braille_source import BrailleSource
@@ -21,17 +22,19 @@ class FakeBrailleSource(BrailleSource):
 
 	def __init__(self) -> None:
 		self.buffer: BrailleBuffer | None = None
+		self.log_position: Callable[[], int] = lambda: 0
 		self.started = 0
 		self.stopped = 0
 		#: Braille already on the display when capture starts; emitted at start().
 		#: A test seeds this to exercise getBraille without a live NVDA.
 		self.initial: list[str] = []
 
-	def start(self, buffer: BrailleBuffer) -> None:
+	def start(self, buffer: BrailleBuffer, log_position: Callable[[], int]) -> None:
 		self.buffer = buffer
+		self.log_position = log_position
 		self.started += 1
 		for cells in self.initial:
-			buffer.append(cells)
+			buffer.append(cells, log_position())
 
 	def stop(self) -> None:
 		self.stopped += 1
@@ -39,4 +42,5 @@ class FakeBrailleSource(BrailleSource):
 	def emit(self, cells: str) -> None:
 		"""Inject a braille update."""
 		assert self.buffer is not None, "emit before the source was started"
-		self.buffer.append(cells)
+		# Reads the position AT CAPTURE, mirroring NvdaBrailleSource (spec 0021).
+		self.buffer.append(cells, self.log_position())

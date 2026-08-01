@@ -22,8 +22,9 @@ def _append(
 	timestamp: str = "2026-07-30 12:00:00.000",
 	thread: str = "MainThread",
 	thread_id: int = 1234,
+	created: float = 0.0,
 ) -> None:
-	journal.append(level_no, level_name, module, message, timestamp, thread, thread_id)
+	journal.append(level_no, level_name, module, message, timestamp, thread, thread_id, created)
 
 
 # -- mark / window bracketing -------------------------------------------------
@@ -66,6 +67,176 @@ def test_window_contains_only_records_in_range() -> None:
 	assert entries == 2
 	assert matched == 2
 	assert not truncated
+
+
+# -- slice_since: the caller-held cursor (spec 0021) ---------------------------
+
+
+def test_slice_since_reads_from_a_position_to_now() -> None:
+	j = LogJournal()
+	_append(j, message="before")
+	cursor = j.mark()
+	_append(j, message="after one")
+	_append(j, message="after two")
+
+	text, entries, matched, truncated = j.slice_since(cursor)
+
+	assert "before" not in text
+	assert "after one" in text and "after two" in text
+	assert (entries, matched, truncated) == (2, 2, False)
+
+
+def test_slice_since_is_idempotent() -> None:
+	# Nothing is consumed: the CALLER holds the cursor, which is what makes a poll
+	# loop re-runnable with a different filter (spec 0021).
+	j = LogJournal()
+	_append(j, message="only")
+
+	assert j.slice_since(0) == j.slice_since(0)
+
+
+def test_slice_since_from_the_current_position_is_empty_not_an_error() -> None:
+	j = LogJournal()
+	_append(j, message="already read")
+
+	text, entries, _matched, truncated = j.slice_since(j.mark())
+
+	assert (text, entries, truncated) == ("", 0, False)
+
+
+def test_slice_since_below_the_oldest_survivor_reports_truncated() -> None:
+	# How a poll loop learns it fell behind: at `io` the ring is a minute or two,
+	# so an agent that stopped polling gets told rather than silently short-changed.
+	j = LogJournal()
+	for index in range(MAX_RECORDS + 5):
+		_append(j, message=f"record {index}")
+
+	_text, _entries, _matched, truncated = j.slice_since(0, max_entries=MAX_RECORDS)
+
+	assert truncated
+
+
+def test_slice_since_within_the_surviving_ring_is_not_truncated() -> None:
+	j = LogJournal()
+	for index in range(MAX_RECORDS + 5):
+		_append(j, message=f"record {index}")
+
+	# 5 records aged out, so the oldest survivor is at position 5.
+	_text, _entries, _matched, truncated = j.slice_since(j.mark() - 3)
+
+	assert not truncated
+
+
+# -- slice_last_seconds: the relative anchor (spec 0021) -----------------------
+
+
+def test_last_seconds_keeps_only_records_inside_the_window() -> None:
+	j = LogJournal()
+	_append(j, message="a minute ago", created=1000.0)
+	_append(j, message="just now", created=1055.0)
+
+	text, entries, _matched, _truncated = j.slice_last_seconds(10.0, now=1060.0)
+
+	assert "just now" in text
+	assert "a minute ago" not in text
+	assert entries == 1
+
+
+def test_last_seconds_wide_enough_takes_everything() -> None:
+	j = LogJournal()
+	_append(j, message="old", created=1000.0)
+	_append(j, message="new", created=1055.0)
+
+	_text, entries, _matched, _truncated = j.slice_last_seconds(3600.0, now=1060.0)
+
+	assert entries == 2
+
+
+def test_last_seconds_with_nothing_recent_is_empty_not_an_error() -> None:
+	# "It just happened" is a guess; being wrong should return nothing, not raise.
+	j = LogJournal()
+	_append(j, message="ancient history", created=1000.0)
+
+	text, entries, matched, truncated = j.slice_last_seconds(5.0, now=9999.0)
+
+	assert (text, entries, matched, truncated) == ("", 0, 0, False)
+
+
+def test_last_seconds_on_an_empty_journal_is_empty() -> None:
+	assert LogJournal().slice_last_seconds(10.0, now=100.0) == ("", 0, 0, False)
+
+
+def test_last_seconds_applies_the_same_filters() -> None:
+	j = LogJournal()
+	_append(j, level_no=12, level_name="IO", message="Speaking hello", created=1055.0)
+	_append(j, level_no=20, level_name="INFO", message="focus changed", created=1056.0)
+
+	text, entries, _matched, _truncated = j.slice_last_seconds(10.0, now=1060.0, min_level="info")
+
+	assert "focus changed" in text
+	assert "Speaking hello" not in text
+	assert entries == 1
+
+
+def test_epoch_time_survives_the_ring_aging_out() -> None:
+	# The `created` stamp has to ride ALONG with the record through eviction, or
+	# lastSeconds starts measuring against whatever tuple slot happens to survive.
+	j = LogJournal()
+	for index in range(MAX_RECORDS + 5):
+		_append(j, message=f"record {index}", created=1000.0 + index)
+
+	# The last five are within ten seconds of the newest record's stamp.
+	newest = 1000.0 + MAX_RECORDS + 4
+	_text, entries, _matched, _truncated = j.slice_last_seconds(4.5, now=newest)
+
+	assert entries == 5
+
+
+# -- find_since: the wait primitive (spec 0021) --------------------------------
+
+
+def test_find_since_returns_the_first_match_and_a_usable_next_position() -> None:
+	j = LogJournal()
+	_append(j, message="nothing interesting")
+	_append(j, level_no=40, level_name="ERROR", message="COMError from IAccessible")
+	_append(j, level_no=40, level_name="ERROR", message="a later error")
+
+	match = j.find_since(0, min_level="error")
+
+	assert match is not None
+	position, text = match
+	assert "COMError" in text
+	assert "a later error" not in text
+	# One PAST the match, so it feeds straight back in as the next sincePosition.
+	assert position == 2
+	assert j.slice_since(position)[1] == 1
+
+
+def test_find_since_returns_none_when_nothing_matches() -> None:
+	j = LogJournal()
+	_append(j, message="all quiet")
+
+	assert j.find_since(0, min_level="error") is None
+
+
+def test_find_since_ignores_records_before_its_start() -> None:
+	j = LogJournal()
+	_append(j, level_no=40, level_name="ERROR", message="an error that already happened")
+	start = j.mark()
+	_append(j, message="all quiet since")
+
+	assert j.find_since(start, min_level="error") is None
+
+
+def test_find_since_matches_on_contains_too() -> None:
+	j = LogJournal()
+	_append(j, message="focus changed")
+	_append(j, message="Elements list dialog")
+
+	match = j.find_since(0, contains=["elements list"])
+
+	assert match is not None
+	assert "Elements list dialog" in match[1]
 
 
 # -- field projection ----------------------------------------------------------

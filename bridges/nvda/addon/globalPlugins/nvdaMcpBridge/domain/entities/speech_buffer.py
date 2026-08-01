@@ -67,10 +67,18 @@ class SpeechBuffer(IndexedBuffer):
 		"""
 		self._observer = observer
 
-	def append(self, sequence: Any) -> None:
-		"""Record a captured speech sequence; called from NVDA's speech thread."""
+	def append(self, sequence: Any, log_position: int = 0) -> None:
+		"""Record a captured speech sequence; called from NVDA's speech thread.
+
+		``log_position`` is the journal's append position at the moment of
+		capture (spec 0021) -- a plain value from the caller, so this buffer
+		never learns the journal exists. Production callers (the speech source
+		adapters) always pass the real one; the default lets tests that do not
+		care about the join omit it.
+		"""
 		with self._lock:
 			self._entries.append(sequence)
+			self._log_positions.append(log_position)
 			self._last_time = self._clock.monotonic()
 			self._speaking = True
 			text = _join_speech(sequence)

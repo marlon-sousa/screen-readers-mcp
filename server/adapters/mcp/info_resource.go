@@ -54,11 +54,13 @@ type info struct {
 	Mode          string   `json:"mode,omitempty"`
 	Synth         string   `json:"synth,omitempty"`
 
-	// The two session artifacts, as PATHS. Their contents are deliberately
-	// not exposed as resources in v1 (spec 0013, out of scope): reading a
-	// transcript through the agent is worth having and needs its own
-	// conversation, not least about what it means once a bridge is not on the
-	// same machine as the server.
+	// LogPath is the READER-SIDE transcript, as a path, and deliberately not as
+	// a resource. That conversation happened (spec 0021) and came out against
+	// transmitting it: the file is written for the human at the reader, with
+	// capture-time stamps only the bridge can produce, and for a remote bridge
+	// it names a file the agent cannot open at all. The agent's own record is
+	// screenreader://session-record, which this server keeps from its own
+	// traffic; the agent's own copy of what was said is get_speech from index 0.
 	LogPath       string `json:"logPath,omitempty"`
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
 

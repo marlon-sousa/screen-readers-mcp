@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,8 +25,14 @@ class SpeechSource(ABC):
 	"""Feeds captured speech sequences into a :class:`SpeechBuffer`."""
 
 	@abstractmethod
-	def start(self, buffer: SpeechBuffer) -> None:
-		"""Begin capturing into ``buffer`` (register the hook / spy synth)."""
+	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
+		"""Begin capturing into ``buffer`` (register the hook / spy synth).
+
+		``log_position`` returns the journal's current append position; each
+		capture calls it at the moment of capture and passes the result to
+		``buffer.append`` (spec 0021), so a ring entry can later be placed on the
+		log's timeline. The buffer itself never learns the journal exists.
+		"""
 
 	@abstractmethod
 	def stop(self) -> None:

@@ -68,6 +68,8 @@ const (
 	CommandAskUser               Command = "askUser"
 	CommandWaitForUserReply      Command = "waitForUserReply"
 	CommandGetLog                Command = "getLog"
+	CommandGetLogPosition        Command = "getLogPosition"
+	CommandWaitForLog            Command = "waitForLog"
 	CommandSetLogLevel           Command = "setLogLevel"
 	CommandBye                   Command = "bye"
 )
@@ -140,11 +142,18 @@ type AskUserResult struct {
 	Ticket string `json:"ticket"`
 }
 
+// BrailleEntry is the wire shape of the same name.
+type BrailleEntry struct {
+	Text        string `json:"text"`
+	Index       int    `json:"index"`
+	LogPosition int    `json:"logPosition"`
+}
+
 // BrailleResult is the wire shape of the same name.
 type BrailleResult struct {
-	Text      string `json:"text"`
-	FromIndex int    `json:"fromIndex"`
-	ToIndex   int    `json:"toIndex"`
+	Entries   []BrailleEntry `json:"entries"`
+	FromIndex int            `json:"fromIndex"`
+	ToIndex   int            `json:"toIndex"`
 }
 
 // ConfigResult is the wire shape of the same name.
@@ -188,13 +197,15 @@ type GetConfigParams struct {
 
 // GetLogParams is the wire shape of the same name.
 type GetLogParams struct {
-	CommandId  *int      `json:"commandId,omitempty"`
-	Windows    *int      `json:"windows,omitempty"`
-	MinLevel   *LogLevel `json:"minLevel,omitempty"`
-	Contains   []string  `json:"contains,omitempty"`
-	Exclude    []string  `json:"exclude,omitempty"`
-	Fields     []string  `json:"fields,omitempty"`
-	MaxEntries *int      `json:"maxEntries,omitempty"`
+	CommandId     *int      `json:"commandId,omitempty"`
+	Windows       *int      `json:"windows,omitempty"`
+	SincePosition *int      `json:"sincePosition,omitempty"`
+	LastSeconds   *float64  `json:"lastSeconds,omitempty"`
+	MinLevel      *LogLevel `json:"minLevel,omitempty"`
+	Contains      []string  `json:"contains,omitempty"`
+	Exclude       []string  `json:"exclude,omitempty"`
+	Fields        []string  `json:"fields,omitempty"`
+	MaxEntries    *int      `json:"maxEntries,omitempty"`
 }
 
 // GetSpeechParams is the wire shape of the same name.
@@ -222,8 +233,9 @@ type HelloResult struct {
 
 // LastSpeechResult is the wire shape of the same name.
 type LastSpeechResult struct {
-	Text  string `json:"text"`
-	Index int    `json:"index"`
+	Text        string `json:"text"`
+	Index       int    `json:"index"`
+	LogPosition *int   `json:"logPosition,omitempty"`
 }
 
 // LogLevelResult is the wire shape of the same name.
@@ -232,15 +244,22 @@ type LogLevelResult struct {
 	Previous LogLevel `json:"previous"`
 }
 
+// LogPositionResult is the wire shape of the same name.
+type LogPositionResult struct {
+	Position int    `json:"position"`
+	Time     string `json:"time"`
+}
+
 // LogSliceResult is the wire shape of the same name.
 type LogSliceResult struct {
 	Text            string   `json:"text"`
 	Entries         int      `json:"entries"`
 	Matched         int      `json:"matched"`
 	Truncated       bool     `json:"truncated"`
-	FromCommandId   int      `json:"fromCommandId"`
-	ToCommandId     int      `json:"toCommandId"`
+	NextPosition    int      `json:"nextPosition"`
 	CapturedAtLevel LogLevel `json:"capturedAtLevel"`
+	FromCommandId   *int     `json:"fromCommandId,omitempty"`
+	ToCommandId     *int     `json:"toCommandId,omitempty"`
 }
 
 // NextIndexResult is the wire shape of the same name.
@@ -284,11 +303,18 @@ type SetLogLevelParams struct {
 	Level LogLevel `json:"level"`
 }
 
+// SpeechEntry is the wire shape of the same name.
+type SpeechEntry struct {
+	Text        string `json:"text"`
+	Index       int    `json:"index"`
+	LogPosition int    `json:"logPosition"`
+}
+
 // SpeechResult is the wire shape of the same name.
 type SpeechResult struct {
-	Text      string `json:"text"`
-	FromIndex int    `json:"fromIndex"`
-	ToIndex   int    `json:"toIndex"`
+	Entries   []SpeechEntry `json:"entries"`
+	FromIndex int           `json:"fromIndex"`
+	ToIndex   int           `json:"toIndex"`
 }
 
 // StateResult is the wire shape of the same name.
@@ -304,6 +330,20 @@ type TypeParams struct {
 	Text string `json:"text"`
 }
 
+// WaitForLogParams is the wire shape of the same name.
+type WaitForLogParams struct {
+	Timeout  *float64  `json:"timeout,omitempty"`
+	MinLevel *LogLevel `json:"minLevel,omitempty"`
+	Contains []string  `json:"contains,omitempty"`
+}
+
+// WaitForLogResult is the wire shape of the same name.
+type WaitForLogResult struct {
+	Found    bool    `json:"found"`
+	Position int     `json:"position"`
+	Text     *string `json:"text,omitempty"`
+}
+
 // WaitForSpeechParams is the wire shape of the same name.
 type WaitForSpeechParams struct {
 	Text       string   `json:"text"`
@@ -313,9 +353,10 @@ type WaitForSpeechParams struct {
 
 // WaitForSpeechResult is the wire shape of the same name.
 type WaitForSpeechResult struct {
-	Found bool   `json:"found"`
-	Index int    `json:"index"`
-	Text  string `json:"text"`
+	Found       bool   `json:"found"`
+	Index       int    `json:"index"`
+	Text        string `json:"text"`
+	LogPosition *int   `json:"logPosition,omitempty"`
 }
 
 // WaitForUserReplyParams is the wire shape of the same name.

@@ -8,9 +8,11 @@ from fakes.adapter_factory import FakeAdapterFactory
 from fakes.clock import FakeClock
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
-from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError
-from nvdaMcpBridge.domain.controllers.commands.wait_for_user_reply import (
+from nvdaMcpBridge.domain.controllers.commands.command_handler import (
 	MAX_POLL_TIMEOUT,
+	CommandError,
+)
+from nvdaMcpBridge.domain.controllers.commands.wait_for_user_reply import (
 	WaitForUserReplyHandler,
 )
 from nvdaMcpBridge.domain.entities.user_prompt import UserPrompt

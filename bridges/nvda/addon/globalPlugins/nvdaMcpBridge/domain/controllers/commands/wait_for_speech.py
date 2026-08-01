@@ -20,4 +20,8 @@ class WaitForSpeechHandler(CommandHandler):
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		params = protocol.from_dict(protocol.WaitForSpeechParams, request.params)
 		found, index, text = ctx.speech_buffer.wait_for(params.text, params.afterIndex, params.timeout)
-		return protocol.WaitForSpeechResult(found=found, index=index, text=text)
+		# On a hit, the position captured with the matching utterance; on a miss,
+		# the journal's current position -- still a usable "from here" mark, and
+		# the same convention `index` already follows (spec 0021).
+		log_position = ctx.speech_buffer.log_position_at(index) if found else ctx.log_capture.position()
+		return protocol.WaitForSpeechResult(found=found, index=index, text=text, logPosition=log_position)

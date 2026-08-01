@@ -40,17 +40,34 @@ func decode(t *testing.T, value any, into any) {
 	}
 }
 
+// capturedWindow is what get_speech and get_braille return: one entry per
+// utterance since spec 0021, each with its own index and journal coordinate,
+// plus the half-open range the read covers.
+type capturedWindow struct {
+	Entries []struct {
+		Text        string `json:"text"`
+		Index       int    `json:"index"`
+		LogPosition int    `json:"logPosition"`
+	} `json:"entries"`
+	FromIndex int `json:"fromIndex"`
+	ToIndex   int `json:"toIndex"`
+}
+
+func (w capturedWindow) texts() []string {
+	said := make([]string, 0, len(w.Entries))
+	for _, entry := range w.Entries {
+		said = append(said, entry.Text)
+	}
+	return said
+}
+
 // The half-open window: [fromIndex, toIndex), so toIndex is exactly the
 // since_index to pass next, with no overlap and no gap (protocol.md §7).
 func TestGetSpeechReturnsAHalfOpenWindowThatChainsCleanly(t *testing.T) {
 	call, built := speechCall(t, &tools.GetSpeech{})
 	built.Speech.Speak("Edit  blank", "Documents  list")
 
-	var first struct {
-		Text      string `json:"text"`
-		FromIndex int    `json:"fromIndex"`
-		ToIndex   int    `json:"toIndex"`
-	}
+	var first capturedWindow
 	result, err := call.Run(`{"since_index":0}`)
 	if err != nil {
 		t.Fatalf("get_speech: %v", err)
@@ -60,28 +77,57 @@ func TestGetSpeechReturnsAHalfOpenWindowThatChainsCleanly(t *testing.T) {
 	if first.FromIndex != 0 || first.ToIndex != 2 {
 		t.Errorf("range = [%d,%d), want [0,2)", first.FromIndex, first.ToIndex)
 	}
-	if !strings.Contains(first.Text, "Edit") || !strings.Contains(first.Text, "Documents") {
-		t.Errorf("text = %q, want both utterances", first.Text)
+	said := strings.Join(first.texts(), "|")
+	if !strings.Contains(said, "Edit") || !strings.Contains(said, "Documents") {
+		t.Errorf("entries = %q, want both utterances", said)
 	}
 
 	// Continuing from toIndex sees only what happened since.
 	built.Speech.Speak("Button")
-	var second struct {
-		Text      string `json:"text"`
-		FromIndex int    `json:"fromIndex"`
-		ToIndex   int    `json:"toIndex"`
-	}
+	var second capturedWindow
 	result, err = call.Run(`{"since_index":2}`)
 	if err != nil {
 		t.Fatalf("get_speech: %v", err)
 	}
 	decode(t, result, &second)
 
-	if second.Text != "Button" {
-		t.Errorf("text = %q, want only what was said after the first read", second.Text)
+	if len(second.Entries) != 1 || second.Entries[0].Text != "Button" {
+		t.Errorf("entries = %q, want only what was said after the first read", second.texts())
 	}
 	if second.FromIndex != 2 || second.ToIndex != 3 {
 		t.Errorf("range = [%d,%d), want [2,3)", second.FromIndex, second.ToIndex)
+	}
+}
+
+// Each utterance carries the index it actually occupies, not its place in the
+// answer -- empty renders are dropped bridge-side, so entry i is NOT at index
+// fromIndex + i and a caller cannot derive one from the other (spec 0021).
+func TestEachSpokenEntryCarriesItsOwnIndexAndJournalPosition(t *testing.T) {
+	call, built := speechCall(t, &tools.GetSpeech{})
+	built.Speech.Speak("Edit  blank")
+	// Records land between the two utterances, as they do live.
+	built.Speech.AdvanceJournal(4)
+	built.Speech.Speak("Documents  list")
+
+	var window capturedWindow
+	result, err := call.Run(`{"since_index":0}`)
+	if err != nil {
+		t.Fatalf("get_speech: %v", err)
+	}
+	decode(t, result, &window)
+
+	if len(window.Entries) != 2 {
+		t.Fatalf("entries = %q, want two", window.texts())
+	}
+	if window.Entries[0].Index != 0 || window.Entries[1].Index != 1 {
+		t.Errorf("indices = %d,%d, want each entry's own place in the ring",
+			window.Entries[0].Index, window.Entries[1].Index)
+	}
+	// The coordinates must MOVE with the journal; a tool that stamped both from
+	// one read would place two utterances at the same point on the timeline.
+	if window.Entries[0].LogPosition >= window.Entries[1].LogPosition {
+		t.Errorf("logPositions = %d,%d, want the second to be later",
+			window.Entries[0].LogPosition, window.Entries[1].LogPosition)
 	}
 }
 

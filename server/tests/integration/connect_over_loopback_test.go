@@ -87,7 +87,11 @@ func TestASessionIsEstablishedOverRealLoopbackTCP(t *testing.T) {
 func TestACommandRoundTripsOverRealLoopbackTCP(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	fake.Handle(wire.CommandGetSpeech, func(params json.RawMessage) (any, error) {
-		return wire.SpeechResult{Text: "Edit  blank", FromIndex: 0, ToIndex: 1}, nil
+		return wire.SpeechResult{
+			Entries:   []wire.SpeechEntry{{Text: "Edit  blank", Index: 1, LogPosition: 12}},
+			FromIndex: 0,
+			ToIndex:   1,
+		}, nil
 	})
 	spec := listenLoopback(t, fake)
 
@@ -104,8 +108,13 @@ func TestACommandRoundTripsOverRealLoopbackTCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SpeechSince: %v", err)
 	}
-	if speech.Text != "Edit  blank" || speech.ToIndex != 1 {
+	// The coordinate survives the whole round trip, not just the mapping: one
+	// entry per utterance, each carrying the journal position it was captured at.
+	if len(speech.Entries) != 1 || speech.Entries[0].Text != "Edit  blank" || speech.ToIndex != 1 {
 		t.Errorf("speech = %+v, want the bridge's own answer", speech)
+	}
+	if speech.Entries[0].LogPosition != 12 {
+		t.Errorf("logPosition = %d, want the 12 the bridge sent", speech.Entries[0].LogPosition)
 	}
 }
 

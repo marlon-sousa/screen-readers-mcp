@@ -8,6 +8,10 @@
 // and answers from it, so index arithmetic -- the half-open [from, to) window
 // that makes ToIndex the next sinceIndex -- is exercised for real rather than
 // hand-fed per test.
+//
+// Each utterance also carries a journal position (spec 0021), and the positions
+// MOVE: a fake that stamped every entry with the same number would let a tool
+// pass its coordinate through incorrectly and still look right.
 package fakes
 
 import (
@@ -18,10 +22,17 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
+// spokenEntry is one utterance and where it sits on the log journal's timeline.
+type spokenEntry struct {
+	text        string
+	logPosition int
+}
+
 // FakeSpeechReader is an in-memory speech log.
 type FakeSpeechReader struct {
 	mu        sync.Mutex
-	spoken    []string
+	spoken    []spokenEntry
+	journal   int
 	err       error
 	finished  bool
 	waitCalls []ports.SpeechWait
@@ -33,10 +44,31 @@ var _ ports.SpeechReader = (*FakeSpeechReader)(nil)
 func NewFakeSpeechReader() *FakeSpeechReader { return &FakeSpeechReader{finished: true} }
 
 // Speak appends an utterance, as the reader would have.
+//
+// The stand-in journal advances by one first, so consecutive utterances get
+// DIFFERENT positions -- the reader logs around what it says.
 func (f *FakeSpeechReader) Speak(text ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.spoken = append(f.spoken, text...)
+	for _, one := range text {
+		f.journal++
+		f.spoken = append(f.spoken, spokenEntry{text: one, logPosition: f.journal})
+	}
+}
+
+// AdvanceJournal moves the stand-in journal without speaking, for a test that
+// needs records to land between two utterances.
+func (f *FakeSpeechReader) AdvanceJournal(records int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.journal += records
+}
+
+// JournalPosition is where the stand-in journal currently stands.
+func (f *FakeSpeechReader) JournalPosition() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.journal
 }
 
 // FailWith makes every call return err, for the paths where a live bridge
@@ -75,8 +107,16 @@ func (f *FakeSpeechReader) SpeechSince(sinceIndex int) (ports.SpeechRange, error
 	if sinceIndex > len(f.spoken) {
 		sinceIndex = len(f.spoken)
 	}
+	entries := make([]ports.SpeechEntry, 0, len(f.spoken)-sinceIndex)
+	for i := sinceIndex; i < len(f.spoken); i++ {
+		entries = append(entries, ports.SpeechEntry{
+			Text:        f.spoken[i].text,
+			Index:       i,
+			LogPosition: f.spoken[i].logPosition,
+		})
+	}
 	return ports.SpeechRange{
-		Text:      strings.Join(f.spoken[sinceIndex:], "\n"),
+		Entries:   entries,
 		FromIndex: sinceIndex,
 		ToIndex:   len(f.spoken),
 	}, nil
@@ -91,7 +131,12 @@ func (f *FakeSpeechReader) LastSpeech() (ports.LastSpeech, error) {
 	if len(f.spoken) == 0 {
 		return ports.LastSpeech{Index: 0}, nil
 	}
-	return ports.LastSpeech{Text: f.spoken[len(f.spoken)-1], Index: len(f.spoken) - 1}, nil
+	last := f.spoken[len(f.spoken)-1]
+	return ports.LastSpeech{
+		Text:        last.text,
+		Index:       len(f.spoken) - 1,
+		LogPosition: last.logPosition,
+	}, nil
 }
 
 func (f *FakeSpeechReader) NextSpeechIndex() (int, error) {
@@ -115,14 +160,20 @@ func (f *FakeSpeechReader) WaitForSpeech(wait ports.SpeechWait) (ports.SpeechMat
 		from = *wait.AfterIndex
 	}
 	for i := from; i < len(f.spoken); i++ {
-		if strings.Contains(f.spoken[i], wait.Text) {
-			return ports.SpeechMatch{Found: true, Index: i, Text: f.spoken[i]}, nil
+		if strings.Contains(f.spoken[i].text, wait.Text) {
+			return ports.SpeechMatch{
+				Found:       true,
+				Index:       i,
+				Text:        f.spoken[i].text,
+				LogPosition: f.spoken[i].logPosition,
+			}, nil
 		}
 	}
 	// Not found is an ANSWER, not an error: the wire contract says so, and a
 	// fake that returned an error here would let a tool get away with
-	// treating a legitimate `found: false` as a failure.
-	return ports.SpeechMatch{Found: false, Index: len(f.spoken)}, nil
+	// treating a legitimate `found: false` as a failure. The position on a miss
+	// is the journal's CURRENT one, mirroring the bridge (spec 0021).
+	return ports.SpeechMatch{Found: false, Index: len(f.spoken), LogPosition: f.journal}, nil
 }
 
 func (f *FakeSpeechReader) WaitForSpeechToFinish(timeout time.Duration) (bool, error) {

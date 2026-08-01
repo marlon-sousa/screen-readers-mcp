@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from fakes.announcer import FakeAnnouncer
@@ -48,6 +49,7 @@ def make_context(
 	announcer: FakeAnnouncer | None = None,
 	log_capture: FakeLogCapture | None = None,
 	user_prompter: FakeUserPrompter | None = None,
+	teardown_requested: Callable[[], bool] | None = None,
 ) -> SessionContext:
 	"""Build a SessionContext for a handler test, seeded with only what it needs."""
 	ctx = SessionContext(
@@ -57,6 +59,7 @@ def make_context(
 		announcer or FakeAnnouncer(),
 		log_capture or FakeLogCapture(),
 		user_prompter or FakeUserPrompter(),
+		teardown_requested,
 	)
 	ctx.speech = speech
 	ctx.braille = braille
@@ -64,19 +67,33 @@ def make_context(
 	return ctx
 
 
-def speech_with(clock: FakeClock, *lines: str, exact_finish: bool = True) -> SpeechBuffer:
+def speech_with(
+	clock: FakeClock,
+	*lines: str,
+	exact_finish: bool = True,
+	log_positions: Sequence[int] | None = None,
+) -> SpeechBuffer:
+	"""A SpeechBuffer holding *lines*, optionally each with its journal position.
+
+	``log_positions`` stands in for what the speech source reads off the journal
+	at the moment of capture (spec 0021); the buffer only ever sees plain ints.
+	"""
 	buffer = SpeechBuffer(clock, exact_finish=exact_finish)
-	for line in lines:
-		buffer.append([line])
+	for index, line in enumerate(lines):
+		buffer.append([line], log_positions[index] if log_positions else 0)
 	if lines:
 		buffer.notify_finished()
 	return buffer
 
 
-def braille_with(clock: FakeClock, *lines: str) -> BrailleBuffer:
+def braille_with(
+	clock: FakeClock,
+	*lines: str,
+	log_positions: Sequence[int] | None = None,
+) -> BrailleBuffer:
 	buffer = BrailleBuffer(clock)
-	for line in lines:
-		buffer.append(line)
+	for index, line in enumerate(lines):
+		buffer.append(line, log_positions[index] if log_positions else 0)
 	return buffer
 
 

@@ -28,8 +28,13 @@ class BrailleBuffer(IndexedBuffer):
 	def _render(self, entry: Any) -> str:
 		return entry if isinstance(entry, str) else ""
 
-	def append(self, raw_text: str) -> None:
-		"""Record a braille update; empty or unchanged text is ignored."""
+	def append(self, raw_text: str, log_position: int = 0) -> None:
+		"""Record a braille update; empty or unchanged text is ignored.
+
+		``log_position`` is the journal's append position at the moment of
+		capture (spec 0021), handed in by the caller as a plain value -- this
+		buffer never learns the journal exists.
+		"""
 		text = raw_text.strip()
 		if not text:
 			return
@@ -37,4 +42,5 @@ class BrailleBuffer(IndexedBuffer):
 			if self._entries and self._entries[-1] == text:
 				return
 			self._entries.append(text)
+			self._log_positions.append(log_position)
 			self._last_time = self._clock.monotonic()

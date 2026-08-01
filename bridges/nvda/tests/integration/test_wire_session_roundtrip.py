@@ -86,7 +86,11 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))
 		assert _read_reply(agent, timeout=6.0)["result"]["finished"] is True
 		agent.write(_request(5, "getSpeech", sinceIndex=0))
-		assert "Elements list dialog" in _read_reply(agent)["result"]["text"]
+		# One entry per utterance, each with its own index and journal position
+		# (spec 0021) -- the joined blob is gone, so the assertion looks per entry.
+		entries = _read_reply(agent)["result"]["entries"]
+		assert any("Elements list dialog" in entry["text"] for entry in entries)
+		assert all("index" in entry and "logPosition" in entry for entry in entries)
 
 		# Announce a hint through the (fake) synth -- bridge->human channel.
 		agent.write(_request(6, "announce", text="pressing bye now"))

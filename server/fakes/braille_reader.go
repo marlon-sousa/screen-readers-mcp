@@ -10,16 +10,22 @@
 package fakes
 
 import (
-	"strings"
 	"sync"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
+// brailedEntry is one display update and where it sits on the journal timeline.
+type brailedEntry struct {
+	text        string
+	logPosition int
+}
+
 // FakeBrailleReader is an in-memory braille log.
 type FakeBrailleReader struct {
 	mu      sync.Mutex
-	brailed []string
+	brailed []brailedEntry
+	journal int
 	err     error
 }
 
@@ -29,10 +35,17 @@ var _ ports.BrailleReader = (*FakeBrailleReader)(nil)
 func NewFakeBrailleReader() *FakeBrailleReader { return &FakeBrailleReader{} }
 
 // Braille appends what the display showed.
+//
+// The stand-in journal advances by one per update, so consecutive entries get
+// DIFFERENT positions and a tool cannot pass the coordinate through wrongly and
+// still look right (spec 0021).
 func (f *FakeBrailleReader) Braille(text ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.brailed = append(f.brailed, text...)
+	for _, one := range text {
+		f.journal++
+		f.brailed = append(f.brailed, brailedEntry{text: one, logPosition: f.journal})
+	}
 }
 
 // FailWith makes every call return err.
@@ -54,8 +67,16 @@ func (f *FakeBrailleReader) BrailleSince(sinceIndex int) (ports.BrailleRange, er
 	if sinceIndex > len(f.brailed) {
 		sinceIndex = len(f.brailed)
 	}
+	entries := make([]ports.BrailleEntry, 0, len(f.brailed)-sinceIndex)
+	for i := sinceIndex; i < len(f.brailed); i++ {
+		entries = append(entries, ports.BrailleEntry{
+			Text:        f.brailed[i].text,
+			Index:       i,
+			LogPosition: f.brailed[i].logPosition,
+		})
+	}
 	return ports.BrailleRange{
-		Text:      strings.Join(f.brailed[sinceIndex:], "\n"),
+		Entries:   entries,
 		FromIndex: sinceIndex,
 		ToIndex:   len(f.brailed),
 	}, nil
