@@ -258,6 +258,11 @@ means the command takes no parameters. Summary:
     request id (defaults to the most recently marked command); `windows` counts
     back from the anchor.
 
+  `windows` belongs to the command anchor and is **rejected** alongside either of
+  the other two, for the same reason an unknown field name is: the other anchors
+  already say how far back to read, so accepting `windows` there would answer a
+  different question from the one asked and give the caller no way to tell.
+
   `nextPosition` is always returned: pass it back as `sincePosition` to continue
   the tail with no gap and no repeat. `fromCommandId`/`toCommandId` are **absent**
   for a position or time anchor, because such a read spans whatever commands fall

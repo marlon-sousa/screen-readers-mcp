@@ -96,7 +96,7 @@ func (t *GetLog) InputSchema() json.RawMessage {
 			"windows": {
 				"type": "integer",
 				"default": 1,
-				"description": "How many command spans to include, counting back from the anchor."
+				"description": "How many command spans to include, counting back from the anchor. Belongs to commandId only -- sending it with sincePosition or lastSeconds is refused, since those already say how far back to read."
 			},
 			"minLevel": {
 				"type": "string",

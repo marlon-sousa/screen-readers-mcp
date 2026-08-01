@@ -740,6 +740,12 @@ class GetLogParams:
 	no mark was taken. ``commandId``/``windows`` is 0020's command-span anchor,
 	and the default when none is given.
 
+	``windows`` belongs to the command anchor and is REJECTED alongside either of
+	the other two: they already say how far back to read, so accepting it there
+	would answer a different question from the one asked and leave the caller no
+	way to tell -- the same reason an unknown field name is refused rather than
+	dropped.
+
 	Reads never consume: re-issuing the same ``sincePosition`` with a different
 	``exclude`` returns the same records, re-filtered.
 	"""

@@ -194,6 +194,28 @@ def test_a_position_anchor_and_a_command_id_at_once_is_refused(clock: FakeClock)
 		_get_log(ctx, sincePosition=0, commandId=7)
 
 
+def test_windows_alongside_a_position_anchor_is_refused(clock: FakeClock) -> None:
+	# `windows` belongs to the command anchor and means nothing to the other two,
+	# so accepting it there would answer a different question from the one asked:
+	# the agent sent windows: 3 and would be handed a position tail with no way to
+	# tell. Refused for the reason an unknown field name is -- a plausible-looking
+	# wrong answer is worse than an error.
+	ctx = _context(clock, FakeLogCapture())
+
+	with pytest.raises(CommandError, match="windows applies to the commandId anchor"):
+		_get_log(ctx, sincePosition=0, windows=3)
+
+
+def test_the_default_windows_does_not_make_a_position_anchor_an_error(clock: FakeClock) -> None:
+	# windows defaults to 1, so it is always "present"; only a value the agent
+	# cannot have defaulted into may be treated as a mistake.
+	capture = FakeLogCapture()
+	ctx = _context(clock, capture)
+	capture.feed("something")
+
+	assert _get_log(ctx, sincePosition=0).entries == 1
+
+
 def test_a_position_anchor_reports_the_level_in_force_now(clock: FakeClock) -> None:
 	# Approximate by construction (spec 0021): a position range may straddle a
 	# setLogLevel, so this reports what is in force rather than claiming exactness.

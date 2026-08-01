@@ -86,10 +86,22 @@ class GetLogHandler(CommandHandler):
 
 	@staticmethod
 	def _check_one_anchor(params: protocol.GetLogParams) -> None:
+		by_position = params.sincePosition is not None or params.lastSeconds is not None
 		given = sum(1 for v in (params.sincePosition, params.lastSeconds, params.commandId) if v is not None)
 		if given > 1:
 			raise CommandError(
 				"sincePosition, lastSeconds and commandId are mutually exclusive anchors; supply at most one"
+			)
+		# `windows` belongs to the command anchor and means nothing to the other
+		# two, so accepting it there would answer a different question from the
+		# one asked -- an agent that sent windows: 3 would be handed a position
+		# tail and have no way to tell. Refused for the same reason an unknown
+		# field name is: a plausible-looking wrong answer is worse than an error.
+		# Only a value the agent cannot have defaulted into counts.
+		if by_position and params.windows != 1:
+			raise CommandError(
+				"windows applies to the commandId anchor only; sincePosition and "
+				"lastSeconds already say how far back to read"
 			)
 
 	def _command_window_slice(
