@@ -564,29 +564,45 @@ was assumed, and a worse shape was designed around it three times.
 
 ## Live-NVDA checklist
 
-1. Press a gesture, then `getLog` for that command alone: the slice now contains
-   NVDA's speech and event records, not just `inputCore.executeGesture`. This is
-   the check 11.4 could not pass.
-2. `getLogPosition`, then work the reader by hand for ten seconds, then `getLog`
-   with that `sincePosition`: exactly the records from those ten seconds.
-3. Poll three times with the previous `nextPosition`: no record is returned twice,
-   and none is skipped.
-4. Re-issue an identical `sincePosition` with a different `exclude`: the same
-   records, re-filtered — nothing was consumed by the first read.
-5. `lastSeconds: 10` right after something audible: the records for it, with no
-   position taken beforehand.
-6. `waitForLog { minLevel: "error", timeout: 30 }`, then provoke an error: it
-   returns at the moment it happens, with a usable position.
-7. On a busy session, poll slower than the ring turns over: `truncated: true`
-   rather than a silent gap. Use `debug`, not `io` — at 12, `io` excludes the
-   DEBUG records that actually flood.
-8. NVDA's own log carries one `speech suppressed` marker at the start of that
-   session and one `restored` at the end, and nothing per utterance.
-9. In a **silent** session, take a speech entry's `logPosition` and read the
-   journal around it: the surrounding events are there even though the
-   `Speaking` record itself is not, which is the whole point of the coordinate.
-   Repeat with a braille entry's `logPosition` on a braille display, or on the
-   braille viewer if no display is to hand.
+**Run 2026-08-01 against NVDA 2026.1.1 — 27 checks green, no failures.** Every
+item below is driven by `scripts/live_test.py`, so re-running it is one command
+per scenario rather than a session of reading things off a screen: items 1–7 by
+`log`, item 6 both ways by `logerror` (the agent causes the error) and
+`logwatch` (the human does), items 8–9 by `logsilent`.
+
+- [x] **1.** Press a gesture, then `getLog` for that command alone: the slice now
+  contains NVDA's speech and event records, not just `inputCore.executeGesture`.
+  This is the check 11.4 could not pass. *Observed: `executeGesture`,
+  `speech.speech.speak` and `tones.beep` in one span.*
+- [x] **2.** `getLogPosition`, then work the reader by hand for ten seconds, then
+  `getLog` with that `sincePosition`: exactly the records from those ten seconds.
+- [x] **3.** Poll three times with the previous `nextPosition`: no record is
+  returned twice, and none is skipped. *Proved by stitching the three slices back
+  together and comparing against a single read of the whole range.*
+- [x] **4.** Re-issue an identical `sincePosition` with a different `exclude`: the
+  same records, re-filtered — nothing was consumed by the first read.
+- [x] **5.** `lastSeconds: 10` right after something audible: the records for it,
+  with no position taken beforehand.
+- [x] **6.** `waitForLog { minLevel: "error", timeout: 30 }`, then provoke an
+  error: it returns at the moment it happens, with a usable position. *Both ways:
+  agent-caused woke at 3.2 s, human-caused at 42.8 s of a 60 s window. The agent
+  causes it by scheduling the error a few seconds out from NVDA's Python console —
+  a blocked session cannot receive a command, but it can receive an effect, which
+  is this entry's own insight applied to itself.*
+- [x] **7.** On a busy session, poll slower than the ring turns over:
+  `truncated: true` rather than a silent gap. Use `debug`, not `io` — at 12, `io`
+  excludes the DEBUG records that actually flood. *Read back with `maxEntries`
+  above the ring's capacity, so eviction is the only possible explanation: a cap
+  and an eviction both say `truncated`, and they are different bugs for an agent —
+  asking again fixes one and cannot fix the other.*
+- [x] **8.** NVDA's own log carries one `speech suppressed` marker at the start of
+  that session and one `restored` at the end, and nothing per utterance.
+- [x] **9.** In a **silent** session, take a speech entry's `logPosition` and read
+  the journal around it: the surrounding events are there even though the
+  `Speaking` record itself is not, which is the whole point of the coordinate.
+  - [ ] Repeat with a braille entry's `logPosition` on a braille display, or on
+    the braille viewer if no display is to hand. **Not run** — no display was at
+    hand on 2026-08-01. The only part of this checklist still owed.
 
 ## Out of scope
 
