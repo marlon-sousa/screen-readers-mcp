@@ -35,6 +35,9 @@
 #   log        spec 0021 items 1-7: command spans hold what the command CAUSED,
 #              positions mark/re-read without consuming, polling neither repeats
 #              nor skips, lastSeconds, wait_for_log. Connects at debug.
+#   logerror   spec 0021 item 6's other half: the agent CAUSES a real NVDA error
+#              (via the Python console) and its own wait wakes on it.
+#   logwatch   the same item with the human causing it instead, in a 60 s window.
 #   logsilent  spec 0021 items 8-9: the suppression marker PAIR in NVDA's own
 #              log, and a suppressed utterance's journal coordinate. Silent.
 #
@@ -78,6 +81,12 @@ guided, interactive experience):
               positions mark and re-read without consuming, a poll loop neither
               repeats nor skips, lastSeconds needs no prior mark, wait_for_log
               wakes at the moment. Connects at debug. No focus needed.
+  logerror    spec 0021 item 6's other half: the agent CAUSES a real NVDA error
+              and its own wait wakes on it. Opens the Python console, checking
+              it took focus first; nothing is typed if focus is wrong.
+  logwatch    the same item, asked for instead of caused: a 60 s window in which
+              YOU provoke an error while the agent waits. Works whatever your
+              keymap is, and is the truer form of "watch what I do".
   logsilent   spec 0021 items 8-9: exactly one suppression marker pair in NVDA's
               own log, and a suppressed utterance still carries a journal
               coordinate. Always silent, whatever the flag says.
@@ -553,6 +562,155 @@ def scenario_log(server, console, checks, mode):
 	_disconnect(server, console)
 
 
+def scenario_logerror(server, console, checks, mode):
+	"""Spec 0021 item 6's other half: a REAL error wakes a waiting agent, with
+	the agent causing the error itself.
+
+	Two obstacles, and the way round each is the point of the scenario.
+
+	FIRST, the driver cannot type into NVDA. An earlier attempt injected the
+	line with SendInput: the console opened, focus was confirmed, and nothing
+	arrived, because NVDA runs with UIAccess and Windows UIPI refuses synthetic
+	input from a normal-integrity process into a higher-integrity window. (The
+	F13 taps elsewhere in this file are unaffected -- NVDA's low-level keyboard
+	hook sees all input regardless of the window it was aimed at; delivering INTO
+	NVDA's own window is the blocked part.) The way round is not to elevate the
+	driver but to stop being the typist: `type_text` types from INSIDE NVDA, so
+	there is no integrity boundary to cross.
+
+	SECOND, wait_for_log blocks the session thread, so the error cannot be caused
+	while waiting. The way round is spec 0021's own central insight -- work a
+	command causes lands AFTER the handler returns. So the console is asked to
+	schedule the error a few seconds out; the Enter that starts it returns
+	immediately, and the error fires comfortably inside the wait that follows.
+	"""
+	_connect(server, console, mode, log_level="debug")
+	server.tool("announce", {"text": "Item six. Causing a real error to wake a waiting agent."})
+
+	console.step("opening the NVDA Python console (NVDA+control+z)")
+	server.tool("press_gesture", {"gestures": ["kb:NVDA+control+z"]})
+	time.sleep(1.5)
+	focus = server.tool("get_focus_info")
+	console.note(f"focus after opening: {json.dumps(focus, ensure_ascii=False)}")
+	# The console's input is an editable text NAMED ">>>" -- the prompt -- inside
+	# NVDA's own process. All three conditions together: any one alone would also
+	# match an ordinary text field the tester happens to have focused, and this
+	# types a line of Python into whatever it finds.
+	on_console = (
+		focus.get("appModule") == "nvda"
+		and focus.get("role") == "EDITABLETEXT"
+		and ">>>" in str(focus.get("name", ""))
+	)
+	checks.check(
+		"item 6: the Python console took focus (nothing is typed unless it did)",
+		on_console,
+		detail=json.dumps(focus, ensure_ascii=False),
+	)
+	if not on_console:
+		console.note("!! console did not take focus -- typing NOTHING and giving up on this item")
+		server.tool("announce", {"text": "The console did not open. Nothing was typed."})
+		_disconnect(server, console)
+		return
+
+	marker = "nvdaMcpBridge 0021 live error check"
+	delay = 3
+	# `log` is already in the console's namespace (NVDA source/pythonConsole.py),
+	# so this is NVDA's own logger raising a genuine ERROR -- not a record
+	# smuggled into the journal behind the reader's back.
+	line = f"import threading; threading.Timer({delay}, lambda: log.error({marker!r})).start()"
+	console.step(f"typing a line that logs an error {delay}s from now, then waiting for it")
+	typed = server.tool("type_text", {"text": line})
+	console.note(f"typed {typed.get('typed')} characters")
+	server.tool("press_gesture", {"gestures": ["kb:enter"]})
+
+	began = time.monotonic()
+	woke = server.tool("wait_for_log", {"min_level": "error", "timeout": 20}, timeout=40)
+	elapsed = time.monotonic() - began
+	console.note(f"wait_for_log returned after {elapsed:.1f}s: {json.dumps(woke, ensure_ascii=False)}")
+	checks.check(
+		"item 6: a REAL error at ERROR level wakes the wait",
+		woke.get("found") is True,
+		detail=str(woke),
+	)
+	checks.check(
+		"item 6: it woke AT the error, not at the timeout",
+		woke.get("found") is True and elapsed < 15,
+		detail=f"{elapsed:.1f}s",
+	)
+	around = server.tool("get_log", {"sincePosition": max(0, woke.get("position", 1) - 1), "maxEntries": 20})
+	console.note("---- log from the error onward ----\n" + str(around.get("text", ""))[:1200])
+	checks.check(
+		"item 6: the returned position anchors a get_log onto OUR error",
+		marker in str(around.get("text", "")),
+		detail=str(around.get("text"))[:400],
+	)
+
+	console.step("closing the Python console")
+	server.tool("press_gesture", {"gestures": ["kb:escape"]})
+	server.tool("announce", {"text": "Item six finished. The console is closed."})
+	_disconnect(server, console)
+
+
+def scenario_logwatch(server, console, checks, mode):
+	"""Spec 0021 item 6 as it was actually written for: the human provokes, the
+	agent watches.
+
+	It asks rather than causes, and that is not laziness -- causing it is
+	IMPOSSIBLE from here. An earlier version opened NVDA's Python console and
+	typed `log.error(...)` into it with SendInput. The console opened, the focus
+	check passed, and nothing was typed: NVDA runs with UIAccess, and Windows
+	UIPI refuses synthetic input from a normal-integrity process into a
+	higher-integrity window. (The F13 taps elsewhere in this file work because
+	NVDA's low-level keyboard hook sees all input regardless of which window it
+	was aimed at -- delivering INTO NVDA's own window is the part that is
+	blocked.) Running the driver elevated would defeat that, at the cost of every
+	live test needing elevation.
+
+	Asking is also the truer reproduction of the case the command exists for:
+	nothing the agent issues is what gets logged.
+
+	Provoke an error any way you like inside the window. The Python console
+	(NVDA menu -> Tools) with `log.error("anything")` is the reliable one.
+	"""
+	_connect(server, console, mode, log_level="debug")
+	window = 60
+	console.step(f"waiting up to {window}s for an ERROR-level record -- provoke one NOW")
+	server.tool(
+		"announce",
+		{"text": f"Watching the log for an error for {window} seconds. Please cause one now."},
+	)
+	began = time.monotonic()
+	woke = server.tool("wait_for_log", {"min_level": "error", "timeout": window}, timeout=window + 30)
+	elapsed = time.monotonic() - began
+	console.note(f"after {elapsed:.1f}s: {json.dumps(woke, ensure_ascii=False)}")
+	checks.check(
+		"item 6: a REAL error, provoked by the human, wakes the waiting agent",
+		woke.get("found") is True,
+		detail=str(woke),
+	)
+	if woke.get("found"):
+		server.tool("announce", {"text": "Caught it. Reading the log around the error."})
+		checks.check(
+			"item 6: it woke AT the error, not at the timeout",
+			elapsed < window - 2,
+			detail=f"{elapsed:.1f}s of a {window}s window",
+		)
+		# The point of the position: widen around it without having marked
+		# anything beforehand.
+		around = server.tool(
+			"get_log", {"sincePosition": max(0, woke.get("position", 1) - 1), "maxEntries": 20}
+		)
+		console.note("---- log from the error onward ----\n" + str(around.get("text", ""))[:1500])
+		checks.check(
+			"item 6: the returned position anchors a get_log onto the error itself",
+			around.get("entries", 0) > 0,
+			detail=str(around.get("entries")),
+		)
+	else:
+		server.tool("announce", {"text": "No error arrived in the window."})
+	_disconnect(server, console)
+
+
 def scenario_logsilent(server, console, checks, mode):
 	"""Spec 0021's items 8 and 9, which only mean anything under suppression.
 
@@ -670,6 +828,53 @@ def _tap_f13(count: int = 1) -> None:
 		time.sleep(0.002)
 
 
+def _type_externally(text: str) -> None:
+	"""Type text at the OS level, character by character, bypassing the bridge.
+
+	SendInput with KEYEVENTF_UNICODE rather than virtual key codes: it delivers
+	the character itself, so it does not depend on the tester's keyboard layout
+	-- a VK-based version would type something else entirely on a non-US layout,
+	into a Python console, which is a poor place to be approximate.
+
+	"\\r" is sent as Return, since Unicode carriage return does not submit a line.
+	"""
+	import ctypes
+	from ctypes import wintypes
+
+	class _KeyInput(ctypes.Structure):
+		_fields_ = [
+			("wVk", wintypes.WORD),
+			("wScan", wintypes.WORD),
+			("dwFlags", wintypes.DWORD),
+			("time", wintypes.DWORD),
+			("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+		]
+
+	class _Input(ctypes.Structure):
+		class _Union(ctypes.Union):
+			# ctypes requires a real list here; ClassVar would not be one.
+			_fields_ = [("ki", _KeyInput)]  # noqa: RUF012
+
+		_anonymous_ = ("u",)
+		_fields_ = [("type", wintypes.DWORD), ("u", _Union)]
+
+	user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+	keyeventf_keyup, keyeventf_unicode, vk_return = 0x0002, 0x0004, 0x0D
+
+	def send(vk: int, scan: int, flags: int) -> None:
+		event = _Input(type=1, u=_Input._Union(ki=_KeyInput(vk, scan, flags, 0, None)))
+		user32.SendInput(1, ctypes.byref(event), ctypes.sizeof(event))
+
+	for char in text:
+		if char == "\r":
+			send(vk_return, 0, 0)
+			send(vk_return, 0, keyeventf_keyup)
+		else:
+			send(0, ord(char), keyeventf_unicode)
+			send(0, ord(char), keyeventf_unicode | keyeventf_keyup)
+		time.sleep(0.01)
+
+
 def _busy_for(console, seconds: float, quiet: bool = False) -> None:
 	"""Generate ordinary reader traffic for a while, without touching the bridge."""
 	if not quiet:
@@ -740,6 +945,8 @@ SCENARIOS = {
 	"finddialog": scenario_finddialog,
 	"lifecycle": scenario_lifecycle,
 	"log": scenario_log,
+	"logerror": scenario_logerror,
+	"logwatch": scenario_logwatch,
 	"logsilent": scenario_logsilent,
 }
 

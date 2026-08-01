@@ -406,10 +406,11 @@ rather than before it.
     not the agent.
     The live run confirmed the thing 11.4 could not do: a gesture's span now
     holds `speech.speech.speak` and `tones.beep` alongside
-    `inputCore.executeGesture`. Three residues need a human and stay unticked —
-    a wait woken by a genuine reader ERROR (a healthy session logs none to
-    order), a braille entry's coordinate (needs a display), and confirming by
-    ear that speech returns after a silent session.
+    `inputCore.executeGesture`. Item 6 is closed both ways: the agent causes a
+    real NVDA ERROR itself (`logerror`) and wakes on it in 3.2 s, and the human
+    causes one while the agent watches (`logwatch`), which is the case the
+    command was written for. Only a braille entry's coordinate is untested, for
+    want of a display.
     **It also turned up a client-compatibility exposure that is NOT this
     entry's to fix:** the capability-gated tools are advertised only through
     `tools/list_changed`, and a client that ignores that notification connects
