@@ -22,9 +22,9 @@ from fakes.clock import FakeClock
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
 from nvdaMcpBridge import protocol as p
+from nvdaMcpBridge.domain.controllers.commands.command_handler import MAX_POLL_TIMEOUT
 from nvdaMcpBridge.domain.controllers.commands.session_context import SessionContext
 from nvdaMcpBridge.domain.controllers.commands.wait_for_log import WaitForLogHandler
-from nvdaMcpBridge.domain.controllers.commands.wait_for_user_reply import MAX_POLL_TIMEOUT
 from support.context import make_context, request
 
 

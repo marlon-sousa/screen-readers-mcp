@@ -9,12 +9,8 @@
 # unasked (0020's rejection of that stands).
 #
 # TWO BOUNDS, and both are about the same watchdog. A single wait is CLAMPED to
-# MAX_POLL_TIMEOUT, exactly as waitForUserReply's poll is and for exactly its
-# reason: the command-inactivity watchdog is measured from the moment a command
-# is DISPATCHED and is deliberately not refreshed when a handler returns (spec
-# 0016), so a wait allowed to outlast that window would answer the agent and have
-# the session torn down under it, one line later. Clamping in the BRIDGE protects
-# every client, not only the one whose tool schema says 110.
+# MAX_POLL_TIMEOUT -- the shared cap on any blocking command, and the reasoning
+# for it lives with the constant in command_handler.py.
 #
 # And the loop watches for teardown, because clamping alone is not enough: the
 # panic gesture calls BridgeServer.stop(), which JOINS this thread from NVDA's
@@ -29,8 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from ...entities.indexed_buffer import POLL_INTERVAL
-from .command_handler import CommandHandler
-from .wait_for_user_reply import MAX_POLL_TIMEOUT
+from .command_handler import MAX_POLL_TIMEOUT, CommandHandler
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext

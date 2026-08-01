@@ -27,6 +27,24 @@ if TYPE_CHECKING:
 	from .session_context import SessionContext
 
 
+#: The longest ANY single blocking command may hold the session thread.
+#:
+#: Comfortably inside the 120 s command-inactivity window
+#: (SessionConfig.inactivity_timeout), which is measured from the moment a
+#: command is DISPATCHED and is deliberately not refreshed when a handler returns
+#: (spec 0016: inactivity answers "has the agent abandoned this session?", so a
+#: blocking handler must not extend it). A command allowed to block longer would
+#: answer the agent and have the session torn down under it, one line later.
+#:
+#: Lives HERE, on the shared handler module, rather than on whichever blocking
+#: command happened to need it first: it is a property of the SESSION's watchdog,
+#: not of user replies or of log waits, and a second blocking command importing
+#: it from the first would read like a dependency between two unrelated commands.
+#: Clamping in the bridge protects every client, not only the one whose tool
+#: schema says 110.
+MAX_POLL_TIMEOUT: float = 110.0
+
+
 class CommandError(Exception):
 	"""A handler-level failure that becomes an error Response (e.g. version
 	mismatch, not-yet-implemented). Distinct from a transport/validation fault."""
