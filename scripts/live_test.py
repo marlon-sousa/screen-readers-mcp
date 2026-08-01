@@ -518,10 +518,7 @@ def scenario_log(server, console, checks, mode):
 		quiet.get("found") is False and isinstance(quiet.get("position"), int),
 		detail=str(quiet),
 	)
-	checks.ear(
-		"item 6: a REAL error wakes the wait (needs an error you can provoke on purpose)",
-		None,
-	)
+	console.note("   (a REAL error waking the wait is the `logerror` and `logwatch` scenarios)")
 
 	# -- item 7: falling behind the ring is reported, not silent ---------------
 	console.step("item 7: trying to out-run the ring, to see truncated:true rather than a gap")
