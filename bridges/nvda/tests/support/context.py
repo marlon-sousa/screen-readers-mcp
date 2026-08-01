@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from fakes.announcer import FakeAnnouncer
@@ -49,6 +49,7 @@ def make_context(
 	announcer: FakeAnnouncer | None = None,
 	log_capture: FakeLogCapture | None = None,
 	user_prompter: FakeUserPrompter | None = None,
+	teardown_requested: Callable[[], bool] | None = None,
 ) -> SessionContext:
 	"""Build a SessionContext for a handler test, seeded with only what it needs."""
 	ctx = SessionContext(
@@ -58,6 +59,7 @@ def make_context(
 		announcer or FakeAnnouncer(),
 		log_capture or FakeLogCapture(),
 		user_prompter or FakeUserPrompter(),
+		teardown_requested,
 	)
 	ctx.speech = speech
 	ctx.braille = braille

@@ -126,6 +126,31 @@ def test_a_source_that_never_started_does_not_claim_it_restored_speech() -> None
 	assert nvda_stubs.log.messages == []
 
 
+def test_the_markers_balance_even_when_teardown_finds_a_window_open(clock: FakeClock) -> None:
+	# The path that made a separate flag necessary. Teardown deliberately does NOT
+	# resume() a session dying with an interaction window open -- resuming would
+	# re-suppress and could strand the tester mute -- so stop() finds the filter
+	# already unregistered. Keyed off that alone, it wrote "suppressed" and never
+	# "restored", leaving the human's own nvda.log claiming a suppression that had
+	# in fact ended. That unexplained state is the exact thing the markers exist
+	# to prevent, so the pair has to balance on every path.
+	source = NvdaSilentSpeechSource()
+	source.start(SpeechBuffer(clock, exact_finish=False), MovingJournal())
+	source.suspend()  # an interaction window opened, and nothing resumed it
+	source.stop()
+
+	assert nvda_stubs.log.messages == [SUPPRESSED_MARKER, RESTORED_MARKER]
+
+
+def test_stopping_twice_does_not_claim_speech_was_restored_twice(clock: FakeClock) -> None:
+	source = NvdaSilentSpeechSource()
+	source.start(SpeechBuffer(clock, exact_finish=False), MovingJournal())
+	source.stop()
+	source.stop()
+
+	assert nvda_stubs.log.messages == [SUPPRESSED_MARKER, RESTORED_MARKER]
+
+
 # -- live mode -----------------------------------------------------------------
 
 

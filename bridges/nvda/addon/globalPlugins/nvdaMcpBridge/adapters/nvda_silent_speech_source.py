@@ -56,6 +56,15 @@ class NvdaSilentSpeechSource(SpeechSource):
 		self._buffer: SpeechBuffer | None = None
 		self._log_position: Callable[[], int] = lambda: 0
 		self._registered = False
+		#: Whether the SUPPRESSED marker was written and its pair still owed.
+		#: Tracked SEPARATELY from _registered, because suspend() clears that flag
+		#: for an interaction window -- so a session torn down with a window open
+		#: (which teardown deliberately does NOT resume, to leave the tester
+		#: audible) would otherwise write "suppressed" and never "restored",
+		#: leaving the human's own nvda.log claiming a suppression that had in
+		#: fact ended. That unexplained state is the exact thing the markers exist
+		#: to prevent, so the pair must balance on every path.
+		self._marked = False
 
 	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
 		self._buffer = buffer
@@ -63,12 +72,15 @@ class NvdaSilentSpeechSource(SpeechSource):
 		filter_speechSequence.register(self._capture_and_suppress)
 		self._registered = True
 		log.info(SUPPRESSED_MARKER)
+		self._marked = True
 
 	def stop(self) -> None:
 		if self._registered:
 			filter_speechSequence.unregister(self._capture_and_suppress)
 			self._registered = False
+		if self._marked:
 			log.info(RESTORED_MARKER)
+			self._marked = False
 		self._buffer = None
 
 	def suspend(self) -> None:

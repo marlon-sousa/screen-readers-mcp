@@ -46,10 +46,14 @@ class SessionContext:
 		announcer: Announcer,
 		log_capture: LogCapture,
 		user_prompter: UserPrompter,
+		teardown_requested: Callable[[], bool] | None = None,
 	) -> None:
 		self.clock = clock
 		self.transcript = transcript
 		self._close = close
+		#: Whether somebody has asked this session to end. Defaults to "never",
+		#: so a hand-built context in a test needs no wiring for it.
+		self._teardown_requested = teardown_requested or (lambda: False)
 		#: The bridge's line to the reader's real synth: read its name (hello) and
 		#: speak hints through it (announce), even during silent capture. Always
 		#: present -- it never depends on hello.
@@ -82,6 +86,22 @@ class SessionContext:
 		thread) share one path.
 		"""
 		self._close(reason)
+
+	def teardown_requested(self) -> bool:
+		"""Whether the session has been asked to end, for a BLOCKING handler to poll.
+
+		Teardown is cooperative: the loop honours a request at its next wakeup,
+		which a handler blocked for its whole timeout does not reach. Meanwhile
+		the requester may be NVDA's MAIN THREAD -- the panic gesture calls
+		BridgeServer.stop(), which joins the session thread -- so a long wait that
+		ignored this would freeze the reader for the rest of its timeout, which is
+		the exact opposite of what a tester pressing panic needs.
+
+		``waitForUserReply`` solves the same problem by having the request CANCEL
+		the outstanding prompt; a wait with no such entity behind it (waitForLog)
+		polls this instead.
+		"""
+		return self._teardown_requested()
 
 	def command_window_index(self, command_id: int) -> int | None:
 		"""Return the list index for *command_id*, or None if not found."""

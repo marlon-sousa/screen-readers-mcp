@@ -2,12 +2,26 @@
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 # ROLE: command handler for `waitForLog` -- the journal's counterpart to
-# waitForSpeech (spec 0021). Blocks the session thread for at most the request's
-# own timeout, well below the watchdog windows; the Session's post-dispatch
-# heartbeat refresh (spec 0016) is what lets a long wait survive.
+# waitForSpeech (spec 0021). Blocks the session thread until a record matches,
+# the caller's timeout elapses, or the session is asked to end.
 #
 # Pull, not push: the agent asks and waits. Nothing here tails or pushes lines
 # unasked (0020's rejection of that stands).
+#
+# TWO BOUNDS, and both are about the same watchdog. A single wait is CLAMPED to
+# MAX_POLL_TIMEOUT, exactly as waitForUserReply's poll is and for exactly its
+# reason: the command-inactivity watchdog is measured from the moment a command
+# is DISPATCHED and is deliberately not refreshed when a handler returns (spec
+# 0016), so a wait allowed to outlast that window would answer the agent and have
+# the session torn down under it, one line later. Clamping in the BRIDGE protects
+# every client, not only the one whose tool schema says 110.
+#
+# And the loop watches for teardown, because clamping alone is not enough: the
+# panic gesture calls BridgeServer.stop(), which JOINS this thread from NVDA's
+# main thread. waitForUserReply solves that by having the teardown request cancel
+# the prompt the handler is blocked on; a wait with no such entity behind it has
+# to poll for it. Without this, pressing panic during a two-minute waitForLog
+# would freeze the reader until the wait expired.
 
 from __future__ import annotations
 
@@ -16,6 +30,7 @@ from typing import TYPE_CHECKING, Any
 from .... import protocol
 from ...entities.indexed_buffer import POLL_INTERVAL
 from .command_handler import CommandHandler
+from .wait_for_user_reply import MAX_POLL_TIMEOUT
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
@@ -33,11 +48,22 @@ class WaitForLogHandler(CommandHandler):
 
 	@staticmethod
 	def _wait(ctx: SessionContext, start: int, params: protocol.WaitForLogParams) -> tuple[int, str] | None:
-		deadline = ctx.clock.monotonic() + max(0.0, params.timeout)
+		timeout = min(max(0.0, params.timeout), MAX_POLL_TIMEOUT)
+		if timeout < params.timeout:
+			ctx.transcript.note(
+				f"waitForLog: timeout {params.timeout} clamped to {MAX_POLL_TIMEOUT} "
+				f"(the inactivity window is not extended by a blocking handler); "
+				f"wait again to keep watching"
+			)
+		deadline = ctx.clock.monotonic() + timeout
 		while True:
 			match = ctx.log_capture.find_since(start, min_level=params.minLevel, contains=params.contains)
 			if match is not None:
 				return match
 			if ctx.clock.monotonic() >= deadline:
+				return None
+			if ctx.teardown_requested():
+				# A miss, not an error: the session is ending, and the caller gets
+				# the ordinary `found: false` rather than a fault to interpret.
 				return None
 			ctx.clock.sleep(POLL_INTERVAL)

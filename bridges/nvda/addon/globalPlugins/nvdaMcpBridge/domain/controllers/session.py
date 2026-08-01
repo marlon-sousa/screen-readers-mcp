@@ -103,6 +103,7 @@ class Session:
 			announcer,
 			log_capture,
 			user_prompter,
+			self._teardown_was_requested,
 		)
 		self._state = _State.PRE_HELLO
 
@@ -157,6 +158,17 @@ class Session:
 		prompt = self._ctx.get_outstanding_prompt()
 		if prompt is not None:
 			prompt.cancel()
+
+	def _teardown_was_requested(self) -> bool:
+		"""Whether an external teardown is pending, for a blocking handler to poll.
+
+		Cancelling the prompt above only reaches a handler waiting on a prompt.
+		A wait with no such entity behind it -- waitForLog, which may block for up
+		to MAX_POLL_TIMEOUT -- polls this instead, so the panic path does not have
+		to wait out its timeout with NVDA's main thread joined on this one.
+		"""
+		with self._external_lock:
+			return self._external_reason is not None
 
 	# -- the one dispatch loop ----------------------------------------------
 
