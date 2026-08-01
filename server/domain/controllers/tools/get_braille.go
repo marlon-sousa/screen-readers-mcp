@@ -64,8 +64,19 @@ func (t *GetBraille) Execute(ctx ToolContext, params json.RawMessage) (any, erro
 	if err != nil {
 		return nil, err
 	}
+	// One entry per display update since spec 0021, each carrying the log journal
+	// position it was captured at. It matters more here than for speech: this is
+	// the ONLY braille fetch, so it is the sole route to a braille coordinate.
+	entries := make([]capturedEntry, 0, len(captured.Entries))
+	for _, entry := range captured.Entries {
+		entries = append(entries, capturedEntry{
+			Text:        entry.Text,
+			Index:       entry.Index,
+			LogPosition: entry.LogPosition,
+		})
+	}
 	return speechRangeResult{
-		Text:      captured.Text,
+		Entries:   entries,
 		FromIndex: captured.FromIndex,
 		ToIndex:   captured.ToIndex,
 	}, nil

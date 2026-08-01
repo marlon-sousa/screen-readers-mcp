@@ -75,7 +75,7 @@ func newHarness(t *testing.T, list ...tools.Tool) *harness {
 	if err != nil {
 		t.Fatalf("building the server: %v", err)
 	}
-	server.Bind(tools.NewDispatcher(registry, control, fakes.NewFakeClock(), log), control)
+	server.Bind(tools.NewDispatcher(registry, control, fakes.NewFakeClock(), log, nil), control)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := sdk.NewInMemoryTransports()

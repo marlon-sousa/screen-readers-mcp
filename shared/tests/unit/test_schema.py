@@ -47,6 +47,9 @@ def test_params_are_null_exactly_for_the_paramless_commands() -> None:
 		"getNextSpeechIndex",
 		"getFocusInfo",
 		"getState",
+		# getLogPosition deliberately takes no params: it marks the present and
+		# returns no records, so there is nothing to filter or anchor (spec 0021).
+		"getLogPosition",
 		"bye",
 	}
 

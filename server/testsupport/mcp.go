@@ -228,15 +228,25 @@ func (h *MCPHarness) Connect(t *testing.T) ToolResult {
 // ReadInfo reads screenreader://info.
 func (h *MCPHarness) ReadInfo(t *testing.T) map[string]any {
 	t.Helper()
-	read, err := h.Session.ReadResource(context.Background(), &sdk.ReadResourceParams{
-		URI: "screenreader://info",
-	})
+	return h.ReadResource(t, "screenreader://info")
+}
+
+// ReadSessionRecord reads screenreader://session-record (spec 0021).
+func (h *MCPHarness) ReadSessionRecord(t *testing.T) map[string]any {
+	t.Helper()
+	return h.ReadResource(t, "screenreader://session-record")
+}
+
+// ReadResource reads any resource the server publishes, decoded as JSON.
+func (h *MCPHarness) ReadResource(t *testing.T, uri string) map[string]any {
+	t.Helper()
+	read, err := h.Session.ReadResource(context.Background(), &sdk.ReadResourceParams{URI: uri})
 	if err != nil {
-		t.Fatalf("reading screenreader://info: %v", err)
+		t.Fatalf("reading %s: %v", uri, err)
 	}
 	var document map[string]any
 	if err := json.Unmarshal([]byte(read.Contents[0].Text), &document); err != nil {
-		t.Fatalf("decoding the info resource: %v", err)
+		t.Fatalf("decoding %s: %v", uri, err)
 	}
 	return document
 }

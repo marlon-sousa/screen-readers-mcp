@@ -29,6 +29,7 @@ from .get_config import GetConfigHandler
 from .get_focus_info import GetFocusInfoHandler
 from .get_last_speech import GetLastSpeechHandler
 from .get_log import GetLogHandler
+from .get_log_position import GetLogPositionHandler
 from .get_next_speech_index import GetNextSpeechIndexHandler
 from .get_speech import GetSpeechHandler
 from .get_state import GetStateHandler
@@ -38,6 +39,7 @@ from .press_gesture import PressGestureHandler
 from .set_config import SetConfigHandler
 from .set_log_level import SetLogLevelHandler
 from .type_text import TypeTextHandler
+from .wait_for_log import WaitForLogHandler
 from .wait_for_speech import WaitForSpeechHandler
 from .wait_for_speech_to_finish import WaitForSpeechToFinishHandler
 from .wait_for_user_reply import WaitForUserReplyHandler
@@ -93,6 +95,8 @@ def build_command_registry(
 		protocol.Command.GET_CONFIG: GetConfigHandler(),
 		protocol.Command.SET_CONFIG: SetConfigHandler(),
 		protocol.Command.GET_LOG: GetLogHandler(),
+		protocol.Command.GET_LOG_POSITION: GetLogPositionHandler(),
+		protocol.Command.WAIT_FOR_LOG: WaitForLogHandler(),
 		protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
 	}
 	return registry

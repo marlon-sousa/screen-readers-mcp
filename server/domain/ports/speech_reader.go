@@ -17,11 +17,32 @@ package ports
 
 import "time"
 
+// SpeechEntry is one captured utterance, placed on the log journal's timeline.
+//
+// LogPosition is the journal's append position at the moment this sequence was
+// captured (spec 0021), and it is why this is a list rather than the joined blob
+// it used to be: three Down-arrow presses produce three utterances, so whichever
+// one's coordinate a single string carried, the other two had none. It matters
+// most in a SILENT session, where the bridge suppresses speech before NVDA
+// reaches its own "Speaking" log line, so the journal holds no speech record at
+// all -- the coordinate still points at the events that surrounded the utterance.
+type SpeechEntry struct {
+	Text string
+	// Index is this entry's place in the speech ring (the sinceIndex space).
+	Index int
+	// LogPosition is the journal position when it was captured (the get_log space).
+	LogPosition int
+}
+
 // SpeechRange is a half-open window of captured speech: [FromIndex, ToIndex).
 // ToIndex is exactly the sinceIndex to pass next, with no overlap and no gap
 // (protocol.md §7).
+//
+// Entries omits utterances that rendered empty, so len(Entries) is NOT
+// ToIndex - FromIndex and entry i is not at index FromIndex + i. That mismatch is
+// exactly why each entry carries its own Index.
 type SpeechRange struct {
-	Text      string
+	Entries   []SpeechEntry
 	FromIndex int
 	ToIndex   int
 }
@@ -30,6 +51,8 @@ type SpeechRange struct {
 type LastSpeech struct {
 	Text  string
 	Index int
+	// LogPosition places it on the journal's timeline; 0 for the empty sentinel.
+	LogPosition int
 }
 
 // SpeechWait asks the reader to block until matching speech appears.
@@ -53,6 +76,11 @@ type SpeechMatch struct {
 	Found bool
 	Index int
 	Text  string
+	// LogPosition is the journal position of the match -- the coordinate for
+	// "show me what the reader was doing when it said that". On a miss it is the
+	// journal's CURRENT position, so it is still a usable "from here" mark, the
+	// same convention Index already follows (spec 0021).
+	LogPosition int
 }
 
 // SpeechReader is everything the `speech` capability can be asked.

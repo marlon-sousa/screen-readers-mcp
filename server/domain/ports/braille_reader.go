@@ -13,12 +13,27 @@
 // runtime check somebody has to remember to write.
 package ports
 
+// BrailleEntry is one braille update, placed on the log journal's timeline.
+//
+// The braille counterpart of SpeechEntry, for the same reason: the braille ring
+// is index-addressed and dies at teardown, so joining it to the log needs a
+// shared coordinate (spec 0021). It matters more here than for speech, because
+// get_braille is the ONLY braille fetch -- there is no get_last_braille -- so
+// this is the sole route to a braille entry's coordinate.
+type BrailleEntry struct {
+	Text string
+	// Index is this entry's place in the braille ring (the sinceIndex space).
+	Index int
+	// LogPosition is the journal position when it was captured (the get_log space).
+	LogPosition int
+}
+
 // BrailleRange is a half-open window of captured braille: [FromIndex, ToIndex).
 // Its own type rather than a shared one with speech: they are separate logs with
 // separate indices, and a function that accepts either would be a function that
 // can be handed the wrong one.
 type BrailleRange struct {
-	Text      string
+	Entries   []BrailleEntry
 	FromIndex int
 	ToIndex   int
 }

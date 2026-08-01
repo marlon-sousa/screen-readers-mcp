@@ -5,6 +5,14 @@ open question it carried — whether the journal coordinate belongs on braille
 entries and transcript lines — was settled in review and is now a decision
 below (braille yes, transcript no).
 
+**Amended 2026-07-31 during implementation**, in one place only: the wire
+contract section. `SpeechEntry`/`BrailleEntry` are new types, not existing ones,
+and carrying the coordinate means `getSpeech`/`getBraille` return a **list of
+entries instead of a joined text blob** — a breaking shape change, which
+pre-release v1 explicitly permits. See "This is a breaking shape change, and that
+is allowed" below before assuming anything here is additive. Every decision and
+refusal in the sections above is unchanged.
+
 [0020](0020-log-slices-on-demand.md) answered *"what did command N log?"*. Running
 it against a real NVDA showed that the question an agent actually has, most of the
 time, is a different one: **"what has happened since I last looked?"** — and that
@@ -409,16 +417,41 @@ class LogPositionResult:
 @dataclass
 class LogSliceResult:          # 0020's, extended
     nextPosition: int          # pass as sincePosition to continue the tail
-    # text / entries / matched / truncated / fromCommandId / toCommandId /
-    # capturedAtLevel are unchanged
+    fromCommandId: int | None  # CHANGED: None when anchored by position or time
+    toCommandId: int | None    # CHANGED: such a read is not attributable to a command
+    # text / entries / matched / truncated / capturedAtLevel are unchanged
 
 @dataclass
-class SpeechEntry:             # existing; gains one field
+class SpeechEntry:             # NEW type -- see "the blob has nowhere to put it"
+    text: str
+    index: int                 # this entry's place in the speech ring
     logPosition: int           # the journal position when this was captured
 
 @dataclass
-class BrailleEntry:            # existing; gains the same field, for the same reason
+class BrailleEntry:            # NEW type, same three fields, same reason
+    text: str
+    index: int
     logPosition: int
+
+@dataclass
+class SpeechResult:            # CHANGED: the joined blob becomes a list
+    entries: list[SpeechEntry] # replaces `text: str`
+    fromIndex: int             # unchanged
+    toIndex: int               # unchanged
+
+@dataclass
+class BrailleResult:           # CHANGED the same way, for the same reason
+    entries: list[BrailleEntry]
+    fromIndex: int
+    toIndex: int
+
+@dataclass
+class LastSpeechResult:        # existing single-entry result; gains the field
+    logPosition: int
+
+@dataclass
+class WaitForSpeechResult:     # existing single-entry result; gains the field
+    logPosition: int           # position of the match; the current position on a miss
 
 @dataclass
 class WaitForLogParams:
@@ -441,8 +474,48 @@ A `sincePosition` below the ring's oldest surviving record already reports
 `truncated: true` — which is how a poll loop learns it fell behind, and is a real
 possibility at `io`, where ten thousand records is a minute or two.
 
-`PROTOCOL_VERSION` stays 1: two commands and three optional fields are added, and
-an older bridge simply does not advertise them.
+`capturedAtLevel` is exact for a command anchor (a span has one level by
+construction, below) but **approximate for a position or time anchor**, which may
+straddle a `setLogLevel`. It reports the level currently in force there.
+
+### This is a breaking shape change, and that is allowed
+
+Amended 2026-07-31, during implementation. The draft above originally read
+*"`PROTOCOL_VERSION` stays 1: two commands and three optional fields are added"*
+— i.e. purely additive. That was wrong on both halves, and the correction is the
+most important thing on this page for anyone picking the entry up.
+
+**`SpeechEntry` and `BrailleEntry` never existed.** The draft called them
+"existing; gains one field". What exists is `SpeechResult(text, fromIndex,
+toIndex)` — every utterance welded into one newline-joined string.
+
+**A blob has nowhere to put a per-utterance coordinate.** Three Down-arrow
+presses produce three utterances and one `text` field. Whichever utterance's
+`logPosition` you store, the other two have none. And the join cannot be
+recovered by the caller: `IndexedBuffer.get_since` drops empty renders when it
+joins, while `fromIndex`/`toIndex` span the whole range, so line *i* is **not**
+entry `fromIndex + i`. A parallel `logPositions: list[int]` therefore fails too —
+it yields integers the agent cannot bind to any line it can see.
+
+So the list **replaces** the blob rather than joining it. Each utterance crosses
+the wire exactly once, carrying its own `index` and `logPosition`. Keeping both
+shapes was considered and rejected: it sends every utterance's text twice, and
+`getSpeech(sinceIndex: 0)` — which this spec blesses as the complete-record
+answer that makes `getTranscript` unnecessary — is the largest fetch there is.
+
+**`PROTOCOL_VERSION` stays 1 regardless**, and no bump is owed. Version 1 is
+pre-release: [`specs/wire/v1/protocol.md`](wire/v1/protocol.md) §8 permits
+amending a shape **in place** until a non-Python bridge depends on the contract.
+`hello` is an exact-equality check, both halves ship from this repo, and there
+are no external consumers — so a changed shape costs a rebuild of both, not a
+migration. The version exists to stop a stale bridge/server pairing, not to
+freeze shapes.
+
+That policy has been copied into [`AGENTS.md`](../AGENTS.md) alongside the
+`hello` version note, because it previously lived only in §8 of the published
+contract — a file a session implementing a *bridge feature* has no reason to
+open. Its absence there cost a full review round on this entry: "additive only"
+was assumed, and a worse shape was designed around it three times.
 
 ## Class/file layout
 

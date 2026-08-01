@@ -36,6 +36,7 @@ from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.real_clock import RealClock
 from nvdaMcpBridge.domain.controllers.commands.command_handler import CommandError, CommandHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES, build_command_registry
+from nvdaMcpBridge.domain.controllers.commands.wait_for_log import WaitForLogHandler
 from nvdaMcpBridge.domain.controllers.session import (
 	MAX_COMMAND_WINDOWS,
 	Session,
@@ -134,7 +135,7 @@ def _error(response: dict[str, Any]) -> str:
 	return response["error"]["message"]
 
 
-def _fake_registry(**handlers: FakeCommandHandler) -> dict[str, CommandHandler]:
+def _fake_registry(**handlers: CommandHandler) -> dict[str, CommandHandler]:
 	"""A registry with a stand-in hello (so tests can reach ESTABLISHED) plus
 	whatever fake handlers a mechanics test wants."""
 	# marks_log=False mirrors the real HelloHandler: hello STARTS the journal, so
@@ -240,6 +241,31 @@ def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
 	# The session survived the long handler AND a follow-up command.
 	assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
 	assert _result(run.responses()[1]) == {"ok": True}
+	assert _result(run.responses()[2]) == {"ok": True}
+
+
+def test_a_long_wait_for_log_does_not_trip_the_watchdogs() -> None:
+	# Spec 0021's item 11, through the REAL handler: `waitForLog { timeout: 60 }`
+	# is a normal thing for an agent to ask while it provokes an error by hand, and
+	# it blocks the session thread for twice the heartbeat window. The peer's
+	# silence during it is our doing, not evidence it died -- the post-dispatch
+	# heartbeat refresh (spec 0016) is what keeps the session alive.
+	clock = FakeClock()
+	registry = _fake_registry(
+		waitForLog=WaitForLogHandler(),
+		ping=FakeCommandHandler(resets_inactivity=False),
+	)
+	run = run_session(
+		[hello(), command("waitForLog", 2, timeout=60.0, minLevel="error"), command("ping", 3)],
+		registry=registry,
+		clock=clock,
+		log_capture=FakeLogCapture(),
+		heartbeat_timeout=30.0,
+	)
+
+	assert clock.monotonic() >= 60.0, "the wait did not actually run its timeout"
+	assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
+	assert _result(run.responses()[1])["found"] is False
 	assert _result(run.responses()[2]) == {"ok": True}
 
 
@@ -386,16 +412,42 @@ def test_unreadable_message_mid_session_is_noted_and_survives() -> None:
 	assert _result(run.responses()[1]) == {"ok": True}
 
 
-# -- command log windows (spec 0020) -----------------------------------------
+# -- command log spans (specs 0020, 0021) -------------------------------------
 #
-# The Session is the only place that knows when a command starts and finishes, so
-# it is the only place that can bracket one. These tests drive that through fake
-# handlers whose on_execute writes into the journal at the one moment that lands
-# records INSIDE the window being measured.
+# The Session is the only place that knows when a command was dispatched, so it is
+# the only place that can mark one. Under spec 0021 it marks only the START: a
+# span runs to the NEXT marking command's start, or to the journal's current
+# position for the open one, so the timeline is fully partitioned and every record
+# belongs to exactly one command -- the one most recently issued when it was
+# logged. _windows reads the raw marks; _spans reads them the way getLog does,
+# with the ends computed.
 
 
-def _windows(run: Run) -> list[tuple[int, int, int, p.LogLevel]]:
+def _windows(run: Run) -> list[tuple[int, int, p.LogLevel]]:
 	return run.session.session_context.command_windows
+
+
+class _SpanReader(FakeCommandHandler):
+	"""A non-marking handler that snapshots the spans the way getLog sees them.
+
+	Spans have to be read from INSIDE the session: teardown stops log capture,
+	which resets the journal, so an open span read afterwards would end at
+	position 0. Reading them through a marks_log=False command is also exactly
+	how getLog does it, which makes "a read does not close the span it reads"
+	part of what these tests exercise rather than something asserted separately.
+	"""
+
+	def __init__(self) -> None:
+		super().__init__(marks_log=False, on_execute=self._snapshot)
+		self.spans: list[tuple[int, int, int, p.LogLevel]] = []
+
+	def _snapshot(self, ctx: Any) -> None:
+		self.spans = ctx.command_windows_for(-1, MAX_COMMAND_WINDOWS)
+
+
+#: The request id the span-reading command is always sent with, well past any
+#: real one in these scripts so it never collides with a command under test.
+READ_SPANS = 99
 
 
 def _feeder(*messages: str) -> Any:
@@ -408,57 +460,103 @@ def _feeder(*messages: str) -> Any:
 	return feed
 
 
-def test_a_command_gets_a_window_bracketing_what_it_logged() -> None:
-	capture = FakeLogCapture()
-	registry = _fake_registry(work=FakeCommandHandler(on_execute=_feeder("during the command")))
-	run = run_session([hello(), command("work", 2)], registry=registry, log_capture=capture)
+def test_a_command_gets_a_span_holding_what_it_logged() -> None:
+	reader = _SpanReader()
+	registry = _fake_registry(
+		work=FakeCommandHandler(on_execute=_feeder("during the command")),
+		spans=reader,
+	)
+	run_session(
+		[hello(), command("work", 2), command("spans", READ_SPANS)],
+		registry=registry,
+		log_capture=FakeLogCapture(),
+	)
 
-	windows = _windows(run)
-	assert len(windows) == 1
-	command_id, start, end, _level = windows[0]
+	assert len(reader.spans) == 1
+	command_id, start, end, _level = reader.spans[0]
 	assert command_id == 2
-	assert end - start == 1  # exactly the one record logged while it ran
+	assert end - start == 1  # exactly the one record logged since it was dispatched
 
 
-def test_windows_are_disjoint_from_their_neighbours() -> None:
+def test_spans_are_contiguous_with_no_gaps() -> None:
 	# The core claim of the feature: "the log for command 2" is never contaminated
-	# by command 3, even when NVDA logs continuously through both.
-	capture = FakeLogCapture()
+	# by command 3, even when NVDA logs continuously through both -- and, under
+	# 0021, nothing falls BETWEEN them either. One span's end IS the next one's
+	# start, so the timeline is partitioned rather than sampled.
+	reader = _SpanReader()
 	registry = _fake_registry(
 		first=FakeCommandHandler(on_execute=_feeder("a", "b")),
 		second=FakeCommandHandler(on_execute=_feeder("c")),
+		spans=reader,
 	)
-	run = run_session(
-		[hello(), command("first", 2), command("second", 3)],
+	run_session(
+		[hello(), command("first", 2), command("second", 3), command("spans", READ_SPANS)],
 		registry=registry,
-		log_capture=capture,
+		log_capture=FakeLogCapture(),
 	)
 
-	windows = _windows(run)
-	assert [w[0] for w in windows] == [2, 3]
-	assert windows[0][1:3] == (0, 2)
-	assert windows[1][1:3] == (2, 3)
-	# Disjoint by construction: one window's end is never past the next one's start.
-	assert windows[0][2] <= windows[1][1]
+	spans = reader.spans
+	assert [s[0] for s in spans] == [2, 3]
+	assert spans[0][1:3] == (0, 2)
+	assert spans[1][1:3] == (2, 3)
+	assert spans[0][2] == spans[1][1], "a record fell between two spans"
 
 
-def test_a_failed_command_still_gets_its_window() -> None:
+def test_a_span_extends_to_the_next_marking_command() -> None:
+	# What the command CAUSED arrives after its handler returned -- live, NVDA's
+	# `speech.speech.speak` landed a millisecond past the old end mark and was lost
+	# in the gap. Here a non-marking command (getLog's policy) runs in between and
+	# logs; because it opens no span of its own, its records are attributed to the
+	# command that was last dispatched. That is also the proof that a READ does not
+	# close the span it is reading.
+	reader = _SpanReader()
+	registry = _fake_registry(
+		work=FakeCommandHandler(on_execute=_feeder("inside the command")),
+		peek=FakeCommandHandler(marks_log=False, on_execute=_feeder("what it caused, late")),
+		later=FakeCommandHandler(on_execute=_feeder("the next command")),
+		spans=reader,
+	)
+	run_session(
+		[
+			hello(),
+			command("work", 2),
+			command("peek", 3),
+			command("later", 4),
+			command("spans", READ_SPANS),
+		],
+		registry=registry,
+		log_capture=FakeLogCapture(),
+	)
+
+	spans = reader.spans
+	assert [s[0] for s in spans] == [2, 4]
+	assert spans[0][1:3] == (0, 2), "the late record was not attributed to command 2"
+	assert spans[1][1:3] == (2, 3)
+
+
+def test_a_failed_command_still_gets_its_span() -> None:
 	# "This command just failed, show me what NVDA logged while it ran" is the case
-	# spec 0020 exists for, so the failure path must still leave the window
-	# addressable by request id -- an error reply is not a reason to lose it.
-	capture = FakeLogCapture()
+	# spec 0020 exists for, so the failure path must still leave the span
+	# addressable by request id -- an error reply is not a reason to lose it. Under
+	# 0021 this falls out for free: the mark is taken BEFORE dispatch, so there is
+	# nothing left for the failure path to skip.
+	reader = _SpanReader()
 	registry = _fake_registry(
 		boom=FakeCommandHandler(on_execute=_feeder("the interesting line"), error=RuntimeError("kaboom")),
+		spans=reader,
 	)
-	run = run_session([hello(), command("boom", 2)], registry=registry, log_capture=capture)
+	run = run_session(
+		[hello(), command("boom", 2), command("spans", READ_SPANS)],
+		registry=registry,
+		log_capture=FakeLogCapture(),
+	)
 
 	assert "kaboom" in _error(run.responses()[1])
-	windows = _windows(run)
-	assert [w[0] for w in windows] == [2]
-	assert windows[0][2] - windows[0][1] == 1
+	assert [s[0] for s in reader.spans] == [2]
+	assert reader.spans[0][2] - reader.spans[0][1] == 1
 
 
-def test_a_command_error_also_gets_its_window() -> None:
+def test_a_command_error_also_gets_its_span() -> None:
 	capture = FakeLogCapture()
 	registry = _fake_registry(
 		nope=FakeCommandHandler(on_execute=_feeder("why it failed"), error=CommandError("no")),
@@ -468,7 +566,7 @@ def test_a_command_error_also_gets_its_window() -> None:
 	assert [w[0] for w in _windows(run)] == [2]
 
 
-def test_a_handler_that_does_not_mark_gets_no_window() -> None:
+def test_a_handler_that_does_not_mark_gets_no_span() -> None:
 	# getLog sets marks_log False; otherwise the default anchor would always be the
 	# getLog that just ran, whose window is empty by construction.
 	capture = FakeLogCapture()
@@ -485,7 +583,7 @@ def test_a_handler_that_does_not_mark_gets_no_window() -> None:
 	assert [w[0] for w in _windows(run)] == [2]
 
 
-def test_hello_does_not_mark_its_own_window() -> None:
+def test_hello_does_not_mark_its_own_span() -> None:
 	# hello STARTS the journal, so there is nothing to bracket before it runs.
 	run = run_session([hello()])
 	assert _windows(run) == []
@@ -510,7 +608,63 @@ def test_the_window_records_the_level_in_force_when_it_was_taken() -> None:
 	# The fake hello in _fake_registry does not start capture, so the floor is the
 	# stand-in NVDA's own -- what matters is that SOMETHING truthful is recorded
 	# per window rather than a default invented at read time.
-	assert _windows(run)[0][3] is capture.current_level
+	assert _windows(run)[0][2] is capture.current_level
+
+
+def _logs_speaks_and_logs(factory: FakeAdapterFactory, spoken: str, brailled: str) -> Any:
+	"""An on_execute that logs, then captures speech and braille, then logs again.
+
+	The realistic ordering: NVDA writes records around whatever it says, so the
+	utterance's coordinate has to land BETWEEN two journal positions inside the
+	command's own span -- not at either edge, where a stale or defaulted value
+	would coincidentally look right.
+	"""
+
+	def run(ctx: Any) -> None:
+		ctx.log_capture.feed("what the command started doing")
+		factory.speech_source.emit(spoken)
+		factory.braille_source.emit(brailled)
+		ctx.log_capture.feed("what it did next")
+
+	return run
+
+
+def test_speech_and_braille_carry_a_position_inside_their_commands_span() -> None:
+	# Spec 0021's item 14, end to end through the real hello: hello hands each
+	# capture source the journal's position getter, the source reads it at capture,
+	# and the entry crosses the wire with a coordinate that actually places the
+	# utterance inside the span of the command that caused it. Before this, the
+	# ring and the journal had no shared coordinate at all and the join was
+	# eyeballed off wall-clock timestamps.
+	factory = FakeAdapterFactory()
+	reader = _SpanReader()
+	registry = dict(build_command_registry(factory, "2026.1.0"))
+	registry["work"] = FakeCommandHandler(on_execute=_logs_speaks_and_logs(factory, "Elements list", "elem"))
+	registry["spans"] = reader
+	run = run_session(
+		[
+			hello(),
+			command("work", 2),
+			command("spans", READ_SPANS),
+			command("getSpeech", 3, sinceIndex=0),
+			command("getBraille", 4, sinceIndex=0),
+		],
+		registry=registry,
+		factory=factory,
+		log_capture=FakeLogCapture(),
+	)
+
+	assert [s[0] for s in reader.spans] == [2]
+	_command_id, start, end, _level = reader.spans[0]
+
+	speech = _result(run.responses()[3])["entries"]
+	braille = _result(run.responses()[4])["entries"]
+	assert speech and braille, "nothing was captured, so the coordinates prove nothing"
+	for entry in (*speech, *braille):
+		assert start <= entry["logPosition"] < end, (
+			f"{entry['text']!r} is stamped at {entry['logPosition']}, outside its "
+			f"command's span [{start}, {end})"
+		)
 
 
 def test_only_the_last_fifty_windows_are_kept() -> None:

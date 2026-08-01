@@ -76,6 +76,10 @@ type waitForSpeechResult struct {
 	Found bool   `json:"found"`
 	Index int    `json:"index"`
 	Text  string `json:"text"`
+	// LogPosition is where the match sits on the log journal's timeline. On a
+	// miss it is the journal's current position, so it is still a usable "from
+	// here" mark for get_log -- the same convention index already follows.
+	LogPosition int `json:"logPosition"`
 }
 
 func (t *WaitForSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -103,5 +107,10 @@ func (t *WaitForSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, e
 	if err != nil {
 		return nil, err
 	}
-	return waitForSpeechResult{Found: match.Found, Index: match.Index, Text: match.Text}, nil
+	return waitForSpeechResult{
+		Found:       match.Found,
+		Index:       match.Index,
+		Text:        match.Text,
+		LogPosition: match.LogPosition,
+	}, nil
 }

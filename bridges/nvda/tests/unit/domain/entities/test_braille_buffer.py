@@ -41,8 +41,8 @@ def test_a_repeat_after_a_change_is_recorded(braille: BrailleBuffer) -> None:
 	braille.append("one")
 	braille.append("two")
 	braille.append("one")
-	text, _from_index, _to_index = braille.get_since(1)
-	assert text == "one\ntwo\none"
+	entries, _from_index, _to_index = braille.entries_since(1)
+	assert [e[0] for e in entries] == ["one", "two", "one"]
 
 
 def test_changes_read_back_in_order(braille: BrailleBuffer) -> None:
@@ -50,6 +50,17 @@ def test_changes_read_back_in_order(braille: BrailleBuffer) -> None:
 	braille.append("line one")  # duplicate refresh -> dropped
 	braille.append("   ")  # whitespace only -> dropped
 	braille.append("line two")
-	text, from_index, to_index = braille.get_since(1)
-	assert text == "line one\nline two"
+	entries, from_index, to_index = braille.entries_since(1)
+	assert [e[0] for e in entries] == ["line one", "line two"]
 	assert (from_index, to_index) == (1, 3)
+
+
+def test_a_dropped_refresh_takes_its_log_position_with_it(braille: BrailleBuffer) -> None:
+	# The positions list must stay in step with the entries list: a duplicate that
+	# is not recorded must not record a position either, or every later entry
+	# reports the position of the one before it.
+	braille.append("line one", 5)
+	braille.append("line one", 6)  # duplicate refresh -> dropped, position and all
+	braille.append("line two", 7)
+	entries, _from_index, _to_index = braille.entries_since(1)
+	assert [(e[0], e[2]) for e in entries] == [("line one", 5), ("line two", 7)]

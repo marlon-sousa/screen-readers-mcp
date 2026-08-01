@@ -31,22 +31,24 @@ func TestGetBrailleReturnsAHalfOpenWindow(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.GetBraille{}).WithConnection(built.Connection)
 	built.Braille.Braille("edt blnk", "docs lst")
 
-	var window struct {
-		Text      string `json:"text"`
-		FromIndex int    `json:"fromIndex"`
-		ToIndex   int    `json:"toIndex"`
-	}
+	var window capturedWindow
 	result, err := call.Run(`{"since_index":1}`)
 	if err != nil {
 		t.Fatalf("get_braille: %v", err)
 	}
 	decode(t, result, &window)
 
-	if window.Text != "docs lst" {
-		t.Errorf("text = %q, want only what was brailled since index 1", window.Text)
+	if len(window.Entries) != 1 || window.Entries[0].Text != "docs lst" {
+		t.Errorf("entries = %q, want only what was brailled since index 1", window.texts())
 	}
 	if window.FromIndex != 1 || window.ToIndex != 2 {
 		t.Errorf("range = [%d,%d), want [1,2)", window.FromIndex, window.ToIndex)
+	}
+	// get_braille is the ONLY braille fetch -- there is no get_last_braille -- so
+	// this is the sole route to a braille update's journal coordinate (spec 0021).
+	if window.Entries[0].Index != 1 || window.Entries[0].LogPosition == 0 {
+		t.Errorf("entry = index %d at logPosition %d, want its own ring index and a real coordinate",
+			window.Entries[0].Index, window.Entries[0].LogPosition)
 	}
 }
 

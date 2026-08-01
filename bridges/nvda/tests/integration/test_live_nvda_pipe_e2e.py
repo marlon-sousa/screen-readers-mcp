@@ -178,7 +178,10 @@ def _speech_after(agent: Agent, start: int, *, timeout: float = 4.0) -> str:
 			break
 		time.sleep(0.1)
 	_settled_index(agent)
-	return agent.result("getSpeech", sinceIndex=start)["text"].strip()
+	# One entry per utterance since spec 0021; joined here so callers keep
+	# asserting on what NVDA said rather than on the result's shape.
+	speech = agent.result("getSpeech", sinceIndex=start)
+	return "\n".join(entry["text"] for entry in speech["entries"]).strip()
 
 
 def test_the_installed_addon_is_the_one_in_this_checkout() -> None:
@@ -237,7 +240,8 @@ def test_silent_session_captures_a_gesture_and_finishes() -> None:
 		assert agent.result("pressGesture", gestures=[SPEAKING_GESTURE]) == {"ok": True}
 		assert agent.result("waitForSpeechToFinish", timeout=3.0)["finished"] is True
 		speech = agent.result("getSpeech", sinceIndex=start)
-		assert speech["text"].strip(), "the gesture should have been captured as speech"
+		spoken = "\n".join(entry["text"] for entry in speech["entries"])
+		assert spoken.strip(), "the gesture should have been captured as speech"
 		assert speech["toIndex"] > speech["fromIndex"]
 		agent.result("bye")
 	finally:

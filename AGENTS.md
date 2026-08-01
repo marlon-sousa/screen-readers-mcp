@@ -48,6 +48,19 @@ version numbers: `hello` compares `PROTOCOL_VERSION` and never the components'
 own versions, so each releases on its own cadence
 ([spec 0012](specs/0012-packaging-and-release.md)).
 
+**`PROTOCOL_VERSION` 1 is PRE-RELEASE, and a wire shape may be changed in
+place** — see [`specs/wire/v1/protocol.md`](specs/wire/v1/protocol.md) §8. There
+are no external consumers: both halves ship from this repo and `hello` is an
+exact-equality check, so a changed shape costs a rebuild of both, not a
+migration. Only once a **non-Python bridge** depends on the contract does an
+incompatible change require a version bump and a new `specs/wire/vN/`.
+
+This is here because the policy was written in §8 of the published contract,
+which a session implementing a *bridge feature* has no reason to open — so
+"additive only" gets assumed, and a cleaner shape gets designed around instead
+of taken. Prefer the right shape and change it; say so in the PR. The version
+number exists to stop a **stale bridge/server pairing**, not to freeze shapes.
+
 ## Layout
 
 | Dir | What | Host / Python |

@@ -100,6 +100,15 @@ Fault handling, all of which keep the session alive once established (§3):
    - `synth` — the name of the reader's current speech synthesizer.
    - `logPath` — absolute path to this session's human-readable transcript
      (the bridge's own record of session events — gestures, speech, open/close).
+     **A convenience, not a contract an agent should depend on** (spec 0021): it
+     names an artifact for the *human at the reader*, on the reader's disk, and
+     for a remote bridge that is a file the agent cannot open. An agent wanting
+     its own complete record of what was said calls `getSpeech` with
+     `sinceIndex: 0` — the ring is unbounded within a session, so that returns
+     everything, at any point before `bye`. There is deliberately no
+     `getTranscript`: transmitting the file would buy nothing that command does
+     not already give, and the transcript's value is its capture-time timestamps,
+     which only the bridge can write.
 4. After a successful handshake the session is **tolerant**: a failing command
    yields an error response and the session keeps running. Only the conditions in
    §6 (teardown) end it.
@@ -120,6 +129,18 @@ the whole session:
 - `live` — the real synth keeps speaking; speech is captured by observation.
   Ordering/timing is best-effort rather than exact.
 
+**The trade-off has to be stated, because it has already caused one wrong
+conclusion** (spec 0021): **`silent` buys deterministic capture and costs log
+fidelity; `live` buys a faithful log and costs determinism.** Intercepting speech
+before the synthesizer also means the reader never reaches its own "speaking"
+log line, so a silent session's `getLog` holds far fewer records than the same
+work done live — measured on NVDA, twenty seconds of identical browsing at `io`
+gave 64 records live against 39 silent. An agent debugging *"why did it say the
+wrong thing?"* may well want `live` for exactly that reason. A bridge that
+suppresses speech **should** write one marker into the reader's own log when it
+starts doing so and one when it stops, so a human reading that log later is not
+baffled by a stretch with no speech in it.
+
 A bridge may still offer a human-facing channel that is audible in `silent`
 mode — see the `announce` capability below. It bypasses the interception rather
 than defeating it: the point of `silent` is that the *reader's* output is
@@ -138,7 +159,7 @@ names one group:
 | `state` | `getState` |
 | `config` | `getConfig`, `setConfig` |
 | `interact` | `announce`, `askUser`, `waitForUserReply` |
-| `log` | `getLog`, `setLogLevel` |
+| `log` | `getLog`, `getLogPosition`, `waitForLog`, `setLogLevel` |
 
 Rules:
 
@@ -179,14 +200,25 @@ means the command takes no parameters. Summary:
   characters, newlines or Enter, and does not submit anything — compose that
   from `typeText` and `pressGesture`. Mutates the reader's machine the same way
   `pressGesture` does.
-- `getSpeech` `{ sinceIndex }` → `{ text, fromIndex, toIndex }` — captured speech
-  since an index (§7).
-- `getLastSpeech` → `{ text, index }`.
+- `getSpeech` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition }],
+  fromIndex, toIndex }` — captured speech since an index (§7). **One entry per
+  utterance**, not a joined string (spec 0021): a blob has nowhere to put a
+  per-utterance coordinate, and the join cannot be recovered by the caller, since
+  entries that render empty are omitted while `fromIndex`/`toIndex` span the whole
+  range — so entry *i* is **not** at index `fromIndex + i`. Each entry therefore
+  carries its own `index`, and `logPosition`, the journal position it was captured
+  at (see `getLog`'s `sincePosition`).
+- `getLastSpeech` → `{ text, index, logPosition }`.
 - `getNextSpeechIndex` → `{ index }` — the index the next captured speech will
   occupy.
-- `waitForSpeech` `{ text, afterIndex?, timeout? }` → `{ found, index, text }`.
+- `waitForSpeech` `{ text, afterIndex?, timeout? }` → `{ found, index, text,
+  logPosition }`. On a miss `logPosition` is the journal's *current* position, so
+  it is still a usable "from here" mark — the same convention `index` follows.
 - `waitForSpeechToFinish` `{ timeout? }` → `{ finished }`.
-- `getBraille` `{ sinceIndex }` → `{ text, fromIndex, toIndex }`.
+- `getBraille` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition }],
+  fromIndex, toIndex }` — the same entry shape as `getSpeech`, for the same
+  reason. It matters more here: this is the only braille fetch, so it is the sole
+  route to a braille update's coordinate.
 - `getFocusInfo` → `{ name, role, states, value, appModule }` — the focus
   object. `role`/`states` strings are reader-specific and pass through opaquely.
 - `getState` → `{ browseMode, speechMode, sleepMode, inputHelp }` — queryable
@@ -201,31 +233,84 @@ means the command takes no parameters. Summary:
   which the person can otherwise hear nothing. The bridge acknowledges that it
   spoke, never that anyone listened. There is no reply channel in v1.
 - `bye` → `{ ok: true }` — the server asks to end the session (§6).
-- `getLog` `{ commandId?, windows?, minLevel?, contains?, exclude?, fields?,
-  maxEntries? }` → `{ text, entries, matched, truncated, fromCommandId,
-  toCommandId, capturedAtLevel }` — return a filtered, formatted slice of the
-  reader's diagnostic log for one or more command windows (spec 0020). Anchored by
-  request id (defaults to the most recently marked command); `windows` counts back
-  from the anchor. Filters compose: `minLevel` drops records below a level,
+- `getLog` `{ sincePosition?, lastSeconds?, commandId?, windows?, minLevel?,
+  contains?, exclude?, fields?, maxEntries? }` → `{ text, entries, matched,
+  truncated, nextPosition, fromCommandId?, toCommandId?, capturedAtLevel }` —
+  return a filtered, formatted slice of the reader's diagnostic log (specs 0020,
+  0021).
+
+  There are **three mutually exclusive anchors**, resolved in this order:
+  `sincePosition`, then `lastSeconds`, then `commandId`/`windows`. Supplying more
+  than one is an **error** rather than a precedence puzzle.
+
+  - `sincePosition` reads forward from a mark the caller holds — taken with
+    `getLogPosition`, carried over from a previous call's `nextPosition`, or read
+    off a speech or braille entry's `logPosition`. **Reading never consumes**, so
+    re-issuing the same position with a different filter returns the same records
+    re-filtered. This is the anchor for observing rather than acting: watching a
+    human drive the reader issues no commands, so the command anchor has nothing
+    to anchor on. A `sincePosition` below the ring's oldest surviving record
+    reports `truncated: true`, which is how a poll loop learns it fell behind — a
+    real possibility at `io`, where ten thousand records is a minute or two.
+  - `lastSeconds` reads back from now, for "that just happened" when no mark was
+    taken beforehand.
+  - `commandId`/`windows` is the command anchor, and the default. Anchored by
+    request id (defaults to the most recently marked command); `windows` counts
+    back from the anchor.
+
+  `nextPosition` is always returned: pass it back as `sincePosition` to continue
+  the tail with no gap and no repeat. `fromCommandId`/`toCommandId` are **absent**
+  for a position or time anchor, because such a read spans whatever commands fall
+  in it and is attributable to none.
+
+  Filters compose: `minLevel` drops records below a level,
   `contains` keeps only matching messages, `exclude` drops matching modules or
   messages, all case-insensitive. `fields` projects which columns to render
   (default: time, level, module, message); an unknown field name or level is
   **rejected**, never silently dropped, so a typo cannot return a slice that
-  merely looks filtered. `windows` > 1 returns one continuous span, from the
-  first window's start to the last one's end, **including what fell between the
-  windows** — a window closes when the handler returns, but the reader does the
-  work the command caused just after that, so the record an agent wants is
-  often a millisecond past the end mark. Ask for a single window when you want
-  only that command; widen it to see what the command actually caused.
-  Bounded by `maxEntries` (default 200);
-  reports `matched` (before the cap), `truncated` (when capped or the window aged
-  out of the ring), and `capturedAtLevel` (the floor in force while the window
-  was recorded — an empty slice at `capturedAtLevel: "info"` with
-  `minLevel: "debug"` means the records were never emitted, not that none exist).
-  Over several windows `capturedAtLevel` reports the **oldest** window's floor, so
-  it never claims to have captured more than the earliest part of the range did.
-  Every marked command has a window, including one that **failed** — "show me the
-  log for the command that just errored" is the case this exists for.
+  merely looks filtered.
+
+  **A command's span runs from when it was dispatched until the NEXT command was
+  dispatched** (spec 0021), so the timeline is fully partitioned and every record
+  belongs to exactly one command. That is what makes `windows: 1` mean something:
+  the work a command *caused* arrives after its handler returned — measured live
+  on NVDA, `speech.speak` landed one millisecond past the old end mark — and under
+  this model it is attributed to the command that caused it rather than falling
+  into a gap. **Attribution is by most-recent-command, not by causation**: think
+  for thirty seconds after a keypress and those thirty seconds land in that
+  keypress's span. Spans are adjacent, so `windows` > 1 is simply one continuous
+  range. Bounded by `maxEntries` (default 200); reports `matched` (before the
+  cap), `truncated` (when capped or the range aged out of the ring), and
+  `capturedAtLevel` (the floor in force for the span — an empty slice at
+  `capturedAtLevel: "info"` with `minLevel: "debug"` means the records were never
+  emitted, not that none exist). `capturedAtLevel` is **exact** for a command
+  anchor, since `setLogLevel` is itself a command and opens a new span, but
+  **approximate** for a position or time anchor, which may straddle one and then
+  reports the level currently in force. Over several command spans it reports the
+  **oldest** one's floor, so it never claims to have captured more than the
+  earliest part of the range did. Every marked command has a span, including one
+  that **failed** — "show me the log for the command that just errored" is the
+  case this exists for. `getLog` itself does not mark, so a read can never become
+  its own anchor, nor close the span it is reading.
+- `getLogPosition` → `{ position, time }` — mark the journal at this instant and
+  return the mark: `position` is the current append position, `time` is wall
+  clock, for lining a mark up against the session transcript or a human's account
+  of when something happened. Returns **no records**: paying for a slice to learn
+  a single integer defeats the purpose of marking the moment you begin observing.
+  It is `getNextSpeechIndex` for the log, and separate from `getLog` for the same
+  reason that one is separate from `getSpeech`.
+- `waitForLog` `{ timeout?, minLevel?, contains? }` → `{ found, position, text }`
+  — block until a matching record is journalled, or the timeout elapses. **Pull,
+  not push**: the agent asks and waits; nothing in this protocol tails or streams
+  unasked. Only records journalled **after the call begins** can match, so an
+  error from earlier in the session never satisfies "wait for the next error".
+  Not matching is `found: false`, **not an error** — `waitForSpeech`'s manners,
+  for the same reason: a wait that expires is an ordinary outcome an agent
+  branches on, and it is also how "nothing went wrong in that interval" is
+  asserted. `position` is one past the match, so it feeds straight back in as
+  `getLog`'s `sincePosition` and reads what followed the trigger without
+  repeating the trigger itself; on a miss it is the journal's current position,
+  still a usable mark.
 - `setLogLevel` `{ level }` → `{ level, previous }` — raise or lower the
   reader's diagnostic logging floor for the rest of the session. Forwards only:
   Python's logging decides at the *logger* whether a record exists, so a level
@@ -271,6 +356,18 @@ increasing integer indices**.
 - Ranges are **half-open**: `getSpeech`/`getBraille` return
   `[fromIndex, toIndex)`, i.e. `fromIndex` inclusive, `toIndex` exclusive, so
   `toIndex` is exactly the `sinceIndex` to pass next with no overlap or gap.
+- The range is not the entry count. Items that render empty are **omitted from
+  `entries`** while `fromIndex`/`toIndex` still span the whole range requested, so
+  `len(entries)` ≠ `toIndex - fromIndex` and entry *i* is not at index
+  `fromIndex + i`. Each entry carries its own `index` for exactly that reason.
+- The speech and braille rings are **unbounded within a session**: nothing ages
+  out of them while the session lives, so `getSpeech { sinceIndex: 0 }` returns
+  everything that was said, at any point before `bye`. The log journal is the only
+  one of the three session records that is a bounded ring.
+- A **journal position** (`logPosition`, `sincePosition`, `nextPosition`) is a
+  different coordinate space from an index, and the two are never
+  interchangeable: an index addresses the speech or braille ring, a position
+  addresses the log journal. `logPosition` exists precisely to join them.
 - `getNextSpeechIndex` returns the index the next captured item will take, so a
   test can note "now", act, then read only what its action produced.
 - `waitForSpeech` blocks until a matching item appears or `timeout` seconds

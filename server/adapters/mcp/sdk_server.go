@@ -85,6 +85,9 @@ func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource) {
 
 	s.sdk.AddReceivingMiddleware(capabilityBackstop(catalog, dispatch))
 	s.addInfoResource(sessions)
+	// The server's own account of the session (spec 0021), taken from the
+	// dispatcher because that is where the traffic already passes.
+	s.addSessionRecordResource(dispatch.Record())
 }
 
 // Publish advertises the named tools. Called by the connection controller on a

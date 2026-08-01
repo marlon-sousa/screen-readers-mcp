@@ -108,7 +108,9 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 			agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))
 			assert _read_reply(agent, timeout=6.0)["result"]["finished"] is True
 			agent.write(_request(5, "getSpeech", sinceIndex=0))
-			assert "Elements list dialog" in _read_reply(agent)["result"]["text"]
+			# One entry per utterance since spec 0021, not a joined blob.
+			entries = _read_reply(agent)["result"]["entries"]
+			assert any("Elements list dialog" in entry["text"] for entry in entries)
 
 			agent.write(_request(6, "bye"))
 			assert _read_reply(agent)["result"] == {"ok": True}

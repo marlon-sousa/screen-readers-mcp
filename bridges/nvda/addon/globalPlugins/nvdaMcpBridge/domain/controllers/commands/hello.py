@@ -79,8 +79,8 @@ class HelloHandler(CommandHandler):
 		speech.set_observer(ctx.transcript.speech)
 		ctx.speech = speech
 		ctx.braille = braille
-		adapters.speech_source.start(speech)
-		adapters.braille_source.start(braille)
+		adapters.speech_source.start(speech, ctx.log_capture.position)
+		adapters.braille_source.start(braille, ctx.log_capture.position)
 
 		# The reader's real synth stays loaded in every mode; just report it.
 		synth = ctx.announcer.current_synth()

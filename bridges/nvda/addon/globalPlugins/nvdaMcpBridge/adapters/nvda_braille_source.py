@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import braille
@@ -30,10 +31,12 @@ class NvdaBrailleSource(BrailleSource):
 
 	def __init__(self) -> None:
 		self._buffer: BrailleBuffer | None = None
+		self._log_position: Callable[[], int] = lambda: 0
 		self._registered = False
 
-	def start(self, buffer: BrailleBuffer) -> None:
+	def start(self, buffer: BrailleBuffer, log_position: Callable[[], int]) -> None:
 		self._buffer = buffer
+		self._log_position = log_position
 		braille.pre_writeCells.register(self._on_write_cells)
 		self._registered = True
 
@@ -52,4 +55,4 @@ class NvdaBrailleSource(BrailleSource):
 	) -> None:
 		buffer = self._buffer
 		if buffer is not None and rawText:
-			buffer.append(rawText)
+			buffer.append(rawText, self._log_position())

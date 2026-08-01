@@ -201,6 +201,8 @@ class Command(StrEnum):
 	ASK_USER = "askUser"
 	WAIT_FOR_USER_REPLY = "waitForUserReply"
 	GET_LOG = "getLog"
+	GET_LOG_POSITION = "getLogPosition"
+	WAIT_FOR_LOG = "waitForLog"
 	SET_LOG_LEVEL = "setLogLevel"
 	BYE = "bye"
 
@@ -431,11 +433,17 @@ class HelloResult:
 	capabilities: list[Capability]
 	mode: CaptureMode
 	synth: str
+	#: Absolute path to the bridge's own session transcript, on the READER's
+	#: disk. A convenience, not a contract an agent should depend on (spec 0021):
+	#: the artifact is written for the human at the reader, with capture-time
+	#: stamps only the bridge can produce, and for a remote bridge it names a file
+	#: the agent cannot open. An agent wanting its own complete record of what was
+	#: said calls ``getSpeech(sinceIndex=0)`` -- the ring is unbounded within a
+	#: session -- which is why `getTranscript` was considered and rejected.
+	#:
+	#: (Spec 0009's separate NVDA-log capture FILE is gone: 0020 replaced it with
+	#: the in-memory journal, queried through getLog.)
 	logPath: str
-	#: Absolute path to this session's NVDA-log capture -- a tee of NVDA's own
-	#: log, scoped to exactly this session (distinct from `logPath`, the
-	#: bridge's own transcript; see spec 0009). Superseded by 0020: the
-	#: journal replaces the capture file; query via getLog.
 	#: The BRIDGE's own version -- the add-on's, not the reader's (that is
 	#: ``reader.version``). Reported because the bridge is installed separately
 	#: from the code under test: a live-NVDA run talks to whatever build was
@@ -487,10 +495,47 @@ class GetSpeechParams:
 
 
 @dataclass
-class SpeechResult:
-	#: Captured speech sequences joined into one string.
+class SpeechEntry:
+	"""One captured utterance, placed on the log journal's timeline.
+
+	``logPosition`` is the journal's append position at the moment this sequence
+	was captured, and it exists because the ring and the journal answer different
+	questions: the ring says *what was said*, the journal says *when it was said
+	relative to everything else*. Joining them needs a shared coordinate, not a
+	second copy of the text -- which is why the journal never gains speech
+	records and this gains an integer instead (spec 0021).
+
+	It matters most in a **silent** session, where the bridge's own
+	``filter_speechSequence`` empties the sequence before NVDA reaches its
+	``log.io("Speaking %r")`` line, so the journal holds no speech record at all.
+	The coordinate still points at the events that surrounded the utterance.
+	"""
+
 	text: str
-	#: Half-open index range ``[fromIndex, toIndex)`` the text covers.
+	#: This entry's index in the speech ring (the ``sinceIndex`` coordinate).
+	index: int
+	#: The journal position when this was captured (the ``getLog`` coordinate).
+	logPosition: int
+
+
+@dataclass
+class SpeechResult:
+	"""Captured speech since a bookmark, one entry per utterance.
+
+	A **list, not a joined blob**: the blob welded every utterance into one
+	string, so there was nowhere to hang a per-utterance ``logPosition`` and no
+	way to map a line back to its index -- ``get_since`` drops empty renders
+	while the index range spans everything, so line *i* was never entry
+	``fromIndex + i``. One entry per utterance makes "this text, at this index,
+	at this journal position" unambiguous, which is the whole point of the
+	coordinate (spec 0021).
+	"""
+
+	#: One per captured utterance, oldest first. Empty entries are omitted, so
+	#: ``len(entries)`` is not ``toIndex - fromIndex``; each entry carries its
+	#: own ``index``.
+	entries: list[SpeechEntry]
+	#: Half-open index range ``[fromIndex, toIndex)`` the read covers.
 	fromIndex: int
 	toIndex: int
 
@@ -499,6 +544,8 @@ class SpeechResult:
 class LastSpeechResult:
 	text: str
 	index: int
+	#: The journal position when this was captured; 0 for the empty sentinel.
+	logPosition: int = 0
 
 
 @dataclass
@@ -520,6 +567,10 @@ class WaitForSpeechResult:
 	#: Index of the matching sequence, or the next index if not found.
 	index: int
 	text: str
+	#: Journal position of the match -- the coordinate for "show me what NVDA was
+	#: doing when it said that". On a miss this is the journal's *current*
+	#: position, so it is still a usable "from here" mark (spec 0021).
+	logPosition: int = 0
 
 
 @dataclass
@@ -538,8 +589,37 @@ class GetBrailleParams:
 
 
 @dataclass
-class BrailleResult:
+class BrailleEntry:
+	"""One braille update, placed on the log journal's timeline.
+
+	The braille counterpart of :class:`SpeechEntry`, for the same reason and with
+	the same rule: :class:`BrailleBuffer` is an ``IndexedBuffer`` addressed by
+	index and dead at teardown, so it has the same join problem and takes the
+	same fix. The buffer receives the position as a **value** and never learns
+	the journal exists (spec 0021).
+	"""
+
 	text: str
+	#: This entry's index in the braille ring (the ``sinceIndex`` coordinate).
+	index: int
+	#: The journal position when this was captured (the ``getLog`` coordinate).
+	logPosition: int
+
+
+@dataclass
+class BrailleResult:
+	"""Captured braille since a bookmark, one entry per update.
+
+	A list rather than a joined blob, for the reason given on
+	:class:`SpeechResult`. It matters more here than for speech: ``getBraille``
+	is the *only* braille fetch -- there is no ``getLastBraille`` -- so this is
+	the sole route to a braille entry's coordinate.
+	"""
+
+	#: One per captured update, oldest first. Consecutive identical writes are
+	#: already dropped by the buffer, so these are genuine changes.
+	entries: list[BrailleEntry]
+	#: Half-open index range ``[fromIndex, toIndex)`` the read covers.
 	fromIndex: int
 	toIndex: int
 
@@ -650,13 +730,34 @@ class WaitForUserReplyResult:
 
 @dataclass
 class GetLogParams:
-	"""Parameters for ``getLog``: anchor, window count, filters and projection."""
+	"""Parameters for ``getLog``: anchor, window count, filters and projection.
+
+	**Three anchors, mutually exclusive.** Supplying more than one is an error
+	rather than a precedence puzzle (spec 0021). ``sincePosition`` reads forwards
+	from a position and is the polling anchor, paired with the previous result's
+	``nextPosition``. ``lastSeconds`` reads back from now -- the "it just
+	happened" anchor, for when the human noticed the bug *after* it happened and
+	no mark was taken. ``commandId``/``windows`` is 0020's command-span anchor,
+	and the default when none is given.
+
+	Reads never consume: re-issuing the same ``sincePosition`` with a different
+	``exclude`` returns the same records, re-filtered.
+	"""
 
 	#: The request id whose window to anchor on. Defaults to the most recently
 	#: marked command.
 	commandId: int | None = None
 	#: How many command windows to include, counting back from the anchor.
 	windows: int = 1
+	#: Read forwards from this journal position (from ``getLogPosition`` or a
+	#: previous result's ``nextPosition``). A position below the ring's oldest
+	#: surviving record reports ``truncated: true`` -- which is how a poll loop
+	#: learns it fell behind.
+	sincePosition: int | None = None
+	#: ...or read back this many seconds from now. Relative deliberately: it
+	#: needs no agreement on a clock format and no tolerance for skew, and "the
+	#: last ten seconds" is what a human actually says.
+	lastSeconds: float | None = None
 	minLevel: LogLevel | None = None
 	contains: list[str] | None = None
 	exclude: list[str] | None = None
@@ -682,7 +783,7 @@ class LogLevelResult:
 
 @dataclass
 class LogSliceResult:
-	"""A bounded slice of the log journal for one or more command windows."""
+	"""A bounded slice of the log journal, however it was anchored."""
 
 	#: Formatted text, one record per line, like a slice of nvda.log.
 	text: str
@@ -690,14 +791,74 @@ class LogSliceResult:
 	entries: int
 	#: Number of records that passed the filters, before ``maxEntries``.
 	matched: int
-	#: True when ``matched > entries``, or the window had aged out of the ring.
+	#: True when ``matched > entries``, or the slice had aged out of the ring.
 	truncated: bool
-	#: The anchor command's id (what was asked for, or the default).
-	fromCommandId: int
-	#: The farthest command id included.
-	toCommandId: int
-	#: The floor in force while this window was recorded.
+	#: The journal position just past the last record considered. Pass it back as
+	#: ``sincePosition`` to continue the tail: a poll loop driven by this neither
+	#: repeats nor skips. Always present, whichever anchor was used -- it is the
+	#: cursor the CALLER owns, which is why a read never consumes (spec 0021).
+	nextPosition: int
+	#: The floor in force for this slice. Exact for a command anchor -- a span has
+	#: one level by construction, since ``setLogLevel`` is itself a command and so
+	#: closes the span -- but only the level *currently* in force for a
+	#: position/time anchor, which may straddle a change.
 	capturedAtLevel: LogLevel
+	#: The anchor command's id, or ``None`` when anchored by position or time:
+	#: such a read spans whatever commands happen to fall in it and is not
+	#: attributable to one.
+	fromCommandId: int | None = None
+	#: The farthest command id included, or ``None``, for the same reason.
+	toCommandId: int | None = None
+
+
+@dataclass
+class LogPositionResult:
+	"""Where the journal is right now -- the F1 marker ritual, made programmatic.
+
+	Returns **no records**, deliberately: at the moment you decide to start
+	observing you specifically do not want the backlog, and paying for a large
+	slice to learn a single integer defeats the purpose. Same shape, and same
+	reason, as ``getNextSpeechIndex`` (spec 0021).
+	"""
+
+	#: The journal's current append position; pass to ``getLog.sincePosition``.
+	position: int
+	#: Wall clock, for lining a slice up against the session transcript, the
+	#: user's own nvda.log, and the human saying "around then".
+	time: str
+
+
+@dataclass
+class WaitForLogParams:
+	"""Block until a matching record is journalled, or ``timeout`` elapses.
+
+	The journal's answer to ``waitForSpeech``, and **pull, not push**: the agent
+	asks and waits, so nothing in this protocol tails or pushes. For "observe me,
+	a bug is about to happen", block at ``minLevel: "error"`` and get the moment
+	it happens instead of choosing a poll cadence and hoping.
+	"""
+
+	#: Bounds THIS call, caller-supplied, as ``waitForSpeech``'s does.
+	timeout: float = 5.0
+	minLevel: LogLevel | None = None
+	contains: list[str] | None = None
+
+
+@dataclass
+class WaitForLogResult:
+	"""Whether a matching record appeared, and where it landed.
+
+	Not finding one is ``found: false``, **not** an error -- ``waitForSpeech``'s
+	established manners, for the same reason: a wait that expires is an ordinary
+	outcome an agent branches on, not a fault.
+	"""
+
+	found: bool
+	#: Where the match landed, to widen around with ``getLog``. On a miss, the
+	#: journal's current position -- still a usable mark.
+	position: int
+	#: The matching record, formatted; empty when not found.
+	text: str = ""
 
 
 # --- Command shapes: the contract's own command -> payload-types table --------
@@ -740,6 +901,8 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.ASK_USER: CommandShape(AskUserParams, AskUserResult),
 	Command.WAIT_FOR_USER_REPLY: CommandShape(WaitForUserReplyParams, WaitForUserReplyResult),
 	Command.GET_LOG: CommandShape(GetLogParams, LogSliceResult),
+	Command.GET_LOG_POSITION: CommandShape(None, LogPositionResult),
+	Command.WAIT_FOR_LOG: CommandShape(WaitForLogParams, WaitForLogResult),
 	Command.SET_LOG_LEVEL: CommandShape(SetLogLevelParams, LogLevelResult),
 	Command.BYE: CommandShape(None, AckResult),
 }

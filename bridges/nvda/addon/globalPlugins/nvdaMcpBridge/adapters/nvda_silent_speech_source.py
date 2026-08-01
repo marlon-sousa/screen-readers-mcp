@@ -30,8 +30,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from logHandler import log
 from speech.extensions import filter_speechSequence
 
 from ..domain.ports.speech_source import SpeechSource
@@ -39,23 +41,34 @@ from ..domain.ports.speech_source import SpeechSource
 if TYPE_CHECKING:
 	from ..domain.entities.speech_buffer import SpeechBuffer
 
+#: Written into NVDA's own log once per silent session (spec 0021), not once
+#: per utterance -- a silent run drops speech from the log entirely (the filter
+#: empties the sequence before speech.speak's own log.io line), which otherwise
+#: reads, in the human's nvda.log, like an NVDA fault rather than our doing.
+SUPPRESSED_MARKER = "nvdaMcpBridge: speech suppressed for this session"
+RESTORED_MARKER = "nvdaMcpBridge: speech restored for this session"
+
 
 class NvdaSilentSpeechSource(SpeechSource):
 	"""Captures NVDA speech and suppresses it, leaving the real synth loaded."""
 
 	def __init__(self) -> None:
 		self._buffer: SpeechBuffer | None = None
+		self._log_position: Callable[[], int] = lambda: 0
 		self._registered = False
 
-	def start(self, buffer: SpeechBuffer) -> None:
+	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
 		self._buffer = buffer
+		self._log_position = log_position
 		filter_speechSequence.register(self._capture_and_suppress)
 		self._registered = True
+		log.info(SUPPRESSED_MARKER)
 
 	def stop(self) -> None:
 		if self._registered:
 			filter_speechSequence.unregister(self._capture_and_suppress)
 			self._registered = False
+			log.info(RESTORED_MARKER)
 		self._buffer = None
 
 	def suspend(self) -> None:
@@ -75,5 +88,5 @@ class NvdaSilentSpeechSource(SpeechSource):
 		# return an empty sequence so speak() stops before the synth.
 		buffer = self._buffer
 		if buffer is not None and speechSequence:
-			buffer.append(speechSequence)
+			buffer.append(speechSequence, self._log_position())
 		return []

@@ -32,6 +32,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
@@ -83,6 +84,7 @@ var (
 		"get_focus_info",            // focus
 		"get_last_speech",           // speech
 		"get_log",                   // log
+		"get_log_position",          // log
 		"get_next_speech_index",     // speech
 		"get_speech",                // speech
 		"get_state",                 // state
@@ -90,6 +92,7 @@ var (
 		"set_config",                // config
 		"set_log_level",             // log
 		"type_text",                 // typing
+		"wait_for_log",              // log
 		"wait_for_speech",           // speech
 		"wait_for_speech_to_finish", // speech
 		"wait_for_user_reply",       // interact
@@ -97,6 +100,27 @@ var (
 
 	unannouncedTools = []string{}
 )
+
+// capturedWindow is get_speech's and get_braille's answer since spec 0021: one
+// entry per utterance or display update, each with its own ring index and the
+// log journal position it was captured at, plus the half-open range covered.
+type capturedWindow struct {
+	Entries []struct {
+		Text        string `json:"text"`
+		Index       int    `json:"index"`
+		LogPosition int    `json:"logPosition"`
+	} `json:"entries"`
+	FromIndex int `json:"fromIndex"`
+	ToIndex   int `json:"toIndex"`
+}
+
+func (w capturedWindow) texts() []string {
+	said := make([]string, 0, len(w.Entries))
+	for _, entry := range w.Entries {
+		said = append(said, entry.Text)
+	}
+	return said
+}
 
 // TestAWholeSessionOverLoopbackTCP is the conformance run over TCP. Its named
 // pipe twin lives beside it, behind an additional `windows` tag.
@@ -126,6 +150,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseAskUser(t, harness)
 	exerciseTyping(t, harness)
 	exerciseLog(t, harness)
+	exerciseLogObservation(t, harness)
 	assertStatusIsProvenOnTheWire(t, harness)
 	assertInfoDescribesTheSession(t, harness, session)
 
@@ -249,15 +274,7 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 	// itself.
 	harness.Call(t, "press_gesture", map[string]any{"gestures": []string{scriptedKey}})
 
-	var slice struct {
-		Text            string `json:"text"`
-		Entries         int    `json:"entries"`
-		Matched         int    `json:"matched"`
-		Truncated       bool   `json:"truncated"`
-		FromCommandID   int    `json:"fromCommandId"`
-		ToCommandID     int    `json:"toCommandId"`
-		CapturedAtLevel string `json:"capturedAtLevel"`
-	}
+	var slice logSlice
 	result := harness.Call(t, "get_log", map[string]any{
 		"windows":    1,
 		"minLevel":   "debug",
@@ -277,14 +294,20 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 			slice.CapturedAtLevel)
 	}
 	// Real request ids the bridge assigned, in order -- not zero-valued fields a
-	// binding forgot to populate.
-	if slice.FromCommandID <= 0 || slice.ToCommandID <= 0 {
-		t.Errorf("command range = %d..%d, want the ids the bridge actually marked",
+	// binding forgot to populate. Pointers since spec 0021, because a read
+	// anchored by position or time is attributable to NO command and says so with
+	// an absent field rather than with id 0, which is a real id.
+	if slice.FromCommandID == nil || slice.ToCommandID == nil {
+		t.Fatalf("command range = %v..%v, want the ids the bridge actually marked",
 			slice.FromCommandID, slice.ToCommandID)
 	}
-	if slice.FromCommandID > slice.ToCommandID {
+	if *slice.FromCommandID <= 0 || *slice.ToCommandID <= 0 {
+		t.Errorf("command range = %d..%d, want real ids",
+			*slice.FromCommandID, *slice.ToCommandID)
+	}
+	if *slice.FromCommandID > *slice.ToCommandID {
 		t.Errorf("command range = %d..%d, want it ordered oldest-first",
-			slice.FromCommandID, slice.ToCommandID)
+			*slice.FromCommandID, *slice.ToCommandID)
 	}
 	// No NVDA behind this bridge, so nothing was logged; the counts must be
 	// honest about that rather than inventing entries.
@@ -297,18 +320,15 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 	// changes to the level in force for the oldest window in the range. That is
 	// the conservative direction on purpose: a multi-window slice never claims to
 	// have captured more than its earliest window did.
-	var widened struct {
-		FromCommandID   int    `json:"fromCommandId"`
-		CapturedAtLevel string `json:"capturedAtLevel"`
-	}
+	var widened logSlice
 	harness.Call(t, "get_log", map[string]any{"windows": 2}).Decode(t, &widened)
 	if widened.CapturedAtLevel != "info" {
 		t.Errorf("capturedAtLevel over two windows = %q, want the info in force before "+
 			"set_log_level ran", widened.CapturedAtLevel)
 	}
-	if widened.FromCommandID >= slice.FromCommandID {
-		t.Errorf("two windows started at command %d, want something older than %d",
-			widened.FromCommandID, slice.FromCommandID)
+	if widened.FromCommandID == nil || *widened.FromCommandID >= *slice.FromCommandID {
+		t.Errorf("two windows started at command %v, want something older than %d",
+			widened.FromCommandID, *slice.FromCommandID)
 	}
 
 	// An unknown field name is the agent's mistake and comes back as an error,
@@ -325,6 +345,123 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 		"level": "error",
 	}); !refused.IsError {
 		t.Error("set_log_level accepted 'error', which would silence the user's own log")
+	}
+}
+
+// logSlice is get_log's answer as it reaches an agent.
+type logSlice struct {
+	Text            string `json:"text"`
+	Entries         int    `json:"entries"`
+	Matched         int    `json:"matched"`
+	Truncated       bool   `json:"truncated"`
+	NextPosition    int    `json:"nextPosition"`
+	FromCommandID   *int   `json:"fromCommandId"`
+	ToCommandID     *int   `json:"toCommandId"`
+	CapturedAtLevel string `json:"capturedAtLevel"`
+}
+
+// exerciseLogObservation is spec 0021's half of the `log` group: the cursor
+// anchor, the two new commands, and the refusal that keeps the anchors apart.
+//
+// The bridge under conformance has no NVDA behind it, so nothing is journalled
+// and every slice comes back empty -- which is fine, because this tier catches
+// BINDING bugs, not NVDA's behaviour. What is genuinely end to end here:
+//
+//   - The mutual-exclusion refusal. Two anchors on one call must come back as an
+//     error, and that rule lives in the BRIDGE. A server that quietly dropped one
+//     anchor would pass every Go-side test and fail here.
+//   - sincePosition survives as a real integer. Position 0 is a legitimate anchor
+//     and Go's zero value; a binding that tagged it `omitempty` would silently
+//     turn "from the very start" into a command-anchored read of something else,
+//     which nothing on either side alone can detect.
+//   - waitForLog's miss path. `found: false` after a real timeout at the bridge,
+//     rather than an error -- the manners waitForSpeech established.
+func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	var mark struct {
+		Position int    `json:"position"`
+		Time     string `json:"time"`
+	}
+	result := harness.Call(t, "get_log_position", nil)
+	if result.IsError {
+		t.Fatalf("get_log_position: %s", result.Text)
+	}
+	result.Decode(t, &mark)
+	if mark.Position < 0 {
+		t.Errorf("position = %d, want a real journal mark", mark.Position)
+	}
+	// The wall clock is what lets a mark be lined up against the session
+	// transcript, so an empty string here makes the whole field useless.
+	if _, err := time.Parse("2006-01-02 15:04:05.000", mark.Time); err != nil {
+		t.Errorf("time = %q, want the transcript's own stamp format: %v", mark.Time, err)
+	}
+
+	// Something for the interval to contain, and something for the span model to
+	// attribute it to.
+	harness.Call(t, "press_gesture", map[string]any{"gestures": []string{scriptedKey}})
+
+	var tail logSlice
+	result = harness.Call(t, "get_log", map[string]any{"sincePosition": mark.Position})
+	if result.IsError {
+		t.Fatalf("get_log with a position anchor: %s", result.Text)
+	}
+	result.Decode(t, &tail)
+	if tail.NextPosition < mark.Position {
+		t.Errorf("nextPosition = %d, went BACKWARDS from the mark at %d",
+			tail.NextPosition, mark.Position)
+	}
+	// Attributable to no command, and it has to say so with an absent field.
+	if tail.FromCommandID != nil || tail.ToCommandID != nil {
+		t.Errorf("a position-anchored read reported command range %v..%v, want none",
+			tail.FromCommandID, tail.ToCommandID)
+	}
+
+	// Position 0 is the start of the session, not "unset" -- the case an
+	// `omitempty` on the anchor would silently break.
+	if refused := harness.Call(t, "get_log", map[string]any{
+		"sincePosition": 0,
+	}); refused.IsError {
+		t.Errorf("get_log from position 0 was refused: %s", refused.Text)
+	}
+
+	// The rule the BRIDGE owns: more than one anchor is an error rather than a
+	// precedence puzzle.
+	if refused := harness.Call(t, "get_log", map[string]any{
+		"sincePosition": mark.Position,
+		"lastSeconds":   10,
+	}); !refused.IsError {
+		t.Error("get_log accepted two anchors at once instead of refusing them")
+	}
+
+	// The time anchor on its own is accepted.
+	if timed := harness.Call(t, "get_log", map[string]any{
+		"lastSeconds": 30,
+	}); timed.IsError {
+		t.Errorf("get_log with lastSeconds alone: %s", timed.Text)
+	}
+
+	// Nothing is journalled behind this bridge, so the wait runs to its timeout --
+	// which is exactly the path worth crossing a real binding for: a miss is an
+	// ANSWER, and the position it carries stays usable.
+	var waited struct {
+		Found    bool   `json:"found"`
+		Position int    `json:"position"`
+		Text     string `json:"text"`
+	}
+	result = harness.Call(t, "wait_for_log", map[string]any{
+		"min_level": "error",
+		"timeout":   1,
+	})
+	if result.IsError {
+		t.Fatalf("wait_for_log that matched nothing came back as an error: %s", result.Text)
+	}
+	result.Decode(t, &waited)
+	if waited.Found {
+		t.Errorf("wait_for_log found %q, but nothing is journalled behind this bridge", waited.Text)
+	}
+	if waited.Position < 0 {
+		t.Errorf("position = %d, want a usable mark even on a miss", waited.Position)
 	}
 }
 
@@ -390,16 +527,13 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Error("wait_for_speech_to_finish reported the reader still speaking")
 	}
 
-	var captured struct {
-		Text      string `json:"text"`
-		FromIndex int    `json:"fromIndex"`
-		ToIndex   int    `json:"toIndex"`
-	}
+	var captured capturedWindow
 	harness.Call(t, "get_speech", map[string]any{"since_index": before.Index}).Decode(t, &captured)
+	said := strings.Join(captured.texts(), "\n")
 	for _, line := range []string{firstLine, secondLine} {
-		if !strings.Contains(captured.Text, line) {
+		if !strings.Contains(said, line) {
 			t.Errorf("get_speech since %d = %q, want it to contain %q",
-				before.Index, captured.Text, line)
+				before.Index, said, line)
 		}
 	}
 	if captured.FromIndex != before.Index {
@@ -408,6 +542,20 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 	if captured.ToIndex <= captured.FromIndex {
 		t.Errorf("range [%d, %d) covers nothing, but two lines were spoken",
 			captured.FromIndex, captured.ToIndex)
+	}
+	// Spec 0021's list shape, proven across the language boundary: two utterances
+	// arrive as two entries rather than one welded string, and each keeps the ring
+	// index it occupies. A binding that mapped `entries` wrong -- or reintroduced
+	// the join -- fails here and nowhere else.
+	if len(captured.Entries) < 2 {
+		t.Errorf("entries = %v, want one per utterance rather than a joined blob",
+			captured.texts())
+	}
+	for _, entry := range captured.Entries {
+		if entry.Index < before.Index {
+			t.Errorf("entry %q carries index %d, before the bookmark %d",
+				entry.Text, entry.Index, before.Index)
+		}
 	}
 
 	var last struct {
@@ -425,19 +573,21 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 func exerciseBraille(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
-	var captured struct {
-		Text      string `json:"text"`
-		FromIndex int    `json:"fromIndex"`
-		ToIndex   int    `json:"toIndex"`
-	}
+	var captured capturedWindow
 	harness.Call(t, "get_braille", map[string]any{"since_index": 0}).Decode(t, &captured)
 
-	if !strings.Contains(captured.Text, brailleCells) {
-		t.Errorf("get_braille = %q, want it to contain %q", captured.Text, brailleCells)
+	if shown := strings.Join(captured.texts(), "\n"); !strings.Contains(shown, brailleCells) {
+		t.Errorf("get_braille = %q, want it to contain %q", shown, brailleCells)
 	}
 	if captured.ToIndex <= 0 {
 		t.Errorf("braille range [%d, %d) covers nothing, but the display had content",
 			captured.FromIndex, captured.ToIndex)
+	}
+	// Braille takes the same entry shape as speech, and this is the only fetch it
+	// has -- so a binding that got `entries` right for speech and wrong here would
+	// leave braille with no coordinate at all (spec 0021).
+	if len(captured.Entries) == 0 {
+		t.Error("entries is empty, but the display had content")
 	}
 }
 

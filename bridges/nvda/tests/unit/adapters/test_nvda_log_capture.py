@@ -9,58 +9,21 @@
 # ``record.name`` -- the constant "NVDA" -- which silently made the `exclude`
 # filter and the `module` projection useless.
 #
-# So ``logHandler`` is stubbed here rather than skipped. The stub mirrors the two
-# things the adapter actually depends on, taken from NVDA's own source:
-#
-#   * Logger carries the level constants, and IO is 12 -- ABOVE DEBUG's 10, not
-#     below it (source/logHandler.py: `IO = 12`, `DEBUGWARNING = 15`).
-#   * Formatter renders time as "%H:%M:%S" plus ".%03d" milliseconds, local --
-#     the shape nvda.log lines carry. NVDA overrides formatTime only to dodge a
-#     Universal CRT crash (#12160); the OUTPUT is the stdlib's, so the stub uses
-#     the stdlib implementation with NVDA's two format attributes.
-#
-# The stub is installed into sys.modules before the adapter is imported. Nothing
-# else in the suite imports logHandler, so it stays local to this module.
+# So ``logHandler`` is stubbed rather than skipped -- from support/nvda_stubs.py,
+# which explains what the stub mirrors and why it lives there rather than here
+# (sys.modules is process-wide, and a second module installing its own partial
+# stub with setdefault used to silently win or lose on collection order).
 
 from __future__ import annotations
 
 import logging
-import sys
-import types
 from typing import Any
 
 import pytest
+from support.nvda_stubs import install as _install_nvda_stubs
+from support.nvda_stubs import log as _STUB_LOG
 
-
-class _StubFormatter(logging.Formatter):
-	"""NVDA's Formatter, reduced to the time format the adapter borrows."""
-
-	default_time_format = "%H:%M:%S"
-	default_msec_format = "%s.%03d"
-
-
-class _StubLog:
-	"""Stands in for logHandler.log: the level constants plus a real root logger."""
-
-	DEBUG = logging.DEBUG  # 10
-	IO = 12  # NVDA's custom level, between DEBUG and DEBUGWARNING
-	DEBUGWARNING = 15
-	INFO = logging.INFO  # 20
-	WARNING = logging.WARNING  # 30
-	ERROR = logging.ERROR  # 40
-
-	def __init__(self) -> None:
-		self.root = logging.getLogger("nvda-mcp-bridge-test-root")
-		self.root.propagate = False
-		self.root.handlers.clear()
-		self.root.setLevel(logging.INFO)
-
-
-_STUB_LOG = _StubLog()
-_stub_module = types.ModuleType("logHandler")
-_stub_module.log = _STUB_LOG  # type: ignore[attr-defined]
-_stub_module.Formatter = _StubFormatter  # type: ignore[attr-defined]
-sys.modules.setdefault("logHandler", _stub_module)
+_install_nvda_stubs()
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.nvda_log_capture import (

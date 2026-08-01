@@ -30,3 +30,9 @@ class FakeClock(Clock):
 
 	def advance(self, seconds: float) -> None:
 		self._now += seconds
+
+	def time(self) -> float:
+		# Shares the same counter as monotonic(): tests only ever compare
+		# DIFFERENCES between the two clocks (e.g. a record's `created` against
+		# `lastSeconds`), never their absolute values against a real epoch.
+		return self._now

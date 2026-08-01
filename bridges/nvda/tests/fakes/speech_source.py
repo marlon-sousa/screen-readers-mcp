@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from nvdaMcpBridge.domain.ports.speech_source import SpeechSource
@@ -24,6 +25,7 @@ class FakeSpeechSource(SpeechSource):
 
 	def __init__(self) -> None:
 		self.buffer: SpeechBuffer | None = None
+		self.log_position: Callable[[], int] = lambda: 0
 		self.started = 0
 		self.stopped = 0
 		self.suspended = 0
@@ -32,8 +34,9 @@ class FakeSpeechSource(SpeechSource):
 		#: earlier teardown step (a source stop) raises.
 		self.fail_stop = False
 
-	def start(self, buffer: SpeechBuffer) -> None:
+	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
 		self.buffer = buffer
+		self.log_position = log_position
 		self.started += 1
 
 	def stop(self) -> None:
@@ -50,6 +53,9 @@ class FakeSpeechSource(SpeechSource):
 	def emit(self, text: str, *, finished: bool = True) -> None:
 		"""Inject a spoken line (as a one-string speech sequence)."""
 		assert self.buffer is not None, "emit before the source was started"
-		self.buffer.append([text])
+		# Reads the position AT CAPTURE, as the real adapters do (spec 0021).
+		# A fake that passed 0 here would let a broken wiring pass every test
+		# above it -- the same gap FakeLogCapture's level bookkeeping warns about.
+		self.buffer.append([text], self.log_position())
 		if finished:
 			self.buffer.notify_finished()

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from speech.extensions import pre_speechQueued
@@ -32,10 +33,12 @@ class NvdaLiveSpeechSource(SpeechSource):
 
 	def __init__(self) -> None:
 		self._buffer: SpeechBuffer | None = None
+		self._log_position: Callable[[], int] = lambda: 0
 		self._registered = False
 
-	def start(self, buffer: SpeechBuffer) -> None:
+	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
 		self._buffer = buffer
+		self._log_position = log_position
 		pre_speechQueued.register(self._on_speech_queued)
 		self._registered = True
 
@@ -54,4 +57,4 @@ class NvdaLiveSpeechSource(SpeechSource):
 	def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:
 		buffer = self._buffer
 		if buffer is not None and speechSequence:
-			buffer.append(speechSequence)
+			buffer.append(speechSequence, self._log_position())

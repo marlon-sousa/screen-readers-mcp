@@ -246,16 +246,22 @@ class Session:
 		if handler.resets_inactivity:
 			self._last_command_time = self._clock.monotonic()
 
-		# Record the log-journal position before dispatch, for commands that want
-		# a window (spec 0020). A handler that sets marks_log=False (getLog) is
-		# not itself marked, so the default anchor is never the getLog that just ran.
-		# Guarded: a journal that cannot be read costs the window, never the command.
-		opened: tuple[int, protocol.LogLevel] | None = None
+		# Open this command's log span BEFORE dispatch (spec 0021): everything the
+		# journal records from here until the NEXT marking command opens belongs
+		# to this one -- there is no end to measure afterwards, so nothing here
+		# waits on how execute() turns out. A handler that sets marks_log=False
+		# (getLog) opens nothing, so the default anchor is never the getLog that
+		# just ran. Guarded: a journal that cannot be read costs the window, never
+		# the command -- "a failed command still gets its window" now falls out
+		# for free, since the window is already recorded before execute can fail.
 		if handler.marks_log:
 			try:
-				opened = (self._log_capture.position(), self._log_capture.current_level)
+				start_pos = self._log_capture.position()
+				captured_at = self._log_capture.current_level
 			except Exception:
-				opened = None
+				pass
+			else:
+				self._open_window(request.id, start_pos, captured_at)
 
 		try:
 			result = handler.execute(self._ctx, request)
@@ -265,14 +271,6 @@ class Session:
 		except Exception as exc:  # a handler blew up unexpectedly; the session survives
 			self._reply_command_error(request.id, str(exc))
 			return
-		finally:
-			# Close the window on EVERY path, the failures above included. "This
-			# command just failed, show me what NVDA logged while it ran" is the
-			# case spec 0020 exists for, so a failed command has to stay
-			# addressable by its request id.
-			if opened is not None:
-				start_pos, captured_at = opened
-				self._guard(lambda: self._close_window(request.id, start_pos, captured_at))
 
 		self._reply(request.id, result)
 		if pre_hello:
@@ -281,10 +279,15 @@ class Session:
 			# beep failure never breaks the just-established session.
 			self._guard(self._signals.session_started)
 
-	def _close_window(self, request_id: int, start_pos: int, captured_at: protocol.LogLevel) -> None:
-		"""Append this command's finished log window, keeping the last N."""
+	def _open_window(self, request_id: int, start_pos: int, captured_at: protocol.LogLevel) -> None:
+		"""Record this command's span start, keeping the last N.
+
+		The span's end is never stored: it is the next marking command's start,
+		or the journal's current position while this one is still the last
+		(SessionContext.command_windows_for computes it lazily).
+		"""
 		windows = self._ctx.command_windows
-		windows.append((request_id, start_pos, self._log_capture.position(), captured_at))
+		windows.append((request_id, start_pos, captured_at))
 		if len(windows) > MAX_COMMAND_WINDOWS:
 			del windows[:-MAX_COMMAND_WINDOWS]
 
