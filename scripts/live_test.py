@@ -565,15 +565,26 @@ def scenario_logerror(server, console, checks, mode):
 
 	Two obstacles, and the way round each is the point of the scenario.
 
-	FIRST, the driver cannot type into NVDA. An earlier attempt injected the
-	line with SendInput: the console opened, focus was confirmed, and nothing
-	arrived, because NVDA runs with UIAccess and Windows UIPI refuses synthetic
-	input from a normal-integrity process into a higher-integrity window. (The
-	F13 taps elsewhere in this file are unaffected -- NVDA's low-level keyboard
-	hook sees all input regardless of the window it was aimed at; delivering INTO
-	NVDA's own window is the blocked part.) The way round is not to elevate the
-	driver but to stop being the typist: `type_text` types from INSIDE NVDA, so
-	there is no integrity boundary to cross.
+	FIRST, the driver cannot type into NVDA -- use `type_text`, which types from
+	INSIDE NVDA, rather than injecting keystrokes at it. An earlier attempt
+	hand-rolled SendInput instead and failed for TWO separate reasons, which is
+	worth writing down because the first one masqueraded as the second:
+
+	The INPUT struct was 32 bytes, not 40. SendInput validates cbSize against the
+	real sizeof(INPUT), which MOUSEINPUT sizes -- a union declaring only
+	KEYBDINPUT measures 32. Every call returned 0 / ERROR_INVALID_PARAMETER and
+	reached no window at all, NVDA's or anyone's.
+
+	Corrected, SendInput succeeds (returns 1, no error) and the character STILL
+	never appears in NVDA's console, while the identical call types fine into an
+	ordinary window. THAT is UIPI: NVDA runs with UIAccess, and MSDN notes that a
+	SendInput blocked this way reports success anyway -- "neither GetLastError
+	nor the return value will indicate the failure".
+
+	So UIPI is a genuine wall, but it was NOT what the first failure hit, and
+	diagnosing it from the symptom alone got the answer wrong. The F13 taps
+	elsewhere in this file are unaffected by either problem: NVDA's low-level
+	keyboard hook sees all input regardless of which window it was aimed at.
 
 	SECOND, wait_for_log blocks the session thread, so the error cannot be caused
 	while waiting. The way round is spec 0021's own central insight -- work a
@@ -616,9 +627,40 @@ def scenario_logerror(server, console, checks, mode):
 	# smuggled into the journal behind the reader's back.
 	line = f"import threading; threading.Timer({delay}, lambda: log.error({marker!r})).start()"
 	console.step(f"typing a line that logs an error {delay}s from now, then waiting for it")
+	# Clear whatever is on the prompt first. The console keeps its input across
+	# openings, so a half-typed line left by a previous run (or by the tester)
+	# would be PREPENDED to ours, making it invalid Python -- and a SyntaxError
+	# goes to the console's own output, not to the log, so the wait would simply
+	# time out with nothing to explain why.
+	server.tool("press_gesture", {"gestures": ["kb:control+a", "kb:delete"]})
+	time.sleep(0.4)
+	cleared = server.tool("get_focus_info").get("value")
+	console.note(f"prompt after clearing: {cleared!r}")
+	checks.check("item 6: the prompt was cleared before typing", not cleared, detail=repr(cleared))
+
 	typed = server.tool("type_text", {"text": line})
-	console.note(f"typed {typed.get('typed')} characters")
+	time.sleep(0.4)
+	on_prompt = server.tool("get_focus_info").get("value")
+	console.note(f"typed {typed.get('typed')} characters; prompt now: {on_prompt!r}")
+	# Read back what is REALLY on the prompt before committing it. Everything
+	# after this depends on the console executing exactly this line, and a
+	# mistyped or half-cleared prompt fails as a SyntaxError -- which goes to the
+	# console's own output, never to the log, so the wait would just time out
+	# with nothing anywhere saying why.
+	checks.check(
+		"item 6: type_text put the line on the prompt intact",
+		on_prompt == line,
+		detail=f"expected {line!r}, got {on_prompt!r}",
+	)
 	server.tool("press_gesture", {"gestures": ["kb:enter"]})
+	time.sleep(0.4)
+	after_enter = server.tool("get_focus_info").get("value")
+	console.note(f"prompt after enter: {after_enter!r}")
+	checks.check(
+		"item 6: enter submitted the line (the prompt is empty again)",
+		not after_enter,
+		detail=repr(after_enter),
+	)
 
 	began = time.monotonic()
 	woke = server.tool("wait_for_log", {"min_level": "error", "timeout": 20}, timeout=40)
@@ -652,19 +694,11 @@ def scenario_logwatch(server, console, checks, mode):
 	"""Spec 0021 item 6 as it was actually written for: the human provokes, the
 	agent watches.
 
-	It asks rather than causes, and that is not laziness -- causing it is
-	IMPOSSIBLE from here. An earlier version opened NVDA's Python console and
-	typed `log.error(...)` into it with SendInput. The console opened, the focus
-	check passed, and nothing was typed: NVDA runs with UIAccess, and Windows
-	UIPI refuses synthetic input from a normal-integrity process into a
-	higher-integrity window. (The F13 taps elsewhere in this file work because
-	NVDA's low-level keyboard hook sees all input regardless of which window it
-	was aimed at -- delivering INTO NVDA's own window is the part that is
-	blocked.) Running the driver elevated would defeat that, at the cost of every
-	live test needing elevation.
-
-	Asking is also the truer reproduction of the case the command exists for:
-	nothing the agent issues is what gets logged.
+	It asks rather than causes. `logerror` is the version that causes; this one
+	exists because asking is the truer reproduction of the case the command was
+	written for -- "watch what I do, a bug is about to appear", where nothing the
+	agent issues is what gets logged -- and because it holds whatever the
+	tester's keymap and privileges happen to be.
 
 	Provoke an error any way you like inside the window. The Python console
 	(NVDA menu -> Tools) with `log.error("anything")` is the reliable one.
