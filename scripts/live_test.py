@@ -280,19 +280,55 @@ def scenario_finddialog(server, console, checks, mode):
 	server.tool("wait_for_speech_to_finish", {"timeout": 3})
 	opened = server.tool("get_speech", {"since_index": bookmark})
 	console.note(f"on open: {json.dumps(opened, ensure_ascii=False)}")
-	checks.ear(
-		"EnhancedFindDialog opened and was announced", console.confirm("Did the find dialog open and speak?")
+	checks.check(
+		"finddialog: opening it produced speech", bool(opened.get("entries")), detail=json.dumps(opened)
 	)
+	# Read back WHERE focus landed before typing into it. Without this, a dialog
+	# that never opened is typed into the document instead, and the only thing
+	# that fails is a later check about the search result -- which then reads as
+	# "the search is broken" rather than "the dialog did not open".
+	focus = server.tool("get_focus_info")
+	console.note(f"focus after opening: {json.dumps(focus, ensure_ascii=False)}")
+	in_field = focus.get("role") == "EDITABLETEXT"
+	checks.check(
+		"finddialog: the search field took focus (nothing is typed unless it did)",
+		in_field,
+		detail=json.dumps(focus, ensure_ascii=False),
+	)
+	if not in_field:
+		console.note("!! no edit field focused -- typing NOTHING and giving up on this scenario")
+		_disconnect(server, console)
+		return
 
 	term = console.ask("Type a search term the page contains", default="the")
 	console.step(f'typing "{term}" and searching')
+	# The field remembers the last search, so an unguarded run searches for
+	# "previousthe". Clear it, then prove it is clear -- the same trap the Python
+	# console sprang in scenario_logerror.
+	server.tool("press_gesture", {"gestures": ["kb:control+a", "kb:delete"]})
+	time.sleep(0.3)
+	cleared = server.tool("get_focus_info").get("value")
+	checks.check("finddialog: the field was cleared before typing", not cleared, detail=repr(cleared))
 	for ch in term:
 		server.tool("press_gesture", {"gestures": [f"kb:{ch}"]})
+	time.sleep(0.3)
+	in_box = server.tool("get_focus_info").get("value")
+	console.note(f"field now holds: {in_box!r}")
+	checks.check(
+		"finddialog: the term reached the field intact",
+		in_box == term,
+		detail=f"expected {term!r}, got {in_box!r}",
+	)
 	mark2 = server.tool("get_next_speech_index")["index"]
 	server.tool("press_gesture", {"gestures": ["kb:enter"]})
 	server.tool("wait_for_speech_to_finish", {"timeout": 3})
 	result = server.tool("get_speech", {"since_index": mark2})
 	console.note(f"on search: {json.dumps(result, ensure_ascii=False)}")
+	checks.check(
+		"finddialog: submitting the search produced speech", bool(result.get("entries")), detail=str(result)
+	)
+	# Still an ear: that the speech is the RIGHT match -- the text the term
+	# actually occurs in -- is a judgement no assertion here can make.
 	checks.ear(
 		"the search moved to a match and NVDA read it",
 		console.confirm("Did it jump to a match and announce it?"),
