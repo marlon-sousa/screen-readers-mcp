@@ -38,7 +38,14 @@ func (t *TypeText) Description() string {
 		"the target control first (e.g. press_gesture [\"control+l\"] for a browser's " +
 		"address bar), then call this. It does NOT interpret control characters, " +
 		"newlines or Enter and does not submit anything -- compose that with " +
-		"press_gesture afterwards."
+		"press_gesture afterwards. IMPORTANT -- KNOW WHERE FOCUS IS FIRST: text goes " +
+		"wherever focus happens to be, so if the window you believe is open is not, " +
+		"this lands in a document or a chat you did not mean to touch. A field that " +
+		"is open is also not necessarily empty; some windows keep their contents " +
+		"between openings and append to them. Confirm with wait_for_speech_to_finish " +
+		"and get_speech before and after (see screenreader://guidance). The `typed` " +
+		"count is the length of what was SENT, counted here -- it says nothing about " +
+		"what arrived anywhere."
 }
 
 func (t *TypeText) InputSchema() json.RawMessage {

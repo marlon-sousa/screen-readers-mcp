@@ -554,10 +554,19 @@ a change that does not exist.
 the MCP tools is testing the OLD server against the NEW bridge. The symptom is
 a field simply missing from a result, which reads as "the bridge did not send
 it" rather than "your binary predates it" -- that is exactly how `bridgeVersion`
-went unnoticed through an entire live checklist. `poe doctor` now fails when the
+went unnoticed through an entire live checklist. `poe doctor` fails when the
 binary is older than any `server/*.go`, and **a rebuild alone is not enough**:
 the MCP client spawned the old process at startup, so the connection has to be
 restarted too.
+
+**`poe dev` repairs this rather than reporting it.** Its first step is
+`redeploy --if-stale`, a no-op when the binary is current and a full
+kill-delete-rebuild when it is not. The staleness question is answerable by
+comparing two mtimes, so asking it at the *end* of a minute-long doctor run —
+and thereby costing two full runs per Go change — was pure waste. One definition
+of "stale" serves both: `doctor.stale_server_binary()`, which `redeploy.py`
+imports rather than restating, so dev and the doctor cannot drift into
+disagreeing about the same tree.
 
 **`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
 gestures, open the Run dialog, type into whatever currently has focus, and
@@ -673,11 +682,16 @@ bump.
   always chosen by the same reasoning that wrote the bug. If it is red, say so
   and paste the failure; a red gate reported honestly costs a minute, and a
   green claim over a red gate costs whoever finds out next.
-  - Touched `server/`? `poe dev` will fail the stale-binary check by design —
-    `uv run poe redeploy`, then run it again. **Redeploy whenever it asks; the
-    maintainer has standing approval for this.** Skipping it means you are
-    driving the OLD server against the NEW bridge, and the symptom is a field
-    that looks like it was never sent.
+  - Touched `server/`? **`poe dev` handles it** — its first step is
+    `redeploy --if-stale`, which rebuilds the binary when any `server/*.go` is
+    newer than it and does nothing at all otherwise. You no longer run dev,
+    fail the doctor, redeploy and run dev again. What you DO still have to do is
+    restart the MCP connection if your client holds one process for the whole
+    session; a rebuild alone leaves you talking to the old code.
+  - A bare `poe doctor`, `poe bridge` or `poe live` still **fails** on a stale
+    binary rather than repairing it, on purpose: those are the runs where an
+    agent is about to drive the MCP tools without having rebuilt. `uv run poe
+    redeploy` is the fix, and **the maintainer has standing approval for it.**
   - `poe live` is NOT part of the gate and never runs unattended: it drives the
     maintainer's real screen reader. Ask first, every time.
 - **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep

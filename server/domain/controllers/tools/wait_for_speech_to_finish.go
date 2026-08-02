@@ -25,8 +25,13 @@ func (t *WaitForSpeechToFinish) Capability() entities.Capability { return entiti
 func (t *WaitForSpeechToFinish) Description() string {
 	return "Wait until the screen reader has stopped speaking, or until the timeout " +
 		"elapses. Returns finished=true if speech settled and false if it was still " +
-		"going -- neither is an error. Use this after an action that produces a long " +
-		"announcement, before reading it back, so you do not capture half of it."
+		"going -- neither is an error. This is the SETTLE STEP after any action, not " +
+		"only a long one: press_gesture and type_text return once the reader has " +
+		"accepted the input, and the reader does the work afterwards on its own " +
+		"thread, so this is what stands between acting and reading back what " +
+		"happened. Use it instead of sleeping -- a sleep is either too short and " +
+		"flaky or too long and slow, and it is never evidence. Then call get_speech. " +
+		"See screenreader://guidance."
 }
 
 func (t *WaitForSpeechToFinish) InputSchema() json.RawMessage {

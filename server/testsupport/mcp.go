@@ -237,6 +237,37 @@ func (h *MCPHarness) ReadSessionRecord(t *testing.T) map[string]any {
 	return h.ReadResource(t, "screenreader://session-record")
 }
 
+// ResourceURIs is what resources/list currently advertises.
+func (h *MCPHarness) ResourceURIs(t *testing.T) []string {
+	t.Helper()
+	listing, err := h.Session.ListResources(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("resources/list: %v", err)
+	}
+	uris := make([]string, 0, len(listing.Resources))
+	for _, resource := range listing.Resources {
+		uris = append(uris, resource.URI)
+	}
+	return uris
+}
+
+// ReadGuidance reads screenreader://guidance as text (spec 0023). Separate from
+// ReadResource because this one is markdown, not JSON.
+func (h *MCPHarness) ReadGuidance(t *testing.T) string {
+	t.Helper()
+	return h.ReadResourceText(t, "screenreader://guidance")
+}
+
+// ReadResourceText reads any resource the server publishes, undecoded.
+func (h *MCPHarness) ReadResourceText(t *testing.T, uri string) string {
+	t.Helper()
+	read, err := h.Session.ReadResource(context.Background(), &sdk.ReadResourceParams{URI: uri})
+	if err != nil {
+		t.Fatalf("reading %s: %v", uri, err)
+	}
+	return read.Contents[0].Text
+}
+
 // ReadResource reads any resource the server publishes, decoded as JSON.
 func (h *MCPHarness) ReadResource(t *testing.T, uri string) map[string]any {
 	t.Helper()

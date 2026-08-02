@@ -29,8 +29,15 @@ import sys
 import time
 from pathlib import Path
 
+# The doctor owns both the binary's path and the definition of "stale".
+# Importing them rather than restating them is what keeps `poe dev` and
+# `poe doctor` from ever disagreeing about whether this binary is current -- a
+# disagreement whose symptom would be dev passing and the doctor failing on the
+# same unchanged tree. scripts/ is sys.path[0] when either file is run directly,
+# so this is a plain sibling import needing no package.
+from doctor import BINARY, stale_server_binary
+
 ROOT = Path(__file__).resolve().parents[1]
-BINARY = ROOT / "server" / "screenreader-mcp.exe"
 
 
 def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
@@ -158,7 +165,25 @@ def main() -> int:
 		action="store_true",
 		help="report which processes would be killed, and build nothing",
 	)
+	parser.add_argument(
+		"--if-stale",
+		action="store_true",
+		help="do nothing when the binary is already newer than every server/*.go",
+	)
 	args = parser.parse_args()
+
+	# What `poe dev` calls. The whole point is that it is a NO-OP in the common
+	# case: no kill, no build, no other agent's session dropped -- because the
+	# expensive side effects are only warranted when there is actually new Go code
+	# to deploy. When there is, dev deploys it up front rather than doing a
+	# minute's work and then failing the doctor on it, which cost two full runs
+	# every time and is the reason this flag exists.
+	if args.if_stale and not args.dry_run:
+		reason = stale_server_binary()
+		if reason is None:
+			print("Server binary is current -- nothing to redeploy.")
+			return 0
+		print(f"Server binary is stale ({reason}).")
 
 	print("Redeploying the MCP server binary.")
 

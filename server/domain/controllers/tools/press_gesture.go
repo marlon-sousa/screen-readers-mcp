@@ -31,13 +31,20 @@ func (t *PressGesture) Name() string { return "press_gesture" }
 func (t *PressGesture) Capability() entities.Capability { return entities.CapabilityGestures }
 
 func (t *PressGesture) Description() string {
-	return "Press one or more screen reader gestures, in order, blocking until each " +
-		"has been processed. Gesture ids are the reader's own user-facing command " +
-		"notation -- the key combo as its documentation writes it -- and pass through " +
-		"untouched: for NVDA, the User Guide form like \"NVDA+f7\", \"downArrow\" or " +
-		"\"control+home\", not an internal identifier. Read screenreader://info to learn " +
-		"which reader you are driving, then use that reader's vocabulary. This is for " +
-		"pressing keys and chords; gestures land wherever the system focus currently is."
+	return "Press one or more screen reader gestures, in order. Gesture ids are the " +
+		"reader's own user-facing command notation -- the key combo as its " +
+		"documentation writes it -- and pass through untouched: for NVDA, the User " +
+		"Guide form like \"NVDA+f7\", \"downArrow\" or \"control+home\", not an internal " +
+		"identifier. Read screenreader://info to learn which reader you are driving, " +
+		"then use that reader's vocabulary. Gestures land wherever the system focus " +
+		"currently is. IMPORTANT -- a successful result reports DELIVERY, NOT " +
+		"CONSEQUENCE: it means the reader accepted the input and will act on it " +
+		"afterwards, on its own thread. When this returns, the dialog has not opened " +
+		"and focus has not moved yet. To confirm what actually happened, call " +
+		"wait_for_speech_to_finish and then get_speech -- a window that opens " +
+		"announces its title. Do not re-press because it \"seemed\" not to work, and " +
+		"do not assume focus moved: most reader commands never move it. Read " +
+		"screenreader://guidance for the full loop."
 }
 
 func (t *PressGesture) InputSchema() json.RawMessage {

@@ -29,9 +29,13 @@ func (t *GetFocusInfo) Description() string {
 	return "Describe the object the screen reader currently has focus on: its name, " +
 		"role, states, value and owning application. Role and state strings are the " +
 		"READER's own vocabulary, not a normalised one -- read screenreader://info to " +
-		"learn which reader you are driving. Use this to check where you are before " +
-		"acting, and to assert what a control reports about itself. Takes no " +
-		"parameters."
+		"learn which reader you are driving. This is INTROSPECTION, for two jobs: " +
+		"asserting in a test what a control reports about itself, and answering when " +
+		"the reader said nothing you could listen to. It is NOT how you orient " +
+		"yourself -- a user finds out where they are by pressing the reader's own " +
+		"report-focus command and listening, and orienting by reading the object " +
+		"model instead tests the platform accessibility API rather than the reader. " +
+		"See screenreader://guidance. Takes no parameters."
 }
 
 func (t *GetFocusInfo) InputSchema() json.RawMessage {
