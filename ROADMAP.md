@@ -411,38 +411,56 @@ rather than before it.
     causes one while the agent watches (`logwatch`), which is the case the
     command was written for. Only a braille entry's coordinate is untested, for
     want of a display.
-    **It also turned up a client-compatibility exposure that is NOT this
-    entry's to fix:** the capability-gated tools are advertised only through
-    `tools/list_changed`, and a client that ignores that notification connects
-    successfully and then sees no tools at all — observed in Claude Code during
-    this very run, which is why the checklist had to be driven through
-    `scripts/live_test.py`. The failure is silent and points at the wrong
-    component, since `connect_reader` returns success with a full capability
-    list. Its own entry, below.
+    **It also turned up an exposure that is NOT this entry's to fix:** the
+    gated tools went invisible for the whole run, which is why the checklist had
+    to be driven through `scripts/live_test.py`. Read at the time as a client
+    that ignores `tools/list_changed`; **diagnosed on 2026-08-02 as our own
+    `poe redeploy` killing the client's server process**, after which capability
+    discovery never re-runs. The failure is silent and points at the wrong
+    component either way, since `connect_reader` returns success with a full
+    capability list. Its own entry, below.
 11.6. **E, a connected session an agent cannot use** (server lane). Found live on
-    2026-08-01 while running 11.5's checklist. Every capability-gated tool
-    reaches the agent through one `tools/list_changed` notification emitted when
-    `connect_reader` succeeds (spec 0013). A client that does not act on that
-    notification handshakes fine and then has **nothing to call** — the whole
-    gated surface is invisible. This is not hypothetical and not an exotic
-    client: it happened in Claude Code, the server's primary target, which is
-    why 11.5's checklist had to be driven through `scripts/live_test.py`
-    instead. What makes it worth an entry rather than a footnote is the shape of
-    the failure: `connect_reader` returns success *with a full capability list*,
-    so the agent has every reason to believe it is connected and concludes the
-    server or the bridge is broken. Nothing anywhere says "your client must
-    support list_changed". Options, cheapest first, to be argued in the spec
-    rather than picked here: (a) say so at the point of failure — the connect
-    result names the tools that should now be present, and `status` repeats it,
-    which fixes nothing but makes it diagnosable in one round; (b) one
-    always-present dispatcher tool that forwards to a gated one by name, which
-    works on any client but undercuts gating; (c) advertise everything always
-    and fail the gated ones with "connect first", which is client-independent
-    but throws away 11.1's benefit that an agent sees only the tools its reader
-    actually supports. Needs a spec conversation: it revisits a decision spec
-    0013 made deliberately. Spec:
+    2026-08-01 while running 11.5's checklist; **diagnosed 2026-08-02, and the
+    diagnosis reversed the premise.** Every capability-gated tool reaches the
+    agent through one `tools/list_changed` notification emitted when
+    `connect_reader` succeeds (spec 0013), and in 11.5's run the gated surface
+    stayed invisible for a whole session — which is why the checklist had to be
+    driven through `scripts/live_test.py` instead. The entry was written as *the
+    client ignores the notification*. **It does not.** Claude Code honours it in
+    both directions (370 successful gated calls across five earlier sessions,
+    and tools withdrawn again on disconnect); the server declares
+    `tools.listChanged` correctly, which an independent MCP client confirms
+    against the current binary. What actually severs it is **our own
+    `poe redeploy`**: it kills every `screenreader-mcp.exe`, the client's
+    included, and a killed stdio server drops out of the client's managed
+    lifecycle — it is silently respawned to serve the next call, but capability
+    discovery never re-runs, so the tool list stays frozen at the ungated four.
+    Documented client behaviour, not a defect ("stdio servers are local
+    processes and are not reconnected automatically"). Reproduced
+    deterministically, and across every transcript in the project's history **no
+    gated call has ever succeeded after a redeploy killed the server in that
+    session**. What still makes it worth an entry is the shape of the failure:
+    `connect_reader` returns success *with a full capability list*, so the agent
+    concludes the server or the bridge is broken and spends a session there.
+    **The cure exists and costs one command** — `/mcp reconnect
+    screen-reader-testing`, verified — but only the human can run it: `/mcp` is
+    client UI, unreachable from an agent by any route. Now written into
+    `AGENTS.md` and printed by `redeploy.py` itself. That leaves the entry
+    smaller and no longer urgent — a shipped user never redeploys — so what
+    remains to be argued is (1) whether a genuinely deaf client is supported at
+    all, on principle rather than under a live failure, and (2) whether the dev
+    loop should stop severing the surface by construction. Options unchanged
+    ((a) say so at the point of failure; (b) an always-present dispatcher tool;
+    (c) advertise everything always; (d) gate by default with an opt-out), with
+    one new argument: under (c)/(d) the tool list never changes, so a stale
+    cached list is a *correct* one and the redeploy breakage stops mattering.
+    A hot-reload proxy (**mcpmon**) would remove the human from the loop
+    entirely and retire `redeploy.py`'s kill-by-image-path; it is the only route
+    to an autonomous rebuild-and-test loop, and it is boardable separately
+    rather than required here. Still needs a spec conversation: it revisits a
+    decision spec 0013 made deliberately. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
-    (drafted 2026-08-01, not agreed).
+    (premise corrected 2026-08-02, not agreed).
 11.7. **E, drive it like a user** (server lane). Also found during 11.5's live
     run. `pressGesture` and `typeText` return `{ ok: true }`, which means the
     reader **accepted** the input — and 0021 already proved that the reader does
