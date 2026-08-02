@@ -229,9 +229,20 @@ def main() -> int:
 		"\nDone. Every server process was killed, including other agents', and the old "
 		"binary was deleted before the new one was written -- so nothing can still be "
 		"answering from the code you just replaced.\n"
-		"Clients that spawn their server lazily pick the new binary up on their next "
-		"tool call (observed in Claude Code: no manual step). A client that holds one "
-		"process for a whole session needs its MCP connection restarted."
+		"\n"
+		"NOW RECONNECT, before driving the reader through the MCP tools:\n"
+		"\n"
+		"    /mcp reconnect screen-reader-testing\n"
+		"\n"
+		"A client picks the NEW BINARY up by itself on its next tool call -- but not the "
+		"new TOOL LIST. Killing the server dropped it out of the client's managed "
+		"lifecycle, so the client silently respawns it and never re-runs capability "
+		"discovery. connect_reader then SUCCEEDS, with a full capability list, while "
+		"every capability-gated tool answers 'No such tool available'. Nothing in that "
+		"failure points back here, which is why it is printed every time (spec 0022).\n"
+		"Name the server: a bare `/mcp reconnect` does not take. Only the human at the "
+		"keyboard can run it -- it is client UI, not anything an agent can reach.\n"
+		"scripts/live_test.py is immune: its own MCP client, its own server process."
 	)
 	return 0
 
