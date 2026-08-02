@@ -80,8 +80,8 @@ sequenceDiagram
     accDescr: The agent runs poe redeploy, which kills the MCP server process the client spawned, then rebuilds the binary. The agent calls a discovery tool, and the client silently spawns a fresh server process to serve it, but does not re-run capability discovery, so the tool list it holds is still the one it fetched at session start, containing only the four discovery and connection tools. The agent calls connect_reader and the new server succeeds, returning the reader identity and nine capabilities, then emits a tools list changed notification. The client is no longer acting on that server's notifications, so its tool list never grows. When the agent calls a gated tool such as announce, the client reports that no such tool exists. Every signal the agent received said the session was healthy, so the blame lands on the server or the bridge, which is the wrong component. The user running slash mcp reconnect restores capability discovery and the gated tools appear.
     participant Agent
     participant Client as MCP client
-    participant Old as Server (spawned at session start)
-    participant New as Server (respawned)
+    participant Old as Original server
+    participant New as Respawned server
     Agent->>Old: poe redeploy
     Note over Old: killed by image path
     Agent->>Client: list_readers
