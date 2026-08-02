@@ -88,6 +88,9 @@ func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource) {
 	// The server's own account of the session (spec 0021), taken from the
 	// dispatcher because that is where the traffic already passes.
 	s.addSessionRecordResource(dispatch.Record())
+	// How to drive a reader at all (spec 0023). Takes no source: it is static,
+	// so it can be read before anything is connected -- which is when it helps.
+	s.addGuidanceResource()
 }
 
 // Publish advertises the named tools. Called by the connection controller on a

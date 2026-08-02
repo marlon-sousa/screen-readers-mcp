@@ -34,6 +34,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+#: The MCP server binary `.mcp.json` spawns. Named once, here, because
+#: redeploy.py imports the staleness check below rather than restating it.
+BINARY = ROOT / "server" / "screenreader-mcp.exe"
+
 #: The Python projects, and the dev tools each must be able to run.
 PY_PROJECTS = ("shared", "bridges/nvda")
 PY_TOOLS = ("pytest", "pyright", "ruff")
@@ -380,6 +384,27 @@ def check_conformance_python() -> Result:
 	)
 
 
+def stale_server_binary() -> str | None:
+	"""Why the MCP server binary is out of date, or None if it is current.
+
+	Factored out of the check below because `scripts/redeploy.py --if-stale` asks
+	the same question, and two implementations of "is this binary stale" is one
+	more than the number of answers the repo can afford: they would drift, and the
+	symptom would be `poe dev` disagreeing with `poe doctor` about a binary.
+	"""
+	if not BINARY.is_file():
+		return "not built"
+	built = BINARY.stat().st_mtime
+	newest, newest_name = 0.0, ""
+	for path in (ROOT / "server").rglob("*.go"):
+		stamp = path.stat().st_mtime
+		if stamp > newest:
+			newest, newest_name = stamp, path.name
+	if newest <= built:
+		return None
+	return f"{newest_name} is newer than the binary the MCP client runs"
+
+
 def check_server_binary() -> Result:
 	"""The MCP server BINARY must be newer than the Go source it was built from.
 
@@ -396,28 +421,28 @@ def check_server_binary() -> Result:
 	startup and keeps it, so the MCP connection has to be restarted too. The fix
 	text says so, because a rebuild that appears to change nothing is its own
 	rabbit hole.
+
+	`poe dev` no longer reaches this failure: it redeploys first when the binary
+	is stale (see redeploy.py --if-stale), so the check is satisfied by the time
+	the doctor runs. The check stays because dev is not the only way in -- a bare
+	`poe doctor`, `poe bridge` or `poe live` still gets told, and those are
+	exactly the runs where an agent is about to drive the MCP tools.
 	"""
-	binary = ROOT / "server" / "screenreader-mcp.exe"
-	if not binary.is_file():
+	if not BINARY.is_file():
 		return Result(
 			WARN,
 			"server binary",
 			"not built -- the MCP tools cannot run",
 			"uv run poe build-server",
 		)
-	built = binary.stat().st_mtime
-	newest, newest_name = 0.0, ""
-	for path in (ROOT / "server").rglob("*.go"):
-		stamp = path.stat().st_mtime
-		if stamp > newest:
-			newest, newest_name = stamp, path.name
-	if newest <= built:
+	reason = stale_server_binary()
+	if reason is None:
 		return Result(OK, "server binary", "newer than server/*.go")
 	return Result(
 		FAIL,
 		"server binary",
-		f"STALE -- {newest_name} is newer than the binary the MCP client runs",
-		"uv run poe build-server, then restart the MCP connection",
+		f"STALE -- {reason}",
+		"uv run poe redeploy, then restart the MCP connection",
 	)
 
 

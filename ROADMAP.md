@@ -440,7 +440,40 @@ rather than before it.
     and fail the gated ones with "connect first", which is client-independent
     but throws away 11.1's benefit that an agent sees only the tools its reader
     actually supports. Needs a spec conversation: it revisits a decision spec
-    0013 made deliberately. Spec: needed.
+    0013 made deliberately. Spec:
+    [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
+    (drafted 2026-08-01, not agreed).
+11.7. **E, drive it like a user** (server lane). Also found during 11.5's live
+    run. `pressGesture` and `typeText` return `{ ok: true }`, which means the
+    reader **accepted** the input — and 0021 already proved that the reader does
+    the work afterwards, on its own thread, so the result *cannot* mean the
+    effect happened. Three failures in that run had the same shape (a console
+    typed into before it opened, a search term typed into whatever held focus,
+    a remapped gesture opening the wrong dialog) and each surfaced later as an
+    unrelated check failing, naming the wrong component. The hand-tuned
+    `time.sleep(1.5)` calls in `scripts/live_test.py` are the standing
+    workaround.
+    The first draft answered with a `waitForFocus` command; **review rejected
+    it** and the entry is the better for it. Focus is not the axis — most reader
+    commands never move focus — its `role`/`appModule` matchers are vocabulary a
+    user does not have, its `found: false` collapses agent error with app
+    behaviour (the exact fault the entry exists to fix), and it would not even
+    have caught the console failure, where focus was correct and the field was
+    not empty. What a user actually does is press, listen to the announced
+    window title, then ask the reader "where am I" with its own command and
+    listen again. Speech is the observable that is always there, and the wait for
+    it — `waitForSpeechToFinish` — already exists.
+    So the deliverable is a **doctrine, not a protocol change**: a new static
+    `screenreader://guidance` resource holding the act/settle/listen/orient/
+    escalate loop, plus `press_gesture`, `type_text`, `get_focus_info` and
+    `wait_for_speech_to_finish` descriptions that say the true thing at the point
+    of failure. Introspection keeps its place — reframed as *assert in a test*
+    and *survey an application*, which is the strongest case for it and points at
+    a future object-navigation entry — but stops advertising itself as the way to
+    find out where you are. **No wire change, no bridge change, no new
+    capability.** Spec:
+    [0023-drive-it-like-a-user.md](specs/0023-drive-it-like-a-user.md)
+    (drafted and reframed 2026-08-01, not agreed).
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).

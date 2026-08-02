@@ -359,7 +359,25 @@ help = "Everything CI runs, in CI's order. No machine checks -- see `dev`."
 sequence = ["ci-shared", "ci-server", "ci-bridge", "ci-conformance"]
 ignore_fail = false
 
+# `dev` REDEPLOYS FIRST, and only when the binary is stale.
+#
+# The doctor fails on a server binary older than any server/*.go, which is right
+# -- an agent driving the MCP tools against a stale binary is testing old code,
+# and that has cost this repo a whole live checklist. But the failure arrived at
+# the END of the sequence's first step, so the cost of every Go change was: run
+# dev, wait, fail the doctor, redeploy, run the whole minute again. Two full runs
+# to learn something knowable in a millisecond by comparing two mtimes.
+#
+# So dev now asks that question up front and repairs it before the doctor ever
+# looks. `--if-stale` makes it a no-op when the binary is current, which is the
+# common case: no build, no kill, and nobody else's MCP session dropped. When it
+# is NOT current the kill is warranted anyway, because that is exactly the state
+# where somebody is about to be served stale code.
+#
+# The doctor's check is deliberately NOT removed. dev is not the only way in: a
+# bare `poe doctor`, `poe bridge` or `poe live` still reports it, and those are
+# the runs where an agent is about to drive the tools without having rebuilt.
 [tool.poe.tasks.dev]
 help = "What to run before saying something works: the doctor, then everything CI runs."
-sequence = ["doctor", "ci"]
+sequence = [{ ref = "redeploy --if-stale" }, "doctor", "ci"]
 ignore_fail = false
