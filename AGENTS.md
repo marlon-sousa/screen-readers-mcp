@@ -7,6 +7,25 @@ For *what to do now*, read [`ROADMAP.md`](ROADMAP.md) — the status board; its
 first non-Done entry is the next step, and its Spec field says whether that
 step is a spec conversation or implementation.
 
+## How this repo is developed
+
+**Agentic-first.** The system is built and reviewed largely by an AI agent
+working in this repository — which is why this manual is written to be read by
+one, and why a rule here is phrased as an invariant rather than a convention.
+
+That is also the reason the `../nvda` checkout is a stated prerequisite in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) (a sibling directory named `nvda`, at tag
+`release-2026.1`) rather than an optional convenience. An agent cannot rely on
+recalled API knowledge for a codebase that changes every release: it reads the
+real source to confirm what a function does before writing an adapter against
+it. Hence the rule below — consult `../nvda/source`, never guess a signature —
+and the `nvda-headless-testing` approach that exercises add-on logic against it
+without launching NVDA.
+
+None of which makes an agent mandatory. Every command in `CONTRIBUTING.md` is
+one a human can type, and nothing in the build, the tests or the type check
+requires one.
+
 ## What this is
 
 An MCP server that lets an AI agent **drive NVDA** (the screen reader): send
