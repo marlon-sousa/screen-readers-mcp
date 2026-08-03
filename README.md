@@ -144,10 +144,16 @@ never sees a tool that would fail. Disconnecting withdraws them again.
 - **`live`** — NVDA speaks normally and is captured by observation. This is what
   you want when you are sitting there listening to the agent work.
 
-There is a trade-off worth knowing: silent mode costs log fidelity. Suppressing
-speech before the synthesizer also stops NVDA reaching its own logging of what
-it spoke, so a silent session's log holds noticeably less than the same work
-done live.
+Silent mode captures speech **in full**: the bridge copies every utterance
+before suppressing it, so nothing an agent reads back is lost, and each
+utterance still carries the log position it was captured at.
+
+It costs one specific thing. NVDA logs the text it is about to speak *after* the
+point where the bridge hands back an empty sequence, so those "Speaking …"
+entries are missing from a silent session. That only shows up if you asked for
+the `debug` or `io` log level, which is the only level they appear at anyway;
+everything else NVDA logs — events, focus changes, script execution, errors — is
+identical either way.
 
 ### Acting
 

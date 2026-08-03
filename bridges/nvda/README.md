@@ -111,7 +111,9 @@ Silent mode registers a filter that NVDA applies to every speech sequence before
 
 Live mode hooks the point where speech is queued instead, and leaves the sequence untouched on its way to the synth.
 
-One consequence is worth knowing if you are reading a session's log afterwards. Suppressing speech before the synthesizer also stops NVDA reaching its own logging of what it spoke, so a silent session's log holds noticeably fewer records than the same work done live.
+Silent mode loses none of the speech itself: the sequence is copied into the bridge's buffer before the empty one is handed back, so the agent reads exactly what would have been spoken.
+
+One narrow consequence is worth knowing if you go on to read the session's log. NVDA writes the text it is about to speak to its log *after* the point where the bridge substitutes the empty sequence, so those "Speaking …" entries are absent from a silent session. They only appear at the `debug` and `io` log levels in the first place; everything else NVDA logs is identical in both modes.
 
 ### Braille capture
 
