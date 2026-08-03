@@ -1,33 +1,40 @@
-# Contributing to nvda-mcp
+# Contributing to screen-readers-mcp
 
 This is the **onboarding** document: how to set up an environment that can build,
 test, and drive every part of the system. Follow it once, and you are ready to
-run the headless suites and — with a real NVDA — the live checklists that PRs
-carry.
+run the headless suites and — with a real NVDA — the live checklists that pull
+requests carry.
 
 It deliberately does **not** list test scenarios. Those are decided per change
 and live in the **pull request body** as a checklist (see "Opening a pull
 request" below). This file gets you to the point where you can run them.
 
-For anything scoped to one half of the system, its own document is the
-authority and this file points at it rather than repeating it:
+For anything scoped to one part of the system, its own document is the authority
+and this file points at it rather than repeating it:
 
 - **Architecture, the ports-and-adapters rules, hard invariants, testing
   conventions** — [`AGENTS.md`](AGENTS.md), the developer manual.
 - **What is done, in review, and next** — [`ROADMAP.md`](ROADMAP.md), the status
-  board. Every change is specced first (`specs/NNNN-*.md`) and agreed in
-  conversation before code; the spec rides in the implementing PR.
-- **Component-local notes** — [`server/README.md`](server/README.md) and
-  [`bridges/nvda/`](bridges/nvda/).
+  board.
+- **What the thing is and what its tools do** — [`README.md`](README.md).
 
-## The three halves
+## This project is developed with an agent
 
-The chain is an **MCP client** (Claude Code, or the driver script) → the
-**server** (`screenreader-mcp`, a Go binary) → the **bridge** (`nvdaMcpBridge`,
-an NVDA add-on) → **NVDA**. The server and the bridge share no code; they meet
-only at a local endpoint speaking the wire contract in
-[`specs/wire/v1/`](specs/wire/v1/). See [`README.md`](README.md) for the fuller
-picture.
+Development here is **agentic-first**. The system is built and reviewed largely
+by an AI agent working in this repository, and the setup below assumes that.
+This is not a curiosity: a project whose purpose is letting an agent drive a
+screen reader is a reasonable place to let an agent do the driving.
+
+That has one concrete consequence for your machine — **a checkout of NVDA's own
+source is required**, described in the next section. An agent cannot rely on
+recalled API knowledge for a codebase that moves every release; it reads the
+real source to confirm what a function actually does before writing an adapter
+against it, and so should you.
+
+None of which stops you working by hand. Every command in this file is one you
+can type yourself, and nothing in the build, the tests, or the type check
+requires an agent. If you prefer to write the code, write the code — just keep
+the NVDA source where the tooling and the next reviewer expect to find it.
 
 ## Prerequisites
 
@@ -38,15 +45,92 @@ picture.
 | **[uv](https://docs.astral.sh/uv/)** | current | Runs and isolates every Python part (shared wire, bridge tests, schema generation). |
 | **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. Prefer `uv run` or `py -3.13` over a bare `python`, whose meaning varies per machine — `uv run poe doctor` reports what yours actually resolves to. |
 | **NVDA (installed)** | **2026.1.0** or later | The minimum supported version (`bridges/nvda/buildVars.py`, `addon_minimumNVDAVersion`). A live test needs a running copy. |
-| **NVDA source checkout** | the version you target (≥ 2026.1.0) | A **reference for reading real NVDA APIs**, checked out as a sibling of this repo at [`../nvda`](../nvda). There is no NVDA source *dependency* in the build or the headless tests — the NVDA edge is exempt from the type check — but developing or reviewing an adapter means verifying API contracts against real code (see the `nvda-headless-testing` approach in `AGENTS.md`). |
-| **scons + add-on build deps** | per `bridges/nvda/` | Builds the `.nvda-addon`. |
+| **NVDA source checkout** | tag `release-2026.1` | **Required.** The reference for reading real NVDA APIs. See below. |
+| **scons + add-on build deps** | per `bridges/nvda/` | Builds the `.nvda-addon`. `uv run poe build-addon` drives it. |
 
-Clone the NVDA source beside this repo so `../nvda/source` resolves:
+## The NVDA source checkout
+
+Clone NVDA **beside this repo**, in a directory named exactly `nvda`, so that
+`../nvda/source` resolves from the repo root:
 
 ```sh
-# from the parent of this repo
-git clone --branch release-2026.1 https://github.com/nvaccess/nvda.git nvda
+# from the PARENT of this repo
+git clone https://github.com/nvaccess/nvda.git nvda
+git -C nvda checkout release-2026.1
 ```
+
+The tag matters. `release-2026.1` is the version this project targets; reading a
+`master` that has moved on tells you about APIs your users do not have yet.
+
+The layout matters too, because it is the path everything assumes:
+
+```
+C:\projects\
+  screen-readers-mcp\    <- this repo
+  nvda\                  <- NVDA source, at release-2026.1
+```
+
+What this checkout is **not** is a dependency. The build does not read it, the
+headless tests do not import it, and the NVDA edge of the bridge is exempt from
+the type check precisely so that it need not. It is documentation with the
+authority of being the actual code — you consult it, the agent consults it, and
+neither of you guesses at a signature that changed two releases ago. The
+`nvda-headless-testing` approach in [`AGENTS.md`](AGENTS.md) describes how to
+exercise add-on logic against it without launching NVDA at all.
+
+## Repository layout
+
+| Path | What |
+|---|---|
+| [`shared/`](shared/) | The **stdlib-only** Python binding of the wire protocol (`nvda-mcp-wire`), copied verbatim into the add-on and unit-tested once. |
+| [`specs/wire/v1/`](specs/wire/v1/) | The published wire contract: JSON Schema plus prose. What the two halves actually share. |
+| [`server/`](server/) | The MCP server (`screenreader-mcp`), in Go: MCP tool call → bridge command → result. |
+| [`bridges/nvda/`](bridges/nvda/) | The NVDA add-on (`nvdaMcpBridge`), built with scons. Its build copies `shared/`'s protocol module in, so bridge and server can never drift. |
+| [`specs/`](specs/) | Numbered design specs, RFC-style. |
+| [`scripts/`](scripts/) | Developer tooling, including the live-NVDA driver. |
+
+The server and the bridge **share no code**. They meet only at a local endpoint
+speaking the contract in [`specs/wire/v1/`](specs/wire/v1/), and each side binds
+it in its own language. What must match between them is the **wire protocol
+version**, never their own version numbers: `hello` compares `PROTOCOL_VERSION`
+and rejects a mismatch with a clear error, so each half releases on its own
+cadence.
+
+Inside the server, the same four roles as the bridge (the rules are in
+[`AGENTS.md`](AGENTS.md)):
+
+```
+server/
+  domain/         # PURE core: no wire types, no MCP SDK, no sockets
+    ports/        #   one interface per file
+    entities/     #   the pure model, including the capability gate
+    controllers/  #   the connection lifecycle, and one controller per tool
+  adapters/       # the only place the OS, the SDK and the wire binding live
+    wire/         #   GENERATED from specs/wire/v1/schema.json; do not edit
+    mcp/          #   the go-sdk stdio server, tool binding, the resources
+    bridge/       #   the JSON-lines client, the handshake, the transport leaves
+    discovery/    #   the pipe scan
+    ports/        #   seams BETWEEN adapters (the domain never sees these)
+  version/        # the single version source the server-v* tag is checked against
+  config/         # the embedded defaults and their layered loader
+  wiring/         # the composition root: read it top to bottom
+  cmd/            # the entry point
+  tools/wiregen/  # the wire binding generator (a dev tool, not shipped)
+  fakes/          # one hand-written fake per port
+  testsupport/    # builders and the fake bridge
+  tests/          # architecture gate; integration and conformance behind tags
+```
+
+## How work happens here
+
+Every change is **specced first** — a numbered document in [`specs/`](specs/),
+agreed in conversation before any code — and the spec rides in the pull request
+that implements it. New features add a new spec alongside the existing ones
+rather than editing history.
+
+[`ROADMAP.md`](ROADMAP.md) is the status board and the single source of truth for
+what is done, in review, and next. Each implementing pull request keeps it
+current.
 
 ## Running the headless suites
 
@@ -60,10 +144,11 @@ uv run poe bridge    # just the bridge suite, for a fast inner loop (~5s)
 uv run poe           # list every task
 ```
 
-`poe dev` is what to run before opening a PR. Every task first runs a fast
-environment check and **refuses to run if it fails** — a broken toolchain makes
-passing and failing tests equally uninformative, so it is better to stop than to
-hand you a result you cannot trust. `uv run poe fix` repairs the common causes.
+`poe dev` is what to run before opening a pull request. Every task first runs a
+fast environment check and **refuses to run if it fails** — a broken toolchain
+makes passing and failing tests equally uninformative, so it is better to stop
+than to hand you a result you cannot trust. `uv run poe fix` repairs the common
+causes.
 
 CI runs the same tasks, one per job (`poe ci-shared`, `ci-server`, `ci-bridge`,
 `ci-conformance`); `poe ci` is all four. The only difference from `dev` is that
@@ -92,17 +177,21 @@ uv run --directory shared pyright
 # Server (Go; tests use a fake bridge)
 go -C server test ./...
 go -C server vet ./...
+go -C server test -tags integration ./...    # real transports, fake bridge
+go -C server generate ./adapters/wire        # regenerate the wire binding
 
 # Bridge add-on: sync the shared wire module in, then headless tests + type check
-py -3.13 bridges/nvda/sync_shared.py
+uv run poe sync
 uv run --directory bridges/nvda pytest
 uv run --directory bridges/nvda pyright
 ```
 </details>
 
+## The conformance tier
+
 One tier is Windows-only and opts in explicitly — the cross-language
-**conformance** run, the built server binary against the *real* Python bridge
-over a real pipe and real loopback TCP:
+**conformance** run: the built server binary against the *real* Python bridge,
+over a real named pipe and real loopback TCP.
 
 ```sh
 go -C server test -tags conformance -count=1 ./tests/conformance/
@@ -112,12 +201,23 @@ It **fails rather than skips** if it cannot reach the real bridge — that is th
 whole point of the tier. It still fakes NVDA at the bridge's own factory port,
 because what it proves is the wire, not NVDA.
 
+It is the only tier where nothing below MCP is faked, and that is why it exists.
+Every other test drives a Go fake bridge that encodes frames with the same
+generated binding the server decodes them with, so a bug in the binding itself
+would have both sides wrong together, in agreement. The conformance run puts the
+real Python bridge on the other end instead — which is also why nothing in that
+package is allowed to mention the fake bridge (`tests/architecture` enforces it).
+It replaced the same-bytes guarantee the two halves had while both were Python.
+
+The wire binding itself is generated and committed, and CI regenerates and diffs
+it, so it can never drift from the published contract.
+
 ## Setting up to test against a live NVDA
 
 The headless and conformance tiers fake NVDA. The one thing they cannot do is
 prove the whole stack with a **real NVDA and a human who can hear the speech** —
-which is how every live-NVDA checklist in a PR is run. Get the environment ready
-once:
+which is how every live-NVDA checklist in a pull request is run. Get the
+environment ready once:
 
 ### 1. Build the server binary
 
@@ -131,12 +231,11 @@ default endpoints (`--print-default-config` shows them).
 ### 2. Build and install the add-on
 
 ```sh
-py -3.13 bridges/nvda/sync_shared.py     # copy the shared wire module in
-uv run poe build-addon                   # produces nvdaMcpBridge-<version>.nvda-addon
+uv run poe build-addon    # syncs the shared wire module in, then packages
 ```
 
-Open the built `.nvda-addon` with NVDA and restart when prompted. Reinstalling a
-newer build is always just "install, restart NVDA".
+Open the built `nvdaMcpBridge-<version>.nvda-addon` with NVDA and restart when
+prompted. Reinstalling a newer build is always just "install, restart NVDA".
 
 **Enable auto-start** so the bridge is listening the moment NVDA comes back:
 NVDA menu (`NVDA+n`) → **Tools** → **NVDA MCP &Bridge…**, tick **auto-start**,
@@ -172,7 +271,8 @@ py -3.13 scripts/live_test.py ./server/screenreader-mcp.exe smoke
 ```
 
 If you hear the announcement, the whole chain is wired up. Which scenarios to run
-for a given change — and what each should show — is in that change's PR.
+for a given change — and what each should show — is in that change's pull
+request.
 
 ### Driving it as Claude Code itself (the most faithful client)
 
@@ -206,20 +306,52 @@ Two things must be true before the tools appear:
   only then do the `mcp__screen-reader-testing__*` tools appear.
 
 From that session, ask the agent to list readers, connect, and drive NVDA; the
-tools are the same ones the driver calls, so a PR's checklist reads the same
-either way.
+tools are the same ones the driver calls, so a pull request's checklist reads the
+same either way.
 
 ## Opening a pull request
 
-- Branch off `main`. One component plus its ports and tests per PR; nothing lands
-  untested. See the workflow section of [`AGENTS.md`](AGENTS.md).
-- A live-NVDA checklist goes in the **PR body as checkboxes**, one item per
-  check. Record findings inline on the item (NVDA version, expected vs observed);
-  findings that need a change become iteration entries in `ROADMAP.md`. A CI job
-  keeps a PR from merging while any checkbox is unticked.
+- Branch off `main`. One component plus its ports and tests per pull request;
+  nothing lands untested. See the workflow section of [`AGENTS.md`](AGENTS.md).
+- A live-NVDA checklist goes in the **pull request body as checkboxes**, one item
+  per check. Record findings inline on the item (NVDA version, expected vs
+  observed); findings that need a change become iteration entries in
+  `ROADMAP.md`. A CI job keeps a pull request from merging while any checkbox is
+  unticked.
 - All prose stays screen-reader friendly: no ASCII-art diagrams. Use Mermaid
   where it renders (not in the add-on's own `README.tpl.md`/`doc/`). The full
   rule, including the required `accTitle`/`accDescr`, is in `AGENTS.md`.
+
+## Releasing
+
+Each component is released by its own **prefixed tag**, so one tag selects one
+component and one set of release assets:
+
+| Tag | Releases |
+|---|---|
+| `nvda-bridge-v0.2.0` | `nvdaMcpBridge-0.2.0.nvda-addon` |
+| `server-v0.3.1` | `screenreader-mcp-0.3.1-windows-amd64.exe` |
+
+The two are independent on purpose: what has to match between the halves is the
+wire protocol version, never their own version numbers, so each releases on its
+own cadence and every release states the protocol it speaks.
+
+The version is **never written in the tag alone**: it lives in the component's
+own manifest — `bridges/nvda/buildVars.py` for the add-on,
+`server/version/version.go` for the server — and the release workflow fails if
+the tag disagrees. For the server it checks by **running the binary it just
+built** (`--version`), which also proves the artifact starts before it is
+published. Add-on release notes come from `addon_changelog` in that same file.
+Tag only commits that are merged to `main`:
+
+```sh
+git tag -a nvda-bridge-v0.2.0 -m "Version 0.2.0"
+git push origin nvda-bridge-v0.2.0
+```
+
+Each workflow publishes a **draft** release — review it, then publish. Pull
+requests touching `bridges/nvda/` or `shared/` get the packaged add-on built and
+linked in a PR comment automatically.
 
 ## License
 

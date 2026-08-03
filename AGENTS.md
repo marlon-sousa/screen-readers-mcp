@@ -1,4 +1,4 @@
-# AGENTS.md — working in nvda-mcp
+# AGENTS.md — working in screen-readers-mcp
 
 Operating manual for anyone (human or agent) developing this repo. For *what
 we're building and why*, read the design specs in [`specs/`](specs/) — start
