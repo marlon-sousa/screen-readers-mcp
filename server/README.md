@@ -1,21 +1,24 @@
-# screenreader-mcp
+# screenreader-mcp — the server
 
-The MCP server half of this repo: an MCP client speaks MCP over stdio to this
-binary, and this binary speaks JSON lines to **one screen-reader bridge** over a
-local endpoint — a Windows named pipe or loopback TCP.
+The program your MCP client launches. It speaks **MCP over stdio** to the client
+and **JSON lines** to one screen-reader bridge over a local endpoint — a Windows
+named pipe or loopback TCP.
 
-It is a **reader-agnostic chassis** ([spec 0005](../specs/0005-multi-reader-direction.md),
-[0013](../specs/0013-mcp-server.md)): it contains no NVDA knowledge and no
-`if reader == …`. Which reader answered, and what it can do, come from the
-`hello` handshake.
+For what the tools do, see the [project README](../README.md). This document is
+about running and configuring the server itself.
 
-**Status: entry 10 complete.** The server is done: it serves MCP over stdio,
-publishes the four discovery and connection tools immediately, and publishes the
-capability-gated reader tools when the agent connects one. It **never dials on
-its own** — the agent calls `connect_reader`, and the tool list changes as the
-session comes and goes.
+The server contains **no knowledge of any particular reader**. There is no NVDA
+branch in it. Which reader answered, what version it is, and what it can do all
+arrive in the `hello` handshake, and the tool list is built from that answer. A
+second reader ships as a bridge, not as a change here.
 
-## Build and run
+## Build
+
+```sh
+uv run poe build-server
+```
+
+or directly:
 
 ```sh
 go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp
@@ -24,23 +27,64 @@ go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp
 Statically linked (`CGO_ENABLED=0`, no cgo dependencies), so the artifact is one
 file that runs with no runtime installed.
 
+## Register it with a client
+
+For Claude Code, user-wide:
+
+```sh
+claude mcp add --scope user screenreader -- C:\path\to\screen-readers-mcp\server\screenreader-mcp.exe
+```
+
+Any MCP client works the same way: it launches this executable and talks to it
+over stdio. **No arguments are needed** — the binary ships knowing where our
+bridges listen.
+
+## The tools appear in two stages
+
+This is the single most confusing thing about the server if you do not expect
+it, so it is worth stating plainly.
+
+Before a session, exactly **four** tools exist: `list_readers`,
+`connect_reader`, `disconnect_reader` and `status`.
+
+The server **never connects on its own**. When the agent calls `connect_reader`,
+the bridge announces what it can serve, and the server publishes exactly the
+tools those capabilities allow — speech tools if the reader captures speech, log
+tools if it has a log, and so on. `disconnect_reader` withdraws them again.
+
+So an agent is never offered a tool that would fail on the reader in front of
+it, and the tool list changing under it is normal, not a fault.
+
+The capture mode and the reader's log level are **fixed for the session** at
+`connect_reader` and cannot be changed without reconnecting. That is why there
+is deliberately no `--capture-mode` and no `--reader-log-level` flag: those are
+decisions belonging to the agent that knows what a given session is for, not to
+whoever installed the binary.
+
+## Resources
+
+Alongside the tools, the server publishes three documents a client can read:
+
+| Resource | What it holds |
+|---|---|
+| `screenreader://guidance` | How to drive a screen reader: the loop, and what a successful call does and does not prove. Static, so it can be read **before** connecting. |
+| `screenreader://info` | The connected reader, its version, the capture mode, its capabilities. |
+| `screenreader://session-record` | What this session has done, from the server's own traffic. |
+
+## Flags
+
 | Flag | Meaning |
 |---|---|
 | `--reader name=spec` | Repeatable, highest precedence. One endpoint for a reader, e.g. `nvda=pipe:nvdaMcpBridge` or `talkback=tcp:127.0.0.1:9010`. Repeating a name adds an endpoint to that reader, in order. |
 | `--config <path>` | A JSON file replacing or extending the embedded defaults, per reader. |
 | `--print-default-config` | Print the embedded defaults and exit — redirect it to a file and edit it. |
-| `--version` | Print the version and exit. This is what the release workflow runs to check the built artifact against the `server-v*` tag. |
+| `--version` | Print the version and exit. |
 | `--verbose` | Log debug detail to stderr. |
-
-There is deliberately no `--capture-mode` and no `--reader-log-level`: the wire
-contract fixes both at `hello` for the session's lifetime, so they are
-`connect_reader` parameters chosen by the agent that knows what the session is
-for.
 
 ## The shipped endpoints
 
-No arguments are needed, because the binary ships knowing where our bridges
-listen. This is `config/defaults.json`, embedded with `go:embed` and reproduced
+No arguments are needed because the binary ships knowing where our bridges
+listen. This is `config/defaults.json`, embedded at build time and reproduced
 here:
 
 ```json
@@ -57,80 +101,44 @@ here:
 }
 ```
 
-Two endpoints per reader is not redundancy: the NVDA bridge's control dialog
-lets the user switch between named pipe and loopback TCP, so `connect_reader`
-takes a **reader**, tries that reader's endpoints in declared order, and reports
-which one answered.
+Two endpoints per reader is not redundancy. The NVDA bridge's own dialog lets
+the user switch between named pipe and loopback TCP, so `connect_reader` takes a
+**reader**, tries that reader's endpoints in the declared order, and reports
+which one answered. You do not have to tell it which mode the user picked.
 
-A listening pipe that belongs to no configured reader is never reported and
-cannot be connected to — the reader set is known before the process starts, and
-nothing is invented at runtime.
+A listening pipe belonging to no configured reader is never reported and cannot
+be connected to. The reader set is known before the process starts; nothing is
+invented at runtime.
 
-## Layout
+## When something does not work
 
-Ports and adapters, the same four roles as the NVDA bridge (see
-[AGENTS.md](../AGENTS.md)):
+**The client shows only four tools.** That is the correct state before
+connecting. Ask the agent to call `connect_reader`.
 
-```
-server/
-  domain/         # PURE core: no wire types, no MCP SDK, no sockets
-    ports/        #   one interface per file
-    entities/     #   the pure model, including the capability gate
-    controllers/  #   the connection lifecycle, and one controller per tool
-  adapters/       # the only place the OS, the SDK and the wire binding live
-    wire/         #   GENERATED from specs/wire/v1/schema.json; do not edit
-    mcp/          #   the go-sdk stdio server, tool binding, the info resource
-    bridge/       #   the JSON-lines client, the handshake, the transport leaves
-    discovery/    #   the pipe scan
-    ports/        #   seams BETWEEN adapters (the domain never sees these)
-  version/        # the single version source the server-v* tag is checked against
-  config/         # the embedded defaults and their layered loader
-  wiring/         # the composition root: read it top to bottom
-  cmd/            # the entry point
-  tools/wiregen/  # the wire binding generator (a dev tool, not shipped)
-  fakes/          # one hand-written fake per port
-  testsupport/    # builders and the fake bridge
-  tests/          # architecture gate; integration and conformance behind tags
-```
+**The client shows no tools at all.** Most clients load MCP servers at startup
+and ask you to approve them — restart the client and approve this one. Check the
+path you registered actually exists.
 
-## Development
+**`list_readers` says nothing is listening.** The bridge is not started. In
+NVDA: **NVDA+n → Tools → NVDA MCP Bridge…** and press **Start**. TCP endpoints
+report `unknown` rather than `listening`, because liveness cannot be tested
+without connecting.
 
-```sh
-go -C server build ./...
-go -C server test ./...                      # unit tests
-go -C server test -tags integration ./...    # real transports, fake bridge
-go -C server vet ./...
-go -C server generate ./adapters/wire        # regenerate the wire binding
+**`connect_reader` reports a protocol mismatch.** The bridge and the server
+speak different wire protocol versions. Their own version numbers are unrelated
+and need not match; the protocol version must. Rebuild or reinstall whichever
+half is older.
 
-# Cross-language conformance: this binary against the REAL Python bridge, over a
-# real named pipe and real loopback TCP. Windows; needs a Python 3.13 on PATH,
-# or CONFORMANCE_PYTHON set to an interpreter command.
-go -C server test -tags conformance -count=1 ./tests/conformance/
-```
+**Calls start failing after a quiet spell.** The bridge drops an idle session on
+its own inactivity watchdog. `status` makes a real round trip to the reader when
+a session is live, so it tells you what is true now rather than what was true
+when you connected; `connect_reader` again to start fresh.
 
-The wire binding is generated and committed, and CI regenerates and diffs it, so
-it can never drift from the published contract. What the two halves of this repo
-share is [that contract](../specs/wire/v1/) — a JSON Schema and a prose
-document — not code: each side binds it in its own language.
+**You rebuilt the binary and the tools went stale.** stdio MCP gives every
+client its own process, so a running client keeps the old one. Reconnect the
+server in your client, or restart it.
 
-The **conformance** tier is what makes that safe, and it is the only tier where
-nothing is faked below MCP. Every other test drives a Go fake bridge that encodes
-frames with the same generated binding this server decodes them with, so a bug in
-the binding itself would have both sides wrong together, in agreement. The
-conformance run puts the real Python bridge on the other end instead — which is
-why it **fails rather than skips** when it cannot reach one, and why nothing in
-that package is allowed to mention the fake bridge (`tests/architecture` enforces
-it). It replaced the same-bytes drift guarantee the two halves had while both
-were Python.
+## Developing the server
 
-## Releasing
-
-Push a tag `server-v<version>` on a commit merged to `main`. The version lives in
-`version/version.go` and nowhere else; the workflow builds the binary, **runs it**
-(`--version`) to check it against the tag, runs the unit, integration and
-conformance suites, and publishes a draft release carrying
-`screenreader-mcp-<version>-windows-amd64.exe`. Review the draft, then publish.
-
-The server's version is deliberately unrelated to the add-on's: what must match
-between the two halves is the wire protocol version, which every release states.
-See [spec 0012](../specs/0012-packaging-and-release.md).
+Layout, the test tiers, the wire binding generator, and the release process are
+in [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).

@@ -1,4 +1,4 @@
-# nvda-mcp — Roadmap and Status Board
+# screen-readers-mcp — Roadmap and Status Board
 
 Companion to [`AGENTS.md`](AGENTS.md) (operating manual) and [`specs/`](specs/)
 (design specs). This document owns build order **and execution status**. It is
