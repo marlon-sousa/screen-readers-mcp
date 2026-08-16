@@ -186,9 +186,13 @@ scheduled. Work now proceeds in lane 2.
 ## Status board — lane 2: server (headless; may run parallel to lane 1)
 
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
-with lane 1 already complete, convergence is unblocked. The next step is
-**entry 11a** (expose `announce`), then **11b** (the real-world run) — see the
-resequencing note under Convergence below.
+with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
+real-world run) are Done; work now proceeds through the convergence entries
+below. **Open as of 2026-08-15**: 11.3, 11.6, and the four entries 11.8–11.11
+that came out of the first external run. Their order among themselves is not yet
+decided — 11.8 is docs-only and 11.9 is small and well understood, so neither
+needs to wait behind 11.3's and 11.6's unagreed specs, but taking them first is
+a reprioritisation to make explicitly, the way 11.4 was taken before 11.3.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -369,10 +373,10 @@ rather than before it.
     this is about input — so it is a `control` field on `hello`, not a third
     `CaptureMode`. Spec: `0017-observe-only-control.md` (drafted, awaiting
     review; rides in 11.3's own PR).
-11.4. **E, log slices on demand** (both lanes). **Next.** The agent asks what NVDA
-    logged *while a given command ran*, filtered by level and by pattern and
-    projected to the fields it needs, instead of being handed a path and reading
-    the whole file. Finishes what 0009 started: that entry narrowed the haystack
+11.4. **Done (PR #46, 2026-07-31)** — E, log slices on demand (both lanes). The
+    agent asks what NVDA logged *while a given command ran*, filtered by level
+    and by pattern and projected to the fields it needs, instead of being handed
+    a path and reading the whole file. Finishes what 0009 started: that entry narrowed the haystack
     to one session, this narrows it to one command — and **supersedes that spec's
     capture file**, since the level raise is global, so NVDA's own `nvda.log`
     already holds identical records. Motivated by measurement during the 11.2
@@ -382,11 +386,11 @@ rather than before it.
     2026-07-30; rides in 11.4's own PR).
     **Taken before 11.3** deliberately: it pays for itself in every later live
     session, 11.3's own included, and 11.3's spec is still awaiting review.
-11.5. **E, observing the log** (both lanes). **Implemented; live checklist run
-    2026-08-01** (27 checks green, no failures — see `scripts/live_test.py`
-    scenarios `log` and `logsilent`). The agent marks the present moment,
-    then asks what has arrived *since it last looked* — instead of only being able
-    to ask what a given command logged. Comes straight out of 11.4's live run,
+11.5. **Done (PR #48, 2026-08-01)** — E, observing the log (both lanes). Live
+    checklist run 2026-08-01 (27 checks green, no failures — see
+    `scripts/live_test.py` scenarios `log` and `logsilent`). The agent marks the
+    present moment, then asks what has arrived *since it last looked* — instead
+    of only being able to ask what a given command logged. Comes straight out of 11.4's live run,
     which found two things its model cannot serve. A command window closes when the
     handler returns, but NVDA does the work a millisecond later on its own thread,
     so one window holds `inputCore.executeGesture` and little else; and the cases
@@ -461,8 +465,9 @@ rather than before it.
     decision spec 0013 made deliberately. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
     (premise corrected 2026-08-02, not agreed).
-11.7. **E, drive it like a user** (server lane). Also found during 11.5's live
-    run. `pressGesture` and `typeText` return `{ ok: true }`, which means the
+11.7. **Done (PR #49, 2026-08-01)** — E, drive it like a user (server lane).
+    Also found during 11.5's live run.
+    `pressGesture` and `typeText` return `{ ok: true }`, which means the
     reader **accepted** the input — and 0021 already proved that the reader does
     the work afterwards, on its own thread, so the result *cannot* mean the
     effect happened. Three failures in that run had the same shape (a console
@@ -491,7 +496,151 @@ rather than before it.
     find out where you are. **No wire change, no bridge change, no new
     capability.** Spec:
     [0023-drive-it-like-a-user.md](specs/0023-drive-it-like-a-user.md)
-    (drafted and reframed 2026-08-01, not agreed).
+    (agreed and implemented 2026-08-01).
+    **The board carried this entry as "not agreed" until 2026-08-15**, two weeks
+    after PR #49 merged the guidance resource, the four rewritten tool
+    descriptions and their tests: the implementing PR edited ROADMAP.md but
+    never flipped its own entry. It was not alone — **11.4 (PR #46) and 11.5
+    (PR #48) had drifted the same way**, one still reading "Next." and one
+    "Implemented", and all three were corrected together on 2026-08-15 from the
+    merge commits. Recorded rather than quietly fixed, because "the implementing
+    PR flips its own entry" exists precisely so the board is true on main the
+    moment a PR merges; three consecutive entries missing it makes this a
+    process gap rather than an oversight, and the next entry to merge should be
+    watched for it. Entry 11.8 amends the shipped guidance rather than reopening
+    this one.
+11.8. **E, the guidance never says how to get the application in front**
+    (server lane). Docs only.
+    **Entries 11.8–11.11 all come from one session that nobody on this project
+    was sitting at** — an external agent drove a third-party application (acter)
+    through the MCP on 2026-08-15 and reported back. That is a different
+    evidence tier from every E-finding before it, all of which came from
+    checklists run with the maintainer at the keyboard, and it is worth
+    recording what it produced: **no bugs.** Five pieces of feedback, every one
+    a missing affordance. After 11.5 and 11.7, that is the result worth having.
+    Two of the five asks are not entries of their own: `type_text replace: true`
+    and the report's "act on trigger" stretch goal are both absorbed by 11.10.
+    This entry: nothing in `screenreader://guidance`, the README or any tool
+    description says how to put the application under test in the foreground, so
+    the run dropped to PowerShell and Win32 `SetForegroundWindow`. The reporting agent's own read is that the scoping is
+    correct — it is not a screen reader concern — but that it is the first thing
+    any agent needs. 0023's guidance already carries the matching warning
+    ("Before you type, know where you are"), and `type_text`'s description
+    carries a longer one; both name the hazard and neither names the remedy,
+    which is what makes the gap look deliberate rather than missing.
+    **The doctrine answer is `press_gesture`**, not PowerShell: a user switches
+    windows with alt+tab or the Start menu, so doing it that way is both
+    expressible through the MCP and more faithful to what is under test.
+    OS-level activation is named as the setup fallback that sits outside the
+    tool. Amends the shipped guidance resource plus the README; 11.7 is Done, so
+    new scope cannot fold into it. Spec: 0023, amended in the implementing PR —
+    no new spec file.
+11.9. **E, speech and braille entries carry no time** (both lanes). The run's
+    strongest ask. An assertion of the form "X happened promptly after Y" is a
+    large fraction of what accessibility testing is, and the run's single most
+    valuable measurement — a stop waking a sleeping script in 63 ms — could not
+    be made through the MCP at all: the agent read `session-*.log` off the
+    reader's disk and diffed timestamps by hand. `getSpeech` returns
+    `logPosition`, which places an utterance in the journal's **ordering**;
+    recovering wall clock from it costs a `getLog` round trip per entry, and in
+    silent mode the journal holds no speech record to land on.
+    **The bridge already takes the instant.** `SpeechBuffer.append` calls
+    `self._clock.monotonic()` on every append and stores it as a single
+    overwritten `_last_time` scalar for the still-speaking heuristic; the change
+    is to keep it per entry, in a parallel list beside `_log_positions`. The
+    `Clock` port is already injected into `IndexedBuffer`, so braille rides
+    along and there is no new port and no new wiring.
+    Decided 2026-08-15: **wall clock, not monotonic** — `Clock.time()`, on the
+    precedent of `getLogPosition`'s `time` field and for the same reason, since
+    a stamp that cannot be joined to `nvda.log` or the transcript loses half its
+    value. And the field is **not named for speaking**: live mode hooks
+    `pre_speechQueued` (queued for the synth), silent mode
+    `filter_speechSequence` (inside `speak()`), and neither is audio — in live
+    mode a long utterance ahead of it can put seconds between the stamp and the
+    human hearing it. It is the moment the reader **emitted** the utterance,
+    which is also the better number for the measurement that motivated it, since
+    synth queueing and audio latency belong to the synth and would be noise in a
+    responsiveness figure. The two hook points are different pipeline stages, so
+    live and silent stamps are not strictly comparable to each other —
+    irrelevant at millisecond resolution, recorded so nobody rediscovers it.
+    Amends published wire v1 (no external consumers; both implementations
+    in-tree and covered by `conformance`). Needs live NVDA, but barely: the
+    stamp is taken in a pure domain entity against an injected clock. Spec: none
+    yet.
+11.10. **E, no way to combine an action with its submit** (server lane). Every
+    command in the run cost two round trips (`type_text`, then `press_gesture
+    ["enter"]`) at 5–10 s each. **The measured cost is not ours** — 11.4
+    established the bridge answers in 0.2–0.5 ms — it is the client model's turn
+    time. So this removes model round trips, not transport, and must not be
+    written as a latency optimisation or it will be measured against the wrong
+    number.
+    It is not only throughput: one scenario was **untestable**. A command with a
+    1.5 s finish delay always completed before the agent could stop it, and the
+    run had to substitute a different command to test stopping at all. A
+    sequence with a **per-step delay** (not one interval for the whole batch)
+    fixes that class, because the timing is evaluated where the latency is
+    0.2 ms rather than where it is 5–10 s.
+    Decided 2026-08-15:
+    - The step vocabulary must include a **settle** step
+      (`waitForSpeechToFinish`), not only a blind `delay`. The guidance says
+      "never sleep instead"; a sequence that can only sleep is a machine for
+      mass-producing the exact failure 0023 exists to prevent. `delay` is for
+      the **application's** known timing, `settle` for the reader's unknown
+      latency, and the descriptions must say which is which.
+    - A **`waitForSpeech` step subsumes act-on-trigger.** The report's stretch
+      ask — "when speech matches X, immediately press Y, evaluated bridge-side
+      where the latency isn't" — is just a sequence whose middle step blocks on
+      speech; the next step then fires ~0.2 ms later. No new concept, and
+      nothing is pushed, so 0021's pull-not-push decision stands untouched. Its
+      `found: false` is deliberately not an error, so inside a sequence it
+      aborts the remaining steps but must report "the trigger never fired"
+      distinctly from "a step failed".
+    - **Abort on first failure, with per-step results**, so partial execution is
+      legible; and **validate the whole plan against the session's capabilities
+      up front**, so a bad plan is rejected before any keystroke is delivered
+      rather than discovered halfway through.
+    - A **trailing read step is in scope**, so one call can be the whole
+      documented act/settle/listen loop — three model turns become one. A
+      primitive that cannot express the loop 0023 teaches will be used without
+      it.
+    - **Server-side composition over the existing tools**: no wire change, no
+      bridge change, no add-on rebuild, no v1 amendment. Server→bridge is
+      0.2–0.5 ms, so a server-side loop hits a 1.5 s application timer with
+      orders of magnitude to spare. Classified `mutates_reader` so 11.3
+      withholds it; no capability of its own.
+    Also retires the report's smallest ask, `type_text replace: true` — select
+    all, delete, type is a sequence. Spec: none yet.
+11.11. **E, a toggle with no setter** (both lanes). `NVDA+space` is a toggle and
+    there is no idempotent way to say "be in browse mode", so automation must
+    `getState`, branch, press, then re-check — and a wrong guess flips the wrong
+    way and silently corrupts everything after it. The run demonstrated the
+    consequence rather than describing it: an agent that assumed auto-switching
+    got wrong answers and blamed the application, which is 0023's failure shape
+    reached independently by someone who had never read 0023.
+    The ask was `set_browse_mode`. **Rejected in favour of `setState` mirroring
+    `getState`** — same struct, fields optional, set the ones present — because
+    0005 chose the **capability** as the unit of reader difference on purpose
+    ("JAWS lacking braille, TalkBack lacking config"): a reader without these
+    toggles declines `state`, the tool never appears, and the server carries no
+    reader conditional either way. A per-toggle catalog announced in `hello` was
+    considered and dropped as parallel machinery for a reader that does not
+    exist yet.
+    What fixes the bug is that the compare-and-set happens **inside NVDA** —
+    read `treeInterceptor.passThrough`, act only if it differs — so there is no
+    window between the read and the press, and the operation is idempotent by
+    construction rather than by the caller's care.
+    One asymmetry, and it is exactly the toggle that was asked for:
+    `browseMode`'s **set-domain is narrower than its get-domain**. `"none"`
+    means the focus has no `treeInterceptor` at all, which cannot be conjured,
+    so setting it is nonsense and must be rejected outright; and even within
+    `{browse, focus}` the set cannot succeed when the focus is not a browsable
+    document. That case has to say the specific thing — *the focused object is
+    not a browsable document* — rather than return a bare failure or a silent
+    no-op, or the agent goes looking in the wrong component again. The tri-state
+    was chosen over a nullable bool for this same reason and the setter must
+    honour it. `speechMode`, `sleepMode` and `inputHelp` are symmetric.
+    Classified `mutates_reader` for 11.3. Amends published wire v1. Needs live
+    NVDA. Spec: none yet.
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).

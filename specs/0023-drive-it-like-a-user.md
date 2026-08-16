@@ -1,8 +1,21 @@
 # 0023 — drive it like a user; introspect on purpose
 
-Status: **drafted 2026-08-01, reframed the same day after review, not agreed.**
-Board entry **11.7**. Comes out of 11.5's live run, which produced the evidence
-below as a side effect of testing something else.
+Status: **agreed and implemented 2026-08-01 (PR #49).** Board entry **11.7**.
+Comes out of 11.5's live run, which produced the evidence below as a side effect
+of testing something else.
+
+*(This line read "not agreed" until 2026-08-15: PR #49 shipped the guidance
+resource and the four tool descriptions without updating it or the board entry.
+Corrected, not backdated — the spec was agreed in the conversation that produced
+PR #49.)*
+
+**Independently corroborated 2026-08-15.** An external agent driving a
+third-party application through the MCP — with no knowledge of this spec — hit
+Part 1's failure exactly: it assumed a mode would switch, got wrong answers, and
+concluded the application was at fault. Its report also found the one hole in
+Part 2's doctrine: the guidance tells an agent to know where it is before typing
+and never says how to bring the application under test to the foreground. Board
+entry **11.8** amends this spec's guidance document accordingly.
 
 The first draft of this spec was called *dispatch is not effect* and recommended
 a new `waitForFocus` command. **The diagnosis survived review; the remedy did
