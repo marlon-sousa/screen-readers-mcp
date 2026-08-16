@@ -80,6 +80,10 @@ type waitForSpeechResult struct {
 	// miss it is the journal's current position, so it is still a usable "from
 	// here" mark for get_log -- the same convention index already follows.
 	LogPosition int `json:"logPosition"`
+	// EmittedAt is when the match was emitted. Empty on a miss: index and
+	// logPosition stay usable as a "from here" mark, but nothing was emitted, so
+	// reporting an instant would read as a match that happened (spec 0028).
+	EmittedAt string `json:"emittedAt,omitempty"`
 }
 
 func (t *WaitForSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -112,5 +116,6 @@ func (t *WaitForSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Index:       match.Index,
 		Text:        match.Text,
 		LogPosition: match.LogPosition,
+		EmittedAt:   match.EmittedAt,
 	}, nil
 }

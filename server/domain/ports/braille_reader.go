@@ -26,6 +26,9 @@ type BrailleEntry struct {
 	Index int
 	// LogPosition is the journal position when it was captured (the get_log space).
 	LogPosition int
+	// EmittedAt is when the reader emitted this update, as
+	// "YYYY-MM-DD HH:MM:SS.mmm"; see ports.SpeechEntry (spec 0028).
+	EmittedAt string
 }
 
 // BrailleRange is a half-open window of captured braille: [FromIndex, ToIndex).

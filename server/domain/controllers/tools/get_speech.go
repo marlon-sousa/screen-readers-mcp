@@ -33,7 +33,13 @@ func (t *GetSpeech) Description() string {
 		"so entries[i] is NOT at index fromIndex + i -- use each entry's own index. " +
 		"Pass a logPosition to get_log as since_position to see what the reader was " +
 		"doing internally around that utterance; that join matters most in silent " +
-		"mode, where suppressed speech leaves no record in the log at all."
+		"mode, where suppressed speech leaves no record in the log at all. Each " +
+		"entry also carries emittedAt, the wall clock when the reader EMITTED it, " +
+		"so two entries subtract to answer \"how long after\" -- which is what most " +
+		"timing assertions are. Emitted is not heard: in live mode an utterance " +
+		"queued behind a longer one can be seconds from audible, so this is the " +
+		"right number for whether the application responded promptly and the wrong " +
+		"one for when a person heard it."
 }
 
 func (t *GetSpeech) InputSchema() json.RawMessage {
@@ -66,6 +72,11 @@ type capturedEntry struct {
 	Index int    `json:"index"`
 	// LogPosition is the coordinate to hand get_log as since_position.
 	LogPosition int `json:"logPosition"`
+	// EmittedAt is when the reader emitted this, as "YYYY-MM-DD HH:MM:SS.mmm" --
+	// the same shape the reader's own log uses, so it can be pasted into a
+	// search of it. Two of these subtract to answer "how long after". Empty if
+	// the reader did not supply one (spec 0028).
+	EmittedAt string `json:"emittedAt,omitempty"`
 }
 
 type speechRangeResult struct {
@@ -96,6 +107,7 @@ func (t *GetSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, error
 			Text:        entry.Text,
 			Index:       entry.Index,
 			LogPosition: entry.LogPosition,
+			EmittedAt:   entry.EmittedAt,
 		})
 	}
 	return speechRangeResult{

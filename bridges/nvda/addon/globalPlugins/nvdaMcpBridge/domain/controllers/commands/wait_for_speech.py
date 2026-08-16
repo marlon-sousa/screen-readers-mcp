@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from .command_handler import CommandHandler
+from .wallclock import format_wallclock
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
@@ -24,4 +25,15 @@ class WaitForSpeechHandler(CommandHandler):
 		# the journal's current position -- still a usable "from here" mark, and
 		# the same convention `index` already follows (spec 0021).
 		log_position = ctx.speech_buffer.log_position_at(index) if found else ctx.log_capture.position()
-		return protocol.WaitForSpeechResult(found=found, index=index, text=text, logPosition=log_position)
+		# Empty on a miss, deliberately. `index` and `logPosition` stay useful as
+		# a "from here" mark even when nothing matched, but there is no instant
+		# to report for speech that never arrived, and reporting "now" would read
+		# as a match that happened (spec 0028).
+		emitted_at = format_wallclock(ctx.speech_buffer.time_at(index)) if found else ""
+		return protocol.WaitForSpeechResult(
+			found=found,
+			index=index,
+			text=text,
+			logPosition=log_position,
+			emittedAt=emitted_at,
+		)

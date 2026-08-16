@@ -25,10 +25,16 @@ class _StubBuffer(IndexedBuffer):
 		return entry if isinstance(entry, str) else ""
 
 	def append(self, text: str, log_position: int = 0) -> None:
-		with self._lock:
-			self._entries.append(text)
-			self._log_positions.append(log_position)
-			self._last_time = self._clock.monotonic()
+		self._record(text, log_position)
+
+	def heuristic_mark(self) -> float:
+		"""The base's monotonic mark, exposed so a test can assert it advances.
+
+		Reaching for ``_last_time`` from a test function would be private access;
+		reading it from a subclass is not, and the two clocks staying separate is
+		worth pinning (spec 0028).
+		"""
+		return self._last_time
 
 
 @pytest.fixture
@@ -77,14 +83,14 @@ def test_each_entry_carries_the_index_it_actually_occupies(buffer: _StubBuffer) 
 	buffer.append("")
 	buffer.append("two")
 	entries, _from_index, _to_index = buffer.entries_since(1)
-	assert [(text, index) for text, index, _pos in entries] == [("one", 1), ("two", 3)]
+	assert [(text, index) for text, index, _pos, _at in entries] == [("one", 1), ("two", 3)]
 
 
 def test_each_entry_carries_the_log_position_it_was_captured_at(buffer: _StubBuffer) -> None:
 	buffer.append("one", 17)
 	buffer.append("two", 42)
 	entries, _from_index, _to_index = buffer.entries_since(1)
-	assert [pos for _text, _index, pos in entries] == [17, 42]
+	assert [pos for _text, _index, pos, _at in entries] == [17, 42]
 
 
 def test_an_entry_appended_without_a_position_reports_zero(buffer: _StubBuffer) -> None:
@@ -126,3 +132,54 @@ def test_wait_evaluates_once_even_with_a_zero_timeout(buffer: _StubBuffer) -> No
 
 	assert buffer._wait(_predicate, timeout=0.0) is True  # type: ignore[attr-defined]
 	assert len(calls) == 1
+
+
+# -- the wall-clock stamp (spec 0028) -----------------------------------------
+
+
+def test_each_entry_carries_the_wall_clock_it_was_captured_at(clock: FakeClock) -> None:
+	# The stamp is per entry, not one scalar for the buffer: `_last_time` already
+	# existed and was overwritten by every append, which is exactly why the run
+	# that asked for this had to read timestamps off disk instead.
+	buffer = _StubBuffer(clock)
+	clock.advance(10)
+	buffer.append("one")
+	clock.advance(5)
+	buffer.append("two")
+	entries, _from_index, _to_index = buffer.entries_since(1)
+	assert [at for _text, _index, _pos, at in entries] == [10.0, 15.0]
+
+
+def test_time_at_reads_one_entrys_stamp_by_index(clock: FakeClock) -> None:
+	# The single-entry reads (getLastSpeech, waitForSpeech) already know the index
+	# they matched, so they take this route rather than scanning the tuples.
+	buffer = _StubBuffer(clock)
+	clock.advance(7)
+	buffer.append("one")
+	assert buffer.time_at(1) == 7.0
+
+
+def test_the_sentinel_has_no_stamp(clock: FakeClock) -> None:
+	# Index 0 was never captured, so it must not claim an instant. 0.0 renders as
+	# the empty string rather than as 1970.
+	assert _StubBuffer(clock).time_at(0) == 0.0
+
+
+def test_a_stale_bookmark_reads_zero_rather_than_raising(clock: FakeClock) -> None:
+	# Same contract log_position_at already keeps: an out-of-range index is an
+	# ordinary stale bookmark, not an error.
+	buffer = _StubBuffer(clock)
+	buffer.append("one")
+	assert buffer.time_at(99) == 0.0
+	assert buffer.time_at(-1) == 0.0
+
+
+def test_the_two_clocks_stay_separate(clock: FakeClock) -> None:
+	# The reported stamp comes from time(); the still-speaking heuristic keeps
+	# using monotonic(). The fake shares one counter, so this asserts the wiring
+	# rather than the values: appending must advance the heuristic's mark too.
+	buffer = _StubBuffer(clock)
+	clock.advance(3)
+	buffer.append("one")
+	assert buffer.time_at(1) == 3.0
+	assert buffer.heuristic_mark() == 3.0

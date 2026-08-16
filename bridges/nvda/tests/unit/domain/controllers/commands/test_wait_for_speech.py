@@ -24,3 +24,26 @@ def test_wait_for_speech_not_found_returns_a_fresh_bookmark(clock: FakeClock) ->
 	)
 	assert result.found is False
 	assert result.text == ""
+
+
+def test_a_match_carries_the_wall_clock_it_was_emitted_at(clock: FakeClock) -> None:
+	clock.advance(1_755_000_000)
+	ctx = make_context(clock, speech=speech_with(clock, "Find dialog"))
+	result = WaitForSpeechHandler().execute(
+		ctx, request("waitForSpeech", text="Find", afterIndex=0, timeout=1.0)
+	)
+	assert result.found is True
+	assert result.emittedAt
+
+
+def test_a_miss_reports_no_instant_even_though_it_keeps_a_bookmark(clock: FakeClock) -> None:
+	# index and logPosition stay useful on a miss -- they are a "from here" mark.
+	# emittedAt cannot be: nothing was emitted, and reporting "now" would read as
+	# a match that happened (spec 0028).
+	clock.advance(1_755_000_000)
+	ctx = make_context(clock, speech=speech_with(clock, "hello"))
+	result = WaitForSpeechHandler().execute(
+		ctx, request("waitForSpeech", text="nothing like this", afterIndex=0, timeout=0.0)
+	)
+	assert result.found is False
+	assert result.emittedAt == ""

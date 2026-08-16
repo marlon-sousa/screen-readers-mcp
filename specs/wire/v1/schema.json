@@ -59,6 +59,9 @@
         },
         "logPosition": {
           "type": "integer"
+        },
+        "emittedAt": {
+          "type": "string"
         }
       },
       "required": [
@@ -418,6 +421,9 @@
         },
         "logPosition": {
           "type": "integer"
+        },
+        "emittedAt": {
+          "type": "string"
         }
       },
       "required": [
@@ -668,6 +674,9 @@
         },
         "logPosition": {
           "type": "integer"
+        },
+        "emittedAt": {
+          "type": "string"
         }
       },
       "required": [
@@ -839,6 +848,9 @@
         },
         "logPosition": {
           "type": "integer"
+        },
+        "emittedAt": {
+          "type": "string"
         }
       },
       "required": [

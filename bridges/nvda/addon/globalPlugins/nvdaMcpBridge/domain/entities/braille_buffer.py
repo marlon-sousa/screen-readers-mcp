@@ -41,6 +41,4 @@ class BrailleBuffer(IndexedBuffer):
 		with self._lock:
 			if self._entries and self._entries[-1] == text:
 				return
-			self._entries.append(text)
-			self._log_positions.append(log_position)
-			self._last_time = self._clock.monotonic()
+			self._record(text, log_position)

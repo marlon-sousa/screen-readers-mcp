@@ -1,7 +1,19 @@
 # 0028 — when was that said
 
-Status: **drafted 2026-08-16, not agreed.** Board entry **11.15**. Ask 1 of
-[0027](0027-the-first-external-run.md), and the strongest of the five.
+Status: **agreed 2026-08-16, implemented in the same PR.** Board entry **11.15**.
+Ask 1 of [0027](0027-the-first-external-run.md), and the strongest of the five.
+
+**Amended during implementation, in one place** (Part 4's bridge layout), and the
+amendment is worth reading because the code found something the spec had not:
+`IndexedBuffer` gains a protected `_record(entry, log_position)` and the three
+`append` implementations call it. The bookkeeping — the entry, the journal
+coordinate, now the wall clock, and the heuristic's monotonic mark — was
+**duplicated in three places**: `SpeechBuffer`, `BrailleBuffer`, and the test
+double in `test_indexed_buffer.py`. Adding one field to all three missed one, and
+five tests failed with an `IndexError` rather than anything that named the cause.
+That is precisely the argument for the method: subclasses decide *whether* and
+*what* to record; the base decides what recording entails, so the parallel lists
+cannot fall out of step again.
 
 ---
 
@@ -135,8 +147,8 @@ Pre-release v1 permits the shape change; both implementations are in-tree and th
 
 | File | Role | Change |
 |---|---|---|
-| `domain/entities/indexed_buffer.py` | entity | `_times: list[float]` beside `_log_positions`, seeded `[0.0]` for the sentinel; `time_at(index)` mirroring `log_position_at`; `entries_since` yields 4-tuples `(text, index, logPosition, time)` |
-| `domain/entities/speech_buffer.py` | entity | `append` records `self._clock.time()` alongside the existing `monotonic()` |
+| `domain/entities/indexed_buffer.py` | entity | `_times: list[float]` beside `_log_positions`, seeded `[0.0]` for the sentinel; `time_at(index)` mirroring `log_position_at`; `entries_since` yields 4-tuples `(text, index, logPosition, time)`; **and `_record`, per the amendment above** |
+| `domain/entities/speech_buffer.py` | entity | `append` delegates its bookkeeping to `_record` |
 | `domain/entities/braille_buffer.py` | entity | same |
 | `domain/controllers/commands/wallclock.py` | **new** — a pure function | `format_wallclock(epoch: float) -> str`, extracted from `get_log_position.py`'s private `_wallclock` so both formats are one definition rather than two that can drift |
 | `domain/controllers/commands/get_log_position.py` | controller | uses the extracted helper |

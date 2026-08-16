@@ -109,6 +109,7 @@ type capturedWindow struct {
 		Text        string `json:"text"`
 		Index       int    `json:"index"`
 		LogPosition int    `json:"logPosition"`
+		EmittedAt   string `json:"emittedAt"`
 	} `json:"entries"`
 	FromIndex int `json:"fromIndex"`
 	ToIndex   int `json:"toIndex"`
@@ -542,6 +543,20 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 	if captured.ToIndex <= captured.FromIndex {
 		t.Errorf("range [%d, %d) covers nothing, but two lines were spoken",
 			captured.FromIndex, captured.ToIndex)
+	}
+
+	// Spec 0028, and this is the tier that matters for it: the stamp is
+	// produced by the real Python bridge, crosses a real pipe, and is parsed by
+	// the generated Go binding. A field that a Go fake encodes with the same
+	// binding it is decoded by would prove nothing about either.
+	for _, entry := range captured.Entries {
+		if entry.EmittedAt == "" {
+			t.Errorf("entry %q crossed the wire without emittedAt", entry.Text)
+			continue
+		}
+		if _, err := time.Parse("2006-01-02 15:04:05.000", entry.EmittedAt); err != nil {
+			t.Errorf("emittedAt %q is not the documented format: %v", entry.EmittedAt, err)
+		}
 	}
 	// Spec 0021's list shape, proven across the language boundary: two utterances
 	// arrive as two entries rather than one welded string, and each keeps the ring

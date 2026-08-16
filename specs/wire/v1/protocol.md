@@ -200,22 +200,27 @@ means the command takes no parameters. Summary:
   characters, newlines or Enter, and does not submit anything — compose that
   from `typeText` and `pressGesture`. Mutates the reader's machine the same way
   `pressGesture` does.
-- `getSpeech` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition }],
+- `getSpeech` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition,
+  emittedAt }],
   fromIndex, toIndex }` — captured speech since an index (§7). **One entry per
   utterance**, not a joined string (spec 0021): a blob has nowhere to put a
   per-utterance coordinate, and the join cannot be recovered by the caller, since
   entries that render empty are omitted while `fromIndex`/`toIndex` span the whole
   range — so entry *i* is **not** at index `fromIndex + i`. Each entry therefore
   carries its own `index`, and `logPosition`, the journal position it was captured
-  at (see `getLog`'s `sincePosition`).
-- `getLastSpeech` → `{ text, index, logPosition }`.
+  at (see `getLog`'s `sincePosition`), and `emittedAt` (§7.1).
+- `getLastSpeech` → `{ text, index, logPosition, emittedAt }`. `emittedAt` is
+  empty for the sentinel returned when nothing has been said.
 - `getNextSpeechIndex` → `{ index }` — the index the next captured speech will
   occupy.
 - `waitForSpeech` `{ text, afterIndex?, timeout? }` → `{ found, index, text,
-  logPosition }`. On a miss `logPosition` is the journal's *current* position, so
-  it is still a usable "from here" mark — the same convention `index` follows.
+  logPosition, emittedAt }`. On a miss `logPosition` is the journal's *current*
+  position, so it is still a usable "from here" mark — the same convention
+  `index` follows. `emittedAt` is **empty on a miss**, deliberately: nothing was
+  emitted, and reporting the current instant would read as a match that happened.
 - `waitForSpeechToFinish` `{ timeout? }` → `{ finished }`.
-- `getBraille` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition }],
+- `getBraille` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition,
+  emittedAt }],
   fromIndex, toIndex }` — the same entry shape as `getSpeech`, for the same
   reason. It matters more here: this is the only braille fetch, so it is the sole
   route to a braille update's coordinate.
@@ -369,6 +374,38 @@ increasing integer indices**.
   out of them while the session lives, so `getSpeech { sinceIndex: 0 }` returns
   everything that was said, at any point before `bye`. The log journal is the only
   one of the three session records that is a bounded ring.
+
+### 7.1 `emittedAt` — when, not merely in what order
+
+Every captured entry carries `emittedAt`: wall clock at the moment the reader
+**emitted** it, formatted `YYYY-MM-DD HH:MM:SS.mmm`. That is the same shape
+`getLogPosition` returns and the same shape the bridge's own session transcript
+writes, so a stamp can be pasted straight into a search of either, or of the
+reader's own log.
+
+It exists because `logPosition` answers *in what order* and nothing answers *how
+long*. Recovering a clock from a journal position costs a `getLog` round trip per
+entry, and in a silent session the journal holds no speech record to land on at
+all — the coordinate points at the surrounding events, which is what it was
+designed for, but there is no timestamp to borrow. Two `emittedAt` values
+subtract, which is what an assertion of the form "X happened promptly after Y"
+needs.
+
+**Emitted is not heard.** A bridge captures before the synthesizer speaks — for
+NVDA, at the point the sequence is queued in live mode and inside `speak()` in
+silent mode. Neither is audio, so an utterance queued behind a longer one can be
+seconds from audible. This makes `emittedAt` the right number for *did the
+application respond promptly* (synthesizer queueing belongs to the synthesizer
+and would be noise in that figure) and the wrong number for *when did a person
+hear it*, which this protocol does not answer.
+
+The field is **optional**: a bridge that does not supply it omits it, and a
+consumer must treat an absent or empty value as "no instant was recorded" rather
+than as an epoch. The value is empty, never `0`-as-a-date, wherever nothing was
+emitted — the speech ring's sentinel entry, and a `waitForSpeech` miss.
+
+### 7.2 Coordinates
+
 - A **journal position** (`logPosition`, `sincePosition`, `nextPosition`) is a
   different coordinate space from an index, and the two are never
   interchangeable: an index addresses the speech or braille ring, a position

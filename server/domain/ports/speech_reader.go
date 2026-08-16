@@ -32,6 +32,16 @@ type SpeechEntry struct {
 	Index int
 	// LogPosition is the journal position when it was captured (the get_log space).
 	LogPosition int
+	// EmittedAt is wall clock at the moment the reader EMITTED this utterance,
+	// as "YYYY-MM-DD HH:MM:SS.mmm" -- the shape getLogPosition returns and the
+	// session transcript writes, so it can be pasted into a search of the
+	// reader's own log (spec 0028).
+	//
+	// Emitted, NOT heard: live mode captures at the point the sequence is queued
+	// for the synth, so an utterance behind a long one can be seconds from
+	// audible. Right for "did the application respond promptly", wrong for "when
+	// did the user hear it". Empty when the reader did not supply one.
+	EmittedAt string
 }
 
 // SpeechRange is a half-open window of captured speech: [FromIndex, ToIndex).
@@ -53,6 +63,9 @@ type LastSpeech struct {
 	Index int
 	// LogPosition places it on the journal's timeline; 0 for the empty sentinel.
 	LogPosition int
+	// EmittedAt is when the reader emitted it; see SpeechEntry. Empty for the
+	// sentinel, which was never emitted.
+	EmittedAt string
 }
 
 // SpeechWait asks the reader to block until matching speech appears.
@@ -81,6 +94,10 @@ type SpeechMatch struct {
 	// journal's CURRENT position, so it is still a usable "from here" mark, the
 	// same convention Index already follows (spec 0021).
 	LogPosition int
+	// EmittedAt is when the match was emitted; see SpeechEntry. Empty on a miss:
+	// Index and LogPosition stay useful as a "from here" mark, but there is no
+	// instant to report for speech that never arrived (spec 0028).
+	EmittedAt string
 }
 
 // SpeechReader is everything the `speech` capability can be asked.
