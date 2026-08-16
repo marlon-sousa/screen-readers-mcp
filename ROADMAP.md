@@ -188,23 +188,33 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-16**: 11.3, 11.6, and the entries 11.14–11.17 that
-came out of the first external run. Their order among themselves is not yet
-decided — 11.14 is docs-only and 11.15 is small and well understood, so neither
-needs to wait behind 11.3's and 11.6's unagreed specs, but taking them first is
-a reprioritisation to make explicitly, the way 11.4 was taken before 11.3.
+below. **Open as of 2026-08-16**, with nothing in flight in either lane:
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.15, 11.17, 11.18, 11.19, 11.20
+— eleven entries, of which 11.14 and 11.16 are settled (Done and absorbed).
 
-**11.8–11.13 are reserved, and were claimed first.** PR #54 numbered the
-external-run entries 11.8–11.11 on 2026-08-15 without checking the open PRs that
-also edit this file, and two of them had already taken that range: **#51** claims
-11.8–11.10 (speech segmentation, the round-trip cost, the mute watchdog) and
-**#52**, stacked on it, claims 11.11–11.13 (specs 0024–0026). Both were opened
-2026-08-03, so they have precedence and the external-run entries were renumbered
-to 11.14–11.17 on 2026-08-16 rather than the other way round. **Spec numbers
-0024, 0025 and 0026 are likewise taken by #52** — the next free spec number is
-0027. Anyone adding a board entry or a spec should check the open PRs first;
-this file is edited by nearly every PR, so a number that is free on main is not
-necessarily free.
+Their order is **not** simply the numbering. Read as a strict lane order both
+lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
+has now been passed over four times; that deserves a decision rather than a fifth
+silent deferral. Three pairings matter more than the numbers:
+
+- **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
+- **11.11 and 11.17** are one gesture, from two sessions, with complementary
+  remedies. See either entry.
+- **11.19 and 11.20** are two halves of personas; 11.19 ships alone and touches
+  only the server.
+
+Anything taken out of numeric order is a reprioritisation to make explicitly, the
+way 11.4 was taken before 11.3.
+
+**Check the open PRs before claiming a number.** On 2026-08-15, PR #54 numbered
+the external-run entries 11.8–11.11 without doing so, and two PRs open since
+2026-08-03 had already taken that range — #51 (11.8–11.10) and #52, stacked on
+it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
+entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
+round, and #51 could not merge at all until that was untangled. Nearly every PR
+edits this file, so **a number that is free on main is not necessarily free**.
+The next free board number is **11.21** and the next free spec number is
+**0028**.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -630,7 +640,9 @@ rather than before it.
     key changed, and reporting (not fixing) the quiet states it must not touch.
     A `setConfig` one-liner is the mitigation available on today's build, no code.
     Spec: [0024-a-session-the-agent-can-hear.md](specs/0024-a-session-the-agent-can-hear.md)
-    (drafted 2026-08-03, not agreed).
+    (drafted 2026-08-03, not agreed). **Paired with 11.17** — see that entry for
+    why the two remedies for this gesture are complementary and should be
+    decided together.
 11.12. **E, one round trip per intention** (lane 2, server + bridge). Implements
     the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
     (~7.9 s) to carry ~124 ms of reader work, and 11.9 measured that one of the
@@ -676,7 +688,10 @@ rather than before it.
     Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
     (drafted 2026-08-03, not agreed).
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
-    application in front (server lane). Docs only.
+    application in front (server lane). Docs only. Ask 4 of
+    [0027](specs/0027-the-first-external-run.md), which preserves all five asks
+    of this run as received, with a traceability table — read it before deciding
+    any of 11.15–11.17 is finished.
     **Entries 11.14–11.17 all come from one session that nobody on this project
     was sitting at** — an external agent drove a third-party application (acter)
     through the MCP on 2026-08-15 and reported back. That is a different
@@ -688,7 +703,8 @@ rather than before it.
     and the report's "act on trigger" stretch goal are both absorbed by 11.16.
     This entry: nothing in `screenreader://guidance`, the README or any tool
     description says how to put the application under test in the foreground, so
-    the run dropped to PowerShell and Win32 `SetForegroundWindow`. The reporting agent's own read is that the scoping is
+    the run dropped to PowerShell and Win32 `SetForegroundWindow`. The reporting
+    agent's own read is that the scoping is
     correct — it is not a screen reader concern — but that it is the first thing
     any agent needs. 0023's guidance already carries the matching warning
     ("Before you type, know where you are"), and `type_text`'s description
@@ -701,8 +717,9 @@ rather than before it.
     tool. Amends the shipped guidance resource plus the README; 11.7 is Done, so
     new scope cannot fold into it. Spec: 0023, amended in the implementing PR —
     no new spec file.
-11.15. **E, speech and braille entries carry no time** (both lanes). The run's
-    strongest ask. An assertion of the form "X happened promptly after Y" is a
+11.15. **E, speech and braille entries carry no time** (both lanes). Ask 1 of
+    [0027](specs/0027-the-first-external-run.md), and the run's strongest ask.
+    An assertion of the form "X happened promptly after Y" is a
     large fraction of what accessibility testing is, and the run's single most
     valuable measurement — a stop waking a sleeping script in 63 ms — could not
     be made through the MCP at all: the agent read `session-*.log` off the
@@ -733,7 +750,22 @@ rather than before it.
     in-tree and covered by `conformance`). Needs live NVDA, but barely: the
     stamp is taken in a pure domain entity against an injected clock. Spec: none
     yet.
-11.16. **E, no way to combine an action with its submit** (server lane). Every
+11.16. **Absorbed by 11.12 (spec 0025) — not to be built separately.** E, no way
+    to combine an action with its submit (server lane). Kept as a record of what
+    the external run asked for and of the two smaller asks it retired, but the
+    remedy belongs to 0025, which reached the same conclusion from a different
+    session and **carries the measurements this entry lacked** (~124 ms for NVDA
+    to finish a keystroke's speech against a ~2.6 s round trip). Where the two
+    differ, 0025 wins: it argues the *settle* is the thing to replace, not merely
+    to batch around. Anything below that 0025 does not cover — chiefly the
+    `waitForSpeech` step that makes act-on-trigger fall out for free, and the
+    requirement that a sequence be able to express settling rather than only
+    sleeping — should be carried into that spec's review rather than built here.
+    **Those riders, and the `type_text replace: true` ask this entry also
+    retired, are recorded in
+    [0027](specs/0027-the-first-external-run.md) as still unmet**, so absorbing
+    this entry cannot quietly drop them.
+    Every
     command in the run cost two round trips (`type_text`, then `press_gesture
     ["enter"]`) at 5–10 s each. **The measured cost is not ours** — 11.4
     established the bridge answers in 0.2–0.5 ms — it is the client model's turn
@@ -776,7 +808,16 @@ rather than before it.
       withholds it; no capability of its own.
     Also retires the report's smallest ask, `type_text replace: true` — select
     all, delete, type is a sequence. Spec: none yet.
-11.17. **E, a toggle with no setter** (both lanes). `NVDA+space` is a toggle and
+11.17. **E, a toggle with no setter** (both lanes). **Paired with 11.11** — same
+    gesture, same confusion, two different sessions, and the remedies are
+    complementary rather than competing: 11.11 gives the agent the *tone* it
+    cannot hear, so it learns which mode it landed in; this gives it a way not to
+    land in the wrong one at all. Neither makes the other redundant, because
+    hearing the tone still leaves the toggle non-idempotent, and a setter still
+    leaves every other earcon inaudible. Decide them together; they should not be
+    built by two people who have not read both. Ask 2 of
+    [0027](specs/0027-the-first-external-run.md).
+    `NVDA+space` is a toggle and
     there is no idempotent way to say "be in browse mode", so automation must
     `getState`, branch, press, then re-check — and a wrong guess flips the wrong
     way and silently corrupts everything after it. The run demonstrated the
@@ -807,6 +848,97 @@ rather than before it.
     honour it. `speechMode`, `sleepMode` and `inputHelp` are symmetric.
     Classified `mutates_reader` for 11.3. Amends published wire v1. Needs live
     NVDA. Spec: none yet.
+11.18. **E, the board is not self-enforcing** (neither lane; CI). Four
+    consecutive entries merged without the Done mark their own PR was supposed to
+    apply: 11.4 (#46) read "Next.", 11.5 (#48) "Implemented", 11.7 (#49) carried
+    its spec as "not agreed" two weeks after shipping, and 11.8 (#51) merged
+    reading "Implemented on this branch" — a branch that no longer existed —
+    **on the very next merge after the board recorded that the next merge should
+    be watched for exactly this.** That is the evidence that ends the "be more
+    careful" remedy: the rule is load-bearing (a fresh session's first question is
+    "what is next?", answered from this file) and it is not self-enforcing.
+    Proposal: a CI job in the shape of the existing `no unchecked checkboxes`
+    gate. A PR that touches `ROADMAP.md` fails while an entry whose text it
+    changed neither carries a Done mark nor states why it does not — a spec-only
+    entry, a deferral, a renumber. The escape hatch has to exist, because
+    bookkeeping and renumbering PRs legitimately touch entries they are not
+    completing; making it *stated* rather than *absent* is the whole point.
+    Open question for the spec conversation: whether the check can be made
+    precise enough to avoid crying wolf, since a false failure on a docs PR would
+    train everyone to bypass it — which is worse than no gate. Spec: none yet.
+11.19. **E, personas — the server half** (server lane). Designed in conversation
+    2026-08-16; no spec file yet. An agent connects **as somebody**: a *normal
+    user*, an *accessibility validator*, or an *add-on developer*. The persona
+    says what the agent is standing in for, and therefore what a finding from
+    that session means.
+    **The personas are NOT nested, and any design that models them as a ladder
+    gets the validator wrong.** Their success criteria differ: a blind user with a
+    task succeeds when the task is done, so a workaround is a legitimate win and
+    object navigation is exactly what a competent user reaches for. A validator
+    asking *is this reachable by ordinary means* must be denied that same
+    workaround, because reaching a control by object navigation proves nothing
+    about whether it is reachable normally. **If you can only get there that way,
+    that is the finding.** So the validator has *more* to observe with and *less*
+    latitude to act — observation power rises user → validator → developer while
+    action latitude does not.
+    **Instruction only — no tool gate. Decided.** The validator's central
+    restriction cannot be enforced: object navigation is `pressGesture` with the
+    reader's own keys, and the server cannot recognise it without learning that
+    key map, which is what `ToolCatalog` says it could not express even if
+    somebody wanted it to. A gate would therefore be **partial enforcement that
+    reads as total** — withholding `getFocusInfo` while the validator
+    object-navigates its way to a false pass, buying nothing where the risk is and
+    costing an 11.6-shaped confusion where it is not. Instruction-only is uniform
+    and honest, and it keeps something a gate destroys: an agent that steps
+    outside its persona *and says so* has produced evidence, where an agent that
+    hits a wall has produced a failed run. The deliverable is the report.
+    **Chosen before connecting**, so the documents are static and server-owned —
+    the persona determines what the run means and cannot be retrofitted onto a
+    session that already ran. (Not because the human is unreachable mid-session:
+    `announce` and `ask_user` exist. It is the wrong moment, not an impossible
+    one.)
+    Scope: three static resources holding each persona's stance and success
+    criterion, a `persona` argument on `connect_reader` beside `mode`, and the
+    declaration recorded in `status`, `screenreader://info` and the session
+    record — so a finding carries the stance that produced it. *Reachable* from a
+    user session and from a validator session are different claims. **No wire
+    change, no bridge change, no add-on rebuild**; ships and is useful alone.
+    Spec: none yet — next free number is 0028.
+11.20. **E, personas — the reader half** (both lanes). The other half of 11.19,
+    and it needs the wire. **The server defines the personas; each bridge defines
+    what that persona should and should not use on its reader.** The rule is
+    reader-agnostic and belongs to the server ("do not route around the problem");
+    the instances are reader-specific and only the bridge author knows them —
+    NVDA's escape hatches are object navigation and the review cursor, JAWS's is
+    the JAWS cursor. Neither document works alone, which is the evidence the split
+    is real rather than convenient.
+    This also answers a gap 11.14 could only flag: **readers differ in what they
+    offer, not merely in which keys they use for it** — JAWS has a native way to
+    list open windows and NVDA has none — so "the agent already knows" is not a
+    safe assumption, and a static reader-agnostic document has no way to say so.
+    A bridge-supplied document does, and it ships with the reader it describes, so
+    it cannot rot in the one place nobody checks.
+    Scope sketch: a `getGuidance` command behind its own capability (lazy, so a
+    session that never asks never pays; and a bridge that does not implement it
+    simply does not advertise it, degrading to the server's documents alone), the
+    persona declared in `hello` so it lands in the bridge's transcript too, and
+    the result served opaquely as a session-scoped resource the server never
+    parses. **Three things to settle before it is buildable:** unknown personas
+    must degrade rather than error, and that must be designed in on day one or
+    adding a persona becomes a synchronised release across every bridge;
+    precedence must be explicit when server and bridge disagree (the server's
+    definition is normative, the bridge instantiates and may not redefine); and
+    the timing must be written down — the persona is chosen before connecting but
+    its reader-specific instantiation can only arrive after, which is coherent but
+    surprising.
+    **The payoff beyond documentation:** once a bridge *names* its escape hatches,
+    a validator run becomes auditable after the fact against the session record,
+    which already stores every call with its params. The rule stays unenforced —
+    no gate, no partial fence — but stops being unverifiable, which for a
+    validator is worth more than a wall. Note also that if the object-navigation
+    tool [0023](specs/0023-drive-it-like-a-user.md) anticipates is ever built, the
+    validator's central restriction becomes gateable; that is a reason to build it
+    as its own tool rather than as more `pressGesture`. Spec: none yet.
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).
