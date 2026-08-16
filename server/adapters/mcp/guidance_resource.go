@@ -44,11 +44,12 @@ func (s *Server) addGuidanceResource() {
 			URI:      GuidanceURI,
 			Name:     "how to drive a screen reader",
 			MIMEType: "text/markdown",
-			Description: "Read this BEFORE driving a reader. How to act, confirm that what " +
-				"you intended actually happened, and orient yourself when it did not -- " +
-				"the way a screen reader user does, by pressing keys and listening, " +
-				"rather than by inspecting internals. Also what a successful " +
-				"press_gesture result does and does not mean.",
+			Description: "Read this BEFORE driving a reader. How to get the application " +
+				"under test in front of you, act, confirm that what you intended actually " +
+				"happened, and orient yourself when it did not -- the way a screen reader " +
+				"user does, by pressing keys and listening, rather than by inspecting " +
+				"internals. Also what a successful press_gesture result does and does " +
+				"not mean.",
 		},
 		func(_ context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
 			return &sdk.ReadResourceResult{Contents: []*sdk.ResourceContents{{
@@ -97,6 +98,56 @@ Two corollaries worth stating:
   this side. It says nothing about what arrived anywhere.
 - Do not re-press a gesture because the result "seemed" not to work. It very
   likely did work, and you are about to do it twice.
+
+## First, get the application in front of you
+
+Everything below assumes the application you are testing is the one receiving
+keys. Nothing here puts it there. Focusing an application is the desktop's job,
+not the screen reader's, so no reader command will do it for you and this server
+publishes no tool for it — which is correct scoping, and also the first thing you
+need.
+
+Two things about *this* interface shape how you do it, and they are the parts you
+cannot work out from what you already know about the desktop.
+
+**A gesture is a discrete press and release.** ` + "`press_gesture`" + ` sends each gesture
+whole, so no modifier can be held down across several other keys. The ordinary
+hold-a-modifier-and-tap-repeatedly way of walking a window switcher is therefore
+**not expressible here at all**: every press releases, and a switcher that lives
+only as long as its modifier is held starts over each time. The limit is general,
+not a window-switching quirk — anything meaning "hold this down while pressing
+that several times" is outside what a gesture can say.
+
+**So choose a route made of separate presses.** Either name the application
+rather than cycle to it — open the desktop's launcher or search, type the name
+with ` + "`type_text`" + `, press Enter; three ordinary calls, independent of how many
+windows are open, and layout-independent, which makes it the one to prefer — or
+use a switcher that *stays up after its keys are released*, which can then be
+moved through one gesture at a time and committed with Enter.
+
+Your desktop's keys for either route are yours to supply, exactly as your
+reader's are — and for a sharper reason. This document is **static**: it is
+readable before you connect, so it cannot know which reader you are driving, and
+the reader is what fixes the platform. Read ` + "`screenreader://info`" + ` to learn which
+reader is connected; that tells you the desktop as well.
+
+What a *particular* reader can and cannot do for you here is the reader's own to
+say, not this document's — readers differ in what they offer, not merely in which
+keys they use for it, so do not assume a facility exists just because another
+reader has one. If you cannot establish where you are by the loop below, say so
+with ` + "`ask_user`" + ` rather than guessing at a command that may not exist.
+
+Then settle and listen for the window title, exactly as in the loop below — that
+is your confirmation that you arrived, and the reader volunteers it without being
+asked. **Confirm by listening rather than by counting presses**, and do not
+assume how a switcher is ordered. An agent that assumes it is in the right window
+types into whatever was already focused, and that surfaces later as an unrelated
+failure naming the wrong component — see *Before you type, know where you are*
+below.
+
+If the application is not running at all, start it with whatever tooling you have
+outside this server. That is setup rather than testing, and it is the one part of
+driving a screen reader this server deliberately leaves alone.
 
 ## The loop: act, settle, listen, orient, escalate
 
