@@ -1,8 +1,15 @@
 # 0025 — one round trip per intention
 
-Status: **drafted 2026-08-03, not agreed.** Board entry **11.12**. Implements the
-two routes named in [11.9](../ROADMAP.md), whose measurements are the whole
-argument for this spec.
+Status: **agreed 2026-08-16.** Drafted 2026-08-03. Board entry **11.12**.
+Implements the two routes named in [11.9](../ROADMAP.md), whose measurements are
+the whole argument for this spec.
+
+All five open questions were settled in the agreeing conversation and are
+recorded below as decisions rather than deleted, so the reasoning survives. The
+review also raised, and then withdrew, a claimed conflict with
+[0023](0023-drive-it-like-a-user.md); that exchange is recorded too, because the
+apparent conflict is an easy one to re-derive and the resolution is worth
+keeping.
 
 ---
 
@@ -284,25 +291,66 @@ spec's whole warrant is measurement. Deferred rather than guessed.
   call *count* still leaves 4 s per step. **This spec's benefit is proportional
   to a number nobody has bracketed yet.**
 
-## Open questions
+## Open questions — **all settled 2026-08-16**
 
-- **Should the 5–12 s gap be measured before this is built?** It does not change
-  the design — fewer round trips is right either way — but it changes how much
-  this is worth, and this repo has just spent a morning learning what happens
-  when a remedy is implemented before its premise is measured.
-- **Is `graceMs` per call, per session, or both?** Per call is flexible and is
-  one more knob on the most-used tool in the surface. A session default set at
-  `hello` with a per-call override is more machinery than may be warranted.
-- **Should `typeText` grace at all?** Typing echoes per character when the user
-  has that on, so a grace after a 19-character URL may return 19 entries of
-  noise. Possibly `graceMs` should default to 0 for `typeText` and 100 for
-  `pressGesture`.
-- **Does the state snapshot belong on `typeText` too?** Typing rarely toggles
-  anything. Symmetry is worth something; so is not paying for a snapshot nobody
-  reads.
-- **What happens to `getNextSpeechIndex`?** Its main customer is bookmarking
-  before an action, which the result now does by itself. It should probably stay
-  for the observe-only case, but it stops being part of the normal loop.
+- **Should the 5–12 s gap be measured before this is built? — No, it is already
+  explained.** That is the client model's own turn time between tool calls, and
+  it grows with the conversation's context, which is exactly why 2.6 s was
+  measured early and 5–12 s observed on the same machine hours later. Nothing in
+  the system is faulty. Far from weakening this spec, it **strengthens** it: if
+  per-call model turns dominate the cost, then call *count* is the right lever
+  and cutting three calls to one cuts the dominant cost threefold.
+- **Is `graceMs` per call, per session, or both? — Per call only.** A session
+  default is machinery for a case nobody has hit, and it can be added later
+  without breaking anything, whereas a knob nobody needed cannot easily be taken
+  away.
+- **Should `typeText` grace at all? — Default `graceMs` to 0 for `typeText`, 100
+  for `pressGesture`.** Different defaults for two tools looks inconsistent, but
+  the tools genuinely differ: a gesture produces one announcement worth reading,
+  typing with "speak typed characters" on produces one per character worth
+  nothing. Consistency here would be consistency in the wrong dimension.
+- **Does the state snapshot belong on `typeText` too? — Yes.** Four small fields,
+  negligible cost, and an agent pays more for the asymmetry in confusion than the
+  bytes cost in transport. Unlike the question above, nothing about typing makes
+  the snapshot *misleading* — only rarely interesting — so consistency is the
+  right call here.
+- **What happens to `getNextSpeechIndex`? — Keep it, and say what it is for.**
+  It stops being part of the normal loop, but it remains the only way to mark a
+  moment when the agent is **not** the one acting: a human driving while the
+  agent watches (entry 11.3's observe-only session, and 11.5's "watch what I do,
+  a bug is about to appear"). Its description should say so, rather than leaving
+  it looking vestigial.
+
+## Its relationship to 0023 — **not a contradiction**
+
+Worth recording, because the first review of this spec read one where there is
+none. This spec does **not** overturn [0023](0023-drive-it-like-a-user.md)'s
+loop. Both say the same thing — *act, wait a little, check; if nothing has
+arrived yet, wait and check again* — and Part 2 above says so outright. 0023
+expressed it through a call that turned out to observe nothing; this expresses it
+through a wait that observes. **Same doctrine, working mechanism.**
+
+Two things do change, and both are text rather than logic:
+
+- **The named tool.** The guidance's step 2 currently reads *"Settle.
+  `wait_for_speech_to_finish`. This is the one wait that applies after any
+  action."* That names a tool which stops being the settle.
+- **Where the wait lives** — inside the call, rather than as a call of its own.
+
+The one real friction is verbal. The guidance says **"never sleep instead: a
+sleep is never evidence"**, and the grace window is a bounded blind wait. But it
+is not what that sentence forbids, which is an agent sleeping *instead of
+observing* and then *assuming*. This sleeps, observes, reports exactly what it
+saw, and refuses to claim completeness. The prohibition should therefore be
+restated in terms of what makes a wait bad rather than the word "sleep":
+
+> a blind wait you treat as evidence is forbidden; a bounded wait followed by an
+> honest observation is the mechanism.
+
+That is the same line the repo draws elsewhere between a `delay` (for the
+application's known timing) and a settle (for the reader's unknown latency).
+**The guidance and 0023 step-2 rewording rides in this entry's implementing PR**,
+not as an entry of its own.
 
 ## Not in scope
 
