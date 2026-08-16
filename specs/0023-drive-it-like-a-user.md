@@ -1,8 +1,22 @@
 # 0023 — drive it like a user; introspect on purpose
 
-Status: **drafted 2026-08-01, reframed the same day after review, not agreed.**
-Board entry **11.7**. Comes out of 11.5's live run, which produced the evidence
-below as a side effect of testing something else.
+Status: **agreed and implemented 2026-08-01 (PR #49).** Board entry **11.7**.
+Comes out of 11.5's live run, which produced the evidence below as a side effect
+of testing something else.
+
+*(This line read "not agreed" until 2026-08-15: PR #49 shipped the guidance
+resource and the four tool descriptions without updating it or the board entry.
+Corrected, not backdated — the spec was agreed in the conversation that produced
+PR #49.)*
+
+**Independently corroborated 2026-08-15.** An external agent driving a
+third-party application through the MCP — with no knowledge of this spec — hit
+Part 1's failure exactly: it assumed a mode would switch, got wrong answers, and
+concluded the application was at fault. Its report also found the one hole in
+Part 2's doctrine: the guidance tells an agent to know where it is before typing
+and never says how to bring the application under test to the foreground. Board
+entry **11.14** amended this spec's guidance document accordingly on 2026-08-16 —
+see *What ships → 1. A published doctrine*.
 
 The first draft of this spec was called *dispatch is not effect* and recommended
 a new `waitForFocus` command. **The diagnosis survived review; the remedy did
@@ -250,6 +264,76 @@ Two properties, both deliberate:
   and JAWS's from its training, and `screenreader://info` tells it which one is
   connected. The guidance supplies the *method*; the agent supplies the
   vocabulary.
+
+**Amended 2026-08-16 (board entry 11.14), one section added:** *First, get the
+application in front of you.* The original document told an agent to know where
+it is before typing and never said how to get anywhere — a hazard named without
+its remedy, which reads as deliberate scoping rather than as an omission. The
+first external run hit it immediately and dropped to PowerShell and Win32
+`SetForegroundWindow`.
+
+The scoping *is* correct — focusing a window is the desktop's job, not the screen
+reader's, and this server publishes no tool for it — so the amendment does not
+add a tool. It adds the doctrine answer, which is the same one the rest of this
+spec gives: **do it the way a user does**, then settle and listen for the window
+title to confirm arrival. Launching an application that is not running is named
+explicitly as *setup rather than testing*, done outside this server.
+
+**A first draft of this section recommended alt+tab and was wrong**, caught in
+review on 2026-08-16. It surfaced a limit of the input vocabulary
+([0018](0018-input-vocabulary.md)) that no document in this repo had ever
+stated: **a gesture is a discrete press and release.** `pressGesture` sends each
+gesture whole, so a modifier cannot be held down across several other keys, and
+the ordinary hold-alt-and-tab-repeatedly way of reaching the fourth window back
+is not expressible at all — sent twice, `alt+tab` returns you where you started.
+The limit is general, not a window-switching quirk: anything meaning "hold this
+while pressing that several times" is outside what `pressGesture` can say.
+
+So the section states that limit and gives two routes made of separate presses:
+**name the application** (launcher, `typeText` its name, Enter — three ordinary
+calls, independent of how many windows are open, and layout-independent, so it is
+the one to prefer), or **use a switcher that stays up once its keys are
+released**, which is then drivable one gesture at a time. The distinction that
+matters is persistence, not the particular keys.
+
+**And it names no keys — the reader-agnostic property generalises to the
+desktop.** A second draft named Windows shortcuts and was rejected in the same
+review, on a sharper argument than staleness: this document is *static*, readable
+before connecting, so it **cannot know which reader is connected — and the reader
+is what fixes the platform.** NVDA and JAWS are Windows; other readers are not.
+A desktop shortcut here would be advice the document has no way to know is true,
+in the one place nobody thinks to check. The agent reads `screenreader://info`
+for the reader, which tells it the desktop too, and it already knows that
+desktop's shortcuts — the same division of labour Part 4 already set for reader
+keys, applied one level out.
+
+This adds a sibling to the guarding scenario:
+`TestTheGuidanceNamesNoParticularDesktopsKeys`, forbidding `alt+tab`,
+`windows+tab`, `control+alt+tab` and `command+tab` beside the existing reader
+key map check. The **README stays concrete** and names the Windows keys under an
+"On Windows" marker — the same split it already uses for reader keys, which it
+names (`NVDA+f7`, `control+home`) where the guidance resource may not.
+
+**The option not taken, recorded because it is the obvious next thought:** a
+*second, per-reader* guidance resource, session-scoped like `screenreader://info`,
+could carry the concrete keys precisely because it would know the reader and
+therefore the platform.
+
+It would **layer on this one rather than replace it**. The static document keeps
+the method — the loop, the delivery-not-consequence rule, the discrete-press
+limit, all of which are true of every reader — and a per-reader document would
+carry only what is specific *beyond* the general: this reader's own commands,
+this desktop's switcher keys. That layering is what keeps it affordable, since
+each bridge would author its increment and not a whole doctrine.
+
+It is not built, and the reason is a constraint worth writing down before someone
+reaches for it: **its content could not come from this server.** A server-held
+per-reader document breaches 0005 principle 2 exactly as a server-held key map
+does — the server would be learning that NVDA means Windows, and what Windows'
+switcher keys are. It would have to come from the **bridge**, over the wire,
+which makes it a protocol addition rather than a resource file. That is a real
+design, and a coherent one; it simply buys only what the agent already supplies
+for itself today, so it waits for a case where an agent demonstrably cannot.
 
 ### 2. Four tool descriptions that say the true thing
 
