@@ -15,6 +15,7 @@
 package fakes
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,10 @@ import (
 type spokenEntry struct {
 	text        string
 	logPosition int
+	// emittedAt is the wall-clock stamp the real bridge supplies (spec 0028).
+	// Synthetic and monotonic here, so a test can assert ordering and presence
+	// without pinning a machine's clock or timezone.
+	emittedAt string
 }
 
 // FakeSpeechReader is an in-memory speech log.
@@ -48,6 +53,22 @@ func NewFakeSpeechReader() *FakeSpeechReader { return &FakeSpeechReader{finished
 // The stand-in journal advances by one first, so consecutive utterances get
 // DIFFERENT positions -- the reader logs around what it says.
 func (f *FakeSpeechReader) Speak(text ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, one := range text {
+		f.journal++
+		f.spoken = append(f.spoken, spokenEntry{
+			text:        one,
+			logPosition: f.journal,
+			emittedAt:   fmt.Sprintf("2026-08-16 09:04:%02d.000", f.journal),
+		})
+	}
+}
+
+// SpeakWithoutStamp records an utterance the way a bridge older than spec 0028
+// does: text and coordinate, no wall clock. The field is optional on the wire
+// precisely so that bridge keeps working, and this is how that is tested.
+func (f *FakeSpeechReader) SpeakWithoutStamp(text ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, one := range text {
@@ -113,6 +134,7 @@ func (f *FakeSpeechReader) SpeechSince(sinceIndex int) (ports.SpeechRange, error
 			Text:        f.spoken[i].text,
 			Index:       i,
 			LogPosition: f.spoken[i].logPosition,
+			EmittedAt:   f.spoken[i].emittedAt,
 		})
 	}
 	return ports.SpeechRange{

@@ -144,9 +144,10 @@ type AskUserResult struct {
 
 // BrailleEntry is the wire shape of the same name.
 type BrailleEntry struct {
-	Text        string `json:"text"`
-	Index       int    `json:"index"`
-	LogPosition int    `json:"logPosition"`
+	Text        string  `json:"text"`
+	Index       int     `json:"index"`
+	LogPosition int     `json:"logPosition"`
+	EmittedAt   *string `json:"emittedAt,omitempty"`
 }
 
 // BrailleResult is the wire shape of the same name.
@@ -233,9 +234,10 @@ type HelloResult struct {
 
 // LastSpeechResult is the wire shape of the same name.
 type LastSpeechResult struct {
-	Text        string `json:"text"`
-	Index       int    `json:"index"`
-	LogPosition *int   `json:"logPosition,omitempty"`
+	Text        string  `json:"text"`
+	Index       int     `json:"index"`
+	LogPosition *int    `json:"logPosition,omitempty"`
+	EmittedAt   *string `json:"emittedAt,omitempty"`
 }
 
 // LogLevelResult is the wire shape of the same name.
@@ -305,9 +307,10 @@ type SetLogLevelParams struct {
 
 // SpeechEntry is the wire shape of the same name.
 type SpeechEntry struct {
-	Text        string `json:"text"`
-	Index       int    `json:"index"`
-	LogPosition int    `json:"logPosition"`
+	Text        string  `json:"text"`
+	Index       int     `json:"index"`
+	LogPosition int     `json:"logPosition"`
+	EmittedAt   *string `json:"emittedAt,omitempty"`
 }
 
 // SpeechResult is the wire shape of the same name.
@@ -353,10 +356,11 @@ type WaitForSpeechParams struct {
 
 // WaitForSpeechResult is the wire shape of the same name.
 type WaitForSpeechResult struct {
-	Found       bool   `json:"found"`
-	Index       int    `json:"index"`
-	Text        string `json:"text"`
-	LogPosition *int   `json:"logPosition,omitempty"`
+	Found       bool    `json:"found"`
+	Index       int     `json:"index"`
+	Text        string  `json:"text"`
+	LogPosition *int    `json:"logPosition,omitempty"`
+	EmittedAt   *string `json:"emittedAt,omitempty"`
 }
 
 // WaitForUserReplyParams is the wire shape of the same name.

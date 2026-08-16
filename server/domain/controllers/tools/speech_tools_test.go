@@ -48,6 +48,7 @@ type capturedWindow struct {
 		Text        string `json:"text"`
 		Index       int    `json:"index"`
 		LogPosition int    `json:"logPosition"`
+		EmittedAt   string `json:"emittedAt"`
 	} `json:"entries"`
 	FromIndex int `json:"fromIndex"`
 	ToIndex   int `json:"toIndex"`
@@ -321,5 +322,52 @@ func TestEverySpeechToolRefusesAReaderWithoutSpeech(t *testing.T) {
 				t.Errorf("capability = %q, want speech", capability.Capability)
 			}
 		})
+	}
+}
+
+// Spec 0028. The strongest ask of the first external run: without this, a timing
+// assertion could only be made by reading the bridge's transcript off disk.
+func TestGetSpeechCarriesTheInstantEachUtteranceWasEmitted(t *testing.T) {
+	call, built := speechCall(t, &tools.GetSpeech{})
+	built.Speech.Speak("Edit  blank", "Documents  list")
+
+	result, err := call.Run(`{"since_index":0}`)
+	if err != nil {
+		t.Fatalf("get_speech: %v", err)
+	}
+	var window capturedWindow
+	decode(t, result, &window)
+
+	for i, entry := range window.Entries {
+		if entry.EmittedAt == "" {
+			t.Errorf("entry %d (%q) carries no emittedAt", i, entry.Text)
+		}
+	}
+}
+
+// The field is optional on the wire, so a bridge older than 0028 sends nothing
+// and the adapter maps a nil pointer to "". The tool must render that as an
+// absent field rather than as an instant, and must not fail: an old add-on with
+// a new server is the ordinary state of a machine mid-upgrade.
+func TestAnEntryWithoutAStampIsRenderedWithoutOne(t *testing.T) {
+	call, built := speechCall(t, &tools.GetSpeech{})
+	built.Speech.SpeakWithoutStamp("no stamp here")
+
+	result, err := call.Run(`{"since_index":0}`)
+	if err != nil {
+		t.Fatalf("get_speech: %v", err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("re-encoding the result: %v", err)
+	}
+	if strings.Contains(string(encoded), "emittedAt") {
+		t.Errorf("result names emittedAt for an entry that has none: %s", encoded)
+	}
+
+	var window capturedWindow
+	decode(t, result, &window)
+	if len(window.Entries) != 1 || window.Entries[0].Text != "no stamp here" {
+		t.Fatalf("the entry itself must still come through: %+v", window.Entries)
 	}
 }

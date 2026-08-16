@@ -38,6 +38,9 @@ type lastSpeechResult struct {
 	// LogPosition places this utterance on the log journal's timeline; hand it to
 	// get_log as since_position to see what the reader was doing around it.
 	LogPosition int `json:"logPosition"`
+	// EmittedAt is when the reader emitted it; empty for the sentinel returned
+	// when nothing has been said yet (spec 0028).
+	EmittedAt string `json:"emittedAt,omitempty"`
 }
 
 func (t *GetLastSpeech) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
@@ -50,5 +53,10 @@ func (t *GetLastSpeech) Execute(ctx ToolContext, _ json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	return lastSpeechResult{Text: last.Text, Index: last.Index, LogPosition: last.LogPosition}, nil
+	return lastSpeechResult{
+		Text:        last.Text,
+		Index:       last.Index,
+		LogPosition: last.LogPosition,
+		EmittedAt:   last.EmittedAt,
+	}, nil
 }

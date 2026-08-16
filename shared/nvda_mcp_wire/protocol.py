@@ -516,6 +516,18 @@ class SpeechEntry:
 	index: int
 	#: The journal position when this was captured (the ``getLog`` coordinate).
 	logPosition: int
+	#: Wall clock at the moment the reader EMITTED this utterance, formatted
+	#: ``YYYY-MM-DD HH:MM:SS.mmm`` -- the same shape ``getLogPosition`` returns
+	#: and the session transcript writes, so a stamp can be pasted into a search
+	#: of the reader's own log (spec 0028).
+	#:
+	#: **Emitted, not heard.** Live mode captures at ``pre_speechQueued`` and
+	#: silent mode at ``filter_speechSequence``; neither is audio, so in live
+	#: mode an utterance queued behind a long one can be seconds from audible.
+	#: That makes this the right number for "did the application respond
+	#: promptly" -- synth queueing belongs to the synth -- and the wrong number
+	#: for "when did the user hear it", which this protocol cannot answer.
+	emittedAt: str = ""
 
 
 @dataclass
@@ -546,6 +558,9 @@ class LastSpeechResult:
 	index: int
 	#: The journal position when this was captured; 0 for the empty sentinel.
 	logPosition: int = 0
+	#: Wall clock when the reader emitted it; see :class:`SpeechEntry`. Empty
+	#: for the sentinel, which was never emitted at all.
+	emittedAt: str = ""
 
 
 @dataclass
@@ -571,6 +586,11 @@ class WaitForSpeechResult:
 	#: doing when it said that". On a miss this is the journal's *current*
 	#: position, so it is still a usable "from here" mark (spec 0021).
 	logPosition: int = 0
+	#: Wall clock when the match was emitted; see :class:`SpeechEntry`. Empty on
+	#: a miss -- unlike ``index`` and ``logPosition``, which stay useful as a
+	#: "from here" mark, there is no instant to report for speech that never
+	#: arrived, and inventing "now" would read as a match that happened.
+	emittedAt: str = ""
 
 
 @dataclass
@@ -604,6 +624,9 @@ class BrailleEntry:
 	index: int
 	#: The journal position when this was captured (the ``getLog`` coordinate).
 	logPosition: int
+	#: Wall clock when the reader emitted this update; see :class:`SpeechEntry`
+	#: for the format and for why it is named for emission (spec 0028).
+	emittedAt: str = ""
 
 
 @dataclass

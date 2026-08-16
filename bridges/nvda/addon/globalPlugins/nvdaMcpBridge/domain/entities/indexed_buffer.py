@@ -53,7 +53,42 @@ class IndexedBuffer:
 		#: whoever calls ``append``, so this buffer never learns the journal
 		#: exists.
 		self._log_positions: list[int] = [0]
+		#: Wall-clock epoch seconds captured alongside each entry, same length
+		#: and index as ``_entries`` (spec 0028). Stored as a NUMBER: rendering
+		#: it is a controller's job, so this entity stays free of presentation.
+		#:
+		#: Distinct from ``_last_time`` below, which is MONOTONIC and stays that
+		#: way. The two answer different questions and must not be merged: the
+		#: heuristic measures an elapsed duration and has to survive a clock
+		#: correction, while a reported stamp has to line up against artefacts
+		#: stamped by somebody else.
+		self._times: list[float] = [0.0]
 		self._last_time: float = clock.monotonic()
+
+	def _record(self, entry: Any, log_position: int) -> None:
+		"""Append *entry* with the bookkeeping every subclass owes it.
+
+		The three parallel lists and the heuristic's timestamp must advance
+		together or an index means different things in each. Spec 0028 found
+		them being maintained in three separate ``append`` implementations --
+		speech, braille, and the test double -- and adding one field to all
+		three missed one, which is the whole argument for this method existing.
+		Subclasses decide WHETHER and WHAT to record; this decides what
+		recording entails.
+
+		The lock is re-entrant, so a caller already holding it (both real
+		buffers do, to make their checks and their append one atomic step) may
+		call this without deadlocking.
+		"""
+		with self._lock:
+			self._entries.append(entry)
+			self._log_positions.append(log_position)
+			# Two clocks, two jobs: the wall-clock stamp is what an agent reads
+			# back and must line up with artefacts stamped elsewhere; the
+			# monotonic one drives the still-speaking heuristic and must survive
+			# a clock correction (spec 0028).
+			self._times.append(self._clock.time())
+			self._last_time = self._clock.monotonic()
 
 	def _sentinel(self) -> Any:
 		"""The empty entry seeded at index 0. Must render to ``""``."""
@@ -78,6 +113,20 @@ class IndexedBuffer:
 			index = len(self._entries) - 1
 			return self._render(self._entries[index]), index
 
+	def time_at(self, index: int) -> float:
+		"""Wall-clock epoch recorded for the entry at *index*, or ``0.0``.
+
+		The single-entry reads (``getLastSpeech``, ``waitForSpeech``) get their
+		stamp through here rather than through the entry tuples, exactly as they
+		already do for the journal coordinate. An out-of-range index reports the
+		sentinel's ``0.0`` so a stale bookmark can never raise, and ``0.0``
+		renders as an empty string rather than as 1970 (spec 0028).
+		"""
+		with self._lock:
+			if 0 <= index < len(self._times):
+				return self._times[index]
+			return 0.0
+
 	def log_position_at(self, index: int) -> int:
 		"""The journal position recorded for the entry at *index*, or 0.
 
@@ -91,13 +140,14 @@ class IndexedBuffer:
 				return self._log_positions[index]
 			return 0
 
-	def entries_since(self, index: int) -> tuple[list[tuple[str, int, int]], int, int]:
+	def entries_since(self, index: int) -> tuple[list[tuple[str, int, int, float]], int, int]:
 		"""Non-empty rendered entries from ``index`` to now, each with its own index.
 
 		Returns ``(entries, fromIndex, toIndex)``: ``fromIndex``/``toIndex`` span
 		the whole half-open range ``[fromIndex, toIndex)`` requested, exactly as
-		before, but each surviving entry is now a ``(text, index, logPosition)``
-		triple carrying the index it actually occupies -- so which entry
+		before, but each surviving entry is now a
+		``(text, index, logPosition, time)`` tuple carrying the index it
+		actually occupies -- so which entry
 		rendered which line is explicit rather than inferred. An empty rendering
 		is skipped, same as the old joined text was; the index gap that leaves
 		is exactly why a position could not be recovered from ``fromIndex`` alone
@@ -107,11 +157,11 @@ class IndexedBuffer:
 		with self._lock:
 			start = max(0, index)
 			to_index = len(self._entries)
-			entries: list[tuple[str, int, int]] = []
+			entries: list[tuple[str, int, int, float]] = []
 			for i in range(start, to_index):
 				text = self._render(self._entries[i])
 				if text and not text.isspace():
-					entries.append((text, i, self._log_positions[i]))
+					entries.append((text, i, self._log_positions[i], self._times[i]))
 			return entries, start, to_index
 
 	def _wait(self, predicate: Callable[[], bool], timeout: float) -> bool:

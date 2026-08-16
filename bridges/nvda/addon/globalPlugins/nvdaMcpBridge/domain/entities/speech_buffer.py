@@ -89,9 +89,7 @@ class SpeechBuffer(IndexedBuffer):
 		care about the join omit it.
 		"""
 		with self._lock:
-			self._entries.append(sequence)
-			self._log_positions.append(log_position)
-			self._last_time = self._clock.monotonic()
+			self._record(sequence, log_position)
 			self._speaking = True
 			text = _join_speech(sequence)
 		if self._observer is not None and text:

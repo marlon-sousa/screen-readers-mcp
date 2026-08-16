@@ -11,11 +11,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from .command_handler import CommandHandler
+from .wallclock import format_wallclock
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
@@ -27,15 +27,10 @@ class GetLogPositionHandler(CommandHandler):
 	marks_log = False
 
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
+		# The renderer moved to wallclock.py when speech entries gained the same
+		# stamp (spec 0028): one format, one definition, so the mark an agent
+		# takes here and the stamp it reads off an utterance cannot disagree.
 		return protocol.LogPositionResult(
 			position=ctx.log_capture.position(),
-			time=self._wallclock(ctx),
+			time=format_wallclock(ctx.clock.time()),
 		)
-
-	@staticmethod
-	def _wallclock(ctx: SessionContext) -> str:
-		# Same shape as FileTranscript's own timestamps (with the date, unlike
-		# NVDA's own time-only log format), so a mark lines up against the
-		# transcript, the journal's `created` field, and the human's "around
-		# then" without a format negotiation.
-		return datetime.fromtimestamp(ctx.clock.time()).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]

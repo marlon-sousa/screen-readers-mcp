@@ -165,7 +165,14 @@ func NewJSONLinesClient(transport adapterports.Transport, clock ports.Clock, log
 func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
 	mapped := make([]ports.SpeechEntry, 0, len(entries))
 	for _, e := range entries {
-		mapped = append(mapped, ports.SpeechEntry{Text: e.Text, Index: e.Index, LogPosition: e.LogPosition})
+		mapped = append(mapped, ports.SpeechEntry{
+			Text:        e.Text,
+			Index:       e.Index,
+			LogPosition: e.LogPosition,
+			// Optional on the wire, so a bridge older than spec 0028 simply
+			// sends nothing and the field reads empty rather than failing.
+			EmittedAt: derefString(e.EmittedAt),
+		})
 	}
 	return mapped
 }
@@ -174,7 +181,12 @@ func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
 func brailleEntries(entries []wire.BrailleEntry) []ports.BrailleEntry {
 	mapped := make([]ports.BrailleEntry, 0, len(entries))
 	for _, e := range entries {
-		mapped = append(mapped, ports.BrailleEntry{Text: e.Text, Index: e.Index, LogPosition: e.LogPosition})
+		mapped = append(mapped, ports.BrailleEntry{
+			Text:        e.Text,
+			Index:       e.Index,
+			LogPosition: e.LogPosition,
+			EmittedAt:   derefString(e.EmittedAt),
+		})
 	}
 	return mapped
 }
@@ -229,7 +241,12 @@ func (c *JSONLinesClient) LastSpeech() (ports.LastSpeech, error) {
 	if err := c.call(wire.CommandGetLastSpeech, nil, &result, DefaultCallTimeout); err != nil {
 		return ports.LastSpeech{}, err
 	}
-	return ports.LastSpeech{Text: result.Text, Index: result.Index, LogPosition: derefInt(result.LogPosition)}, nil
+	return ports.LastSpeech{
+		Text:        result.Text,
+		Index:       result.Index,
+		LogPosition: derefInt(result.LogPosition),
+		EmittedAt:   derefString(result.EmittedAt),
+	}, nil
 }
 
 func (c *JSONLinesClient) NextSpeechIndex() (int, error) {
@@ -259,6 +276,7 @@ func (c *JSONLinesClient) WaitForSpeech(wait ports.SpeechWait) (ports.SpeechMatc
 		Index:       result.Index,
 		Text:        result.Text,
 		LogPosition: derefInt(result.LogPosition),
+		EmittedAt:   derefString(result.EmittedAt),
 	}, nil
 }
 
