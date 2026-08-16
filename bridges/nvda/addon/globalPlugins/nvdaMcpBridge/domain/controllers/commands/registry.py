@@ -47,9 +47,9 @@ from .wait_for_user_reply import WaitForUserReplyHandler
 if TYPE_CHECKING:
 	from ...ports.adapter_factory import AdapterFactory
 
-#: The command groups the NVDA bridge serves (spec 0007). All eight groups are
+#: The command groups the NVDA bridge serves (spec 0007). All nine groups are
 #: live: interact (announce, askUser, waitForUserReply), speech, braille,
-#: gestures, focus, state, config, and typing.
+#: gestures, focus, state, config, typing, and log.
 NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 	protocol.Capability.SPEECH,
 	protocol.Capability.BRAILLE,
