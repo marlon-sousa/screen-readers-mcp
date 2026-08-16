@@ -509,8 +509,8 @@ rather than before it.
     process gap rather than an oversight, and the next entry to merge should be
     watched for it. Entry 11.8 amends the shipped guidance rather than reopening
     this one.
-11.8. **E, the guidance never says how to get the application in front**
-    (server lane). Docs only.
+11.8. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
+    application in front (server lane). Docs only.
     **Entries 11.8–11.11 all come from one session that nobody on this project
     was sitting at** — an external agent drove a third-party application (acter)
     through the MCP on 2026-08-15 and reported back. That is a different

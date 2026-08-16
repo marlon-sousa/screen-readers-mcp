@@ -118,6 +118,14 @@ moment the call returns, the dialog has not opened and focus has not moved.
 Agents that skip the settle step read the previous screen and conclude the wrong
 thing.
 
+**Getting the application you are testing in front is not one of these steps**,
+and there is no tool for it. Focusing a window is the desktop's job, not the
+screen reader's — so the agent switches to it the way a user would, with
+`press_gesture` and the desktop's own switcher (alt+tab, or the Start menu), then
+settles and listens for the window title to confirm it arrived. Launching or
+raising the application in the first place is setup: do that with whatever
+tooling you already use, outside this server.
+
 The server tells the agent all of this itself — see
 [What the agent can read](#what-the-agent-can-read) below.
 

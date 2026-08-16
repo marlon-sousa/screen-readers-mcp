@@ -55,6 +55,11 @@ func TestTheGuidanceStatesTheRuleAndTheSettleStep(t *testing.T) {
 		"wait_for_speech_to_finish",
 		// The escape hatch, so a stuck agent asks instead of guessing.
 		"ask_user",
+		// Entry 11.8: WHY there is no tool for focusing the application under
+		// test, which is the first thing an agent needs and the first thing the
+		// first external run had to leave the MCP to do. The scoping is right;
+		// what was missing was saying so, and saying what to do instead.
+		"the desktop's job",
 	} {
 		if !strings.Contains(document, want) {
 			t.Errorf("the guidance never mentions %q", want)

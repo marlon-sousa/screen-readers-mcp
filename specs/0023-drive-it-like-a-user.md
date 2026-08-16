@@ -15,7 +15,8 @@ Part 1's failure exactly: it assumed a mode would switch, got wrong answers, and
 concluded the application was at fault. Its report also found the one hole in
 Part 2's doctrine: the guidance tells an agent to know where it is before typing
 and never says how to bring the application under test to the foreground. Board
-entry **11.8** amends this spec's guidance document accordingly.
+entry **11.8** amended this spec's guidance document accordingly on 2026-08-16 —
+see *What ships → 1. A published doctrine*.
 
 The first draft of this spec was called *dispatch is not effect* and recommended
 a new `waitForFocus` command. **The diagnosis survived review; the remedy did
@@ -263,6 +264,26 @@ Two properties, both deliberate:
   and JAWS's from its training, and `screenreader://info` tells it which one is
   connected. The guidance supplies the *method*; the agent supplies the
   vocabulary.
+
+**Amended 2026-08-16 (board entry 11.8), one section added:** *First, get the
+application in front of you.* The original document told an agent to know where
+it is before typing and never said how to get anywhere — a hazard named without
+its remedy, which reads as deliberate scoping rather than as an omission. The
+first external run hit it immediately and dropped to PowerShell and Win32
+`SetForegroundWindow`.
+
+The scoping *is* correct — focusing a window is the desktop's job, not the screen
+reader's, and this server publishes no tool for it — so the amendment does not
+add a tool. It adds the doctrine answer, which is the same one the rest of this
+spec gives: **do it the way a user does**, with `press_gesture` and the desktop's
+own switcher, then settle and listen for the window title to confirm arrival.
+Launching or raising an application that is not running is named explicitly as
+*setup rather than testing*, done outside this server.
+
+Naming alt+tab does not breach the reader-agnostic property above: it is the
+desktop's key, not a reader's, and the integration scenario that guards this
+forbids reader key maps (`NVDA+`, `insert+`, `capsLock+`, `JAWSKey`) for exactly
+that reason.
 
 ### 2. Four tool descriptions that say the true thing
 

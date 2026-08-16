@@ -44,11 +44,12 @@ func (s *Server) addGuidanceResource() {
 			URI:      GuidanceURI,
 			Name:     "how to drive a screen reader",
 			MIMEType: "text/markdown",
-			Description: "Read this BEFORE driving a reader. How to act, confirm that what " +
-				"you intended actually happened, and orient yourself when it did not -- " +
-				"the way a screen reader user does, by pressing keys and listening, " +
-				"rather than by inspecting internals. Also what a successful " +
-				"press_gesture result does and does not mean.",
+			Description: "Read this BEFORE driving a reader. How to get the application " +
+				"under test in front of you, act, confirm that what you intended actually " +
+				"happened, and orient yourself when it did not -- the way a screen reader " +
+				"user does, by pressing keys and listening, rather than by inspecting " +
+				"internals. Also what a successful press_gesture result does and does " +
+				"not mean.",
 		},
 		func(_ context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
 			return &sdk.ReadResourceResult{Contents: []*sdk.ResourceContents{{
@@ -97,6 +98,30 @@ Two corollaries worth stating:
   this side. It says nothing about what arrived anywhere.
 - Do not re-press a gesture because the result "seemed" not to work. It very
   likely did work, and you are about to do it twice.
+
+## First, get the application in front of you
+
+Everything below assumes the application you are testing is the one receiving
+keys. Nothing here puts it there. Focusing an application is the desktop's job,
+not the screen reader's, so no reader command will do it for you and this server
+publishes no tool for it — which is correct scoping, and also the first thing you
+need.
+
+Do it the way a user does: switch windows from the keyboard with ` + "`press_gesture`" + ` —
+the desktop's own switcher, alt+tab on Windows, or its application launcher —
+then settle and listen for the window title, exactly as in the loop below. That
+keeps the switch inside what you are testing and gives you the same confirmation
+a user gets.
+
+If the application is not running at all, or the desktop will not surface it from
+the keyboard, start or raise it with whatever tooling you have outside this
+server. That is setup rather than testing, and it is the one part of driving a
+screen reader this server deliberately leaves alone.
+
+Either way, confirm you arrived before you act. An agent that assumes it is in
+the right window types into whatever was already focused, and that surfaces later
+as an unrelated failure naming the wrong component — see *Before you type, know
+where you are* below.
 
 ## The loop: act, settle, listen, orient, escalate
 
