@@ -129,8 +129,13 @@ Your desktop's keys for either route are yours to supply, exactly as your
 reader's are — and for a sharper reason. This document is **static**: it is
 readable before you connect, so it cannot know which reader you are driving, and
 the reader is what fixes the platform. Read ` + "`screenreader://info`" + ` to learn which
-reader is connected; that tells you the desktop as well, and you already know
-that desktop's shortcuts.
+reader is connected; that tells you the desktop as well.
+
+What a *particular* reader can and cannot do for you here is the reader's own to
+say, not this document's — readers differ in what they offer, not merely in which
+keys they use for it, so do not assume a facility exists just because another
+reader has one. If you cannot establish where you are by the loop below, say so
+with ` + "`ask_user`" + ` rather than guessing at a command that may not exist.
 
 Then settle and listen for the window title, exactly as in the loop below — that
 is your confirmation that you arrived, and the reader volunteers it without being
