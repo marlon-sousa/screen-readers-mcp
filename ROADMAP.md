@@ -748,8 +748,13 @@ rather than before it.
     irrelevant at millisecond resolution, recorded so nobody rediscovers it.
     Amends published wire v1 (no external consumers; both implementations
     in-tree and covered by `conformance`). Needs live NVDA, but barely: the
-    stamp is taken in a pure domain entity against an injected clock. Spec: none
-    yet.
+    stamp is taken in a pure domain entity against an injected clock. Spec:
+    [0028-when-was-that-said.md](specs/0028-when-was-that-said.md) (drafted
+    2026-08-16, awaiting agreement; rides in this entry's own PR). The field is
+    `emittedAt`, and the spec adds two things the board did not carry: `monotonic`
+    **stays** for the still-speaking heuristic rather than being replaced, and a
+    stamp on *command* results is deliberately deferred until after 11.12, whose
+    grace window is about to change what those results hold.
 11.16. **E, no way to combine an action with its submit** (server lane).
     **Open — the "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
     day**, on reading spec 0025 in full. 0025 solves a *larger* problem — a grace
