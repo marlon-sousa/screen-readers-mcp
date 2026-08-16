@@ -189,8 +189,8 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-16**, with nothing in flight in either lane:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.15, 11.17, 11.18, 11.19, 11.20
-— eleven entries, of which 11.14 and 11.16 are settled (Done and absorbed).
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.15, 11.16, 11.17, 11.18, 11.19,
+11.20 — twelve entries. Only 11.14 is settled.
 
 Their order is **not** simply the numbering. Read as a strict lane order both
 lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
@@ -750,21 +750,24 @@ rather than before it.
     in-tree and covered by `conformance`). Needs live NVDA, but barely: the
     stamp is taken in a pure domain entity against an injected clock. Spec: none
     yet.
-11.16. **Absorbed by 11.12 (spec 0025) — not to be built separately.** E, no way
-    to combine an action with its submit (server lane). Kept as a record of what
-    the external run asked for and of the two smaller asks it retired, but the
-    remedy belongs to 0025, which reached the same conclusion from a different
-    session and **carries the measurements this entry lacked** (~124 ms for NVDA
-    to finish a keystroke's speech against a ~2.6 s round trip). Where the two
-    differ, 0025 wins: it argues the *settle* is the thing to replace, not merely
-    to batch around. Anything below that 0025 does not cover — chiefly the
-    `waitForSpeech` step that makes act-on-trigger fall out for free, and the
-    requirement that a sequence be able to express settling rather than only
-    sleeping — should be carried into that spec's review rather than built here.
-    **Those riders, and the `type_text replace: true` ask this entry also
-    retired, are recorded in
-    [0027](specs/0027-the-first-external-run.md) as still unmet**, so absorbing
-    this entry cannot quietly drop them.
+11.16. **E, no way to combine an action with its submit** (server lane).
+    **Open — the "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
+    day**, on reading spec 0025 in full. 0025 solves a *larger* problem — a grace
+    window collapsing act/settle/listen from three round trips into one — and
+    because it is larger it looks like it must cover this too. It does not: it
+    makes each intention cheap, it does not let two intentions travel together,
+    so `typeText` then `pressGesture ["enter"]` remains two calls. This entry's
+    own blocking case therefore survives 0025 intact — a command that finishes in
+    1.5 s still cannot be interrupted, because two agent turns still elapse
+    before *stop* can be sent.
+    0025 should be judged on what it claims, which is well measured; it simply
+    must not be allowed to close this. Reinstated with the two asks it carries —
+    the `waitForSpeech` step that makes act-on-trigger fall out (0025 rejects the
+    `until:` *parameter* shape, on a sound argument that does not reach a
+    sequence *step*), and `type_text replace: true`. See
+    [0027](specs/0027-the-first-external-run.md), asks 3, 3b and 5, all now
+    reading **unmet**. **Sequence after 11.12**, whose grace window changes what a
+    sequence step should return and would otherwise be designed against twice.
     Every
     command in the run cost two round trips (`type_text`, then `press_gesture
     ["enter"]`) at 5–10 s each. **The measured cost is not ours** — 11.4

@@ -132,12 +132,46 @@ primitive, this ask is still visible and still unmet.
 |---|---|---|---|
 | 1 | timestamps on speech entries | 11.15 | open, design settled |
 | 2 | an idempotent mode setter | 11.17 (+ 11.11) | open |
-| 3 | action + submit in one call | 11.12 / spec 0025 | open, spec drafted |
-| 3b | act-on-trigger | 11.12, **rider not yet in 0025** | at risk |
+| 3 | action + submit in one call | **nothing** — see below | **unmet** |
+| 3b | act-on-trigger | **nothing** | **unmet** |
 | 4 | getting the app in front | 11.14 | **Done** (PR #55) |
-| 5 | `type_text replace: true` | 11.12, **rider not yet in 0025** | at risk |
+| 5 | `type_text replace: true` | **nothing** | **unmet** |
 
-**The two rows marked *at risk* are the reason this file exists.** They are not
-in any spec text today; they survive only here and in 11.16's absorbed note. If
-0025 is agreed without them, they must either be argued down explicitly or spawn
-their own entry — not simply fall off.
+**Three rows read *unmet*, and correcting them to that is the reason this file
+exists.**
+
+They were first recorded as *handled by 11.12 / spec 0025*. **Reading 0025 in
+full on 2026-08-16 showed that was wrong**, and the error is instructive: 0025
+solves a *larger* problem than ask 3 and, doing so, looks like it must have
+solved ask 3 as well.
+
+What 0025 actually ships is a **grace window** on each mutating call plus
+per-gesture bookmarks, which collapses *act → settle → listen* from three round
+trips into one. That is a bigger win than this ask requested. But **it does not
+let two different actions travel together**: `typeText` followed by
+`pressGesture ["enter"]` is still two calls, because they are two intentions and
+0025 makes each intention cheap rather than making several fit in one trip.
+
+So the ask's own blocking case survives 0025 untouched. `big` finishes after
+1.5 s; typing it and submitting it still costs two agent turns before *stop* can
+be sent, so it still completes before it can be interrupted, and the scenario is
+**still untestable**. 0025 makes everything around that faster without making
+that possible.
+
+Ask 3b fares differently: 0025 *does* consider an act-on-trigger shape and
+rejects it — as an `until:` parameter on `pressGesture`, because `satisfied:
+false` would conflate *not yet*, *worded differently*, and *never*. That
+argument is sound against that shape. It does **not** dispose of the shape
+proposed here, which is a `waitForSpeech` **step inside a sequence**:
+`waitForSpeech` already exists, its `found: false` is already an accepted
+non-error outcome, and it already claims nothing about completeness. But since
+0025 builds no sequence, there is nowhere to put such a step, so the ask is
+simply unaddressed rather than refused.
+
+Ask 5 has no home for the same reason: "select all, delete, type" is a sequence,
+and no sequence primitive is being built.
+
+**None of this is an argument against 0025**, which is well-measured and should
+be judged on what it claims. It is an argument against letting it close these
+three rows. They need either their own entry or an explicit decision that the
+project will not serve them.
