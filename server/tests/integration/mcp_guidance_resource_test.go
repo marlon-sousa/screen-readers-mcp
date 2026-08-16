@@ -60,6 +60,11 @@ func TestTheGuidanceStatesTheRuleAndTheSettleStep(t *testing.T) {
 		// first external run had to leave the MCP to do. The scoping is right;
 		// what was missing was saying so, and saying what to do instead.
 		"the desktop's job",
+		// The limit that made 11.8's first draft wrong: a gesture is press AND
+		// release, so no modifier can be held across several keys and alt+tab
+		// cannot walk past the previous window. Guarded because deleting it
+		// silently restores the advice that does not work.
+		"discrete press and release",
 	} {
 		if !strings.Contains(document, want) {
 			t.Errorf("the guidance never mentions %q", want)
@@ -79,6 +84,27 @@ func TestTheGuidanceNamesNoParticularReadersKeys(t *testing.T) {
 	for _, forbidden := range []string{"NVDA+", "insert+", "capsLock+", "JAWSKey"} {
 		if strings.Contains(document, forbidden) {
 			t.Errorf("the guidance contains %q; it must describe the method, not one reader's keys",
+				forbidden)
+		}
+	}
+}
+
+// The same principle, one level out, added with entry 11.8. The document is
+// STATIC -- readable before connecting -- so it cannot know which reader is
+// connected, and the reader is what fixes the platform: NVDA and JAWS are
+// Windows, others are not. A desktop shortcut here would therefore be advice the
+// document cannot know is true, in the one place nobody thinks to check. The
+// agent reads screenreader://info for the reader, which tells it the desktop too.
+//
+// This is why 11.8's section names the PROPERTY an agent needs (a switcher that
+// survives its keys being released) rather than the keys that have it.
+func TestTheGuidanceNamesNoParticularDesktopsKeys(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+	document := h.ReadGuidance(t)
+
+	for _, forbidden := range []string{"alt+tab", "windows+tab", "control+alt+tab", "command+tab"} {
+		if strings.Contains(strings.ToLower(document), forbidden) {
+			t.Errorf("the guidance contains %q; it must describe the method, not one desktop's keys",
 				forbidden)
 		}
 	}

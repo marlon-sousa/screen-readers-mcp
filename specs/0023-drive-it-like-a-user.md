@@ -275,15 +275,65 @@ first external run hit it immediately and dropped to PowerShell and Win32
 The scoping *is* correct — focusing a window is the desktop's job, not the screen
 reader's, and this server publishes no tool for it — so the amendment does not
 add a tool. It adds the doctrine answer, which is the same one the rest of this
-spec gives: **do it the way a user does**, with `press_gesture` and the desktop's
-own switcher, then settle and listen for the window title to confirm arrival.
-Launching or raising an application that is not running is named explicitly as
-*setup rather than testing*, done outside this server.
+spec gives: **do it the way a user does**, then settle and listen for the window
+title to confirm arrival. Launching an application that is not running is named
+explicitly as *setup rather than testing*, done outside this server.
 
-Naming alt+tab does not breach the reader-agnostic property above: it is the
-desktop's key, not a reader's, and the integration scenario that guards this
-forbids reader key maps (`NVDA+`, `insert+`, `capsLock+`, `JAWSKey`) for exactly
-that reason.
+**A first draft of this section recommended alt+tab and was wrong**, caught in
+review on 2026-08-16. It surfaced a limit of the input vocabulary
+([0018](0018-input-vocabulary.md)) that no document in this repo had ever
+stated: **a gesture is a discrete press and release.** `pressGesture` sends each
+gesture whole, so a modifier cannot be held down across several other keys, and
+the ordinary hold-alt-and-tab-repeatedly way of reaching the fourth window back
+is not expressible at all — sent twice, `alt+tab` returns you where you started.
+The limit is general, not a window-switching quirk: anything meaning "hold this
+while pressing that several times" is outside what `pressGesture` can say.
+
+So the section states that limit and gives two routes made of separate presses:
+**name the application** (launcher, `typeText` its name, Enter — three ordinary
+calls, independent of how many windows are open, and layout-independent, so it is
+the one to prefer), or **use a switcher that stays up once its keys are
+released**, which is then drivable one gesture at a time. The distinction that
+matters is persistence, not the particular keys.
+
+**And it names no keys — the reader-agnostic property generalises to the
+desktop.** A second draft named Windows shortcuts and was rejected in the same
+review, on a sharper argument than staleness: this document is *static*, readable
+before connecting, so it **cannot know which reader is connected — and the reader
+is what fixes the platform.** NVDA and JAWS are Windows; other readers are not.
+A desktop shortcut here would be advice the document has no way to know is true,
+in the one place nobody thinks to check. The agent reads `screenreader://info`
+for the reader, which tells it the desktop too, and it already knows that
+desktop's shortcuts — the same division of labour Part 4 already set for reader
+keys, applied one level out.
+
+This adds a sibling to the guarding scenario:
+`TestTheGuidanceNamesNoParticularDesktopsKeys`, forbidding `alt+tab`,
+`windows+tab`, `control+alt+tab` and `command+tab` beside the existing reader
+key map check. The **README stays concrete** and names the Windows keys under an
+"On Windows" marker — the same split it already uses for reader keys, which it
+names (`NVDA+f7`, `control+home`) where the guidance resource may not.
+
+**The option not taken, recorded because it is the obvious next thought:** a
+*second, per-reader* guidance resource, session-scoped like `screenreader://info`,
+could carry the concrete keys precisely because it would know the reader and
+therefore the platform.
+
+It would **layer on this one rather than replace it**. The static document keeps
+the method — the loop, the delivery-not-consequence rule, the discrete-press
+limit, all of which are true of every reader — and a per-reader document would
+carry only what is specific *beyond* the general: this reader's own commands,
+this desktop's switcher keys. That layering is what keeps it affordable, since
+each bridge would author its increment and not a whole doctrine.
+
+It is not built, and the reason is a constraint worth writing down before someone
+reaches for it: **its content could not come from this server.** A server-held
+per-reader document breaches 0005 principle 2 exactly as a server-held key map
+does — the server would be learning that NVDA means Windows, and what Windows'
+switcher keys are. It would have to come from the **bridge**, over the wire,
+which makes it a protocol addition rather than a resource file. That is a real
+design, and a coherent one; it simply buys only what the agent already supplies
+for itself today, so it waits for a case where an agent demonstrably cannot.
 
 ### 2. Four tool descriptions that say the true thing
 

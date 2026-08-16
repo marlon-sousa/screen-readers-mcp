@@ -107,21 +107,42 @@ not the screen reader's, so no reader command will do it for you and this server
 publishes no tool for it — which is correct scoping, and also the first thing you
 need.
 
-Do it the way a user does: switch windows from the keyboard with ` + "`press_gesture`" + ` —
-the desktop's own switcher, alt+tab on Windows, or its application launcher —
-then settle and listen for the window title, exactly as in the loop below. That
-keeps the switch inside what you are testing and gives you the same confirmation
-a user gets.
+Two things about *this* interface shape how you do it, and they are the parts you
+cannot work out from what you already know about the desktop.
 
-If the application is not running at all, or the desktop will not surface it from
-the keyboard, start or raise it with whatever tooling you have outside this
-server. That is setup rather than testing, and it is the one part of driving a
-screen reader this server deliberately leaves alone.
+**A gesture is a discrete press and release.** ` + "`press_gesture`" + ` sends each gesture
+whole, so no modifier can be held down across several other keys. The ordinary
+hold-a-modifier-and-tap-repeatedly way of walking a window switcher is therefore
+**not expressible here at all**: every press releases, and a switcher that lives
+only as long as its modifier is held starts over each time. The limit is general,
+not a window-switching quirk — anything meaning "hold this down while pressing
+that several times" is outside what a gesture can say.
 
-Either way, confirm you arrived before you act. An agent that assumes it is in
-the right window types into whatever was already focused, and that surfaces later
-as an unrelated failure naming the wrong component — see *Before you type, know
-where you are* below.
+**So choose a route made of separate presses.** Either name the application
+rather than cycle to it — open the desktop's launcher or search, type the name
+with ` + "`type_text`" + `, press Enter; three ordinary calls, independent of how many
+windows are open, and layout-independent, which makes it the one to prefer — or
+use a switcher that *stays up after its keys are released*, which can then be
+moved through one gesture at a time and committed with Enter.
+
+Your desktop's keys for either route are yours to supply, exactly as your
+reader's are — and for a sharper reason. This document is **static**: it is
+readable before you connect, so it cannot know which reader you are driving, and
+the reader is what fixes the platform. Read ` + "`screenreader://info`" + ` to learn which
+reader is connected; that tells you the desktop as well, and you already know
+that desktop's shortcuts.
+
+Then settle and listen for the window title, exactly as in the loop below — that
+is your confirmation that you arrived, and the reader volunteers it without being
+asked. **Confirm by listening rather than by counting presses**, and do not
+assume how a switcher is ordered. An agent that assumes it is in the right window
+types into whatever was already focused, and that surfaces later as an unrelated
+failure naming the wrong component — see *Before you type, know where you are*
+below.
+
+If the application is not running at all, start it with whatever tooling you have
+outside this server. That is setup rather than testing, and it is the one part of
+driving a screen reader this server deliberately leaves alone.
 
 ## The loop: act, settle, listen, orient, escalate
 

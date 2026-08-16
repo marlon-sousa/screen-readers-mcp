@@ -120,10 +120,22 @@ thing.
 
 **Getting the application you are testing in front is not one of these steps**,
 and there is no tool for it. Focusing a window is the desktop's job, not the
-screen reader's — so the agent switches to it the way a user would, with
-`press_gesture` and the desktop's own switcher (alt+tab, or the Start menu), then
-settles and listens for the window title to confirm it arrived. Launching or
-raising the application in the first place is setup: do that with whatever
+screen reader's — so the agent switches to it the way a user would, then settles
+and listens for the window title to confirm it arrived.
+
+One wrinkle shapes how that is done: a gesture is a **discrete press and
+release**, so a modifier cannot be held down across several keys. Holding alt and
+tabbing repeatedly to reach the fourth window back is not expressible — sent
+twice, `alt+tab` returns you where you started.
+
+**On Windows**, the two routes that survive that are naming the application
+(Start menu, `type_text` its name, Enter) and a switcher that stays up once the
+keys are released — `control+alt+tab` for the window switcher, or `windows+tab`
+for task view. The `screenreader://guidance` resource states the *property* to
+look for rather than these keys, because it is static and reader-agnostic: it
+cannot know which reader is connected, and the reader is what fixes the platform.
+
+Launching the application in the first place is setup: do that with whatever
 tooling you already use, outside this server.
 
 The server tells the agent all of this itself — see
