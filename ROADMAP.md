@@ -521,6 +521,86 @@ rather than before it.
     process gap rather than an oversight, and the next entry to merge should be
     watched for it. Entry 11.14 amends the shipped guidance rather than
     reopening this one.
+11.8. **E, speech text an agent can segment** (lane 1, bridge). **Implemented on
+    this branch.** Found live on 2026-08-03 driving Chrome to a real site.
+    `_join_speech` concatenated a sequence's string parts with `""`, so the
+    boundaries NVDA knew about were destroyed at the only point they were still
+    known. A Windows system-menu item arrives as `("Move", "indisponível", "m")`
+    — label, state, accelerator — and reached the agent as `Moveindisponívelm`.
+    A desktop icon arrived as `Google Chrome17 de 37`, a list as `Desktoplista`.
+    This is not cosmetic: it is ambiguous, and the agent must guess word
+    boundaries on **every read**, in whatever language the user runs. In that run
+    it also hid the accelerator letters, which were the one-keystroke answer to
+    the menu the agent was arrowing through five presses at a time.
+    **It hit both modes, differently, which is why it read as noise rather than
+    a defect.** Live mode captures at `pre_speechQueued`, further down the
+    pipeline, where NVDA has already inserted its own separators — so the same
+    utterances arrived *double*-spaced (`Google Chrome  17 de 37`) while silent
+    mode, capturing at the `speak()` filter on the raw sequence, got none at all.
+    One join, two symptoms, neither of them right. Stripping the parts before
+    joining normalises both to a single space.
+    Fix: join with a space, dropping whitespace-only parts so no double spaces
+    appear. **What makes this entry worth reading is why it survived so long.**
+    The suite has a test named `test_adjacent_string_parts_join_without_separators`
+    whose whole job was to pin this behaviour — and it was **blind to it**,
+    because its fixtures baked the space into the first part (`"hello "`,
+    `"world"`), so both joins produced the same string. 379 tests passed against
+    the change. The fixtures were unrepresentative of production data in exactly
+    the way that mattered, and a test that cannot fail is not coverage. Fixtures
+    are now realistic (no trailing spaces) and were verified to fail against the
+    old join with the live string. Spec: none needed — a defect fix with its
+    guard corrected.
+11.9. **E, the round trip is the cost — the settle is a no-op** (lane 2, server).
+    **Measured 2026-08-03; the measurement reversed the premise, twice.** The
+    session was slow, and the diagnosis started at `SPEECH_FINISHED_SECONDS`:
+    both modes settle by an elapsed-time heuristic (spec 0008 removed the spy
+    synth, so `exact_finish` is false everywhere), and silent mode appeared to
+    pay a full second per read waiting out a synth that never runs. A spike
+    shortened it for silent mode. **The numbers say that was wrong.** From the
+    bridge transcript, NVDA finishes producing a keystroke's speech **~124 ms**
+    after the gesture (`GESTURE windows+d` 09:04:24.078 → last `SPEECH`
+    09:04:24.202). An agent's tool round trip measured **~2.64 s**. So the 1 s
+    window has *always already expired* by the time `waitForSpeechToFinish`
+    arrives: it returns `finished: true` off a stale `_last_time` having observed
+    nothing. Controlled: a settle timed against a **deliberately quiet** buffer
+    took 8.293 s, and one immediately after real speech took 8.297 s — identical,
+    because both returned instantly and the time is all harness. The constant was
+    never being paid, so the spike was reverted; only its comment survives, on
+    the constant, so the next reader does not re-derive this.
+    What is left is larger. **A third of every step's cost buys nothing**: the
+    act/settle/listen loop is three round trips (~7.9 s) of which the settle is
+    pure waste, and this run spent ~30 calls ≈ 78 s almost entirely on round
+    trips rather than on NVDA. Two routes, and they compose: (a) zero-code —
+    stop calling the settle, since speech lands 20× faster than the agent can
+    ask, and re-read on the rare empty result; (b) let `pressGesture`/`typeText`
+    optionally return the speech they caused, collapsing act/settle/listen into
+    **one** call (~3× faster), which is 0023's doctrine made cheap instead of
+    merely documented. **Both routes need 11.x's `since_index` fix first**, and
+    this is what promotes it from nicety to prerequisite: `finished: true`
+    already collapses "speech happened and stopped" with "speech never started",
+    and today that is masked only by the agent being slower than NVDA. Remove the
+    round trips and the mask goes with them. Same shape as 0020/0021/0023 — one
+    observable covering two situations, cured by letting the caller say which one
+    it is in. Needs a spec conversation; touches the wire.
+11.10. **E, how long has the human been mute?** (lane 1, bridge). Found the hard
+    way on 2026-08-03: an agent held a **silent** session open while doing
+    several minutes of out-of-band shell work, and the user — who cannot hear
+    their computer during suppression — sat mute until they hit the panic
+    gesture. Twice. The failsafe worked exactly as spec 0008 designed it, and
+    that is the good news. The gap is that nothing else did. The session has an
+    inactivity watchdog, but it never fired **because the agent was active** — a
+    call every few seconds. The watchdog asks *"is the agent still there?"* when
+    the question that matters to a suppressed human is *"how long have I been
+    unable to hear my machine?"* Those come apart precisely when an agent is busy
+    but slow, which after 11.9 we know is the normal case, not an edge one. A
+    wall-clock cap on **continuous suppression**, independent of agent activity —
+    warn audibly through the announcer at N seconds, lift suppression at M —
+    would have interrupted this at a minute. Note it interacts with 11.9: making
+    the agent faster shortens every exposure, but does not bound it. Agent-side
+    discipline (never hold a silent session across work that does not drive the
+    reader) is the immediate mitigation and costs nothing, but it is discipline,
+    not a guarantee, and the person it fails is blind and mute at the time. Needs
+    a spec conversation.
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
     application in front (server lane). Docs only.
     **Entries 11.14–11.17 all come from one session that nobody on this project

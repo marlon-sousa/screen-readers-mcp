@@ -35,13 +35,26 @@ def silent_speech(clock: FakeClock) -> SpeechBuffer:
 def test_sequences_keep_only_string_parts(speech: SpeechBuffer) -> None:
 	# NVDA interleaves SpeechCommand objects with the spoken strings (stand-ins
 	# here); only the strings are words.
-	speech.append(["say ", object(), "this", 42])
+	speech.append(["say", object(), "this", 42])
 	assert speech.get_last() == ("say this", 1)
 
 
-def test_adjacent_string_parts_join_without_separators(speech: SpeechBuffer) -> None:
-	speech.append(["hello ", "world"])
-	assert speech.get_last()[0] == "hello world"
+def test_adjacent_string_parts_are_separated_by_a_space(speech: SpeechBuffer) -> None:
+	# The parts carry NO trailing spaces, because real NVDA sequences do not:
+	# a Windows menu item arrives as ("Move", "indisponível", "m") -- the label,
+	# its state, its accelerator. Concatenating gave "Moveindisponívelm", which
+	# no reader can segment. The boundary is known only here, so it is kept here.
+	#
+	# The previous fixtures were ("hello ", "world") -- the space baked into the
+	# first part -- so both joins produced the same string and this test could
+	# not see which one ran. That is why the defect reached a live session.
+	speech.append(["Move", "indisponível", "m"])
+	assert speech.get_last()[0] == "Move indisponível m"
+
+
+def test_whitespace_only_parts_do_not_produce_double_spaces(speech: SpeechBuffer) -> None:
+	speech.append(["Google Chrome", " ", "17 de 37"])
+	assert speech.get_last()[0] == "Google Chrome 17 de 37"
 
 
 # -- search / wait ------------------------------------------------------------

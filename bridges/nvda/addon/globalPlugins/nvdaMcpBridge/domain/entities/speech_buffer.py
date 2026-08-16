@@ -17,34 +17,46 @@ from .indexed_buffer import IndexedBuffer
 if TYPE_CHECKING:
 	from ..ports.clock import Clock
 
-#: Live mode has no exact "speech finished" signal, so we treat speech as
-#: finished once this many seconds pass with no new sequence (NVDASpyLib's
-#: ``SPEECH_HAS_FINISHED_SECONDS``). Silent mode ignores this and uses the spy
-#: synth's ``synthDoneSpeaking`` instead (see :meth:`SpeechBuffer.notify_finished`).
+#: Neither mode has an exact "speech finished" signal (spec 0008 removed the spy
+#: synth; silent mode suppresses at the speak() filter, so no synth ever runs),
+#: so both treat speech as finished once this many seconds pass with no new
+#: sequence -- NVDASpyLib's ``SPEECH_HAS_FINISHED_SECONDS``.
+#:
+#: MEASURED 2026-08-03, and the number turns out not to matter: NVDA finishes
+#: producing a keystroke's speech ~124 ms after the gesture, while an agent's
+#: tool round trip is ~2.6 s. So by the time waitForSpeechToFinish arrives this
+#: window has ALWAYS already expired, and the call returns from a stale
+#: ``_last_time`` without waiting on anything. Shortening it buys nothing --
+#: it was never being paid. See ROADMAP entry 11.9.
 SPEECH_FINISHED_SECONDS: float = 1.0
 
 
 def _join_speech(sequence: Any) -> str:
-	"""Join the plain-string parts of a speech sequence, trimming whitespace.
+	"""Join the plain-string parts of a speech sequence with a separating space.
 
 	NVDA speech sequences interleave ``str`` fragments with ``SpeechCommand``
 	objects (pitch, index, callbacks, ...). Only the strings are spoken words,
 	so those are all we capture.
+
+	The parts are joined with a SPACE, not concatenated. A sequence's fragments
+	are separate utterances -- a name, a role, a position, an accelerator letter
+	-- and running them together produces text no reader can segment:
+	``"Move" + "indisponivel" + "m"`` came out as ``Moveindisponivelm``, and
+	``"Google Chrome" + "17 de 37"`` as ``Google Chrome17 de 37``. The join is
+	the only place the boundary is known, so it is the only place it can be kept.
 	"""
 	if not isinstance(sequence, (list, tuple)):
 		return ""
-	parts = [c for c in sequence if isinstance(c, str)]  # pyright: ignore[reportUnknownVariableType]
-	return "".join(parts).strip()
+	parts = [c.strip() for c in sequence if isinstance(c, str)]  # pyright: ignore[reportUnknownVariableType]
+	return " ".join(p for p in parts if p)
 
 
 class SpeechBuffer(IndexedBuffer):
 	"""Indexed capture of NVDA speech sequences with wait-for / wait-to-finish.
 
-	``exact_finish`` selects how "speech has finished" is decided, and is set by
-	whichever speech source the AdapterFactory built: silent mode sets it true
-	and drives :meth:`notify_finished` from the spy synth's
-	``synthDoneSpeaking``; live mode leaves it false and falls back to the
-	elapsed-time heuristic.
+	``exact_finish`` selects how "speech has finished" is decided. Since spec 0008
+	removed the spy synth there is no exact signal in either mode, so both leave
+	it false and fall back to the elapsed-time heuristic.
 	"""
 
 	def __init__(self, clock: Clock, *, exact_finish: bool = False) -> None:
