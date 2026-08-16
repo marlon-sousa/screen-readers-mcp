@@ -188,11 +188,23 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-15**: 11.3, 11.6, and the four entries 11.8–11.11
-that came out of the first external run. Their order among themselves is not yet
-decided — 11.8 is docs-only and 11.9 is small and well understood, so neither
+below. **Open as of 2026-08-16**: 11.3, 11.6, and the entries 11.14–11.17 that
+came out of the first external run. Their order among themselves is not yet
+decided — 11.14 is docs-only and 11.15 is small and well understood, so neither
 needs to wait behind 11.3's and 11.6's unagreed specs, but taking them first is
 a reprioritisation to make explicitly, the way 11.4 was taken before 11.3.
+
+**11.8–11.13 are reserved, and were claimed first.** PR #54 numbered the
+external-run entries 11.8–11.11 on 2026-08-15 without checking the open PRs that
+also edit this file, and two of them had already taken that range: **#51** claims
+11.8–11.10 (speech segmentation, the round-trip cost, the mute watchdog) and
+**#52**, stacked on it, claims 11.11–11.13 (specs 0024–0026). Both were opened
+2026-08-03, so they have precedence and the external-run entries were renumbered
+to 11.14–11.17 on 2026-08-16 rather than the other way round. **Spec numbers
+0024, 0025 and 0026 are likewise taken by #52** — the next free spec number is
+0027. Anyone adding a board entry or a spec should check the open PRs first;
+this file is edited by nearly every PR, so a number that is free on main is not
+necessarily free.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -507,11 +519,11 @@ rather than before it.
     PR flips its own entry" exists precisely so the board is true on main the
     moment a PR merges; three consecutive entries missing it makes this a
     process gap rather than an oversight, and the next entry to merge should be
-    watched for it. Entry 11.8 amends the shipped guidance rather than reopening
-    this one.
-11.8. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
+    watched for it. Entry 11.14 amends the shipped guidance rather than
+    reopening this one.
+11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
     application in front (server lane). Docs only.
-    **Entries 11.8–11.11 all come from one session that nobody on this project
+    **Entries 11.14–11.17 all come from one session that nobody on this project
     was sitting at** — an external agent drove a third-party application (acter)
     through the MCP on 2026-08-15 and reported back. That is a different
     evidence tier from every E-finding before it, all of which came from
@@ -519,7 +531,7 @@ rather than before it.
     recording what it produced: **no bugs.** Five pieces of feedback, every one
     a missing affordance. After 11.5 and 11.7, that is the result worth having.
     Two of the five asks are not entries of their own: `type_text replace: true`
-    and the report's "act on trigger" stretch goal are both absorbed by 11.10.
+    and the report's "act on trigger" stretch goal are both absorbed by 11.16.
     This entry: nothing in `screenreader://guidance`, the README or any tool
     description says how to put the application under test in the foreground, so
     the run dropped to PowerShell and Win32 `SetForegroundWindow`. The reporting agent's own read is that the scoping is
@@ -535,7 +547,7 @@ rather than before it.
     tool. Amends the shipped guidance resource plus the README; 11.7 is Done, so
     new scope cannot fold into it. Spec: 0023, amended in the implementing PR —
     no new spec file.
-11.9. **E, speech and braille entries carry no time** (both lanes). The run's
+11.15. **E, speech and braille entries carry no time** (both lanes). The run's
     strongest ask. An assertion of the form "X happened promptly after Y" is a
     large fraction of what accessibility testing is, and the run's single most
     valuable measurement — a stop waking a sleeping script in 63 ms — could not
@@ -567,7 +579,7 @@ rather than before it.
     in-tree and covered by `conformance`). Needs live NVDA, but barely: the
     stamp is taken in a pure domain entity against an injected clock. Spec: none
     yet.
-11.10. **E, no way to combine an action with its submit** (server lane). Every
+11.16. **E, no way to combine an action with its submit** (server lane). Every
     command in the run cost two round trips (`type_text`, then `press_gesture
     ["enter"]`) at 5–10 s each. **The measured cost is not ours** — 11.4
     established the bridge answers in 0.2–0.5 ms — it is the client model's turn
@@ -610,7 +622,7 @@ rather than before it.
       withholds it; no capability of its own.
     Also retires the report's smallest ask, `type_text replace: true` — select
     all, delete, type is a sequence. Spec: none yet.
-11.11. **E, a toggle with no setter** (both lanes). `NVDA+space` is a toggle and
+11.17. **E, a toggle with no setter** (both lanes). `NVDA+space` is a toggle and
     there is no idempotent way to say "be in browse mode", so automation must
     `getState`, branch, press, then re-check — and a wrong guess flips the wrong
     way and silently corrupts everything after it. The run demonstrated the

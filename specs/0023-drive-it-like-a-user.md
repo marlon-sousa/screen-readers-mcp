@@ -15,7 +15,7 @@ Part 1's failure exactly: it assumed a mode would switch, got wrong answers, and
 concluded the application was at fault. Its report also found the one hole in
 Part 2's doctrine: the guidance tells an agent to know where it is before typing
 and never says how to bring the application under test to the foreground. Board
-entry **11.8** amended this spec's guidance document accordingly on 2026-08-16 —
+entry **11.14** amended this spec's guidance document accordingly on 2026-08-16 —
 see *What ships → 1. A published doctrine*.
 
 The first draft of this spec was called *dispatch is not effect* and recommended
@@ -265,7 +265,7 @@ Two properties, both deliberate:
   connected. The guidance supplies the *method*; the agent supplies the
   vocabulary.
 
-**Amended 2026-08-16 (board entry 11.8), one section added:** *First, get the
+**Amended 2026-08-16 (board entry 11.14), one section added:** *First, get the
 application in front of you.* The original document told an agent to know where
 it is before typing and never said how to get anywhere — a hazard named without
 its remedy, which reads as deliberate scoping rather than as an omission. The
