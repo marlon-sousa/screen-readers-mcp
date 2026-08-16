@@ -521,8 +521,16 @@ rather than before it.
     process gap rather than an oversight, and the next entry to merge should be
     watched for it. Entry 11.14 amends the shipped guidance rather than
     reopening this one.
-11.8. **E, speech text an agent can segment** (lane 1, bridge). **Implemented on
-    this branch.** Found live on 2026-08-03 driving Chrome to a real site.
+    **It was watched, and it drifted again: 11.8 (PR #51) merged on 2026-08-16
+    still reading "Implemented on this branch"** — a branch that no longer
+    exists — and was corrected here. That is four consecutive entries, so the
+    rule is now demonstrably not self-enforcing and the remedy is not more
+    diligence. The cheap fix is a CI check: a PR that changes ROADMAP.md and is
+    not itself a board-bookkeeping PR should fail while any entry it touches
+    lacks a Done mark or a stated reason for not having one. Worth its own
+    entry; noted here because this is where the evidence accumulated.
+11.8. **Done (PR #51, 2026-08-16)** — E, speech text an agent can segment
+    (lane 1, bridge). Found live on 2026-08-03 driving Chrome to a real site.
     `_join_speech` concatenated a sequence's string parts with `""`, so the
     boundaries NVDA knew about were destroyed at the only point they were still
     known. A Windows system-menu item arrives as `("Move", "indisponível", "m")`
@@ -601,6 +609,72 @@ rather than before it.
     reader) is the immediate mitigation and costs nothing, but it is discipline,
     not a guarantee, and the person it fails is blind and mute at the time. Needs
     a spec conversation.
+11.11. **E, a session the agent can hear** (lane 1, bridge). Found live on
+    2026-08-03. The agent pressed `NVDA+space` meaning to return to browse mode,
+    but the page reload had already restored browse mode, so the toggle entered
+    **focus** mode — and the next six `h` presses were typed into a search field
+    instead of walking headings. The agent could not tell "no headings here" from
+    "the keys went somewhere else" and said so in writing. **The human knew
+    instantly: he heard the focus-mode tone.** `browseMode.reportPassThrough`
+    plays `focusMode.wav` unless `passThroughAudioIndication` is false, in which
+    case NVDA speaks the words instead — so the information exists, in the
+    channel this session cannot capture. The gap was **already documented three
+    times** (0001 names this exact gesture, `StateResult`'s docstring names it,
+    0023 lists it under honest limits) and the prescribed cure — call `getState`
+    — is correct and was not used, because after 11.9 a poll costs a full round
+    trip to learn one bit NVDA computes in microseconds. What generalises: in a
+    silent session **the human hears only the tones and the agent reads only the
+    words**, so each is confident and each is missing half. Proposes a membership
+    test — a session may change a setting only if the change moves information
+    between channels without adding or removing any — plus disclosure of every
+    key changed, and reporting (not fixing) the quiet states it must not touch.
+    A `setConfig` one-liner is the mitigation available on today's build, no code.
+    Spec: [0024-a-session-the-agent-can-hear.md](specs/0024-a-session-the-agent-can-hear.md)
+    (drafted 2026-08-03, not agreed).
+11.12. **E, one round trip per intention** (lane 2, server + bridge). Implements
+    the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
+    (~7.9 s) to carry ~124 ms of reader work, and 11.9 measured that one of the
+    three observes nothing at all. The maintainer's reframing is the substance:
+    **wait ~100 ms after dispatch and return what arrived** — because
+    `waitForSpeechToFinish` asks "has speech *stopped*?", which is unanswerable
+    (silence before and silence after are the same observable), while a grace
+    window asks "has speech *started*?", which is a fact at a stated instant. It
+    costs ~4% of a round trip rather than a whole one. Ships: the grace window on
+    `pressGesture`/`typeText`; **per-gesture speech bookmarks** so a batch stays
+    observable (5 keys go from 5 trips ≈ 13 s to 1 trip + 500 ms, *and* a silent
+    key becomes visible instead of inferred); a `getState` snapshot on the result
+    for silent effects only — explicitly **not** focus, so 0023's "pre-effect
+    focus is wrong by construction" stands; and `announce` riding along, because
+    11.10's protection must not be the thing that costs the most. **No `await`
+    parameter**: its false answer would conflate not-yet with never, the
+    objection that sank `waitForFocus`, and the maintainer's "wait a little and
+    query again" leaves the slow case at today's two trips rather than making
+    every call ambiguous. Honest risk: 2.6 s was measured, 5–12 s was observed
+    hours later, and the gap is unbracketed — the benefit is proportional to a
+    number nobody has measured.
+    Spec: [0025-one-round-trip-per-intention.md](specs/0025-one-round-trip-per-intention.md)
+    (drafted 2026-08-03, not agreed).
+11.13. **E, where am I, and what is on the page** (lane 1, bridge + server). Two
+    questions the repo has been treating as one. **"Where am I" is already
+    solved and this builds nothing for it** — it is `NVDA+Tab`, a gesture whose
+    answer is speech, made one round trip by 11.12; 0023 settled that and a
+    `whereAmI` tool would be the obvious wrong answer. **"What is on this page"
+    has no answer at any usable cost**: line-by-line arrowing is one round trip
+    per line, which is where the 2026-08-03 run actually died — it reached the
+    results page and never got the three titles. 11.12 does not help, because it
+    makes a step cheaper without reducing the number of steps. Proposes
+    `getPageSnapshot`, gated on a new `document` capability: the browse-mode
+    buffer as lines, roles included, bounded and paginated, with `truncatedBy`
+    naming *which* bound bit and `hasDocument: false` distinguished from an empty
+    page — 0021's and 0020's lesson applied to a new tool rather than
+    rediscovered in it. The 0023 tension resolves on the same test as 11.11:
+    browse mode **is** a flat text rendering the user arrows through, so a
+    snapshot changes the channel, not the substance. Say-all capture was the more
+    faithful design and is deferred, not on principle but because **nobody has
+    tested whether say-all advances when no synth runs** — a cheap experiment
+    that should happen before this is agreed.
+    Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
+    (drafted 2026-08-03, not agreed).
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
     application in front (server lane). Docs only.
     **Entries 11.14–11.17 all come from one session that nobody on this project
