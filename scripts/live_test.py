@@ -24,6 +24,9 @@
 # Scenarios (each maps to one checklist item group in the PR):
 #   smoke      connect, prove tool gating, read screenreader://info, ANNOUNCE
 #              (you should hear it). No window focus needed.
+#   persona    spec 0029: connect as each of user/validator/expert; the
+#              declaration reaches status, info and the bridge's transcript, and
+#              you HEAR the two tones then the persona. No window focus needed.
 #   capture    a gesture's speech is captured cleanly: bookmark, open the
 #              Elements List, read back only the new speech, prove the ranges
 #              join and that a wait for absent text times out (not disconnects).
@@ -71,6 +74,10 @@ Scenarios (each is one checklist item group; run them in a terminal for the
 guided, interactive experience):
   smoke       connect, prove tool gating, read screenreader://info, ANNOUNCE
               (you should hear it). No window focus needed.
+  persona     spec 0029: connect as each of user/validator/expert; the
+              declaration reaches status, screenreader://info and the bridge's
+              own transcript on disk, and you HEAR two ascending tones then
+              "MCP session open, as <persona>". No window focus needed.
   capture     a gesture's speech is captured cleanly, ranges join, an absent
               wait times out. Needs a browse-mode document focused.
   braille     read the braille display; its indices are their own space.
@@ -1005,8 +1012,86 @@ def _read_text(path: str) -> str:
 		return ""
 
 
+def scenario_persona(server, console, checks, mode):
+	"""Spec 0029: the session declares what it stands for, and says so out loud.
+
+	Everything here is cheap and there is no window to focus -- what it proves is
+	that the declaration survives every hop: the tool boundary, the wire, the
+	bridge's transcript on disk, and the reader's own voice.
+	"""
+	console.step("connecting as each persona in turn")
+
+	for persona in ("user", "validator", "expert"):
+		console.note(f"--- {persona} ---")
+		console.pause(f"listen for TWO ASCENDING TONES then 'MCP session open, as {persona}'")
+		session = _connect(server, console, mode, persona=persona)
+
+		checks.check(
+			f"connect as {persona}: the declaration comes back",
+			session.get("persona") == persona,
+			detail=f"persona={session.get('persona')!r}",
+		)
+		# The instruction, not merely the label -- this is the whole reason the
+		# stance rides in the result rather than only in a resource.
+		stance = session.get("stance") or ""
+		checks.check(
+			f"connect as {persona}: the stance rides along, in full",
+			len(stance) > 200,
+			detail=f"{len(stance)} chars",
+		)
+
+		reported = server.tool("status").get("session", {}).get("persona")
+		checks.check(
+			f"status reports {persona}",
+			reported == persona,
+			detail=f"status said {reported!r}",
+		)
+
+		info = server.resource("screenreader://info")
+		checks.check(
+			f"screenreader://info reports {persona}",
+			info.get("persona") == persona,
+			detail=f"info said {info.get('persona')!r}",
+		)
+
+		# The bridge's own artifact, on the reader's disk. This is the hop no
+		# unit test can prove: the value went over the wire, through the real
+		# Python validator, into the hello handler and out to a file.
+		log_path = session.get("logPath") or ""
+		wrote_it = False
+		try:
+			with open(log_path, encoding="utf-8", errors="replace") as handle:
+				wrote_it = any("SESSION OPEN" in line and f"persona={persona}" in line for line in handle)
+		except OSError as exc:
+			console.note(f"could not read the transcript at {log_path}: {exc}")
+		checks.check(
+			f"the bridge's transcript names {persona}",
+			wrote_it,
+			detail=f"looked for 'persona={persona}' in {log_path}",
+		)
+
+		checks.ear(
+			f"HEARD: two ascending tones, then 'MCP session open, as {persona}' ({mode} mode)",
+			console.confirm(f"did you hear the tones and then 'as {persona}'?"),
+		)
+		_disconnect(server, console)
+
+	console.step("refusing what is not a persona")
+	try:
+		server.tool("connect_reader", {"reader": "nvda", "mode": mode, "persona": "tester"})
+		checks.check("an unknown persona is refused", False, detail="it was accepted")
+	except RuntimeError as exc:
+		message = str(exc)
+		checks.check(
+			"an unknown persona is refused, and the error teaches the three",
+			all(name in message for name in ("user", "validator", "expert")),
+			detail=message,
+		)
+
+
 SCENARIOS = {
 	"smoke": scenario_smoke,
+	"persona": scenario_persona,
 	"capture": scenario_capture,
 	"braille": scenario_braille,
 	"finddialog": scenario_finddialog,
@@ -1021,11 +1106,17 @@ SCENARIOS = {
 # -- shared scenario steps -----------------------------------------------------
 
 
-def _connect(server, console, mode, log_level=None):
+def _connect(server, console, mode, log_level=None, persona="expert"):
 	# log_level raises the READER's own verbosity for the session and is restored
 	# when it ends. The log scenarios need it: a level cannot be raised
 	# retroactively, so records not created at INFO are gone for good.
-	arguments = {"reader": "nvda", "mode": mode}
+	#
+	# `expert` is the honest default for THIS driver (spec 0029). These scenarios
+	# read NVDA's log, change its configuration and drive its own commands to
+	# prove the MCP works -- the reader is the subject here, not the instrument,
+	# which is exactly what that persona means. A scenario standing in for an
+	# ordinary user says so explicitly.
+	arguments = {"reader": "nvda", "mode": mode, "persona": persona}
 	if log_level is not None:
 		arguments["log_level"] = log_level
 	session = server.tool("connect_reader", arguments)
