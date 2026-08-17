@@ -133,6 +133,12 @@ func (f *FakeConnectionControl) Connect(readerName string, opts ports.SessionOpt
 	if f.connection == nil {
 		return nil, errNothingScripted
 	}
+	// The persona is recorded on the session by the real dialer, copied from
+	// the options rather than read out of `hello` -- the bridge is told it and
+	// does not confirm it (spec 0029). Mirrored here so a scripted connection
+	// describes the session that was actually asked for; a fake that dropped
+	// this would make every caller reading it back look broken.
+	f.connection.Session.Persona = opts.Persona
 	f.status = entities.ConnectionStatus{State: entities.Connected}
 	return f.connection, nil
 }

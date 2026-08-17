@@ -246,8 +246,11 @@ func TestAProtocolMismatchIsReportedAndTheServerKeepsRunning(t *testing.T) {
 func TestAnUnknownReaderNamesTheOnesThatExist(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
+	// A valid persona, so the reader name is what this scenario is testing:
+	// persona is validated at the tool boundary and would otherwise be the
+	// error reported.
 	result := h.Call(t, "connect_reader", map[string]any{
-		"reader": "narrator", "mode": "silent",
+		"reader": "narrator", "mode": "silent", "persona": "user",
 	})
 	if !result.IsError {
 		t.Fatal("connecting to an unknown reader succeeded")

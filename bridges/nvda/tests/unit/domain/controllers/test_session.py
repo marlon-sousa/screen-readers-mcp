@@ -48,8 +48,17 @@ from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 # -- message builders --------------------------------------------------------
 
 
-def hello(mode: str = "silent", *, version: int = p.PROTOCOL_VERSION, id: int = 1) -> dict[str, Any]:
-	return {"id": id, "cmd": "hello", "params": {"mode": mode, "protocolVersion": version}}
+def hello(
+	mode: str = "silent",
+	*,
+	version: int = p.PROTOCOL_VERSION,
+	id: int = 1,
+	persona: str | None = None,
+) -> dict[str, Any]:
+	params: dict[str, Any] = {"mode": mode, "protocolVersion": version}
+	if persona is not None:
+		params["persona"] = persona
+	return {"id": id, "cmd": "hello", "params": params}
 
 
 def command(cmd: str, id: int, **params: Any) -> dict[str, Any]:
@@ -160,6 +169,39 @@ def test_silent_hello_establishes_and_reports() -> None:
 	assert result["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert result["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 	assert result["logPath"] == run.transcript.path
+
+
+def test_the_start_cue_is_given_the_declared_persona() -> None:
+	"""Spec 0029: the tones say control was taken, the words say as what.
+
+	Asserted here rather than in the hello handler's tests because the cue is the
+	SESSION's, fired after the handler returns -- so this is the only tier where
+	"hello recorded it" and "the human was told" are proven to be the same value.
+	"""
+	run = run_session([hello("silent", persona="validator")])
+	assert run.signals.started == 1
+	assert run.signals.personas == ["validator"]
+
+
+def test_the_start_cue_says_nothing_when_no_persona_was_declared() -> None:
+	run = run_session([hello("silent")])
+	assert run.signals.personas == [""]
+
+
+def test_a_failing_start_cue_leaves_the_session_established() -> None:
+	"""A courtesy utterance is not worth a session (the _guard around the cue)."""
+
+	class ExplodingSignals(FakeSessionSignals):
+		def session_started(self, persona: str) -> None:
+			super().session_started(persona)
+			raise RuntimeError("no audio device")
+
+	signals = ExplodingSignals()
+	run = run_session([hello("silent", persona="user"), command("ping", id=2)], signals=signals)
+
+	assert signals.personas == ["user"]
+	# The ping was answered, so the session survived the cue that raised.
+	assert _result(run.responses()[1]) == {"ok": True}
 
 
 def test_live_hello_establishes() -> None:

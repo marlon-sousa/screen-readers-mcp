@@ -29,7 +29,7 @@ func connectCall(t *testing.T) *testsupport.ToolCall {
 func TestConnectPassesTheReaderAndModeThrough(t *testing.T) {
 	call := connectCall(t)
 
-	if _, err := call.Run(`{"reader":"nvda","mode":"silent"}`); err != nil {
+	if _, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user"}`); err != nil {
 		t.Fatalf("connect_reader: %v", err)
 	}
 
@@ -53,7 +53,7 @@ func TestConnectPassesTheReaderAndModeThrough(t *testing.T) {
 func TestConnectPassesAnOptionalLogLevelThrough(t *testing.T) {
 	call := connectCall(t)
 
-	if _, err := call.Run(`{"reader":"nvda","mode":"live","log_level":"debug"}`); err != nil {
+	if _, err := call.Run(`{"reader":"nvda","mode":"live","persona":"expert","log_level":"debug"}`); err != nil {
 		t.Fatalf("connect_reader: %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestTheReaderArgumentIsRequiredAndTheErrorListsTheKnownNames(t *testing.T) 
 		{Name: "nvda"}, {Name: "jaws"},
 	}, nil))
 
-	_, err := call.Run(`{"mode":"silent"}`)
+	_, err := call.Run(`{"mode":"silent","persona":"user"}`)
 	if err == nil {
 		t.Fatal("connecting with no reader succeeded")
 	}
@@ -93,7 +93,7 @@ func TestTheReaderArgumentIsRequiredAndTheErrorListsTheKnownNames(t *testing.T) 
 func TestAnInvalidModeIsRefusedBeforeDialing(t *testing.T) {
 	call := connectCall(t)
 
-	_, err := call.Run(`{"reader":"nvda","mode":"quiet"}`)
+	_, err := call.Run(`{"reader":"nvda","mode":"quiet","persona":"user"}`)
 	if err == nil {
 		t.Fatal("an invalid capture mode was accepted")
 	}
@@ -108,7 +108,7 @@ func TestAnInvalidModeIsRefusedBeforeDialing(t *testing.T) {
 func TestAnInvalidLogLevelIsRefusedBeforeDialing(t *testing.T) {
 	call := connectCall(t)
 
-	_, err := call.Run(`{"reader":"nvda","mode":"silent","log_level":"shout"}`)
+	_, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user","log_level":"shout"}`)
 	if err == nil {
 		t.Fatal("an invalid log level was accepted")
 	}
@@ -122,8 +122,85 @@ func TestAnInvalidLogLevelIsRefusedBeforeDialing(t *testing.T) {
 func TestTheModeArgumentIsRequired(t *testing.T) {
 	call := connectCall(t)
 
-	if _, err := call.Run(`{"reader":"nvda"}`); err == nil {
+	if _, err := call.Run(`{"reader":"nvda","persona":"user"}`); err == nil {
 		t.Error("connecting with no mode succeeded")
+	}
+}
+
+// -- persona (spec 0029) ------------------------------------------------------
+
+// Required, like mode, and NEVER defaulted. A default would silently attribute a
+// stance nobody chose, and a claim resting on a defaulted `user` session is one
+// nobody can withdraw, because nobody knows it was made.
+func TestThePersonaArgumentIsRequired(t *testing.T) {
+	call := connectCall(t)
+
+	_, err := call.Run(`{"reader":"nvda","mode":"silent"}`)
+	if err == nil {
+		t.Fatal("connecting with no persona succeeded")
+	}
+	if len(call.Control.Connects()) != 0 {
+		t.Error("a dial was attempted with no persona declared")
+	}
+}
+
+// The error is where most agents will meet personas for the first time, so it
+// names all three WITH the question each one asks -- a wrong guess should
+// self-correct in this turn rather than cost a round trip.
+func TestAnInvalidPersonaIsRefusedAndTheErrorTeachesTheThree(t *testing.T) {
+	call := connectCall(t)
+
+	_, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"tester"}`)
+	if err == nil {
+		t.Fatal("an invalid persona was accepted")
+	}
+	for _, want := range []string{"user", "validator", "expert", "can I do this?"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to mention %q", err, want)
+		}
+	}
+	if len(call.Control.Connects()) != 0 {
+		t.Error("a dial was attempted with an invalid persona")
+	}
+}
+
+func TestThePersonaReachesTheHandshake(t *testing.T) {
+	call := connectCall(t)
+
+	if _, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"validator"}`); err != nil {
+		t.Fatalf("connect_reader: %v", err)
+	}
+
+	if got := call.Control.Connects()[0].Options.Persona; got != entities.PersonaValidator {
+		t.Errorf("persona = %q, want it carried into the session options", got)
+	}
+}
+
+// A persona an agent declares but never reads is a label, not an instruction --
+// and the first external run (spec 0027) never read the guidance resource at
+// all. Connect is the one moment an agent is guaranteed to be reading.
+func TestTheResultCarriesTheStanceInFull(t *testing.T) {
+	call := connectCall(t)
+
+	result, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user"}`)
+	if err != nil {
+		t.Fatalf("connect_reader: %v", err)
+	}
+
+	var got struct {
+		Persona string `json:"persona"`
+		Stance  string `json:"stance"`
+	}
+	encoded, _ := json.Marshal(result)
+	if err := json.Unmarshal(encoded, &got); err != nil {
+		t.Fatalf("decoding the result: %v", err)
+	}
+
+	if got.Persona != "user" {
+		t.Errorf("persona = %q, want the declared one echoed", got.Persona)
+	}
+	if got.Stance != entities.PersonaUser.Stance() {
+		t.Errorf("stance = %q, want the persona's stance in full", got.Stance)
 	}
 }
 
@@ -132,7 +209,7 @@ func TestTheModeArgumentIsRequired(t *testing.T) {
 func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	call := connectCall(t)
 
-	result, err := call.Run(`{"reader":"nvda","mode":"silent"}`)
+	result, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user"}`)
 	if err != nil {
 		t.Fatalf("connect_reader: %v", err)
 	}
@@ -174,7 +251,7 @@ func TestAFailedConnectIsReportedToTheAgent(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.ConnectReader{})
 	call.Control.FailConnectWith(errors.New(`reader "nvda": no endpoint answered`))
 
-	_, err := call.Run(`{"reader":"nvda","mode":"silent"}`)
+	_, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user"}`)
 	if err == nil {
 		t.Fatal("a failed connect was reported as success")
 	}

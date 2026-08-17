@@ -68,6 +68,13 @@ class SessionContext:
 		self.speech: SpeechBuffer | None = None
 		self.braille: BrailleBuffer | None = None
 		self.adapters: AdapterSet | None = None
+		#: What the agent declared it is standing in for (spec 0029), as received
+		#: at hello. A plain string, NOT validated against a known set: the server
+		#: owns the set of personas, and a bridge that rejected an unrecognised
+		#: one would fail the handshake every time a persona was added upstream
+		#: (protocol.md §4). Empty until hello runs, and empty afterwards if the
+		#: server declared none.
+		self.persona: str = ""
 		#: At most one outstanding ask at a time.
 		self._outstanding_prompt: UserPrompt | None = None
 		#: The last 50 command windows: each is (command_id, start_pos,

@@ -52,10 +52,14 @@ type statusSession struct {
 	Endpoint      string   `json:"endpoint"`
 	Capabilities  []string `json:"capabilities"`
 	Mode          string   `json:"mode"`
-	Synth         string   `json:"synth"`
-	LogPath       string   `json:"logPath"`
-	BridgeVersion string   `json:"bridgeVersion,omitempty"`
-	ProtocolVer   int      `json:"protocolVersion"`
+	// Persona is what this session declared it stands for (spec 0029) -- part of
+	// the answer to "what am I in the middle of?", because it decides what the
+	// run's findings mean.
+	Persona       string `json:"persona,omitempty"`
+	Synth         string `json:"synth"`
+	LogPath       string `json:"logPath"`
+	BridgeVersion string `json:"bridgeVersion,omitempty"`
+	ProtocolVer   int    `json:"protocolVersion"`
 }
 
 type statusResult struct {
@@ -109,6 +113,7 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 			Endpoint:      connection.Endpoint.String(),
 			Capabilities:  session.Capabilities.Strings(),
 			Mode:          session.Mode.String(),
+			Persona:       session.Persona.String(),
 			Synth:         session.Synth,
 			LogPath:       session.LogPath,
 			BridgeVersion: session.BridgeVersion,

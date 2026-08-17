@@ -200,8 +200,13 @@ silent deferral. Three pairings matter more than the numbers:
 - **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
 - **11.11 and 11.17** are one gesture, from two sessions, with complementary
   remedies. See either entry.
-- **11.19 and 11.20** are two halves of personas; 11.19 ships alone and touches
-  only the server.
+- **11.19 and 11.20** are two halves of personas, sharing **one spec**,
+  [0029](specs/0029-connecting-as-somebody.md), because the split between them
+  *is* the design. **Re-scoped 2026-08-17**: the halves are no longer *server*
+  and *reader* but **mechanism** and **document** — 11.19 makes the persona
+  exist, travel and be recorded; 11.20 gives the reader its own document. Both
+  touch both lanes and both need an add-on rebuild, so neither is a
+  server-only ship any more. Still two entries and two PRs, in that order.
 
 Anything taken out of numeric order is a reprioritisation to make explicitly, the
 way 11.4 was taken before 11.3.
@@ -214,7 +219,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.21** and the next free spec number is
-**0029**.
+**0030**.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -892,23 +897,52 @@ rather than before it.
     `gate-binding`, which cannot cry wolf because both sides are machine-readable.
     That is a next-phase conversation. Do not build the gate above without
     revisiting this first. Spec: none yet.
-11.19. **E, personas — the server half** (server lane). Designed in conversation
-    2026-08-16; no spec file yet. An agent connects **as somebody**: a *normal
-    user*, an *accessibility validator*, or an *add-on developer*. The persona
-    says what the agent is standing in for, and therefore what a finding from
-    that session means.
+11.19. **E, personas — the persona exists and travels** (both lanes).
+    **Re-scoped 2026-08-17**, from *the server half*. The old boundary was the
+    lane: server first, reader second. That was right while the server owned the
+    ordinary vocabulary and stopped being right when TalkBack moved it to the
+    bridge (see the scope amendment below) — a server-only ship would tell a
+    `user` session its vocabulary is bounded and give it no way to learn what is
+    in it. The seam is now **mechanism, then document**: this entry makes the
+    persona exist, travel in `hello`, be recorded everywhere and be spoken at
+    session start; 11.20 gives the reader its own document. Both touch both lanes
+    and both need an add-on rebuild. This entry promises no document that does
+    not exist when it ships, which is the property the lane split lost.
+    Designed in conversation
+    2026-08-16. An agent connects **as somebody**: a *normal user*, an
+    *accessibility validator*, or an *expert*. The persona says what the agent is
+    standing in for, and therefore what a finding from that session means.
     **The personas are NOT nested, and any design that models them as a ladder
-    gets the validator wrong.** Their success criteria differ: a blind user with a
-    task succeeds when the task is done, so a workaround is a legitimate win and
-    object navigation is exactly what a competent user reaches for. A validator
-    asking *is this reachable by ordinary means* must be denied that same
-    workaround, because reaching a control by object navigation proves nothing
-    about whether it is reachable normally. **If you can only get there that way,
-    that is the finding.** So the validator has *more* to observe with and *less*
-    latitude to act — observation power rises user → validator → developer while
-    action latitude does not.
-    **Instruction only — no tool gate. Decided.** The validator's central
-    restriction cannot be enforced: object navigation is `pressGesture` with the
+    gets them wrong.** Each asks a different question: `user` *can I do this?*,
+    `validator` *is this right?*, `expert` *how does this actually work?*
+    **AMENDED 2026-08-17, in the sentence this entry was built on.** It read: *a
+    blind user with a task succeeds when the task is done, so a workaround is a
+    legitimate win and object navigation is exactly what a competent user reaches
+    for.* **That is wrong.** A normal user is not a screen reader expert. Their
+    whole vocabulary is what the ARIA authoring practices assume of the person at
+    the keyboard — Tab, the arrows, Space for a checkbox, arrows for radio
+    buttons and list items, alt+down/alt+up for a combo, typing into edit fields,
+    first-letter and single-letter navigation, browse and focus mode — and **if a
+    task needs object navigation, the review cursor or a simulated click, the
+    task has failed**, because this persona does not have those commands. The run
+    may say another stance could investigate; it may not borrow that stance's
+    result and call the task done. The validator drives with the **same**
+    vocabulary, so that *reachable* means the same thing in both reports, and
+    what it gains is observation (`getFocusInfo`, `getState`) rather than
+    latitude — it may step outside only to characterise a failure it has already
+    found, and must say so. The `expert` is the only stance for which nothing is
+    off limits: it reads the reader's event log, tracks what happened around a
+    keystroke, and takes the mechanism apart. So **observation power rises user →
+    validator → expert while action latitude does not rise between the first two
+    at all** — the original formulation, which only became true once the user's
+    latitude was corrected downwards.
+    **Also widened 2026-08-17: the third persona is `expert`, not `add-on
+    developer`.** The developer debugging their own add-on is one instance; an
+    accessibility expert taking a site apart to find out why it behaves as it
+    does is the same stance with a different subject.
+    **Instruction only — no tool gate. Decided.** The central restriction — that
+    `user` and `validator` may not leave the ordinary keyboard vocabulary —
+    cannot be enforced by the server: object navigation is `pressGesture` with the
     reader's own keys, and the server cannot recognise it without learning that
     key map, which is what `ToolCatalog` says it could not express even if
     somebody wanted it to. A gate would therefore be **partial enforcement that
@@ -918,25 +952,86 @@ rather than before it.
     and honest, and it keeps something a gate destroys: an agent that steps
     outside its persona *and says so* has produced evidence, where an agent that
     hits a wall has produced a failed run. The deliverable is the report.
+    **The trigger that would reopen this, stated 2026-08-17:** deliver the right
+    information to the agent according to its persona, and **if violations then
+    turn out to be common, gate.** Worth recording because a *bridge* could gate
+    exactly — it knows its own key map, and NVDA can resolve a gesture to the
+    script it is bound to — so "cannot be enforced" is true of the server and not
+    of the system. What makes the trigger checkable is 11.20: once a bridge names
+    the out-of-vocabulary gestures, the session record can simply be read for
+    them.
     **Chosen before connecting**, so the documents are static and server-owned —
     the persona determines what the run means and cannot be retrofitted onto a
     session that already ran. (Not because the human is unreachable mid-session:
     `announce` and `ask_user` exist. It is the wrong moment, not an impossible
     one.)
-    Scope: three static resources holding each persona's stance and success
-    criterion, a `persona` argument on `connect_reader` beside `mode`, and the
-    declaration recorded in `status`, `screenreader://info` and the session
-    record — so a finding carries the stance that produced it. *Reachable* from a
-    user session and from a validator session are different claims. **No wire
-    change, no bridge change, no add-on rebuild**; ships and is useful alone.
-    Spec: none yet — next free number is 0028.
-11.20. **E, personas — the reader half** (both lanes). The other half of 11.19,
-    and it needs the wire. **The server defines the personas; each bridge defines
+    Scope, **amended 2026-08-17**: the entry said *three static resources holding
+    each persona's stance and success criterion*. It is now **one** general
+    resource — the existing `screenreader://guidance`, absorbing what a screen
+    reader is, how this MCP is meant to be used, and a profile of each persona,
+    composed from the domain so a persona cannot exist without one. **TalkBack is
+    why**: a server-owned document that stated a persona's *vocabulary* could only
+    ever be written for one platform, and TalkBack has neither a keyboard nor
+    Windows, so Tab, alt+down and windows+tab would be instructions that do not
+    exist on the reader being driven. Every concrete list moves to the bridge
+    (11.20); the server keeps the **rule** — the ordinary user's vocabulary is
+    whatever the platform's accessibility contract assumes, and a command that
+    re-reads what is already there is inside it while a command that reaches what
+    focus cannot is outside. Plus a `persona` argument on `connect_reader` beside
+    `mode`, and the declaration recorded in `status`, `screenreader://info` and
+    the session record — so a finding carries the stance that produced it.
+    *Reachable* from a user session and from an expert session are different
+    claims. **Plus, after the re-scope**, the wire's `persona` field, the bridge
+    recording it in its context and transcript, and the spoken persona after the
+    session-start tones — so this entry now carries a wire change and an add-on
+    rebuild that the original did not. What it does **not** carry is the
+    `guidance` capability, `getGuidance`, the reader-guidance resource or NVDA's
+    concrete document: those are 11.20, which is where the list of what a `user`
+    may actually press now lives.
+    Two things the spec settled that this entry left open: **`persona` is
+    required, with no default** — a defaulted `user` session makes a claim nobody
+    knows was made — and **the short stance rides back in `connect_reader`'s
+    result**, because the first external run is evidence that an agent does not
+    necessarily read a resource it was not pointed at. It also amends 0023 — more
+    than a pointer: the shipped guidance document states one persona's stance as
+    everyone's, and since there is no separate persona resource to delegate to,
+    guidance **absorbs** the stance. Its method sections are untouched (they never
+    varied by persona), its introspection section gains the `expert`'s exception,
+    and it still names no reader's keys, which after the scope amendment above is
+    the entire reason the bridge's document exists.
+    **No fourth persona for the inexperienced user**, which was briefly proposed
+    and is unnecessary after the amendment above: `user` *is* that user. The
+    objection raised against it is worth keeping anyway, because it explains why
+    naming the vocabulary was the right move — an agent cannot honestly simulate
+    *not knowing* a command, so a persona resting on pretended ignorance would
+    produce a guess about a hypothetical person. Naming the vocabulary dissolves
+    that: nothing is forgotten, the commands are simply **out of scope**, and the
+    task that then fails is a fact about the interface rather than a performance.
+    Spec: [0029-connecting-as-somebody.md](specs/0029-connecting-as-somebody.md)
+    (drafted 2026-08-16, not agreed; covers 11.20 as well).
+11.20. **E, personas — the reader says what its vocabulary is** (both lanes).
+    **Re-scoped 2026-08-17** from *the reader half*: the wire's `persona` field
+    and the bridge's recording of it moved into 11.19, so what is left here is
+    exactly the document and the machinery that serves it — the `guidance`
+    capability, `getGuidance`, the session-scoped resource with its cache, and
+    NVDA's own text. **After the TalkBack correction this entry carries more than
+    it used to**: not only which of a reader's commands are out of bounds, but the
+    ordinary vocabulary itself, because no server-owned document can state a list
+    that is keystrokes on Windows and touch gestures on Android.
+    **The server defines the personas; each bridge defines
     what that persona should and should not use on its reader.** The rule is
     reader-agnostic and belongs to the server ("do not route around the problem");
     the instances are reader-specific and only the bridge author knows them —
-    NVDA's escape hatches are object navigation and the review cursor, JAWS's is
-    the JAWS cursor. Neither document works alone, which is the evidence the split
+    NVDA's escape hatches are object navigation, the review cursor and simulated
+    clicks, JAWS's is the JAWS cursor. **After the 2026-08-17 correction to 11.19
+    this list stops being advisory:** the ordinary keyboard vocabulary is
+    reader-agnostic and the server states it, but *which of a reader's own
+    commands fall outside it* is the bridge's to say, and it is exactly the list a
+    `user` session needs in order to recognise what it must not reach for — named
+    as gestures, in both keyboard layouts. The same document must say what is
+    **not** outside it and would otherwise be assumed to be: browse mode and
+    single-letter navigation are how a user reads a document, not a way around a
+    broken one. Neither document works alone, which is the evidence the split
     is real rather than convenient.
     This also answers a gap 11.14 could only flag: **readers differ in what they
     offer, not merely in which keys they use for it** — JAWS has a native way to
@@ -964,7 +1059,28 @@ rather than before it.
     validator is worth more than a wall. Note also that if the object-navigation
     tool [0023](specs/0023-drive-it-like-a-user.md) anticipates is ever built, the
     validator's central restriction becomes gateable; that is a reason to build it
-    as its own tool rather than as more `pressGesture`. Spec: none yet.
+    as its own tool rather than as more `pressGesture`.
+    **The three things to settle are settled.** Unknown personas degrade because
+    `persona` crosses the wire as a plain **string**, not an enum — a closed enum
+    would make `from_dict` reject an unrecognised value and fail the *handshake*,
+    so a newer server could not connect to any existing bridge the day a fourth
+    persona is added; a bridge must not reject one (the same carve-out §4 already
+    gives unknown capability strings), and `getGuidance` reports `recognised:
+    false` with its general text. Precedence is stated in the wire contract and
+    restated in the frame the server wraps around the bridge's text, which is how
+    it is enforced without the server ever parsing a document it did not write.
+    Timing is written down, and `connect_reader`'s result names the resource at
+    the first instant it exists. **One addition the entry did not have: the human
+    at the machine hears the persona.** The bridge already plays two ascending
+    tones when a session establishes — they say something has taken the reader,
+    and cannot say what it is standing in for — so `session_started` carries the
+    persona and the NVDA adapter speaks one line after the tones, through the
+    live synth so it is heard in silent mode too. Bridge-side rather than
+    server-side because the tones are bridge-side, because an add-on string can
+    be localised and nothing the server speaks can be, and because building it in
+    11.19 would mean building it twice.
+    Spec: [0029-connecting-as-somebody.md](specs/0029-connecting-as-somebody.md)
+    (drafted 2026-08-16, not agreed; shared with 11.19).
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).

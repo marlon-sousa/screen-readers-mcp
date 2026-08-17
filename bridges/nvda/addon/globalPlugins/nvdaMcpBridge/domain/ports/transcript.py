@@ -31,7 +31,14 @@ class Transcript(ABC):
 	def open(self) -> None: ...
 
 	@abstractmethod
-	def session_opened(self, mode: str, synth: str) -> None: ...
+	def session_opened(self, mode: str, synth: str, persona: str) -> None:
+		"""Record that a session began, and what it is standing in for.
+
+		``persona`` is spec 0029's declaration, written down here because this
+		file is read *afterwards* to work out what a run meant: the same
+		observation is a pass from one stance and a finding from another. Empty
+		when the server declared none.
+		"""
 
 	@abstractmethod
 	def gesture(self, gesture_id: str) -> None: ...

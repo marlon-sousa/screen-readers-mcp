@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/adapters/wire"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -142,5 +143,54 @@ func TestTheRecordKeepsWhatWasAskedAndWhatCameBack(t *testing.T) {
 	}
 	if !strings.Contains(result, "Documents  list") {
 		t.Errorf("result = %q, want what the reader actually said", result)
+	}
+}
+
+// -- the persona on the document (spec 0029) ----------------------------------
+
+// The declaration is what makes a record interpretable: the same call log is a
+// pass from one stance and a finding from another.
+func TestTheRecordSaysWhatTheSessionIsStandingInFor(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+	})
+	if got := h.ConnectAs(t, "validator"); got.IsError {
+		t.Fatalf("connect_reader failed: %s", got.Text)
+	}
+
+	if got := h.ReadSessionRecord(t)["persona"]; got != "validator" {
+		t.Errorf("persona = %v, want validator", got)
+	}
+}
+
+// THE REASON IT IS ON THE DOCUMENT and not left to be read out of the recorded
+// connect_reader call: the record is BOUNDED and evicts oldest-first, so in a
+// long session the very call carrying the declaration ages out of the record
+// that exists to preserve it. Driven past the cap here rather than argued.
+func TestThePersonaSurvivesTheConnectCallAgeingOutOfTheRecord(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+	})
+	if got := h.ConnectAs(t, "expert"); got.IsError {
+		t.Fatalf("connect_reader failed: %s", got.Text)
+	}
+	h.AwaitToolsChanged(t)
+
+	// One more call than the record holds, so the connect is certainly gone.
+	for i := 0; i < entities.MaxRecordedCalls; i++ {
+		if got := h.Call(t, "status", map[string]any{}); got.IsError {
+			t.Fatalf("status failed on call %d: %s", i, got.Text)
+		}
+	}
+
+	document := h.ReadSessionRecord(t)
+	for _, entry := range document["calls"].([]any) {
+		if entry.(map[string]any)["tool"] == "connect_reader" {
+			t.Fatal("connect_reader is still in the record; this test proves nothing " +
+				"unless it has been evicted")
+		}
+	}
+	if got := document["persona"]; got != "expert" {
+		t.Errorf("persona = %v, want expert to outlive the call that declared it", got)
 	}
 }

@@ -28,14 +28,21 @@ import tones
 import wx
 
 
-def cue_and_speak(sequence: Sequence[str], *, hz: int, ms: int, gap_ms: int) -> None:
+def cue_and_speak(
+	sequence: Sequence[str], *, hz: int, ms: int, gap_ms: int, second_hz: int | None = None
+) -> None:
 	"""Beep twice at ``hz``, then speak ``sequence`` through the live synth.
 
 	The beeps are scheduled ``gap_ms`` apart so both are clearly heard, and the
 	speech follows them. Call on NVDA's main thread.
+
+	``second_hz`` pitches the second beep differently, which is how the session
+	cue says *ascending* (spec 0029): the pair already meant "the bridge has taken
+	control", and the utterance after it says what the session is standing in for.
+	Defaults to ``hz``, so the announce and askUser cues are unchanged.
 	"""
 	tones.beep(hz, ms)
-	wx.CallLater(gap_ms, tones.beep, hz, ms)
+	wx.CallLater(gap_ms, tones.beep, second_hz if second_hz is not None else hz, ms)
 
 	def _speak() -> None:
 		synth = synthDriverHandler.getSynth()

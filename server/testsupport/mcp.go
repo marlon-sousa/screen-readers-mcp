@@ -222,7 +222,19 @@ func (r ToolResult) Decode(t *testing.T, into any) {
 // Connect opens a session through the real connect_reader tool.
 func (h *MCPHarness) Connect(t *testing.T) ToolResult {
 	t.Helper()
-	return h.Call(t, "connect_reader", map[string]any{"reader": "nvda", "mode": "silent"})
+	return h.ConnectAs(t, "user")
+}
+
+// ConnectAs connects declaring a particular persona (spec 0029).
+//
+// `persona` is required, so every connect in the suite has to name one; Connect
+// picks `user` for the scenarios that are not about personas at all, and this is
+// for the ones that are.
+func (h *MCPHarness) ConnectAs(t *testing.T, persona string) ToolResult {
+	t.Helper()
+	return h.Call(t, "connect_reader", map[string]any{
+		"reader": "nvda", "mode": "silent", "persona": persona,
+	})
 }
 
 // ReadInfo reads screenreader://info.

@@ -119,3 +119,28 @@ func TestTheInfoResourceForgetsTheReaderOnDisconnect(t *testing.T) {
 		t.Errorf("reader = %v, want the reader forgotten", document["reader"])
 	}
 }
+
+// The persona belongs beside the reader for the same reason the reader is here:
+// an agent asking "what am I driving?" also needs "what am I standing in for?",
+// and the two together are what make a finding interpretable afterwards
+// (spec 0029).
+func TestTheInfoResourceReportsThePersona(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+	})
+	if got := h.ConnectAs(t, "validator"); got.IsError {
+		t.Fatalf("connect_reader: %s", got.Text)
+	}
+
+	if got := h.ReadInfo(t)["persona"]; got != "validator" {
+		t.Errorf("persona = %v, want validator", got)
+	}
+}
+
+func TestThePersonaIsAbsentWithNoSession(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+
+	if got, present := h.ReadInfo(t)["persona"]; present {
+		t.Errorf("persona = %v, want absent when no session is standing in for anything", got)
+	}
+}

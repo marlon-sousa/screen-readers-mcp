@@ -121,6 +121,16 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		level := wire.LogLevel(*opts.LogLevel)
 		params.LogLevel = &level
 	}
+	if opts.Persona != "" {
+		// Sent so the bridge can record it in its own transcript and say it
+		// aloud to whoever is at the machine (spec 0029). A bridge that
+		// predates personas ignores the field, and one that does not
+		// recognise the value must degrade rather than refuse the handshake
+		// (protocol.md §4) -- so nothing here has to know what the bridge
+		// makes of it.
+		persona := opts.Persona.String()
+		params.Persona = &persona
+	}
 
 	var result wire.HelloResult
 	if err := client.call(wire.CommandHello, params, &result, DefaultCallTimeout); err != nil {
@@ -150,8 +160,14 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 			Name:    result.Reader.Name,
 			Version: result.Reader.Version,
 		},
-		Capabilities:    capabilities,
-		Mode:            entities.CaptureMode(result.Mode),
+		Capabilities: capabilities,
+		Mode:         entities.CaptureMode(result.Mode),
+		// The persona the AGENT declared, not one the bridge confirmed --
+		// which is why it is copied from the options rather than read out of
+		// the result. This is the same place the confirmed mode is copied, so
+		// the two live side by side and the difference between them is stated
+		// once, on the field (spec 0029).
+		Persona:         opts.Persona,
 		Synth:           result.Synth,
 		LogPath:         result.LogPath,
 		BridgeVersion:   derefOr(result.BridgeVersion, ""),
