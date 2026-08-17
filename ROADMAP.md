@@ -189,8 +189,8 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-16**, with nothing in flight in either lane:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.15, 11.16, 11.17, 11.18, 11.19,
-11.20 — twelve entries. Only 11.14 is settled.
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18, 11.19,
+11.20 — twelve entries. Of the external run's four, 11.14 and 11.15 are settled.
 
 Their order is **not** simply the numbering. Read as a strict lane order both
 lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
@@ -214,7 +214,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.21** and the next free spec number is
-**0028**.
+**0029**.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -717,7 +717,8 @@ rather than before it.
     tool. Amends the shipped guidance resource plus the README; 11.7 is Done, so
     new scope cannot fold into it. Spec: 0023, amended in the implementing PR —
     no new spec file.
-11.15. **E, speech and braille entries carry no time** (both lanes). Ask 1 of
+11.15. **Done (PR #60, 2026-08-16)** — E, speech and braille entries carry no
+    time (both lanes). Ask 1 of
     [0027](specs/0027-the-first-external-run.md), and the run's strongest ask.
     An assertion of the form "X happened promptly after Y" is a
     large fraction of what accessibility testing is, and the run's single most
@@ -749,8 +750,8 @@ rather than before it.
     Amends published wire v1 (no external consumers; both implementations
     in-tree and covered by `conformance`). Needs live NVDA, but barely: the
     stamp is taken in a pure domain entity against an injected clock. Spec:
-    [0028-when-was-that-said.md](specs/0028-when-was-that-said.md) (drafted
-    2026-08-16, awaiting agreement; rides in this entry's own PR). The field is
+    [0028-when-was-that-said.md](specs/0028-when-was-that-said.md) (agreed
+    2026-08-16, implemented in the same PR). The field is
     `emittedAt`, and the spec adds two things the board did not carry: `monotonic`
     **stays** for the still-speaking heuristic rather than being replaced, and a
     stamp on *command* results is deliberately deferred until after 11.12, whose
@@ -856,13 +857,19 @@ rather than before it.
     honour it. `speechMode`, `sleepMode` and `inputHelp` are symmetric.
     Classified `mutates_reader` for 11.3. Amends published wire v1. Needs live
     NVDA. Spec: none yet.
-11.18. **E, the board is not self-enforcing** (neither lane; CI). Four
+11.18. **E, the board is not self-enforcing** (neither lane; CI). Five
     consecutive entries merged without the Done mark their own PR was supposed to
     apply: 11.4 (#46) read "Next.", 11.5 (#48) "Implemented", 11.7 (#49) carried
     its spec as "not agreed" two weeks after shipping, and 11.8 (#51) merged
     reading "Implemented on this branch" — a branch that no longer existed —
     **on the very next merge after the board recorded that the next merge should
-    be watched for exactly this.** That is the evidence that ends the "be more
+    be watched for exactly this.** Then 11.15 (#60) did it again, in the first
+    merge after *this entry was written to record the pattern*: the whole
+    implementation landed — bridge, server, wire, conformance, spec 0028 marked
+    agreed — while the entry kept its unfinished heading, kept "awaiting
+    agreement" in its Spec field, and stayed in the open list above, whose own
+    count read twelve against a list of thirteen. Corrected 2026-08-16 by a
+    direct push to main. That is the evidence that ends the "be more
     careful" remedy: the rule is load-bearing (a fresh session's first question is
     "what is next?", answered from this file) and it is not self-enforcing.
     Proposal: a CI job in the shape of the existing `no unchecked checkboxes`
@@ -873,7 +880,18 @@ rather than before it.
     completing; making it *stated* rather than *absent* is the whole point.
     Open question for the spec conversation: whether the check can be made
     precise enough to avoid crying wolf, since a false failure on a docs PR would
-    train everyone to bypass it — which is worse than no gate. Spec: none yet.
+    train everyone to bypass it — which is worse than no gate.
+    **On hold as of 2026-08-16: the remedy above is being reconsidered, and this
+    entry may be replaced rather than specified.** A CI gate checks that a human
+    performed the bookkeeping. GitHub's `Closes #n` makes the status change a
+    side effect of merging instead — nothing to remember, nothing to verify, no
+    false failures to train anyone to bypass. The direction under discussion is
+    to move the *status bit* to issues while the *argument* stays in this file,
+    reviewed and in git, still the answer to "what is next?"; the two are then
+    reconciled by a drift gate of the same shape as `gate-schema` and
+    `gate-binding`, which cannot cry wolf because both sides are machine-readable.
+    That is a next-phase conversation. Do not build the gate above without
+    revisiting this first. Spec: none yet.
 11.19. **E, personas — the server half** (server lane). Designed in conversation
     2026-08-16; no spec file yet. An agent connects **as somebody**: a *normal
     user*, an *accessibility validator*, or an *add-on developer*. The persona
