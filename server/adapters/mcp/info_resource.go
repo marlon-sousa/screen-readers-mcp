@@ -52,7 +52,12 @@ type info struct {
 	Endpoint      string   `json:"endpoint,omitempty"`
 	Capabilities  []string `json:"capabilities,omitempty"`
 	Mode          string   `json:"mode,omitempty"`
-	Synth         string   `json:"synth,omitempty"`
+	// Persona is what this session declared it stands for (spec 0029). Here for
+	// the same reason the reader's name is: an agent that reads this document to
+	// find out what it is driving also needs to know what it is standing in for,
+	// and the two together are what make a finding interpretable afterwards.
+	Persona string `json:"persona,omitempty"`
+	Synth   string `json:"synth,omitempty"`
 
 	// LogPath is the READER-SIDE transcript, as a path, and deliberately not as
 	// a resource. That conversation happened (spec 0021) and came out against
@@ -111,6 +116,7 @@ func describe(sessions SessionSource) info {
 	document.Endpoint = connection.Endpoint.String()
 	document.Capabilities = session.Capabilities.Strings()
 	document.Mode = session.Mode.String()
+	document.Persona = session.Persona.String()
 	document.Synth = session.Synth
 	document.LogPath = session.LogPath
 	// There is no reader-log PATH to report: spec 0020 replaced 0009's capture

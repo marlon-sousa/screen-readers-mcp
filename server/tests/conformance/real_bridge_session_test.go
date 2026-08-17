@@ -35,6 +35,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -175,6 +176,8 @@ type connectedSession struct {
 	Endpoint      string   `json:"endpoint"`
 	Capabilities  []string `json:"capabilities"`
 	Mode          string   `json:"mode"`
+	Persona       string   `json:"persona"`
+	Stance        string   `json:"stance"`
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
 }
@@ -216,6 +219,14 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	// The session transcript path is always reported.
 	if session.LogPath == "" {
 		t.Errorf("log path = %q, want it reported", session.LogPath)
+	}
+	// The persona (spec 0029) crossed the wire as a plain string, was accepted
+	// by the real Python validator, and came back with its stance attached.
+	if session.Persona != "user" {
+		t.Errorf("persona = %q, want the declared one back", session.Persona)
+	}
+	if session.Stance != entities.PersonaUser.Stance() {
+		t.Errorf("stance = %q, want the persona's stance in full", session.Stance)
 	}
 
 	want := []string{

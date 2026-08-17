@@ -62,6 +62,11 @@ class HelloHandler(CommandHandler):
 			raise CommandError(
 				f"log level {params.logLevel.value!r} cannot be set on the reader: want one of {valid}"
 			)
+		# Recorded before anything else can fail: the persona is what the rest of
+		# the session MEANS (spec 0029), and a session that established without it
+		# would produce evidence nobody could attribute. Not validated here -- see
+		# SessionContext.persona for why an unrecognised value must not error.
+		ctx.persona = params.persona
 		ctx.transcript.open()
 		# Capture is always on (spec 0009); logLevel, if set, additionally bumps
 		# NVDA's own verbosity for the session -- restored at teardown.
@@ -84,7 +89,7 @@ class HelloHandler(CommandHandler):
 
 		# The reader's real synth stays loaded in every mode; just report it.
 		synth = ctx.announcer.current_synth()
-		ctx.transcript.session_opened(params.mode, synth)
+		ctx.transcript.session_opened(params.mode, synth, params.persona)
 
 		return protocol.HelloResult(
 			protocolVersion=protocol.PROTOCOL_VERSION,

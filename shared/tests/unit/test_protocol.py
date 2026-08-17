@@ -59,6 +59,30 @@ def test_from_dict_ignores_extra_keys_for_forward_compat() -> None:
 	assert hp.mode == "live"
 
 
+def test_hello_carries_the_persona() -> None:
+	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1, "persona": "validator"})
+	assert hp.persona == "validator"
+
+
+def test_hello_without_a_persona_still_validates() -> None:
+	"""An older SERVER declares none, and must still be able to handshake."""
+	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1})
+	assert hp.persona == ""
+
+
+def test_an_unrecognised_persona_validates_rather_than_raising() -> None:
+	"""Spec 0029, and the reason ``persona`` is a plain ``str``.
+
+	If this field were a closed enum, an unrecognised value would raise here --
+	and this is inside ``hello``, so the rejection would fail the HANDSHAKE. The
+	day a fourth persona is added upstream, a newer server could not connect to
+	any bridge already in the field. A bridge degrades instead (protocol.md §4),
+	which it can only do if the value reaches it.
+	"""
+	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1, "persona": "archaeologist"})
+	assert hp.persona == "archaeologist"
+
+
 def test_from_dict_dict_field() -> None:
 	req = p.from_dict(p.Request, {"id": 1, "cmd": "ping", "params": {"a": 1, "b": "x"}})
 	assert req.params == {"a": 1, "b": "x"}

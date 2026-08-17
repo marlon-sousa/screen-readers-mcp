@@ -219,6 +219,7 @@ type HelloParams struct {
 	Mode            CaptureMode `json:"mode"`
 	ProtocolVersion int         `json:"protocolVersion"`
 	LogLevel        *LogLevel   `json:"logLevel,omitempty"`
+	Persona         *string     `json:"persona,omitempty"`
 }
 
 // HelloResult is the wire shape of the same name.

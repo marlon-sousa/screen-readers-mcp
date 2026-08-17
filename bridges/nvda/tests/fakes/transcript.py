@@ -37,8 +37,8 @@ class FakeTranscript(Transcript):
 		self.opened = True
 		self._record("open")
 
-	def session_opened(self, mode: str, synth: str) -> None:
-		self._record("session_opened", mode, synth)
+	def session_opened(self, mode: str, synth: str, persona: str) -> None:
+		self._record("session_opened", mode, synth, persona)
 
 	def gesture(self, gesture_id: str) -> None:
 		self._record("gesture", gesture_id)

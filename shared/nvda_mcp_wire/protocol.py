@@ -410,6 +410,20 @@ class HelloParams:
 	#: teardown). Unset leaves NVDA's current level alone; capture still happens
 	#: either way (see LogLevel).
 	logLevel: LogLevel | None = None
+	#: What the agent is standing in for this session: ``user``, ``validator`` or
+	#: ``expert`` (spec 0029). Fixed for the session, like ``mode``.
+	#:
+	#: A PLAIN ``str`` AND NOT AN ENUM, deliberately. A closed enum here would make
+	#: :func:`from_dict` reject a value it did not recognise, and the rejection
+	#: would fail the HANDSHAKE -- so the day a fourth persona is added, a newer
+	#: server could not connect to any bridge already in the field. A bridge that
+	#: does not recognise a persona must degrade (serve its general guidance and
+	#: say so), never error; see ``specs/wire/v1/protocol.md`` §4, which states the
+	#: same carve-out that already applies to unknown capability strings.
+	#:
+	#: Defaults to ``""`` so an older SERVER, which does not know about personas,
+	#: still handshakes with a newer bridge. Both directions degrade.
+	persona: str = ""
 
 
 @dataclass(frozen=True)

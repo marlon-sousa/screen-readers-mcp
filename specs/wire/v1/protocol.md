@@ -91,6 +91,15 @@ Fault handling, all of which keep the session alive once established (§3):
    handler once it has decided to emit the record at all, so a bumped level
    is visible in the reader's own log too, for the session's duration. It is
    always restored at teardown, on every exit path.
+   An optional `persona` (string) declares **what the agent is standing in for**
+   this session — `user`, `validator` or `expert` (spec 0029) — and like `mode`
+   it is fixed for the session's whole lifetime. The bridge records it (in its
+   transcript, and wherever it tells the human that a session has begun) and may
+   use it to decide what guidance to serve. **It is a plain string, not a closed
+   enumeration, and a bridge MUST NOT reject a value it does not recognise** —
+   see §4, which states the rule and why. Omitted or empty means the server did
+   not declare one, which an older server will not; a bridge treats that exactly
+   as it treats an unrecognised value.
 3. On success the bridge replies with `HelloResult`:
    - `protocolVersion` (int) — the bridge's version.
    - `reader` (object `{ name, version }`) — **which** screen reader answered
@@ -166,6 +175,14 @@ Rules:
 - A consumer **must ignore an unknown capability string**, so the set can grow
   without breaking older peers. (This is the one forward-compatibility carve-out
   beyond "ignore unknown fields".)
+- **A bridge must not reject an unrecognised `persona`** (§3), for the same
+  reason and with the same shape. The set of personas is defined by the server
+  (spec 0029) and can grow; if adding one could fail a handshake, adding one
+  would mean a synchronised release across every bridge that exists. A bridge
+  that does not know a persona serves whatever it would serve generally and says
+  that it did not recognise it — degrade, never error. This is also why the field
+  crosses the wire as a plain string: a closed enumeration would make the
+  validator reject the value before any bridge logic could degrade.
 - A command whose group is **not** in the announced set may be rejected with a
   normal error response. The NVDA bridge announces `speech`, `braille`,
   `gestures`, `typing` and `announce` today; `focus`, `state` and `config` are

@@ -287,9 +287,12 @@ class Session:
 		self._reply(request.id, result)
 		if pre_hello:
 			self._state = _State.ESTABLISHED
-			# Two ascending tones: the bridge is now controlling NVDA. Guarded so a
-			# beep failure never breaks the just-established session.
-			self._guard(self._signals.session_started)
+			# Two ascending tones, then the persona the session declared (spec
+			# 0029): the tones say control was taken, the words say what it was
+			# taken as. Read from the context, which hello has just populated.
+			# Guarded so a failed cue never breaks the just-established session --
+			# a courtesy is not worth a session.
+			self._guard(lambda: self._signals.session_started(self._ctx.persona))
 
 	def _open_window(self, request_id: int, start_pos: int, captured_at: protocol.LogLevel) -> None:
 		"""Record this command's span start, keeping the last N.

@@ -9,6 +9,12 @@
 #          mode, when captured speech is suppressed.
 #
 # Marshalled to NVDA's main thread, like every other NVDA touch here.
+#
+# The start cue also SPEAKS the session's persona (spec 0029). The tones say that
+# something has taken the reader; they cannot say what it is standing in for, and
+# the person sitting at the machine deserves to know which. It goes through the
+# live synth directly -- the same route cue_and_speak uses -- so it is heard while
+# silent mode is suppressing captured speech at the speak() filter.
 
 from __future__ import annotations
 
@@ -16,6 +22,7 @@ import tones
 import wx
 
 from ..domain.ports.session_signals import SessionSignals
+from .nvda_cue import cue_and_speak
 from .nvda_main_thread import run_on_main
 
 _LOW_HZ = 440
@@ -30,11 +37,27 @@ _GAP_MS = 300
 class NvdaSessionSignals(SessionSignals):
 	"""Two spaced ascending tones on start, two descending on end."""
 
-	def session_started(self) -> None:
-		run_on_main(lambda: self._pair(_LOW_HZ, _HIGH_HZ))
+	def session_started(self, persona: str) -> None:
+		run_on_main(lambda: self._started(persona))
 
 	def session_ended(self) -> None:
 		run_on_main(lambda: self._pair(_HIGH_HZ, _LOW_HZ))
+
+	@classmethod
+	def _started(cls, persona: str) -> None:
+		if not persona:
+			# An older server declared nothing to say. Then this is exactly the
+			# pair of tones it has always been.
+			cls._pair(_LOW_HZ, _HIGH_HZ)
+			return
+		# Translators: spoken when an MCP session starts, naming what the agent
+		# declared it is standing in for (for example "user" or "validator").
+		spoken = _("MCP session open, as {persona}").format(persona=persona)
+		# The shared helper, so "speak past the suppression filter" has one
+		# definition rather than a second copy here (see nvda_cue.py). The
+		# persona is spoken as received: this adapter does not have to recognise
+		# a value in order to say it.
+		cue_and_speak([spoken], hz=_LOW_HZ, second_hz=_HIGH_HZ, ms=_TONE_MS, gap_ms=_GAP_MS)
 
 	@staticmethod
 	def _pair(first_hz: int, second_hz: int) -> None:

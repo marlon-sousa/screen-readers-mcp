@@ -34,6 +34,20 @@ type ReaderSession struct {
 	// Fixed for the session's lifetime.
 	Mode CaptureMode
 
+	// Persona is what this session is standing in for (spec 0029), and it is
+	// the one field here the agent DECLARED rather than the bridge announced.
+	// It is recorded on the session because everything that describes a
+	// session afterwards -- status, screenreader://info, the session record --
+	// has to carry it: the same observation is a pass from one stance and a
+	// finding from another, and a reader of the evidence cannot tell which
+	// claim was made without it.
+	//
+	// The bridge is TOLD the persona at `hello` and records it in its own
+	// transcript, but it does not echo it back: an echo would carry no
+	// information, since a bridge cannot confirm or refuse a stance the way it
+	// confirms a capture mode.
+	Persona Persona
+
 	// Synth is the reader's current speech synthesizer.
 	Synth string
 

@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -150,6 +151,54 @@ func resourceURIsIn(description string) []string {
 		}
 		found = append(found, scheme+rest[:end])
 		rest = rest[end:]
+	}
+}
+
+// -- personas (spec 0029) -----------------------------------------------------
+
+// The document is where a persona is CHOSEN, which happens before connecting, so
+// every persona the server accepts has to be described here -- and described
+// from the domain, so adding one cannot leave the document behind.
+func TestTheGuidanceProfilesEveryPersonaTheServerAccepts(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+	document := h.ReadGuidance(t)
+
+	for _, persona := range entities.AllPersonas() {
+		if !strings.Contains(document, persona.String()) {
+			t.Errorf("the guidance never names the %q persona", persona)
+		}
+		if !strings.Contains(document, persona.Question()) {
+			t.Errorf("the guidance never asks %q's question, %q", persona, persona.Question())
+		}
+		if !strings.Contains(document, persona.Profile()) {
+			t.Errorf("the guidance does not carry %q's profile; it is composed from "+
+				"the domain precisely so the two cannot drift", persona)
+		}
+	}
+}
+
+// The load-bearing sentences of spec 0029, in the agent's own terms. Phrases
+// rather than whole sentences, so rewording does not fail this, but deleting the
+// decision does.
+func TestTheGuidanceStatesTheVocabularyRuleAndWhenToChoose(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+	document := h.ReadGuidance(t)
+
+	for _, want := range []string{
+		// The portable half of the rule -- the part that survives the platform
+		// changing, and the reason the concrete list belongs to the bridge.
+		"re-reads what is already there",
+		"reaches what focus cannot",
+		// A persona cannot be applied to a run that already happened, so the
+		// document has to say when the choice is made.
+		"before you connect",
+		// And that the human may be the one to make it, since ask_user needs a
+		// session and is therefore too late.
+		"ask them before you connect",
+	} {
+		if !strings.Contains(strings.ToLower(document), strings.ToLower(want)) {
+			t.Errorf("the guidance never says %q", want)
+		}
 	}
 }
 

@@ -40,8 +40,8 @@ import (
 // cause: retract, record, and let the agent connect again when it chooses.
 var ErrConnectionLost = errors.New("bridge connection lost")
 
-// SessionOptions are the per-session parameters the wire fixes at `hello` for
-// the session's whole lifetime (protocol.md §3, §4).
+// SessionOptions are what the AGENT chose for this session, all of which the
+// wire fixes at `hello` for the session's whole lifetime (protocol.md §3, §4).
 //
 // They are parameters and not CLI flags precisely because of that: under
 // auto-connect they would have to be chosen by whoever wrote the MCP host
@@ -51,6 +51,11 @@ var ErrConnectionLost = errors.New("bridge connection lost")
 type SessionOptions struct {
 	// Mode fixes how speech is captured for the session.
 	Mode entities.CaptureMode
+
+	// Persona is what the agent is standing in for (spec 0029): it decides
+	// what a finding from this session MEANS, so it cannot be retrofitted
+	// onto a session that already ran.
+	Persona entities.Persona
 
 	// LogLevel optionally raises the READER's own diagnostic verbosity for
 	// the session. Nil leaves it unchanged.

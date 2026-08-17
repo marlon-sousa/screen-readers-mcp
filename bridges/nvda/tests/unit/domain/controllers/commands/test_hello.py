@@ -18,10 +18,18 @@ from nvdaMcpBridge.domain.controllers.commands.hello import HelloHandler
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 
 
-def _hello(mode: str, version: int = p.PROTOCOL_VERSION, *, log_level: p.LogLevel | None = None) -> p.Request:
+def _hello(
+	mode: str,
+	version: int = p.PROTOCOL_VERSION,
+	*,
+	log_level: p.LogLevel | None = None,
+	persona: str | None = None,
+) -> p.Request:
 	params: dict[str, object] = {"mode": mode, "protocolVersion": version}
 	if log_level is not None:
 		params["logLevel"] = log_level.value
+	if persona is not None:
+		params["persona"] = persona
 	return p.Request(id=1, cmd="hello", params=params)
 
 
@@ -61,9 +69,48 @@ def test_silent_hello_builds_and_reports(clock: FakeClock) -> None:
 	# No synth swap event -- the synth is left loaded; capture is via the filter.
 	assert transcript.events[:2] == [
 		("open",),
-		("session_opened", p.CaptureMode.SILENT, "espeak"),
+		("session_opened", p.CaptureMode.SILENT, "espeak", ""),
 	]
 	assert all(event[0] != "synth_swapped" for event in transcript.events)
+
+
+# -- persona (spec 0029) ------------------------------------------------------
+
+
+def test_hello_records_the_declared_persona(clock: FakeClock) -> None:
+	transcript = FakeTranscript()
+	ctx = make_context(clock, transcript=transcript)
+	_handler(FakeAdapterFactory()).execute(ctx, _hello("silent", persona="validator"))
+
+	# On the context, for the Session to speak at the start cue...
+	assert ctx.persona == "validator"
+	# ...and in the transcript, which is how a run is attributed afterwards.
+	assert ("session_opened", p.CaptureMode.SILENT, "espeak", "validator") in transcript.events
+
+
+def test_an_unrecognised_persona_is_recorded_rather_than_refused(clock: FakeClock) -> None:
+	"""protocol.md §4: the bridge must DEGRADE, never error.
+
+	The server owns the set of personas. If a value this bridge has never heard of
+	failed the handshake, adding a persona upstream would mean a synchronised
+	release across every bridge in the field -- so an unknown one is simply
+	carried, and it is the guidance served later (11.20) that says it was not
+	recognised.
+	"""
+	ctx = make_context(clock)
+	result = _handler(FakeAdapterFactory()).execute(ctx, _hello("silent", persona="archaeologist"))
+
+	assert isinstance(result, p.HelloResult)
+	assert ctx.persona == "archaeologist"
+
+
+def test_a_hello_without_a_persona_still_handshakes(clock: FakeClock) -> None:
+	"""An older server declares none; the field is optional and defaults empty."""
+	ctx = make_context(clock)
+	result = _handler(FakeAdapterFactory()).execute(ctx, _hello("silent"))
+
+	assert isinstance(result, p.HelloResult)
+	assert ctx.persona == ""
 
 
 def test_hello_with_log_level_starts_capture_at_that_level(clock: FakeClock) -> None:

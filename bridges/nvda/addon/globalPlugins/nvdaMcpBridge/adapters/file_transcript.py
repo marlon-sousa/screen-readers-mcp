@@ -62,8 +62,12 @@ class FileTranscript(Transcript):
 			return
 		self._writer.write_line(f"{self._timestamp()} {text}")
 
-	def session_opened(self, mode: str, synth: str) -> None:
-		self._line(f"SESSION OPEN mode={mode} synth={synth}")
+	def session_opened(self, mode: str, synth: str, persona: str) -> None:
+		# The persona is written as `-` rather than omitted when absent, so every
+		# SESSION OPEN line has the same shape and a reader of the file can tell
+		# "no persona was declared" from "this build predates personas" by the
+		# presence of the field at all.
+		self._line(f"SESSION OPEN mode={mode} synth={synth} persona={persona or '-'}")
 
 	def gesture(self, gesture_id: str) -> None:
 		self._line(f"GESTURE {gesture_id}")

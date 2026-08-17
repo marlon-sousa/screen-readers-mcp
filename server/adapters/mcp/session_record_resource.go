@@ -43,6 +43,17 @@ type RecordSource interface {
 
 // sessionRecord is the resource's document.
 type sessionRecord struct {
+	// Persona is what the live session declared it stands for (spec 0029).
+	//
+	// ON THE DOCUMENT, not left to be recovered from the recorded connect_reader
+	// call, and the reason is easy to miss: this record is BOUNDED and evicts
+	// oldest-first, so in a long session the very call carrying the declaration
+	// ages out of the record that exists to preserve it. Reading it from the
+	// live session instead means the stance outlives the call that set it.
+	//
+	// Empty when nothing is connected -- a record read after a disconnect says
+	// what was done, and can no longer say who was doing it.
+	Persona string `json:"persona,omitempty"`
 	// Calls is every tool call this server dispatched, oldest first.
 	Calls []entities.RecordedCall `json:"calls"`
 	// Dropped is how many older calls aged out of the bounded record. Non-zero
@@ -64,7 +75,7 @@ const recordNote = "This is what THIS server saw: the tool calls you made and th
 // addSessionRecordResource registers the resource. Always present, like the info
 // resource: an agent asking what it has done so far deserves an empty list
 // rather than a missing resource.
-func (s *Server) addSessionRecordResource(record RecordSource) {
+func (s *Server) addSessionRecordResource(record RecordSource, sessions SessionSource) {
 	s.sdk.AddResource(
 		&sdk.Resource{
 			URI:      SessionRecordURI,
@@ -75,7 +86,7 @@ func (s *Server) addSessionRecordResource(record RecordSource) {
 				"already tried, or to summarise a debugging session without replaying it.",
 		},
 		func(_ context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
-			document, err := json.MarshalIndent(describeRecord(record), "", "  ")
+			document, err := json.MarshalIndent(describeRecord(record, sessions), "", "  ")
 			if err != nil {
 				return nil, err
 			}
@@ -89,12 +100,17 @@ func (s *Server) addSessionRecordResource(record RecordSource) {
 }
 
 // describeRecord builds the document from whatever has been recorded so far.
-func describeRecord(record RecordSource) sessionRecord {
+func describeRecord(record RecordSource, sessions SessionSource) sessionRecord {
 	calls := record.Calls()
 	if calls == nil {
 		// Never null: an agent reading `calls` should find an empty list before
 		// it has done anything, not JSON null.
 		calls = []entities.RecordedCall{}
 	}
-	return sessionRecord{Calls: calls, Dropped: record.Dropped(), Note: recordNote}
+
+	document := sessionRecord{Calls: calls, Dropped: record.Dropped(), Note: recordNote}
+	if connection := sessions.Current(); connection != nil {
+		document.Persona = connection.Session.Persona.String()
+	}
+	return document
 }

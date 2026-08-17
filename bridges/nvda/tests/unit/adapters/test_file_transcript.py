@@ -38,18 +38,28 @@ def test_records_every_event_in_order_with_timestamps(
 	transcript: FileTranscript, writer: FakeFileWriter
 ) -> None:
 	transcript.open()
-	transcript.session_opened("silent", "espeak")
+	transcript.session_opened("silent", "espeak", "validator")
 	transcript.gesture("NVDA+f7")
 	transcript.speech("Find dialog")
 	transcript.note("something odd")
 	transcript.session_closed("client-bye")
 	assert writer.lines == [
-		"T SESSION OPEN mode=silent synth=espeak",
+		"T SESSION OPEN mode=silent synth=espeak persona=validator",
 		"T GESTURE NVDA+f7",
 		"T SPEECH 'Find dialog'",
 		"T NOTE something odd",
 		"T SESSION CLOSE reason=client-bye",
 	]
+
+
+def test_an_undeclared_persona_is_written_as_a_placeholder(
+	transcript: FileTranscript, writer: FakeFileWriter
+) -> None:
+	"""Spec 0029: the FIELD is always present, so a reader of the file can tell
+	"no persona was declared" from "this build predates personas"."""
+	transcript.open()
+	transcript.session_opened("live", "espeak", "")
+	assert writer.lines == ["T SESSION OPEN mode=live synth=espeak persona=-"]
 
 
 def test_speech_is_quoted_so_whitespace_survives_reading(

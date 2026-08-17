@@ -1,13 +1,26 @@
 // screenreader-mcp adapters -- the screenreader://guidance resource.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. Serves `screenreader://guidance`, a static document telling an
-// agent HOW to drive a screen reader.
+// ROLE: adapter. Serves `screenreader://guidance`: what a screen reader is, how
+// this MCP is meant to be used, and what the personas are.
 // BUILT BY: sdk_server.go's Bind, beside the info and session-record resources.
-// DEPENDS ON: nothing. It has no source, which is the point -- see below.
+// DEPENDS ON: entities.AllPersonas, for the profiles. Nothing else -- see below.
 //
-// Spec 0023. The other two resources describe a session; this one describes a
-// METHOD, so it is deliberately different in two ways:
+// Spec 0023, amended by spec 0029, which added the persona profiles and the
+// opening section. THE PROFILES ARE COMPOSED FROM THE DOMAIN rather than written
+// into the text below: a persona therefore cannot be added without one, and the
+// stance an agent is handed at connect_reader cannot drift from the profile it
+// read here, because both come from entities.Persona.
+//
+// 0029 also considered giving each persona its own static resource, and withdrew
+// it: a server-owned document holding a persona's VOCABULARY can only be written
+// for one platform, and TalkBack has neither the keyboard nor the operating
+// system such a document would assume. So this file states the RULE and the
+// bridge's own document (board entry 11.20) enumerates the instances -- which is
+// why nothing here names a keystroke, and nothing here ever should.
+//
+// The other two resources describe a session; this one describes a METHOD, so it
+// is deliberately different in two ways:
 //
 //   - STATIC, therefore readable BEFORE connecting -- which is when an agent
 //     should read it. A session-shaped guidance document could only be fetched
@@ -28,8 +41,12 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
 // GuidanceURI is the resource's address.
@@ -44,44 +61,108 @@ func (s *Server) addGuidanceResource() {
 			URI:      GuidanceURI,
 			Name:     "how to drive a screen reader",
 			MIMEType: "text/markdown",
-			Description: "Read this BEFORE driving a reader. How to get the application " +
-				"under test in front of you, act, confirm that what you intended actually " +
-				"happened, and orient yourself when it did not -- the way a screen reader " +
-				"user does, by pressing keys and listening, rather than by inspecting " +
-				"internals. Also what a successful press_gesture result does and does " +
-				"not mean.",
+			Description: "Read this BEFORE connecting. What a screen reader is; WHO YOU CAN " +
+				"CONNECT AS and what each stance means, which you must choose before " +
+				"connect_reader and may want to confirm with the human first; how to get " +
+				"the application under test in front of you, act, confirm that what you " +
+				"intended actually happened, and orient yourself when it did not -- the way " +
+				"a screen reader user does, by pressing keys and listening, rather than by " +
+				"inspecting internals. Also what a successful press_gesture result does and " +
+				"does not mean.",
 		},
 		func(_ context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
 			return &sdk.ReadResourceResult{Contents: []*sdk.ResourceContents{{
 				URI:      GuidanceURI,
 				MIMEType: "text/markdown",
-				Text:     guidance,
+				Text:     guidanceDocument(),
 			}}}, nil
 		},
 	)
 }
 
-// guidance is the document. Prose, because its reader is a model and the thing
-// being conveyed is judgement rather than a schema.
-const guidance = `# How to drive a screen reader
+// guidanceDocument assembles the served text: the static prose with the persona
+// profiles composed into it.
+//
+// Built per read rather than once at init, because it is cheap, and because a
+// package-level variable built from another package's function is a start-order
+// dependency nobody can see.
+func guidanceDocument() string {
+	var document strings.Builder
+	document.WriteString(guidancePreamble)
+	for _, persona := range entities.AllPersonas() {
+		fmt.Fprintf(
+			&document,
+			"\n### `%s` — *%s*\n\n%s\n",
+			persona, persona.Question(), persona.Profile(),
+		)
+	}
+	document.WriteString(guidanceMethod)
+	return document.String()
+}
 
-## The stance: you are standing in for a user
+// guidancePreamble is everything before the persona profiles. Prose, because its
+// reader is a model and the thing being conveyed is judgement rather than a
+// schema.
+const guidancePreamble = `# Driving a screen reader through this server
 
-A screen reader user does not know window classes, control ids, or the
-accessibility tree. They press keys and they listen. Drive the same way by
-default.
+## What a screen reader is
 
-This is not a style preference. If you orient yourself by reading the reader's
-object model, you are testing the platform's accessibility API. If you orient
-yourself by pressing a gesture and hearing the answer, you are testing the
-screen reader and the application together -- which is what a user experiences,
-and what you are here to check. The two disagree in exactly the cases that
-matter: a control that is correctly exposed to the platform API and announced as
-nothing at all passes the first check and fails the second.
+A screen reader is the program a blind person operates their computer with. It
+watches what has focus and speaks it, and it turns the keyboard (or, on a touch
+device, gestures) into the whole of the user interface: there is no pointer, and
+nothing is reached by looking at it. Everything is reached by moving focus and
+listening to what comes back.
 
-Read ` + "`screenreader://info`" + ` to learn which reader you are driving, then use that
-reader's own commands, in the notation its user guide prints.
+That has one consequence worth stating before anything else. **A control that
+exists, and is correctly exposed to the platform's accessibility API, and is
+announced as nothing at all, is invisible to the person at the machine.** It
+passes every check made by reading the accessibility tree, and it fails the only
+check that matters. This is why you drive by pressing keys and listening rather
+than by inspecting internals: the two disagree in exactly the cases you are here
+to find.
 
+## How this server is meant to be used
+
+You send input to the reader and read back what it said. You do not inspect the
+application, and this server has no view of it: everything you learn, you learn
+the way the user learns it.
+
+Read ` + "`screenreader://info`" + ` to learn which reader you are driving, then use
+that reader's own commands, in the notation its user guide prints. This document
+names no keystrokes anywhere, deliberately -- it cannot know whether you are
+driving a Windows desktop reader or a touch-screen one, and a key that does not
+exist on the reader in front of you is worse than no advice.
+
+## Who you are connecting as
+
+Before you connect you must say **what you are standing in for**, because it
+decides what your findings mean. The same observation -- *"I reached that
+control"* -- is a pass from one stance and a finding from another, and afterwards
+nobody can tell which claim you were making unless you said so first.
+
+Choose with ` + "`connect_reader`" + `'s ` + "`persona`" + ` argument. It is fixed for the whole
+session: a stance cannot be applied to a run that already happened.
+
+If a human started you and the choice is not obvious from your task, then
+**ask them before you connect**. This is the one decision that cannot be
+revisited later, and ` + "`ask_user`" + ` needs a live session -- so by the time you
+could ask through this server, the choice has already been made.
+
+One rule spans all three, and it is the one to hold on to:
+
+> **The ordinary user's vocabulary is whatever the platform's own accessibility
+> contract assumes of an ordinary user of that platform.** Within it, a command
+> that re-reads what is already there is available to everyone; a command that
+> *reaches what focus cannot* -- object navigation, a review cursor, a simulated
+> click -- is not available to the ` + "`user`" + ` and ` + "`validator`" + ` stances at all.
+
+Which of *your* reader's commands fall on which side of that line is your
+reader's own to say, not this document's. Once connected, ask the reader.
+`
+
+// guidanceMethod is everything after the profiles: the method, which does not
+// vary by persona and is spec 0023's original document nearly unchanged.
+const guidanceMethod = `
 ## A successful result means delivery, not consequence
 
 ` + "`press_gesture`" + ` and ` + "`type_text`" + ` return once the reader has **accepted** the
@@ -206,7 +287,7 @@ that are signalled by sound, and ` + "`get_focus_info`" + ` answers when the ear
 nothing to work with. Reach for them here, not as your default way of finding
 out where you are.
 
-## Introspection is for a different job
+## Introspection is for a different job — and this part depends on your stance
 
 ` + "`get_focus_info`" + `, ` + "`get_state`" + ` and ` + "`get_config`" + ` read the reader's own model
 directly. They are good for two things:
@@ -217,7 +298,14 @@ directly. They are good for two things:
   observation alone;
 - **surveying** an application you are about to build for.
 
-They are not how you find out where you are. Use the loop above for that.
+For ` + "`user`" + ` and ` + "`validator`" + ` they are **not** how you find out where you are: use
+the loop above for that, because the loop is what the person you are standing in
+for actually has. For ` + "`validator`" + ` the first bullet is the whole point -- stating
+precisely what is wrong is what that stance owes.
+
+For ` + "`expert`" + ` this section does not apply. The reader is part of what you are
+examining rather than the instrument you examine through, so its model, its
+configuration and its log are legitimate first resorts.
 
 ## In short
 
