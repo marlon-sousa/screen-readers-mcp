@@ -188,9 +188,11 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-16**, with nothing in flight in either lane:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18, 11.19,
-11.20 — twelve entries. Of the external run's four, 11.14 and 11.15 are settled.
+below. **Open as of 2026-08-17**:
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18,
+11.20 — eleven entries. Of the external run's four, 11.14 and 11.15 are settled.
+**11.19 is Done (PR #61)**, so personas exist and travel; 11.20 is the half that
+remains, and it is in flight in neither lane until someone takes it.
 
 Their order is **not** simply the numbering. Read as a strict lane order both
 lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
@@ -206,7 +208,10 @@ silent deferral. Three pairings matter more than the numbers:
   and *reader* but **mechanism** and **document** — 11.19 makes the persona
   exist, travel and be recorded; 11.20 gives the reader its own document. Both
   touch both lanes and both need an add-on rebuild, so neither is a
-  server-only ship any more. Still two entries and two PRs, in that order.
+  server-only ship. **11.19 shipped in PR #61**; 11.20 is what is left, and it
+  now carries more than its original scope — after TalkBack disposed of a
+  server-owned vocabulary, the ordinary vocabulary ITSELF is in the bridge's
+  document, not only the list of what falls outside it.
 
 Anything taken out of numeric order is a reprioritisation to make explicitly, the
 way 11.4 was taken before 11.3.
@@ -897,7 +902,14 @@ rather than before it.
     `gate-binding`, which cannot cry wolf because both sides are machine-readable.
     That is a next-phase conversation. Do not build the gate above without
     revisiting this first. Spec: none yet.
-11.19. **E, personas — the persona exists and travels** (both lanes).
+11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
+    travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
+    modes: the declaration reached `status`, `screenreader://info` and the
+    bridge's own transcript on disk, an unknown persona was refused naming all
+    three, and the spoken persona was **heard after the tones in silent mode** —
+    the one claim no automated tier can make, and the one 4.7 rests on, since a
+    wrong route would have produced tones followed by silence in exactly the mode
+    where the human at the machine most needs telling.
     **Re-scoped 2026-08-17**, from *the server half*. The old boundary was the
     lane: server first, reader second. That was right while the server owned the
     ordinary vocabulary and stopped being right when TalkBack moved it to the
@@ -1008,7 +1020,8 @@ rather than before it.
     that: nothing is forgotten, the commands are simply **out of scope**, and the
     task that then fails is a fact about the interface rather than a performance.
     Spec: [0029-connecting-as-somebody.md](specs/0029-connecting-as-somebody.md)
-    (drafted 2026-08-16, not agreed; covers 11.20 as well).
+    (agreed 2026-08-17; covers 11.20 as well, and records two amendments made
+    during this entry's implementation).
 11.20. **E, personas — the reader says what its vocabulary is** (both lanes).
     **Re-scoped 2026-08-17** from *the reader half*: the wire's `persona` field
     and the bridge's recording of it moved into 11.19, so what is left here is
@@ -1080,7 +1093,8 @@ rather than before it.
     be localised and nothing the server speaks can be, and because building it in
     11.19 would mean building it twice.
     Spec: [0029-connecting-as-somebody.md](specs/0029-connecting-as-somebody.md)
-    (drafted 2026-08-16, not agreed; shared with 11.19).
+    (agreed 2026-08-17; shared with 11.19, which is Done — this is the half that
+    remains).
 12. F, packaging/release — split into two entries (agreed 2026-07-22), because
     the bridge's release path is decidable now while the server's distribution
     still has open questions from [spec 0005](specs/0005-multi-reader-direction.md).
