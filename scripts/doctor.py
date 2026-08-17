@@ -29,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -396,13 +397,34 @@ def stale_server_binary() -> str | None:
 		return "not built"
 	built = BINARY.stat().st_mtime
 	newest, newest_name = 0.0, ""
-	for path in (ROOT / "server").rglob("*.go"):
+	for path in _server_build_inputs():
 		stamp = path.stat().st_mtime
 		if stamp > newest:
 			newest, newest_name = stamp, path.name
 	if newest <= built:
 		return None
 	return f"{newest_name} is newer than the binary the MCP client runs"
+
+
+def _server_build_inputs() -> Iterator[Path]:
+	"""Every file whose contents end up INSIDE the server binary.
+
+	The .go sources, and the markdown documents they pull in with ``//go:embed``.
+
+	THE DOCUMENTS ARE NOT OPTIONAL HERE, and leaving them out is a trap that hides
+	perfectly: ``//go:embed`` copies a file's bytes at COMPILE time, so editing
+	``guidance-preamble.md`` changes nothing at all until the binary is rebuilt.
+	Without this, the doctor would rglob only ``*.go``, see nothing newer than the
+	binary, and pronounce it current -- while the running server served the
+	previous wording of a document to every agent that read it. Nothing would say
+	so, in the one check whose whole job is to say so.
+
+	Scoped to ``documents/`` rather than every .md under server/, so that editing
+	``server/README.md`` -- which no build consumes -- does not manufacture a
+	rebuild.
+	"""
+	yield from (ROOT / "server").rglob("*.go")
+	yield from (ROOT / "server").rglob("documents/*.md")
 
 
 def check_server_binary() -> Result:
@@ -437,7 +459,7 @@ def check_server_binary() -> Result:
 		)
 	reason = stale_server_binary()
 	if reason is None:
-		return Result(OK, "server binary", "newer than server/*.go")
+		return Result(OK, "server binary", "newer than server/*.go and its embedded documents")
 	return Result(
 		FAIL,
 		"server binary",

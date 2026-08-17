@@ -47,6 +47,15 @@ i18nSources: list[str] = [*pythonSources, "buildVars.py"]
 excludedFiles: list[str] = [
 	"doc/*/contributing*.*",
 	"doc/*/*.tpl.md",
+	# The bundler rglobs the whole addon tree, so a developer's compiled bytecode
+	# was being shipped to users -- 90-odd entries, INCLUDING ORPHANS from modules
+	# deleted long ago (framing, session, speech_buffer and transcript, back when
+	# they lived at the top level rather than under domain/). Inert, because
+	# Python will not import a .pyc with no source beside it, but it is dead
+	# weight from a layout that no longer exists, and the contents of a release
+	# then depend on whose machine built it.
+	"**/__pycache__/*",
+	"**/__pycache__",
 ]
 
 baseLanguage: str = "en"

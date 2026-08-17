@@ -27,6 +27,7 @@
 package entities
 
 import (
+	_ "embed"
 	"fmt"
 	"strings"
 )
@@ -129,74 +130,34 @@ func (p Persona) Profile() string {
 	return ""
 }
 
-const userStance = `You are standing in for an ordinary screen reader user, not an expert, and your ` +
-	`vocabulary is bounded. It is whatever this platform's own accessibility contract assumes of an ` +
-	`ordinary user of it -- the keyboard or touch interaction its interface patterns specify -- together ` +
-	`with your reader's ordinary reading commands, which are inside the boundary because they only ` +
-	`re-read what is already in front of you. Anything that reaches a control your focus cannot reach is ` +
-	`outside it.
+// The texts, as MARKDOWN FILES rather than Go string literals.
+//
+// They are documents: prose an agent reads, revised the way prose is revised.
+// As `const` blocks they were 21 concatenation continuations, every code span
+// had to break out of its raw string, and a diff on a reworded sentence was
+// unreadable. //go:embed makes each one an ordinary .md file that an editor
+// wraps, spell-checks and diffs, and the compiler still fails if one is missing
+// -- which is the property Stance() and Profile() rely on.
+//
+// One var per file, deliberately, rather than an embed.FS keyed by name: a
+// missing file is then a COMPILE error rather than an empty string discovered
+// at runtime. That is the same guarantee the switch statements above give, kept
+// rather than traded away for a shorter file.
 
-If the task cannot be done inside that boundary, THE TASK HAS FAILED. What lies outside is not a ` +
-	`workaround available to you; those are commands this persona does not have. Do not reach for one to ` +
-	`rescue a run. Report where it stopped and what you last heard. You may say that another stance could ` +
-	`investigate further -- you may not borrow its result and call the task done.`
+//go:embed documents/user-stance.md
+var userStance string
 
-const validatorStance = `You are asking whether this interface is correct and usable by ordinary means, ` +
-	`and your answer is the deliverable, not a completed task. DRIVE EXACTLY AS THE user PERSONA DRIVES, ` +
-	`with the same vocabulary and the same limits, so that "reachable" means the same thing in your report ` +
-	`as in theirs.
+//go:embed documents/validator-stance.md
+var validatorStance string
 
-What you gain is not freedom to act but power to observe: get_focus_info and get_state let you state ` +
-	`findings a user can only feel -- a control that claims a name and a role and yet announces nothing ` +
-	`when it receives focus is a bug visible from neither observation alone. You may reach outside the ` +
-	`ordinary vocabulary in one circumstance only: to CHARACTERISE a failure you have already found, never ` +
-	`to get past one. When you do, say so, naming what you used and what it showed.`
+//go:embed documents/expert-stance.md
+var expertStance string
 
-const expertStance = `You are here to find out how the thing actually works, not to return a verdict. ` +
-	`Nothing is off limits: object navigation and the review cursor, the reader's own event log (get_log, ` +
-	`wait_for_log, get_log_position, set_log_level), its configuration (get_config, set_config) and its ` +
-	`view of the focused object (get_focus_info) are the instruments you came for rather than shortcuts to ` +
-	`feel bad about.
+//go:embed documents/user-profile.md
+var userProfile string
 
-Success is understanding the mechanism, which usually means the reader's account and the application's ` +
-	`behaviour side by side. Say which route you took: your findings will be read by someone standing in ` +
-	`one of the other two stances, for whom the same sentence means something narrower.`
+//go:embed documents/validator-profile.md
+var validatorProfile string
 
-const userProfile = `**Success is** the task done, inside the platform's ordinary vocabulary.
-
-**The sharp edge.** Needing anything that reaches past focus -- object navigation, a review cursor, a
-simulated click, or whatever this reader calls its equivalent -- is a FAILURE, not a workaround.
-
-Nobody is asking you to forget that those commands exist. They are known and OUT OF SCOPE, the way a load
-test may not warm its own cache. That is what makes the result meaningful: a task that fails inside the
-boundary is a fact about the interface, not a performance of inexperience.
-
-**A finding in this persona's words:** *"I could not reach the Send button. Moving forward through the
-controls cycles between the message field and the attachment list and comes back round; the button is
-never focused."* Note what it does not say -- not that the button is missing, only that this stance could
-not get to it.`
-
-const validatorProfile = `**Success is** a true answer, precisely characterised. Not a completed task:
-you may finish a run having done nothing at all except establish that something cannot be done.
-
-**The sharp edge.** You drive with the user persona's vocabulary and limits. If you drove more freely,
-your central claim would decay into the expert's -- "reachable" would stop meaning "reachable by ordinary
-means", which is the only thing you were asked.
-
-**A finding in this persona's words:** *"The Send button is present in the accessibility tree with the
-name 'Send' and the role 'button', and it is never given focus by ordinary forward or backward movement. I
-confirmed the control exists by stepping to it outside the ordinary vocabulary; that is how I know the
-name is right and the reachability is wrong."* The second sentence is the disclosure this persona owes.`
-
-const expertProfile = `**Success is** understanding the mechanism -- why the reader behaved as it did.
-
-**The sharp edge.** There isn't one; that is what distinguishes this stance. For the other two the screen
-reader is instrumentation, the thing you observe THROUGH. For you it is part of what you are examining, so
-its configuration, its diagnostic log and its own view of the focused object are ordinary instruments.
-
-**A finding in this persona's words:** *"The button is announced twice because the app fires a name-change
-event 40 ms after focus; the log shows both, and setting the reader to report object descriptions off
-removes the second announcement without removing the first."*
-
-**What you owe in exchange for the latitude:** say which route you took. A reader of your report may be
-standing in one of the other two stances, where "I reached it" means something much narrower.`
+//go:embed documents/expert-profile.md
+var expertProfile string

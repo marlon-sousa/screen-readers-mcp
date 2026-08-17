@@ -501,6 +501,30 @@ make the port pointless for testing.
      markdown preview — which is where **specs are reviewed**, so `specs/` is a
      first-class place for a diagram, not a grudging exception.
 
+9. **A document served to an agent is a `.md` file embedded with `//go:embed`,
+   never a Go string literal.** Every MCP resource's prose — `screenreader://guidance`,
+   the persona stances and profiles — lives in a `documents/` directory beside
+   the package that serves it, and is pulled in with one `//go:embed` per file.
+   - **Why:** these are documents, written and revised as prose, whose entire
+     readership is a model reading markdown. As `const` blocks they were
+     unreadable to author and to review: the guidance document had **29** places
+     where the raw string was closed, concatenated with a quoted backtick and
+     reopened purely to emit a code span, and the persona texts were 21
+     concatenation continuations. A reworded sentence produced a diff nobody
+     could read. Embedded, the file *is* the document — backticks, quotes and
+     all — and an editor wraps and spell-checks it.
+   - **One `//go:embed` per file, not an `embed.FS` keyed by name.** A missing
+     document is then a *compile* error rather than an empty string discovered
+     at runtime, which is the guarantee `Persona.Stance()` and `.Profile()`
+     depend on.
+   - **This does not extend to tool descriptions or JSON schemas.** Those are
+     read together with the `Execute` that uses them; splitting one tool across
+     three files costs more than the formatting noise it saves. The line is: a
+     **document** gets a file, a **field value** stays in code.
+   - `embed` is stdlib, so the domain may use it — `domain/entities/documents/`
+     is where the persona texts live, and the architecture test's import rules
+     are unaffected.
+
 ## Dev commands
 
 Requires [uv](https://docs.astral.sh/uv/). **Run the doctor first, before
