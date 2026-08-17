@@ -208,6 +208,26 @@
       ],
       "additionalProperties": true
     },
+    "GetGuidanceResult": {
+      "type": "object",
+      "properties": {
+        "persona": {
+          "type": "string"
+        },
+        "recognised": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "persona",
+        "recognised",
+        "text"
+      ],
+      "additionalProperties": true
+    },
     "GetLogParams": {
       "type": "object",
       "properties": {
@@ -382,7 +402,8 @@
               "config",
               "interact",
               "typing",
-              "log"
+              "log",
+              "guidance"
             ]
           }
         },
@@ -1086,6 +1107,12 @@
       },
       "result": {
         "$ref": "#/$defs/LogLevelResult"
+      }
+    },
+    "getGuidance": {
+      "params": null,
+      "result": {
+        "$ref": "#/$defs/GetGuidanceResult"
       }
     },
     "bye": {

@@ -113,6 +113,14 @@ type ReaderConnection struct {
 	Interact  Interact
 	Text      TextTyper
 	ReaderLog LogReader
+
+	// Guidance is the odd one out and is worth saying so: every other port
+	// here backs a TOOL, and this one backs a RESOURCE
+	// (screenreader://reader-guidance). The gate is the same structural one --
+	// nil unless the reader announced `guidance` -- but nothing in
+	// ToolCatalog changes when it is present, which is why the tool list is
+	// untouched by spec 0029's second half.
+	Guidance GuidanceReader
 }
 
 // SessionDialer opens a session with one configured reader.

@@ -55,6 +55,7 @@ __all__ = [
 	"FocusInfoResult",
 	"GetBrailleParams",
 	"GetConfigParams",
+	"GetGuidanceResult",
 	"GetLogParams",
 	"GetSpeechParams",
 	"HelloParams",
@@ -157,6 +158,12 @@ class Capability(StrEnum):
 	INTERACT = "interact"
 	TYPING = "typing"
 	LOG = "log"
+	#: The bridge has its own written guidance for the session's persona -- what
+	#: the ordinary vocabulary IS on this reader, and which of its commands fall
+	#: outside it (spec 0029). The first capability that gates a RESOURCE rather
+	#: than a tool, so a bridge with nothing reader-specific to say simply omits
+	#: it and the agent falls back on the server's reader-agnostic documents.
+	GUIDANCE = "guidance"
 
 
 class BrowseMode(StrEnum):
@@ -204,6 +211,7 @@ class Command(StrEnum):
 	GET_LOG_POSITION = "getLogPosition"
 	WAIT_FOR_LOG = "waitForLog"
 	SET_LOG_LEVEL = "setLogLevel"
+	GET_GUIDANCE = "getGuidance"
 	BYE = "bye"
 
 
@@ -888,6 +896,34 @@ class WaitForLogParams:
 
 
 @dataclass
+class GetGuidanceResult:
+	"""The bridge's own written guidance for the session's persona (spec 0029).
+
+	**Takes no parameters.** The persona is fixed at ``hello``, and this answers
+	for the session's persona and nothing else: a ``persona`` argument would let an
+	agent fetch one stance's instructions from a session standing in another,
+	which quietly undoes the thing the declaration is for.
+
+	The text is **opaque markdown**. The server transports and frames it and never
+	parses it, which is what lets a bridge author write for their own reader
+	without negotiating a schema -- and is why a TalkBack bridge can enumerate
+	swipes where NVDA's enumerates keystrokes.
+	"""
+
+	#: The persona this text answers for, echoed as received. An unrecognised one
+	#: comes back unchanged rather than normalised: the field says what was ASKED.
+	persona: str
+	#: Whether the bridge had persona-specific instruction for that value. ``False``
+	#: with the general text is a real answer -- and a necessary one, since silence
+	#: would leave the agent believing it had been instructed when it had not.
+	recognised: bool
+	#: The document: whatever this bridge says about holding that stance on this
+	#: reader, composed as one markdown text. There is no second call and no
+	#: structure for the server to reassemble.
+	text: str
+
+
+@dataclass
 class WaitForLogResult:
 	"""Whether a matching record appeared, and where it landed.
 
@@ -947,5 +983,6 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.GET_LOG_POSITION: CommandShape(None, LogPositionResult),
 	Command.WAIT_FOR_LOG: CommandShape(WaitForLogParams, WaitForLogResult),
 	Command.SET_LOG_LEVEL: CommandShape(SetLogLevelParams, LogLevelResult),
+	Command.GET_GUIDANCE: CommandShape(None, GetGuidanceResult),
 	Command.BYE: CommandShape(None, AckResult),
 }

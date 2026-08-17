@@ -52,4 +52,7 @@ One rule spans all three, and it is the one to hold on to:
 > click -- is not available to the `user` and `validator` stances at all.
 
 Which of *your* reader's commands fall on which side of that line is your
-reader's own to say, not this document's. Once connected, ask the reader.
+reader's own to say, not this document's. Once connected, read
+`screenreader://reader-guidance`: that is the connected reader's own account of
+your stance, and the only place the actual commands are named. If the reader
+publishes none, that resource says so and this rule still stands.

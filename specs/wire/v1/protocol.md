@@ -169,6 +169,7 @@ names one group:
 | `config` | `getConfig`, `setConfig` |
 | `interact` | `announce`, `askUser`, `waitForUserReply` |
 | `log` | `getLog`, `getLogPosition`, `waitForLog`, `setLogLevel` |
+| `guidance` | `getGuidance` |
 
 Rules:
 
@@ -183,6 +184,14 @@ Rules:
   that it did not recognise it — degrade, never error. This is also why the field
   crosses the wire as a plain string: a closed enumeration would make the
   validator reject the value before any bridge logic could degrade.
+  `getGuidance`'s `recognised` is where a bridge says so out loud.
+- **`guidance` is the first capability that gates something other than a tool.**
+  Every other one names commands an agent calls; this one exists because the
+  bridge is the only party that can write down what a persona's vocabulary IS on
+  its own reader (§3, spec 0029) — the server's own documents state the rule and
+  cannot state the instances, since they are keystrokes on one platform and touch
+  gestures on another. A bridge with nothing reader-specific to say simply does
+  not announce it, and the agent falls back on the server's documents alone.
 - A command whose group is **not** in the announced set may be rejected with a
   normal error response. The NVDA bridge announces `speech`, `braille`,
   `gestures`, `typing` and `announce` today; `focus`, `state` and `config` are
@@ -349,6 +358,32 @@ means the command takes no parameters. Summary:
   `getLog` `minLevel` filters, where they are the common case; setting the
   reader's own floor to either would silence warnings in the **user's** nvda.log
   for the rest of the session, so both commands reject them.
+
+- `getGuidance` → `{ persona, recognised, text }` — the bridge's own written
+  guidance for **this session's persona** (§3, spec 0029): what the ordinary
+  vocabulary is on this reader, and which of its commands fall outside it.
+
+  **Takes no parameters.** The persona was fixed at `hello`, and this answers for
+  it and for nothing else. A `persona` argument would let an agent fetch one
+  stance's instructions from a session standing in another, which quietly undoes
+  what the declaration is for, and it would raise a question about what happens
+  when the two disagree.
+
+  `recognised` is `false` when the bridge had no persona-specific instruction for
+  the declared value — a newer server's fourth persona meeting an older bridge.
+  That is a real answer and the text is still worth having, because most of what
+  an agent needs here (the ordinary vocabulary, the desktop's own keys, the
+  reader's reading commands) does not vary by stance. Silence would instead leave
+  the agent believing it had been instructed when it had not.
+
+  `text` is **opaque markdown**, composed by the bridge as one document: the
+  server transports and frames it and never parses it. That is what lets a bridge
+  author write for their own reader without negotiating a schema — and it is why
+  there is no second call and no structure to reassemble. A server **should**
+  state, in whatever it wraps around the text, that the stance itself is
+  normative and the bridge instantiates it: a bridge may name its reader's escape
+  hatches and the commands that constitute them; it may not redefine what a
+  persona is for or what counts as success.
 
 Reader-specific vocabulary — gesture ids, roles, states, config key paths, state
 values — is **opaque payload**: the server routes it without interpreting it, and

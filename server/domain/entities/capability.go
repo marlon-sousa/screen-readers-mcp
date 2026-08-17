@@ -38,6 +38,13 @@ const (
 	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
 	CapabilityLog      Capability = "log"
+
+	// CapabilityGuidance is the bridge having its own written guidance for the
+	// session's persona (spec 0029). It is the first capability that gates a
+	// RESOURCE rather than a tool, which is why ToolCatalog knows nothing about
+	// it: every earlier capability arrived by adding names to that list, and
+	// this one adds none.
+	CapabilityGuidance Capability = "guidance"
 )
 
 // Set is an immutable set of announced capabilities.

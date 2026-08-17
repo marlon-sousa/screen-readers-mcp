@@ -27,6 +27,9 @@
 #   persona    spec 0029: connect as each of user/validator/expert; the
 #              declaration reaches status, info and the bridge's transcript, and
 #              you HEAR the two tones then the persona. No window focus needed.
+#   guidance   spec 0029 part 4: screenreader://reader-guidance serves the
+#              INSTALLED add-on's own document for each persona. Proves the .md
+#              files were packaged, which nothing headless can. No focus needed.
 #   capture    a gesture's speech is captured cleanly: bookmark, open the
 #              Elements List, read back only the new speech, prove the ranges
 #              join and that a wait for absent text times out (not disconnects).
@@ -78,6 +81,11 @@ guided, interactive experience):
               declaration reaches status, screenreader://info and the bridge's
               own transcript on disk, and you HEAR two ascending tones then
               "MCP session open, as <persona>". No window focus needed.
+  guidance    spec 0029 part 4: screenreader://reader-guidance hands over the
+              INSTALLED add-on's own document for each stance -- the ordinary
+              vocabulary on NVDA and the gestures that fall outside it, framed
+              with the precedence rule. Proves the .md files were packaged,
+              which nothing headless can. No window focus needed.
   capture     a gesture's speech is captured cleanly, ranges join, an absent
               wait times out. Needs a browse-mode document focused.
   braille     read the braille display; its indices are their own space.
@@ -1089,9 +1097,93 @@ def scenario_persona(server, console, checks, mode):
 		)
 
 
+def scenario_guidance(server, console, checks, mode):
+	"""Spec 0029 Part 4: the INSTALLED add-on hands over its own persona document.
+
+	Every assertion below is also made headlessly, and one thing is not: that the
+	documents are inside the .nvda-addon THIS NVDA has installed. They are read
+	from disk at run time rather than compiled in, so a build that forgot them --
+	or a scons run that decided it was up to date over an edited one -- fails only
+	here. That is the whole reason this scenario exists rather than being left to
+	the conformance tier.
+
+	No window to focus and nothing audible: it is quick, and it is the first thing
+	to run after installing a new build.
+	"""
+	console.step("the reader's own guidance, per persona")
+
+	seen = {}
+	for persona in ("user", "validator", "expert"):
+		console.note(f"--- {persona} ---")
+		session = _connect(server, console, mode, persona=persona)
+
+		checks.check(
+			f"connect as {persona}: the reader's document is named in the result",
+			session.get("readerGuidance") == "screenreader://reader-guidance",
+			detail=f"readerGuidance={session.get('readerGuidance')!r}",
+		)
+		checks.check(
+			"the installed bridge announces the `guidance` capability",
+			"guidance" in (session.get("capabilities") or []),
+			detail=f"capabilities={session.get('capabilities')}",
+		)
+
+		document = server.resource("screenreader://reader-guidance").get("text", "")
+		seen[persona] = document
+
+		checks.check(
+			f"{persona}: the server's frame names the reader and the stance",
+			f"nvda's guidance for the `{persona}` stance" in document,
+			detail=f"{len(document)} chars",
+		)
+		checks.check(
+			f"{persona}: the precedence rule is in the frame",
+			"the stance wins" in document,
+		)
+		# The packaging check, stated as the thing it proves: this text lives in a
+		# .md file inside the installed add-on and nowhere else.
+		checks.check(
+			f"{persona}: the INSTALLED add-on's common section arrived",
+			"The ordinary vocabulary on this reader" in document,
+		)
+		checks.check(
+			f"{persona}: with actual gestures, which no server document can name",
+			"NVDA+numpad6" in document and "NVDA+shift+rightArrow" in document,
+		)
+		checks.check(
+			f"{persona}: and the section for this stance",
+			f"Holding the `{persona}` stance on NVDA" in document,
+		)
+
+		# A second read must not change the answer. It also must not cost a round
+		# trip, which is provable headlessly and not from here.
+		again = server.resource("screenreader://reader-guidance").get("text", "")
+		checks.check(
+			f"{persona}: reading it twice gives the same document",
+			again == document,
+		)
+		_disconnect(server, console)
+
+	distinct = len(set(seen.values()))
+	checks.check(
+		"reconnecting under another persona serves another document",
+		distinct == 3,
+		detail=f"the three stances produced {distinct} distinct documents",
+	)
+
+	console.step("with nothing connected")
+	orphan = server.resource("screenreader://reader-guidance").get("text", "")
+	checks.check(
+		"with no session it explains itself rather than failing",
+		"No reader is connected" in orphan and "screenreader://guidance" in orphan,
+		detail=orphan[:120],
+	)
+
+
 SCENARIOS = {
 	"smoke": scenario_smoke,
 	"persona": scenario_persona,
+	"guidance": scenario_guidance,
 	"capture": scenario_capture,
 	"braille": scenario_braille,
 	"finddialog": scenario_finddialog,

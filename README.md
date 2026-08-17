@@ -259,13 +259,21 @@ entire point of it.
 
 ## What the agent can read
 
-Besides tools, the server publishes three documents an MCP client can fetch:
+Besides tools, the server publishes four documents an MCP client can fetch:
 
 | Resource | What it holds |
 |---|---|
-| `screenreader://guidance` | **How to drive a screen reader** — the stance, the act-settle-listen-orient loop, what a successful result does and does not mean. Static, so an agent can read it *before* connecting, which is when it needs it. Worth reading yourself. |
-| `screenreader://info` | Which reader is connected, its version, the capture mode, what it can do. |
+| `screenreader://guidance` | **How to drive a screen reader** — what a screen reader is, who you can connect *as*, the act-settle-listen-orient loop, what a successful result does and does not mean. Static, so an agent can read it *before* connecting, which is when it needs it. Worth reading yourself. |
+| `screenreader://reader-guidance` | **The connected reader's own account of the stance you declared** — which of *its* commands make up the ordinary vocabulary, which of them reach past focus and are therefore out of bounds, and what that reader cannot do for you at all. Readable only once a session exists, because the reader is what fixes the platform. |
+| `screenreader://info` | Which reader is connected, its version, the capture mode, the persona, what it can do. |
 | `screenreader://session-record` | What this session has done so far, from the server's own traffic. |
+
+The split between the first two is deliberate and is the whole of spec 0029: the
+server states the **rule** — *a command that re-reads what is already there is
+available to everyone; a command that reaches what focus cannot is not* — and the
+bridge states the **instances**, because they are keystrokes on NVDA and touch
+gestures on a phone, and the server does not learn which reader it is driving
+until the handshake answers.
 
 ## Safety
 

@@ -1,8 +1,38 @@
 # 0029 — connecting as somebody: personas
 
-Status: **agreed 2026-08-17.** Board entries **11.19** (the persona exists and
-travels) and **11.20** (the reader says what its vocabulary is). 11.19 is
-implemented in the PR carrying this spec; 11.20 follows.
+Status: **agreed 2026-08-17, both halves implemented 2026-08-17.** Board entries
+**11.19** (the persona exists and travels, PR #61) and **11.20** (the reader says
+what its vocabulary is).
+
+**Amended during 11.20's implementation, in three places**, per the workflow rule:
+
+- **The degraded documents live with the resource, not with the controller**
+  (5.4). No domain caller needs their text — unlike `Persona.Stance()`, which
+  `connect_reader` renders and which is why the persona texts are in the domain
+  at all. The controller reports `ErrNoSession` and `ErrNoReaderGuidance`
+  instead, and `adapters/mcp/documents/` holds every agent-facing document the
+  server owns rather than two directories holding half each.
+- **The out-of-vocabulary gesture list is stated once, in the bridge's common
+  section**, where 4.6 put it in each persona's section. It is a fact about NVDA
+  and identical for all three; what differs is which side of it the stance stands
+  on, and that is what each persona's section now says. Nothing is lost — the
+  composed document carries both halves either way — and three copies of one
+  gesture table would have drifted, which is the same argument 4.6 itself makes
+  for writing the common half once.
+- **The unknown-persona path is exercised in the BRIDGE's own wire round trip**,
+  not in the conformance tier as 5.5 said. The reasoning in 5.5 was right and its
+  conclusion was not: the path is unreachable from the server's validated tool
+  surface, and the conformance tier is *driven through that surface*, so it
+  cannot reach it either. `bridges/nvda/tests/integration/` speaks the wire
+  directly, which is the only place a `hello` carrying `persona: "auditor"` can
+  be sent at all. Everything else 5.5 asks of the conformance tier is there.
+- **The bridge's documents are `.md` files read at run time**, mirroring the
+  server's `//go:embed` rather than copying the mechanism, because Python has no
+  compile step to embed anything into. They ship inside the `.nvda-addon` and are
+  listed in `buildVars.bundledDataSources` so that scons treats an edited one as
+  a reason to rebuild. Without that the failure is silent and total: reword a
+  document, build, install, and read back the previous text. AGENTS.md invariant
+  9 now states both mechanisms and both traps.
 
 **Amended during 11.19's implementation, in two places**, per the workflow rule:
 

@@ -189,10 +189,11 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-17**:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18,
-11.20 — eleven entries. Of the external run's four, 11.14 and 11.15 are settled.
-**11.19 is Done (PR #61)**, so personas exist and travel; 11.20 is the half that
-remains, and it is in flight in neither lane until someone takes it.
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **ten
+entries**. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
+is complete**: 11.19 (PR #61) made the persona exist and travel, and 11.20
+gave the reader its own document, so an agent now declares a stance and is told
+what that stance means on the reader in front of it.
 
 Their order is **not** simply the numbering. Read as a strict lane order both
 lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
@@ -1023,6 +1024,21 @@ rather than before it.
     (agreed 2026-08-17; covers 11.20 as well, and records two amendments made
     during this entry's implementation).
 11.20. **E, personas — the reader says what its vocabulary is** (both lanes).
+    **Done (PR #63, 2026-08-17.)** The `guidance` capability, `getGuidance`,
+    `screenreader://reader-guidance` with its lazy per-session cache, and NVDA's
+    own documents — the ordinary vocabulary on this reader, the desktop's keys,
+    its reading commands, and the object-navigation, review-cursor and
+    simulated-click gestures that fall outside the boundary, in both keyboard
+    layouts. Two things worth carrying forward. **The gesture bindings were taken
+    from NVDA's own source** (`globalCommands.py`), not from memory, and one of
+    them is a trap the document now names: `NVDA+upArrow` is *report the current
+    line* on the desktop layout and *review the previous line* on the laptop one,
+    so the same gesture string is inside the vocabulary on one layout and outside
+    it on the other. **And the bridge's documents ship as files read at run time**
+    rather than compiled in, which needed `buildVars.bundledDataSources` — without
+    it scons reports "up to date" over an edited document and the add-on ships the
+    previous text. Same class of silent staleness as `//go:embed` on the server
+    side, opposite mechanism; AGENTS.md invariant 9 now carries both.
     **Re-scoped 2026-08-17** from *the reader half*: the wire's `persona` field
     and the bridge's recording of it moved into 11.19, so what is left here is
     exactly the document and the machinery that serves it — the `guidance`

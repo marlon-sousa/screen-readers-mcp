@@ -50,6 +50,10 @@ def test_params_are_null_exactly_for_the_paramless_commands() -> None:
 		# getLogPosition deliberately takes no params: it marks the present and
 		# returns no records, so there is nothing to filter or anchor (spec 0021).
 		"getLogPosition",
+		# getGuidance deliberately takes no params either: the persona was fixed
+		# at hello, and a `persona` argument would let a session consult a stance
+		# it is not standing in (spec 0029 4.3).
+		"getGuidance",
 		"bye",
 	}
 
