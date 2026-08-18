@@ -211,21 +211,41 @@ means the command takes no parameters. Summary:
 - `ping` → `{ ok: true }` — liveness only; see §6.
 - `echo` `{ payload }` → `{ payload }` — returns the payload unchanged, for any
   JSON value; a whole-stack round-trip check.
-- `pressGesture` `{ gestures: [string] }` → `{ ok: true }` — press the given
-  reader gesture ids in order, blocking until each is processed. Gesture id
+- `pressGesture` `{ gestures: [string], graceMs?, announce? }` → `{ pressed:
+  [{ gesture, speechFrom, speechTo }], speech: [SpeechEntry], speechFrom,
+  speechTo, state? }` — press the given reader gesture ids in order, blocking
+  until each is processed, then report what was said. Gesture id
   syntax is **reader-specific** and passes through opaquely: it is the reader's
   own **user-facing command notation**, as its documentation writes it — for
   NVDA, the key-combo form from the User Guide (`"NVDA+f7"`, `"control+l"`,
   `"escape"`), not an internal identifier. The reader-specific bridge maps it to
   a keypress; an NVDA bridge tolerates a legacy `"kb:"` inputCore prefix but the
   documented form is prefixless.
-- `typeText` `{ text }` → `{ ok: true }` — insert literal text at whatever
+  - `graceMs` (default **100**, `0` to opt out) is the **grace window** of §7.3:
+    after each gesture the bridge waits up to that long for the speech it
+    caused, and returns as soon as any arrives.
+  - `announce` is spoken to the **human at the reader** before the first gesture
+    is dispatched, on the same side channel as `announce` — audible even in a
+    silent session. Empty means say nothing.
+  - Each entry in `pressed` carries the half-open span `[speechFrom, speechTo)`
+    the ring stood at either side of **that** key's dispatch, so a batch stays
+    observable and a **silent key is visible rather than inferred** (an empty
+    span). Attribution is by dispatch-time coordinate, **not causation**: speech
+    caused by gesture *n* can land after gesture *n+1* went out and is then
+    credited to *n+1*.
+  - `state` is `getState`'s four fields sampled at the close of the last window.
+    Deliberately **not** focus information: see §7.3.
+- `typeText` `{ text, graceMs?, announce? }` → `{ typed, speech: [SpeechEntry],
+  speechFrom, speechTo, state? }` — insert literal text at whatever
   currently holds system focus, layout-independent Unicode injection rather
   than a sequence of key commands. `text` is opaque content, routed without
   interpretation exactly as a gesture id is; it does **not** interpret control
   characters, newlines or Enter, and does not submit anything — compose that
   from `typeText` and `pressGesture`. Mutates the reader's machine the same way
-  `pressGesture` does.
+  `pressGesture` does. `typed` is the length of what was **sent**, never the
+  text — this is exactly how a secret is entered. `graceMs` defaults to **0**
+  here: with "speak typed characters" on, typing emits one utterance per
+  character and none is worth waiting for.
 - `getSpeech` `{ sinceIndex }` → `{ entries: [{ text, index, logPosition,
   emittedAt }],
   fromIndex, toIndex }` — captured speech since an index (§7). **One entry per
@@ -463,12 +483,57 @@ emitted — the speech ring's sentinel entry, and a `waitForSpeech` miss.
   interchangeable: an index addresses the speech or braille ring, a position
   addresses the log journal. `logPosition` exists precisely to join them.
 - `getNextSpeechIndex` returns the index the next captured item will take, so a
-  test can note "now", act, then read only what its action produced.
+  test can note "now", act, then read only what its action produced. Since §7.3
+  it is **no longer part of the ordinary loop** — `pressGesture` and `typeText`
+  take their own bookmarks — but it remains the only way to mark a moment when
+  the **agent is not the one acting**: a human driving while the agent watches.
 - `waitForSpeech` blocks until a matching item appears or `timeout` seconds
   elapse; `found` says which. `afterIndex` restricts the match to items at or
   after that index.
-- `waitForSpeechToFinish` blocks until speech settles or `timeout` elapses.
+- `waitForSpeechToFinish` blocks until speech settles or `timeout` elapses. It
+  is **not the step after every action** — see §7.3, which measured that in that
+  role it observes nothing at all. What is left for it is a **long deliberate
+  announcement** or a say-all, where the question really is "is it still going?"
 - All timeouts are in **seconds** (number; defaults live in `schema.json`).
+
+### 7.3 The grace window — what a result may claim
+
+`pressGesture` and `typeText` wait `graceMs` after dispatching and report the
+speech that arrived. The contract that makes that safe is one sentence:
+
+> **A result says what had arrived by a stated instant, and where to resume. It
+> never says that is all there is.**
+
+So there is **no `complete` and no `finished`** on either result, and there will
+not be one: an empty `speech` list means *nothing had arrived by then*, which is
+a fact, not *nothing happened*, which would be a claim no bridge can support.
+A caller that reads an empty list waits a little and reads again from
+`speechTo`, or calls `waitForSpeech` for a specific phrase.
+
+The window replaces a **different question**, and the difference is the whole
+point. `waitForSpeechToFinish` asks *has speech stopped?* — unanswerable at the
+moment it is asked, because silence before speech starts and silence after it
+ends are the same observable. The grace window asks *has speech started?*, which
+is answerable at a known instant with no claim beyond what was seen.
+
+The default of 100 ms is a **heuristic, not a constant to trust**. It was chosen
+against a single measurement — one machine, one synthesizer, one reader version:
+speech was produced ~124 ms after a keystroke while an agent's round trip cost
+~2.6 s, so the window costs ~4% of a trip already being paid. A slower machine or
+a heavier document moves that, which is why `graceMs` is a parameter.
+
+**Slow effects still cost a second call.** A window opening, a page loading, a
+dialog appearing — none of those land inside the grace, by design; collapsing
+them would need an "await this phrase" parameter whose failure answer would
+conflate *not yet*, *worded differently* and *never*.
+
+**`state`, and why not focus.** The snapshot is `getState`'s four mode fields and
+never focus information. A browse/focus toggle is synchronous with the script
+that performed it and is already complete when the window closes — and it is the
+one thing a silent session cannot hear. Focus movement is asynchronous, so a
+sample taken now reports the place the user **left**, confidently and wrongly, in
+exactly the case a caller cares about. Speech remains the observable for "did the
+effect land".
 
 ## 8. Versioning policy
 

@@ -35,8 +35,10 @@ def _empty_dict() -> dict[str, Any]:
 
 __all__ = [
 	"COMMAND_SHAPES",
+	"DEFAULT_GRACE_MS",
 	"DEFAULT_PIPE_NAME",
 	"DEFAULT_PORT",
+	"DEFAULT_TYPE_GRACE_MS",
 	"PROTOCOL_VERSION",
 	"AckResult",
 	"AnnounceParams",
@@ -53,6 +55,8 @@ __all__ = [
 	"EchoResult",
 	"ErrorInfo",
 	"FocusInfoResult",
+	"GesturePress",
+	"GestureResult",
 	"GetBrailleParams",
 	"GetConfigParams",
 	"GetGuidanceResult",
@@ -74,6 +78,7 @@ __all__ = [
 	"SpeechResult",
 	"StateResult",
 	"TypeParams",
+	"TypeResult",
 	"ValidationError",
 	"WaitForSpeechParams",
 	"WaitForSpeechResult",
@@ -493,10 +498,43 @@ class EchoResult:
 	payload: Any
 
 
+#: Grace window a mutating command waits, in milliseconds, before reporting the
+#: speech that arrived (spec 0025). Chosen against a measurement: NVDA finishes
+#: producing a keystroke's speech ~124 ms after the gesture, while an agent's
+#: tool round trip is ~2.6 s, so this is where the common case already is and it
+#: costs ~4% of a trip the caller was paying anyway.
+#:
+#: It answers "has speech STARTED?", which is a fact at a stated instant --
+#: never "has speech stopped?", which is unanswerable because silence before and
+#: silence after are the same observable. That is why no result computed from
+#: this window ever claims completeness (spec 0025 Part 2).
+DEFAULT_GRACE_MS: int = 100
+
+#: ``typeText``'s default is 0: with "speak typed characters" on, typing emits
+#: one utterance per character and none of them is worth a wait. Deliberately
+#: unlike :data:`DEFAULT_GRACE_MS` -- the two tools differ in what their speech
+#: is worth, and matching them would be consistency in the wrong dimension
+#: (spec 0025, settled 2026-08-16).
+DEFAULT_TYPE_GRACE_MS: int = 0
+
+
 @dataclass
 class PressGestureParams:
 	#: NVDA gesture ids, pressed in order, blocking until each is processed.
 	gestures: list[str]
+	#: Milliseconds to wait after EACH gesture for the speech it caused, before
+	#: moving on. ``0`` opts out and restores the pre-0025 behaviour. Per call
+	#: only -- there is no session default, because a knob nobody needed cannot
+	#: easily be taken away later, while one that turns out to be wanted can be
+	#: added without breaking anything.
+	graceMs: int = DEFAULT_GRACE_MS
+	#: Spoken to the HUMAN at the reader before the first gesture is dispatched,
+	#: through the same side channel as ``announce`` -- audible even in a silent
+	#: session. It rides along because narrating each step is what keeps a mute
+	#: tester safe, and doing it as its own call roughly doubled the call count:
+	#: the thing that protects the human must not be the thing that costs the
+	#: most (spec 0025 Part 3.4). Empty means say nothing.
+	announce: str = ""
 
 
 @dataclass
@@ -509,6 +547,12 @@ class TypeParams:
 	"""
 
 	text: str
+	#: Milliseconds to wait after the text is injected for the speech it caused.
+	#: Defaults to 0 -- see :data:`DEFAULT_TYPE_GRACE_MS`.
+	graceMs: int = DEFAULT_TYPE_GRACE_MS
+	#: Spoken to the human before the text is injected. See
+	#: :attr:`PressGestureParams.announce`.
+	announce: str = ""
 
 
 @dataclass
@@ -693,6 +737,82 @@ class StateResult:
 	speechMode: str
 	sleepMode: bool
 	inputHelp: bool
+
+
+@dataclass
+class GesturePress:
+	"""One dispatched gesture and the slice of the speech ring it is credited with.
+
+	``speechFrom``/``speechTo`` are the ring's ``sinceIndex`` coordinate, taken
+	either side of this key's dispatch: the half-open range ``[speechFrom,
+	speechTo)``. An EMPTY range (``speechFrom == speechTo``) is the useful case
+	as often as not -- it is how a silent key becomes visible instead of
+	inferred, which is exactly what a batched ``{"pressed": ["h","h","h"]}`` used
+	to hide.
+
+	**Attribution is by dispatch-time coordinate, not by causation** (spec 0025,
+	Honest limits). Speech caused by gesture *n* can land after gesture *n+1*
+	went out and will be credited to *n+1*. The reliable readings are the
+	aggregate window and "this key's span was empty"; a per-key span in a fast
+	batch is a useful approximation, not a proof.
+	"""
+
+	gesture: str
+	speechFrom: int
+	speechTo: int
+
+
+@dataclass
+class GestureResult:
+	"""What ``pressGesture`` observed within its grace window.
+
+	**It says what had arrived by a stated instant, and where to resume. It never
+	says that is all there is** (spec 0025 Part 2) -- which is why there is no
+	``complete`` or ``finished`` field and never will be. An empty ``speech``
+	means "nothing had arrived by then", a fact; it does not mean the gesture did
+	nothing. The caller resumes from ``speechTo``: wait a little and read again,
+	or ``waitForSpeech`` for a specific phrase.
+
+	This collapses the act/settle/listen loop into ONE round trip in the common
+	case. The rare case -- a browser window opening, a page loading -- still
+	costs a second call, which is what it costs today.
+	"""
+
+	#: One entry per gesture, in dispatch order, each with its own span.
+	pressed: list[GesturePress]
+	#: Every non-empty utterance captured across the whole call, deduplicated
+	#: into one list rather than repeated inside each press's span.
+	speech: list[SpeechEntry]
+	#: The aggregate half-open window ``[speechFrom, speechTo)`` this call
+	#: covered. ``speechTo`` is exactly the ``sinceIndex`` to pass next.
+	speechFrom: int
+	speechTo: int
+	#: The reader's mode-state sampled at the CLOSE of the last grace window --
+	#: an instant the caller knows. It is ``getState``'s four fields and
+	#: deliberately NOT focus information: a browse/focus toggle is synchronous
+	#: with the script that performed it and is already complete here, while
+	#: focus movement is asynchronous and a sample taken now is still probably
+	#: pre-effect (spec 0023, upheld by 0025 Part 3.3). It answers 0024's
+	#: question -- did something happen that this session cannot HEAR -- not
+	#: 0023's. ``None`` when the reader serves no ``state`` capability.
+	state: StateResult | None = None
+
+
+@dataclass
+class TypeResult:
+	"""What ``typeText`` observed. Same contract as :class:`GestureResult`.
+
+	One span rather than per-key spans: the text goes in as one injection, so
+	there is nothing to attribute between. ``typed`` is the length of what was
+	SENT -- never the text, because this is exactly how a secret would be
+	entered (spec 0019).
+	"""
+
+	typed: int
+	speech: list[SpeechEntry]
+	speechFrom: int
+	speechTo: int
+	state: StateResult | None = None
 
 
 @dataclass
@@ -964,8 +1084,8 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.HELLO: CommandShape(HelloParams, HelloResult),
 	Command.PING: CommandShape(None, AckResult),
 	Command.ECHO: CommandShape(EchoParams, EchoResult),
-	Command.PRESS_GESTURE: CommandShape(PressGestureParams, AckResult),
-	Command.TYPE_TEXT: CommandShape(TypeParams, AckResult),
+	Command.PRESS_GESTURE: CommandShape(PressGestureParams, GestureResult),
+	Command.TYPE_TEXT: CommandShape(TypeParams, TypeResult),
 	Command.GET_SPEECH: CommandShape(GetSpeechParams, SpeechResult),
 	Command.GET_LAST_SPEECH: CommandShape(None, LastSpeechResult),
 	Command.GET_NEXT_SPEECH_INDEX: CommandShape(None, NextIndexResult),

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from .command_handler import CommandHandler
-from .wallclock import format_wallclock
+from .observation import speech_entries
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
@@ -24,15 +24,7 @@ class GetSpeechHandler(CommandHandler):
 		params = protocol.from_dict(protocol.GetSpeechParams, request.params)
 		entries, from_index, to_index = ctx.speech_buffer.entries_since(params.sinceIndex)
 		return protocol.SpeechResult(
-			entries=[
-				protocol.SpeechEntry(
-					text=text,
-					index=index,
-					logPosition=log_position,
-					emittedAt=format_wallclock(emitted_at),
-				)
-				for text, index, log_position, emitted_at in entries
-			],
+			entries=speech_entries(entries),
 			fromIndex=from_index,
 			toIndex=to_index,
 		)

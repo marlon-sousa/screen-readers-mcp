@@ -106,7 +106,15 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 			assert _read_reply(agent)["result"]["payload"] == payload
 
 			agent.write(_request(3, "pressGesture", gestures=["NVDA+f7"]))
-			assert _read_reply(agent)["result"] == {"ok": True}
+			pressed = _read_reply(agent)["result"]
+			# Spec 0025: the gesture reply already carries what it caused, so the
+			# act/settle/listen loop is one round trip here rather than three. The
+			# settle and the read below still run because both commands still
+			# exist -- they are just no longer how you learn what a key said.
+			assert [p["gesture"] for p in pressed["pressed"]] == ["NVDA+f7"]
+			assert any("Elements list dialog" in e["text"] for e in pressed["speech"])
+			assert pressed["speechTo"] > pressed["speechFrom"]
+			assert pressed["state"]["speechMode"] == "talk"
 			agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))
 			assert _read_reply(agent, timeout=6.0)["result"]["finished"] is True
 			agent.write(_request(5, "getSpeech", sinceIndex=0))

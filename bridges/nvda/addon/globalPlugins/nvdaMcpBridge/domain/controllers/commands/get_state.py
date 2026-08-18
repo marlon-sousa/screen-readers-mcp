@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from .command_handler import CommandHandler
+from .observation import state_snapshot
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
@@ -18,14 +19,6 @@ if TYPE_CHECKING:
 
 class GetStateHandler(CommandHandler):
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
-		state = ctx.adapter_set.state_inspector.state()
-		return protocol.StateResult(
-			# The port speaks the same three strings the wire does, so this is a
-			# widening into the closed set -- and it RAISES on anything else,
-			# which is the point: a bridge that invented a fourth mode should
-			# fail here rather than put an unknown string on the wire.
-			browseMode=protocol.BrowseMode(state.browse_mode),
-			speechMode=state.speech_mode,
-			sleepMode=state.sleep_mode,
-			inputHelp=state.input_help,
-		)
+		# The same snapshot pressGesture and typeText now put on their results
+		# (spec 0025), so the mapping lives in one place rather than three.
+		return state_snapshot(ctx)

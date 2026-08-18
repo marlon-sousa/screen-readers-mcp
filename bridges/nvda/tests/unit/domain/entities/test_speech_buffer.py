@@ -29,6 +29,65 @@ def silent_speech(clock: FakeClock) -> SpeechBuffer:
 	return SpeechBuffer(clock, exact_finish=True)
 
 
+# -- the grace window (spec 0025) ---------------------------------------------
+
+
+def test_collect_since_returns_at_once_when_words_are_already_there(
+	clock: FakeClock, speech: SpeechBuffer
+) -> None:
+	speech.append(["already said"])
+
+	entries, from_index, to_index = speech.collect_since(1, grace=0.1)
+
+	assert [text for text, _index, _pos, _at in entries] == ["already said"]
+	assert (from_index, to_index) == (1, 2)
+	# It never slept: the words were there when it looked.
+	assert clock.sleeps == []
+
+
+def test_collect_since_waits_out_the_grace_when_nothing_arrives(
+	clock: FakeClock, speech: SpeechBuffer
+) -> None:
+	entries, from_index, to_index = speech.collect_since(1, grace=0.1)
+
+	# An EMPTY result, not a blocked call and not a claim: "nothing had arrived
+	# by then" is a fact about an instant the caller chose (spec 0025 Part 2).
+	assert entries == []
+	assert (from_index, to_index) == (1, 1)
+	assert sum(clock.sleeps) >= 0.1 - 1e-9
+
+
+def test_collect_since_ignores_speech_before_the_bookmark(speech: SpeechBuffer) -> None:
+	# Background chatter that arrived before the key went out must not be read
+	# as the key's answer -- the whole reason the bookmark is taken first.
+	speech.append(["chatter from before"])
+
+	entries, from_index, _to_index = speech.collect_since(speech.next_index(), grace=0.05)
+
+	assert entries == []
+	assert from_index == 2
+
+
+def test_a_zero_grace_reads_the_buffer_without_sleeping(clock: FakeClock, speech: SpeechBuffer) -> None:
+	speech.append(["said"])
+
+	entries, _from_index, _to_index = speech.collect_since(1, grace=0.0)
+
+	assert [text for text, _index, _pos, _at in entries] == ["said"]
+	assert clock.sleeps == []
+
+
+def test_collect_since_is_not_the_settle(clock: FakeClock, speech: SpeechBuffer) -> None:
+	# The distinction the whole spec turns on. wait_to_finish asks "has speech
+	# STOPPED?" and answers from a stale timestamp -- here it says yes about a
+	# buffer that has never held a word. collect_since asks "has speech
+	# STARTED?" and reports the same silence as an empty observation instead.
+	clock.advance(SPEECH_FINISHED_SECONDS + 1)
+
+	assert speech.wait_to_finish(timeout=0.0) is True
+	assert speech.collect_since(1, grace=0.05)[0] == []
+
+
 # -- rendering ----------------------------------------------------------------
 
 

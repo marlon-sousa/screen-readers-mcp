@@ -131,6 +131,38 @@ class SpeechBuffer(IndexedBuffer):
 				return True, found_index, self._render(self._entries[found_index])
 		return False, self.next_index(), ""
 
+	def collect_since(self, index: int, grace: float) -> tuple[list[tuple[str, int, int, float]], int, int]:
+		"""Entries from ``index`` that arrive within ``grace`` seconds; then stop.
+
+		The grace window of spec 0025, and the whole reason it is a different
+		primitive from :meth:`wait_to_finish`. That one asks "has speech
+		STOPPED?", which cannot be answered at the moment it is asked -- silence
+		before speech starts and silence after it ends are the same observable,
+		so no constant makes the answer true. This asks "has speech STARTED?",
+		and returns what had arrived by an instant the caller chose. An empty
+		result is therefore a fact ("nothing by then"), not a claim ("nothing").
+
+		Returns exactly :meth:`entries_since`'s triple, so a caller reports the
+		half-open range the same way it always did and resumes from ``toIndex``.
+
+		Returns EARLY as soon as anything renders non-empty, because the common
+		case is one announcement ~124 ms after a keystroke and waiting out the
+		rest of the window buys nothing. The cost of that choice is stated
+		rather than hidden: an utterance still in flight when the first one
+		lands is left for the next read, which the caller can always take,
+		since the range it was handed says exactly where to resume.
+
+		``grace <= 0`` is a legitimate opt-out -- it reads the buffer as it
+		stands and never sleeps, which is the pre-0025 behaviour.
+		"""
+
+		def _arrived() -> bool:
+			entries, _from_index, _to_index = self.entries_since(index)
+			return bool(entries)
+
+		self._wait(_arrived, grace)
+		return self.entries_since(index)
+
 	def wait_to_finish(self, timeout: float) -> bool:
 		"""Block until NVDA has stopped speaking, or ``timeout`` elapses."""
 		return self._wait(self._has_finished, timeout)

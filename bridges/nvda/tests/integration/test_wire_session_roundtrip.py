@@ -82,7 +82,15 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 
 		# Scripted gesture -> speech -> wait-to-finish -> read it back.
 		agent.write(_request(3, "pressGesture", gestures=["NVDA+f7"]))
-		assert _read_reply(agent)["result"] == {"ok": True}
+		pressed = _read_reply(agent)["result"]
+		# Spec 0025: the gesture reply already carries what it caused, so the
+		# act/settle/listen loop is one round trip here rather than three. The
+		# settle and the read below still run because both commands still
+		# exist -- they are just no longer how you learn what a key said.
+		assert [p["gesture"] for p in pressed["pressed"]] == ["NVDA+f7"]
+		assert any("Elements list dialog" in e["text"] for e in pressed["speech"])
+		assert pressed["speechTo"] > pressed["speechFrom"]
+		assert pressed["state"]["speechMode"] == "talk"
 		# Silent mode has no exact finish now (the synth is untouched), so this
 		# resolves on the buffer's ~1s elapsed heuristic -- give it room.
 		agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))

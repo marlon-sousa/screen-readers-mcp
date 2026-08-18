@@ -188,17 +188,19 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-17**:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **ten
-entries**. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
+below. **Open as of 2026-08-18**:
+11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **nine
+entries**. 11.3 was taken out of the queue on 2026-08-18 and is on hold; see its
+entry. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
 is complete**: 11.19 (PR #61) made the persona exist and travel, and 11.20
 gave the reader its own document, so an agent now declares a stance and is told
 what that stance means on the reader in front of it.
 
-Their order is **not** simply the numbering. Read as a strict lane order both
-lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
-has now been passed over four times; that deserves a decision rather than a fifth
-silent deferral. Three pairings matter more than the numbers:
+Their order is **not** simply the numbering. **11.3 is on hold as of
+2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
+four times, and the fifth pass was made a decision rather than another silence.
+The lane head is now **11.6** (server lane); lane 1's head is **11.10**. Three
+pairings matter more than the numbers:
 
 - **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
 - **11.11 and 11.17** are one gesture, from two sessions, with complementary
@@ -400,7 +402,14 @@ rather than before it.
     run also produced the evidence for the timeout analysis — sessions were
     silently torn down by the 120 s inactivity watchdog while a tester worked in
     NVDA's dialogs, discarding overrides mid-test.
-11.3. **E, enforced observe-only** (both lanes). A session where the bridge
+11.3. **E, enforced observe-only** (both lanes). **On hold as of 2026-08-18** —
+    taken out of the queue by decision, to be revisited later. It is not a lane
+    blocker: nothing open depends on it, and spec 0029 (Part 3.2, 2026-08-17)
+    has since decided the neighbouring question the other way — *deliver the
+    right information per persona; if violations turn out to be common, gate* —
+    so whether 0017's `control` field survives as written, or observe-only
+    becomes the strictest persona the bridge enforces, is exactly what the later
+    conversation has to settle. A session where the bridge
     *rejects* `pressGesture` and `setConfig`, so the tester drives and the agent
     can only watch. Orthogonal to capture mode — capture mode is about audio,
     this is about input — so it is a `control` field on `hello`, not a third
@@ -674,9 +683,28 @@ rather than before it.
     query again" leaves the slow case at today's two trips rather than making
     every call ambiguous. Honest risk: 2.6 s was measured, 5–12 s was observed
     hours later, and the gap is unbracketed — the benefit is proportional to a
-    number nobody has measured.
+    number nobody has measured. **That gap was explained when the spec was
+    agreed**: it is the client model's own turn time between tool calls, which
+    grows with the conversation's context. Nothing is faulty, and it strengthens
+    the case — if per-call model turns dominate, call *count* is the right lever.
+    **Delivered as two sequential PRs**, because the change spans both lanes and
+    the halves are separately reviewable:
+    - **11.12a — the wire and the bridge.** The grace window as an entity
+      capability (`SpeechBuffer.collect_since`), per-gesture bookmarks, the state
+      snapshot and the riding `announce` on both mutating handlers, the new
+      `pressGesture`/`typeText` shapes with their regenerated schema and Go
+      binding, and protocol.md §7.3 — the contract sentence a result may never
+      exceed. The server still sends no `graceMs` and discards the new fields,
+      so main stays coherent between the two.
+    - **11.12b — the server.** The ports and tools carrying the new params and
+      results through to the agent, the narrowed `wait_for_speech_to_finish`
+      description, `getNextSpeechIndex` told what it is now for, and 0023's
+      published loop reworded in the guidance resource — the settle stops being
+      the universal second step.
     Spec: [0025-one-round-trip-per-intention.md](specs/0025-one-round-trip-per-intention.md)
-    (drafted 2026-08-03, not agreed).
+    (drafted 2026-08-03, **agreed 2026-08-16** — all five open questions settled
+    there). The board read "not agreed" until 2026-08-18 while the spec said
+    agreed: one more instance of 11.18's drift, found by reading both.
 11.13. **E, where am I, and what is on the page** (lane 1, bridge + server). Two
     questions the repo has been treating as one. **"Where am I" is already
     solved and this builds nothing for it** — it is `NVDA+Tab`, a gesture whose
