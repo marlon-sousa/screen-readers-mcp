@@ -150,13 +150,58 @@ class StubWaveFileCommand(StubBaseCallbackCommand):
 		self.played = True
 
 
+class StubSayAllHandler:
+	"""NVDA's _SayAllHandler, reduced to the one thing the adapter reads.
+
+	`_getActiveSayAll` is a WEAKREF in the real thing, which is the whole trap:
+	it keeps returning the reader object long after the read stopped. The stub
+	models the object and the stopped-ness SEPARATELY, so a test can hold the
+	exact state a real reader passes through and a real clock cannot be made to
+	hold still -- present, but done.
+	"""
+
+	def __init__(self, reader: Any = None) -> None:
+		self.reader = reader
+
+	def _getActiveSayAll(self) -> Any:
+		return self.reader
+
+
+class StubTextReader:
+	"""_TextReader: nulls `reader` in stop(), which is what stop() guards on."""
+
+	def __init__(self, *, stopped: bool = False) -> None:
+		self.reader = None if stopped else object()
+
+
+class StubObjectsReader:
+	"""_ObjectsReader: the same, through `walker` instead."""
+
+	def __init__(self, *, stopped: bool = False) -> None:
+		self.walker = None if stopped else object()
+
+
 #: The one instance of each, shared by every test module that installs them --
 #: which is what makes the install idempotent and order-independent.
 log = StubLog()
 eventQueue = StubEventQueue()
+#: Module object for `speech.sayAll`; tests set `.SayAllHandler` on it, exactly
+#: as NVDA's own sayAll.initialize() rebinds that module attribute at startup.
+sayAll = types.ModuleType("speech.sayAll")
+sayAll.SayAllHandler = None  # type: ignore[attr-defined]
 filter_speechSequence = StubExtensionPoint()
 pre_speechQueued = StubExtensionPoint()
 pre_writeCells = StubExtensionPoint()
+
+
+def set_say_all_handler(handler: Any) -> None:
+	"""Rebind `speech.sayAll.SayAllHandler`, as NVDA's initialize() does.
+
+	A function rather than a bare assignment in each test, because a module
+	attribute is untyped and every assignment would otherwise need its own
+	pyright suppression.
+	"""
+	sayAll.SayAllHandler = handler  # type: ignore[attr-defined]
 
 
 def _queueFunction(queue: StubEventQueue, func: Any, *args: Any, **kwargs: Any) -> None:
@@ -193,6 +238,12 @@ def install() -> None:
 		sys.modules["speech"] = speech
 		sys.modules["speech.commands"] = commands
 
+	if "speech.sayAll" not in sys.modules:
+		speech = sys.modules.get("speech") or types.ModuleType("speech")
+		speech.sayAll = sayAll  # type: ignore[attr-defined]
+		sys.modules["speech"] = speech
+		sys.modules["speech.sayAll"] = sayAll
+
 	if "queueHandler" not in sys.modules:
 		queue_handler = types.ModuleType("queueHandler")
 		queue_handler.eventQueue = eventQueue  # type: ignore[attr-defined]
@@ -209,5 +260,6 @@ def reset() -> None:
 	"""Forget every registration and message; the stubs outlive any one test."""
 	log.messages.clear()
 	eventQueue.queued.clear()
+	sayAll.SayAllHandler = None  # type: ignore[attr-defined]
 	for point in (filter_speechSequence, pre_speechQueued, pre_writeCells):
 		point.handlers.clear()

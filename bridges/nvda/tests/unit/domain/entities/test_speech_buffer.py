@@ -16,7 +16,11 @@ import pytest
 from fakes.clock import FakeClock
 from fakes.continuous_read import FakeContinuousRead
 from nvdaMcpBridge.domain.entities.indexed_buffer import POLL_INTERVAL
-from nvdaMcpBridge.domain.entities.speech_buffer import SPEECH_FINISHED_SECONDS, SpeechBuffer
+from nvdaMcpBridge.domain.entities.speech_buffer import (
+	CONTINUOUS_READ_STALE_SECONDS,
+	SPEECH_FINISHED_SECONDS,
+	SpeechBuffer,
+)
 
 
 @pytest.fixture
@@ -173,7 +177,7 @@ def test_silent_mode_finish_waits_for_the_synth_done_signal(
 # -- a continuous read in progress (entry 11.21) -------------------------------
 
 
-def test_a_running_continuous_read_is_never_finished(clock: FakeClock) -> None:
+def test_a_gap_longer_than_the_heuristic_is_not_the_end_of_a_read(clock: FakeClock) -> None:
 	# The state the heuristic alone gets WRONG, and the reason this port exists.
 	# NVDA hands the synth one chunk of a say all and asks for the next only when
 	# the synth reports reaching it -- so between chunks nothing arrives, for as
@@ -183,7 +187,10 @@ def test_a_running_continuous_read_is_never_finished(clock: FakeClock) -> None:
 	read = FakeContinuousRead(running=True)
 	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
 	speech.append(["the first chunk of the document"])
-	clock.advance(SPEECH_FINISHED_SECONDS + 60.0)
+	# 2.0s is the inter-chunk gap MEASURED live on 2026-08-18 under ibmeci, for
+	# every one of thirty lines -- so the old rule misfired on EVERY gap, not just
+	# the first, which is how a whole document could be reported finished at line 1.
+	clock.advance(2.0)
 
 	assert speech.wait_to_finish(timeout=0.0) is False, "a say all between chunks was reported finished"
 
@@ -221,6 +228,25 @@ def test_without_the_port_the_buffer_behaves_exactly_as_before(
 	clock.advance(SPEECH_FINISHED_SECONDS + 0.01)
 
 	assert speech.wait_to_finish(timeout=0.0) is True
+
+
+def test_a_claimed_read_cannot_hold_the_settle_open_for_ever(clock: FakeClock) -> None:
+	# The ceiling, and it is here because we have already shipped a ContinuousRead
+	# that was wrong in the direction that never clears. A wrong answer that
+	# expires is an imprecision; a wrong answer that does not is a hang, and the
+	# port speaks for a reader we do not control.
+	read = FakeContinuousRead(running=True)
+	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
+	speech.append(["a chunk"])
+
+	clock.advance(CONTINUOUS_READ_STALE_SECONDS - 0.01)
+	assert speech.wait_to_finish(timeout=0.0) is False, "cut a genuine read short"
+
+	clock.advance(0.02)
+
+	assert speech.wait_to_finish(timeout=0.0) is True, (
+		"a stuck in-progress answer held the settle open indefinitely"
+	)
 
 
 # -- observer -----------------------------------------------------------------
