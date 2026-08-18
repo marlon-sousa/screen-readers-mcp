@@ -1,18 +1,23 @@
 
-## A successful result means delivery, not consequence
+## A successful result means delivery, plus whatever arrived in time
 
 `press_gesture` and `type_text` return once the reader has **accepted** the
-input. The reader then does the work afterwards, on its own thread. At the
-instant your result is written, the dialog has not opened, focus has not moved,
-and nothing has been spoken.
+input and a short grace window has elapsed. Whatever the reader said inside that
+window is in your result; whatever it does afterwards, on its own thread, is not.
 
-So a successful result never tells you that the thing you wanted happened. It
-tells you the keystroke arrived. Confirm the rest.
+So the result is evidence of two different strengths, and they are worth keeping
+apart:
+
+- **The speech it carries really was said.** That is an observation, and it is
+  usually enough — a window that opens announces its title.
+- **An empty list is not evidence of anything happening or not happening.** It
+  says only that nothing had arrived by that instant.
 
 Two corollaries worth stating:
 
-- `type_text`'s `typed` count is the length of what was **sent**, counted on
-  this side. It says nothing about what arrived anywhere.
+- `type_text`'s `typed` count is the length of what was **sent** — the reader's
+  own count of what it received. It says nothing about what arrived in the
+  control, only about what reached the reader.
 - Do not re-press a gesture because the result "seemed" not to work. It very
   likely did work, and you are about to do it twice.
 
@@ -105,8 +110,8 @@ genuinely the question.
 "report the focused object" command and listen to the answer. Its report-title
 and read-whole-window commands are there for the same reason. This is ordinary
 screen reader operating knowledge -- asking the reader where you are is a
-*command you send*, and its answer arrives on the same channel as everything
-else. Its answer arrives in that same call.
+*command you send*, and its answer comes back in that same call, like any other
+key's.
 
 **4. Escalate.** Try what a user would try next -- Tab, Escape -- and notice
 when it produces nothing, which is itself information. If you still cannot tell
@@ -135,8 +140,9 @@ Read back what the reader says about the line before committing to it.
 
 Some actions are silent, and some answer with a sound rather than words -- a
 mode toggle may signal with an earcon that no speech assertion will ever match.
-Then settling finishes on silence, and you cannot separate "nothing happened"
-from "something happened quietly".
+Then your window closes on silence, and you cannot separate "nothing happened"
+from "something happened quietly" -- which is exactly why `state` rides on the
+result: a browse/focus toggle shows up there even when nothing was said.
 
 That is the moment to introspect: `get_state` answers questions about modes
 that are signalled by sound, and `get_focus_info` answers when the ear has

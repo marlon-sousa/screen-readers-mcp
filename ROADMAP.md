@@ -189,7 +189,8 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-18**:
-11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18 — **seven entries**. 11.3 was
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.21 — **eight entries**
+(11.21 was opened by 11.12's own live run). 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
 what 11.9 existed to have built, so the pair closes together. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
@@ -227,7 +228,7 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.21** and the next free spec number is
+The next free board number is **11.22** and the next free spec number is
 **0030**.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
@@ -723,7 +724,15 @@ rather than before it.
     snapshot changes the channel, not the substance. Say-all capture was the more
     faithful design and is deferred, not on principle but because **nobody has
     tested whether say-all advances when no synth runs** — a cheap experiment
-    that should happen before this is agreed.
+    that should happen before this is agreed. **Run 2026-08-18, during 11.12's
+    live checklist: it does NOT.** In a silent session `NVDA+downArrow` emitted
+    two chunks (the heading and the nav list) and then stopped; nothing further
+    arrived, and `waitForSpeechToFinish` returned `finished: true` against a
+    say-all that had gone no further. NVDA drives say-all from the synth's own
+    callbacks, so with no synth running there is nothing to advance it. That
+    settles the question this entry was waiting on: **say-all capture is not a
+    route to reading a document in a silent session**, and 0026's snapshot is the
+    only candidate left rather than the pragmatic one of two.
     Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
     (drafted 2026-08-03, not agreed).
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
@@ -931,6 +940,28 @@ rather than before it.
     `gate-binding`, which cannot cry wolf because both sides are machine-readable.
     That is a next-phase conversation. Do not build the gate above without
     revisiting this first. Spec: none yet.
+11.21. **E, the settle answers about emission, not about audio** (lane 1, bridge;
+    small). Found live on 2026-08-18 running 11.12's checklist. Spec 0025 narrowed
+    `waitForSpeechToFinish` to "a long deliberate announcement or a say-all, where
+    *is it still going?* is genuinely the question" — and the live run found that
+    it cannot answer that either. In LIVE mode NVDA queues a say-all in bursts:
+    the whole first chunk was captured by 11:10:40.611 and nothing more was
+    emitted, while the synthesizer was still reading it aloud for several seconds.
+    The buffer's heuristic measures the gap since the last CAPTURE, and capture
+    happens at `pre_speechQueued`, so the tool reported `finished: true` while
+    the user could plainly hear speech continuing.
+    **Not a regression, and not caused by 11.12** — it is the "emitted is not
+    heard" caveat (protocol.md §7.1) reaching the one tool whose entire job is to
+    answer a question about audio. What 11.12 changed is that the caveat now
+    matters more: with the settle no longer the universal second step, its
+    remaining use case is precisely the one it is worst at.
+    Options, none of them free: (a) say so in the description and leave it — the
+    honest minimum, since a tool that overclaims is worse than one that admits a
+    limit; (b) capture at the synth instead, which spec 0008 deliberately gave up
+    when it removed the spy synth; (c) ask NVDA whether a say-all is in progress
+    (`speech.sayAll` state) and answer from that, a reader-specific fact the
+    bridge is allowed to know and the server is not. **(a) is the floor and
+    should not wait for the spec conversation about (b)/(c).** Spec: none yet.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

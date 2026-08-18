@@ -50,9 +50,17 @@ func TestTheGuidanceStatesTheRuleAndTheSettleStep(t *testing.T) {
 	document := h.ReadGuidance(t)
 
 	for _, want := range []string{
-		// Part 1's diagnosis: an ok result is not evidence the effect happened.
-		"delivery, not consequence",
-		// The primitive that closes the gap, named so the agent can call it.
+		// Part 1's diagnosis, AMENDED by spec 0025. It used to read "delivery,
+		// not consequence", on the strength of a result that carried no speech
+		// at all. A result now carries what arrived inside its grace window, so
+		// the flat form became false -- but the half that was load-bearing is
+		// still here and still guarded: an EMPTY result is not evidence, and
+		// re-pressing on the strength of one presses the key twice.
+		"delivery, plus whatever arrived in time",
+		"you are about to do it twice",
+		// The primitive that closes the remaining gap, named so the agent can
+		// call it -- for the narrow job 0025 left it, not as the second step of
+		// every loop.
 		"wait_for_speech_to_finish",
 		// The escape hatch, so a stuck agent asks instead of guessing.
 		"ask_user",
