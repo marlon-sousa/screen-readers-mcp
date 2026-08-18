@@ -466,7 +466,26 @@ needs.
 **Emitted is not heard.** A bridge captures before the synthesizer speaks — for
 NVDA, at the point the sequence is queued in live mode and inside `speak()` in
 silent mode. Neither is audio, so an utterance queued behind a longer one can be
-seconds from audible. This makes `emittedAt` the right number for *did the
+seconds from audible.
+
+**Measured, so the size of that gap is not left to imagination.** NVDA 2026.1.1,
+`ibmeci`, live mode, a say-all over a document of numbered lines, cut with a
+keystroke at a known instant. At the moment of the cut the bridge had captured
+through **line 16**, while the listener was part-way through hearing **line 14** —
+a line emitted 5.4 s earlier. The lead is steady rather than growing (both sides
+run at ~1.8 s per line, so it is a fixed lookahead: NVDA keeps lines in flight and
+the synthesizer's own buffer adds more), and it is worth stating as a number
+because it is much larger than the word "queued" suggests: **an agent reading
+captured speech is routinely holding two to three utterances, around five
+seconds, that the human at the machine has not heard yet.**
+
+Two consequences follow, and neither is a defect to be fixed here. A tool that
+reports speech has *settled* is reporting about arrival, not about audio, and
+cannot honestly claim otherwise. And an agent that narrates to a human and then
+acts immediately is acting ahead of its own narration — the human's objection,
+when it comes, is a reaction to something several seconds stale.
+
+This makes `emittedAt` the right number for *did the
 application respond promptly* (synthesizer queueing belongs to the synthesizer
 and would be noise in that figure) and the wrong number for *when did a person
 hear it*, which this protocol does not answer.
