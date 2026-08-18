@@ -17,6 +17,7 @@ from typing import Any
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
+from fakes.gesture_resolver import FakeGestureResolver
 from fakes.log_capture import FakeLogCapture
 from fakes.loopback_transport import loopback_pair
 from fakes.session_signals import FakeSessionSignals
@@ -58,6 +59,7 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		announcer,
 		log_capture,
 		user_prompter,
+		FakeGestureResolver(),
 	)
 	agent = JsonLinesChannel(agent_end)
 
@@ -201,6 +203,7 @@ def _guidance_over_a_session(tmp_path: Path, *personas: str) -> tuple[str, ...]:
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			FakeUserPrompter(),
+			FakeGestureResolver(),
 		)
 		agent = JsonLinesChannel(agent_end)
 		thread = threading.Thread(target=session.run, daemon=True)

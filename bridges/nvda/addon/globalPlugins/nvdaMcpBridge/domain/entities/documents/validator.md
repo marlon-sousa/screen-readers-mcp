@@ -1,7 +1,7 @@
 ## Holding the `validator` stance on NVDA
 
 **Drive exactly as `user` drives.** The same vocabulary, the same limits, and the
-same list under *Where the boundary falls on this reader* is off the table for
+same rows under *Where the boundary falls on this reader* are off the table for
 getting anywhere. If you drove more freely, "reachable" would stop meaning
 *reachable by ordinary means*, which is the only question you were asked.
 
@@ -24,5 +24,7 @@ NVDA's object model at all -- which turns *"I could not get there"* into *"it is
 there and it cannot be focused"*, a far more actionable report.
 
 Never to get past a failure, and never before you have one. When you do it, say
-so in the finding: name the gesture you used, which layout's form it was, and
-what it showed.
+so in the finding: name the **command** from the table above, not only the key you
+pressed, and what it showed. The command is the stable thing — the key it is on
+is a fact about this machine, and your report will be read by someone whose
+machine has it somewhere else.

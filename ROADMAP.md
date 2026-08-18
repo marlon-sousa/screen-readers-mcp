@@ -1028,13 +1028,26 @@ rather than before it.
     `screenreader://reader-guidance` with its lazy per-session cache, and NVDA's
     own documents — the ordinary vocabulary on this reader, the desktop's keys,
     its reading commands, and the object-navigation, review-cursor and
-    simulated-click gestures that fall outside the boundary, in both keyboard
-    layouts. Two things worth carrying forward. **The gesture bindings were taken
-    from NVDA's own source** (`globalCommands.py`), not from memory, and one of
-    them is a trap the document now names: `NVDA+upArrow` is *report the current
-    line* on the desktop layout and *review the previous line* on the laptop one,
-    so the same gesture string is inside the vocabulary on one layout and outside
-    it on the other. **And the bridge's documents ship as files read at run time**
+    simulated-click commands that fall outside the boundary.
+    **The gesture tables are RESOLVED FROM THE READER, not documented.** The first
+    implementation transcribed NVDA's defaults out of `globalCommands.py`, and that
+    was wrong in the unsafe direction: NVDA lets anyone remap, a remapped gesture
+    does not fail but quietly does something else, so a `user` session would be
+    warned off a harmless key and told nothing about the one that now reaches past
+    focus. The bridge now asks `inputCore.manager.getAllGestureMappings()` — the
+    same question the Input Gestures dialog asks — keyed on NVDA's own script
+    CATEGORIES rather than a script list, so it is self-maintaining and picked up
+    16 object-navigation commands where the transcription had 9. It also caught the
+    transcription being wrong on the very machine it was tested on:
+    `toggleSimpleReviewMode` is unbound here, while the hand-written table claimed
+    `NVDA+numpad1` — which this machine binds to `reviewMode_previous`.
+    **One trap found by looking rather than assuming:** NVDA stores identifiers
+    alphabetically sorted and `fromName` reads the LAST token as the key, so
+    "read the whole window" comes out as `b+nvda` and pressing it verbatim presses
+    NVDA with B held. `press_order` hoists the key last; the live checklist proves
+    it by pressing `speakForeground`, the case that was broken, rather than `title`,
+    which sorts correctly by luck.
+    **And the bridge's documents ship as files read at run time**
     rather than compiled in, which needed `buildVars.bundledDataSources` — without
     it scons reports "up to date" over an edited document and the add-on ships the
     previous text. Same class of silent staleness as `//go:embed` on the server

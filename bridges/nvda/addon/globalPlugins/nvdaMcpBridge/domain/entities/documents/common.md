@@ -5,17 +5,37 @@ of the ordinary user's vocabulary falls **on NVDA specifically**. The stance you
 are holding is normative and lives at `screenreader://guidance`; this document
 instantiates it, and cannot redefine it.
 
-Every gesture below is written exactly as `press_gesture` takes it -- NVDA's
-user-guide key-combo notation, no prefix. Where NVDA's desktop and laptop
-keyboard layouts differ, both are given, because a document that named only one
-would be wrong on half the installations. **You cannot tell from here which
-layout this machine uses.** If a gesture appears to do nothing, try the other
-layout's form before concluding the command failed.
+**Every gesture table below was read out of NVDA itself, on this machine, at the
+moment you asked for this document.** They are not NVDA's published defaults and
+they are not copied from the User Guide: they are what is bound here and now,
+including anything the person at this machine has remapped, and already narrowed
+to the keyboard layout in use. Use them, not what you remember about NVDA.
+
+Each gesture is written exactly as `press_gesture` takes it. They are lower-cased
+and their parts are sorted, because that is the literal form NVDA has bound;
+`press_gesture` accepts them verbatim, so a cell of a table can be pasted
+straight into a call.
+
+Two honest limits. The tables are a **snapshot**: NVDA can rebind per
+configuration profile, and profiles can switch when focus moves to another
+application, so a long session can outlive its own document — read it again if
+you have reason to think the machine changed under you. And they cover **keyboard
+gestures only**: a command bound to touch or to a braille display is not shown,
+because `press_gesture` sends keystrokes and listing one would be telling you
+about something you cannot do.
+
+For anything beyond the boundary this document draws, the
+[NVDA User Guide](https://www.nvaccess.org/files/nvda/documentation/userGuide.html)
+is the reference. This document does not restate it, and deliberately: it says
+what a stance may and may not do, and which of *this machine's* commands those
+are.
 
 ## The ordinary vocabulary on this reader
 
 This is what the Windows accessibility contract assumes of an ordinary user, and
-therefore what any interface is entitled to assume you have:
+therefore what any interface is entitled to assume you have. **None of it is
+NVDA's to rebind** — these are the operating system's and the toolkit's, which is
+why they are stated here rather than resolved:
 
 - `tab` and `shift+tab` -- move between controls.
 - `upArrow`, `downArrow`, `leftArrow`, `rightArrow` -- move within one control: a
@@ -30,8 +50,6 @@ therefore what any interface is entitled to assume you have:
   not press Enter and does not submit anything.
 - First-letter navigation -- typing a letter in a list or menu jumps to the next
   item beginning with it. This is the operating system's behaviour, not NVDA's.
-- Single-letter navigation in browse mode -- see below. It is inside the
-  vocabulary, and a common mistake is to assume it is not.
 
 ## Browse mode and focus mode
 
@@ -42,31 +60,29 @@ heading, `k` link, `b` button, `e` edit field, `f` form field, `t` table, `l`
 list, `d` landmark, and `shift` plus any of them for the previous one. `enter` or
 `space` activates what the virtual cursor is on.
 
+**Single-letter navigation is inside the vocabulary**, and assuming otherwise is
+a common mistake: it is how a user reads a document, not a way around a broken
+one. Those letters are NVDA's own and can in principle be remapped, and unlike
+the tables below they are not resolved here — they belong to the browse-mode
+document rather than to NVDA globally, so they exist only while you are in one.
+If a quick-navigation key does nothing, check with `get_state` that you are in
+browse mode at all before concluding it was remapped, and consult the User Guide.
+
 In **focus mode** keys go straight to the control, which is what an edit field or
 a listbox inside the document needs. NVDA switches automatically when focus lands
-on such a control, and `NVDA+space` toggles manually. NVDA plays a short sound
-rather than saying which mode it entered, so **`get_state`'s `browseMode` is the
-reliable way to know** -- and diffing two snapshots across a gesture is how a
-mode switch is asserted at all.
+on such a control, and it plays a short sound rather than saying which mode it
+entered — so **`get_state`'s `browseMode` is the reliable way to know**, and
+diffing two snapshots across a gesture is how a mode switch is asserted at all.
 
-All of this is ordinary reading and ordinary interaction. None of it routes
-around anything.
-
-## NVDA's reading commands
+## NVDA's reading commands, as bound here
 
 These re-read what is already in front of you. They make no claim about
-reachability, so they are inside every persona's vocabulary:
+reachability, so they are inside **every** persona's vocabulary:
 
-| What it does | Desktop layout | Laptop layout |
-|---|---|---|
-| Report the focused object | `NVDA+tab` | `NVDA+tab` |
-| Report the window title | `NVDA+t` | `NVDA+t` |
-| Read the whole window | `NVDA+b` | `NVDA+b` |
-| Report the current line | `NVDA+upArrow` | `NVDA+l` |
-| Say all, from here | `NVDA+downArrow` | `NVDA+a` |
+{{gestures:reading}}
 
-`NVDA+tab` is the *orient* step of the loop in `screenreader://guidance` on this
-reader. Reach for it when what you heard after acting was not enough.
+The first of them is the *orient* step of the loop in `screenreader://guidance`
+on this reader. Reach for it when what you heard after acting was not enough.
 
 ## The desktop's own keys
 
@@ -78,6 +94,9 @@ reader is what fixes the platform. NVDA runs on Windows, so:
 - `windows` alone, or `windows+s` -- open the Start menu or search. Then
   `type_text` the application's name and `press_gesture` `enter`.
 - `alt+tab`, `windows+tab` -- the window switchers.
+
+These are Windows' own and NVDA does not bind them, which is why they are stated
+rather than resolved.
 
 **But mind the gesture limit, which bites hardest here.** A gesture is a discrete
 press *and release*, so no modifier can be held down across several other keys.
@@ -91,7 +110,7 @@ committed with `enter`.
 `enter`. Three ordinary calls, independent of how many windows are open, and
 independent of the keyboard layout.
 
-Then confirm by listening: `NVDA+t` reports the window title, and a window that
+Then confirm by listening: the report-title command above, and a window that
 opens announces its own title without being asked. Do not confirm by counting
 presses.
 
@@ -108,51 +127,35 @@ do not assume a facility exists because another reader has one.
 ## Where the boundary falls on this reader
 
 These are NVDA's ways of reaching a control that focus cannot reach. They are
-listed **once**, here, because the list is a fact about NVDA and is the same for
-every stance -- what differs is whether the stance you are holding may use it,
-which your own section below says.
+listed **once**, here, because the list is a fact about this machine and is the
+same for every stance -- what differs is whether the stance you are holding may
+use them, which your own section below says.
+
+Each table is **everything NVDA itself classifies** under that heading, so a
+command NVDA gained since this document was written appears here anyway. If a row
+says nothing is bound, that command genuinely cannot be reached on this machine.
 
 **Object navigation** moves NVDA's navigator object independently of system
 focus, so it reaches controls the keyboard never lands on:
 
-| What it does | Desktop layout | Laptop layout |
-|---|---|---|
-| Report the current navigator object | `NVDA+numpad5` | `NVDA+shift+o` |
-| Move to the containing object | `NVDA+numpad8` | `NVDA+shift+upArrow` |
-| Move to the first contained object | `NVDA+numpad2` | `NVDA+shift+downArrow` |
-| Move to the previous object | `NVDA+numpad4` | `NVDA+shift+leftArrow` |
-| Move to the next object | `NVDA+numpad6` | `NVDA+shift+rightArrow` |
-| Move the navigator to the focus | `NVDA+numpadMinus` | `NVDA+backspace` |
-| Move the focus to the navigator | `NVDA+shift+numpadMinus` | `NVDA+shift+backspace` |
-| Activate the navigator object | `NVDA+numpadEnter` | `NVDA+enter` |
-| Toggle simple review mode | `NVDA+numpad1` | `NVDA+pageDown` |
+{{gestures:object-navigation}}
 
-**The review cursor** reads the screen or the object's text independently of
+**The review cursor** reads the screen, or an object's text, independently of
 where the caret is:
 
-| What it does | Desktop layout | Laptop layout |
-|---|---|---|
-| Review the previous line | `numpad7` | `NVDA+upArrow` |
-| Review the current line | `numpad8` | `NVDA+shift+.` |
-| Review the next line | `numpad9` | `NVDA+downArrow` |
-| Review from the top | `shift+numpad7` | `NVDA+control+home` |
-| Say all with the review cursor | `numpadPlus` | `NVDA+shift+a` |
+{{gestures:text-review}}
 
-Note the collision: `NVDA+upArrow` is *report the current line* on the desktop
-layout and *review the previous line* on the laptop layout. The same gesture
-string is inside the vocabulary on one layout and outside it on the other, which
-is the sharpest reason to know which layout you are on before reasoning about the
-boundary.
+**Simulated clicks and mouse movement** press or point at a control the keyboard
+never reached:
 
-**Simulated clicks** press a control the keyboard never reached:
+{{gestures:mouse}}
 
-| What it does | Desktop layout | Laptop layout |
-|---|---|---|
-| Left mouse click | `numpadDivide` | `NVDA+[` |
-| Right mouse click | `numpadMultiply` | `NVDA+]` |
-| Move the mouse to the navigator object | `NVDA+numpadDivide` | `NVDA+shift+m` |
+A gesture can appear in more than one of these tables, or in a reading table and
+a boundary table at once, if this machine binds it twice. Where that happens the
+*command* is what decides which side of the boundary you are on, not the key --
+so read the row, not just the keystroke.
 
-And **introspection** -- `get_focus_info`, `get_state`, `get_config`,
-`get_log` and the other log tools -- reads NVDA's own model rather than pressing
-anything. It reaches nothing and moves nothing, so it is not on this list at all;
-what it is *for* differs by stance, and your section says so.
+And **introspection** -- `get_focus_info`, `get_state`, `get_config`, `get_log`
+and the other log tools -- reads NVDA's own model rather than pressing anything.
+It reaches nothing and moves nothing, so it is not on these lists at all; what it
+is *for* differs by stance, and your section says so.

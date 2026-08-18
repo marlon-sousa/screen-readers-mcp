@@ -4,6 +4,53 @@ Status: **agreed 2026-08-17, both halves implemented 2026-08-17.** Board entries
 **11.19** (the persona exists and travels, PR #61) and **11.20** (the reader says
 what its vocabulary is).
 
+**Corrected during 11.20's implementation, in the part that matters most.** 4.6
+says the bridge's document names the out-of-vocabulary commands "as gestures, in
+both keyboard layouts", and the first implementation did exactly that: a table of
+NVDA's **default** bindings, transcribed from NVDA's own source. **That is wrong,
+and it is wrong in the unsafe direction.**
+
+- NVDA lets anyone remap any command, and **a remapped gesture does not fail** --
+  it quietly does something else. So an agent cannot detect the divergence by
+  listening, and "assume the defaults and complain if they are wrong" asks it to
+  notice something it has no way to see.
+- The damage lands on the persona the boundary exists for. A `user` session would
+  be warned off a key that is now harmless and told **nothing** about the key that
+  now *is* object navigation.
+- "In both layouts" is itself an admission: half of every such table is false on
+  any given machine, and the document had to print a sentence saying it could not
+  tell which half.
+
+**So the bridge asks the reader.** A `GestureResolver` port answers with what is
+bound *now*, and the documents carry `{{gestures:<group>}}` markers the entity
+fills in. On NVDA the adapter calls `inputCore.manager.getAllGestureMappings()` --
+the same question the Input Gestures dialog asks, with `userGestureMap` folded in
+first -- and filters to the configured layout. **There is deliberately no table of
+documented defaults to compare against**: a hand-maintained "the default is X" is
+the same assumption one level up, and it would go stale the first time NVDA
+changed one.
+
+Three consequences worth recording:
+
+- **The boundary is defined by NVDA's own script CATEGORIES** (`SCRCAT_OBJECTNAVIGATION`,
+  `SCRCAT_TEXTREVIEW`, `SCRCAT_MOUSE`), not by a list of script names, so it is
+  self-maintaining and locale-proof — the constants are `_()` strings compared as
+  objects, never as English. It immediately produced a *larger* boundary than the
+  hand-written one: 16 object-navigation commands where the transcription had 9.
+- **A command with nothing bound is a real answer** and is rendered as one. On the
+  first live run `toggleSimpleReviewMode` came back unbound — while the
+  hand-written table asserted it was on `NVDA+numpad1`, which this machine binds to
+  `reviewMode_previous`. The transcription was already wrong on the very machine it
+  was tested on, and every check passed anyway, because nothing verified it.
+- **The tables carry the untranslated command id beside the description.** The
+  description is the reader's own string and arrives in the reader's language;
+  the id is what a finding should name, because it is stable across languages *and*
+  across machines.
+
+The whole point survives: the rule is still the server's and the instances are
+still the bridge's. What changed is that the bridge stopped asserting the
+instances and started reading them.
+
 **Amended during 11.20's implementation, in three places**, per the workflow rule:
 
 - **The degraded documents live with the resource, not with the controller**

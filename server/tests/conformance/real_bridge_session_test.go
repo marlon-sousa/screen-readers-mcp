@@ -736,6 +736,10 @@ func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
 
 	document := harness.ReadReaderGuidance(t)
 
+	if strings.Contains(document, "{{gestures:") {
+		t.Errorf("an unsubstituted gesture marker reached the agent:\n%s", document)
+	}
+
 	for _, want := range []string{
 		// The server's frame, with the live session substituted into it.
 		"nvda's guidance for the `user` stance",
@@ -743,9 +747,15 @@ func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
 		// The bridge's common section -- the ordinary vocabulary, which no
 		// server-owned document could state.
 		"The ordinary vocabulary on this reader",
-		// A gesture. The whole reason this half of spec 0029 exists is that the
-		// server states the rule and cannot state the instances.
-		"NVDA+numpad6",
+		// A RESOLVED gesture table. The conformance harness stands in for NVDA
+		// with a fake resolver whose bindings are deliberately synthetic, so
+		// this string could only have arrived by the document asking the reader
+		// what is bound -- which is the whole point of the design, and would
+		// still pass if the document had hard-coded NVDA's real defaults.
+		"`fake+next`",
+		// A marker that survived substitution would reach the agent as an
+		// unfilled placeholder read as instruction.
+		"| What it does | Command | Press |",
 		// And the section for the persona this session actually declared.
 		"Holding the `user` stance on NVDA",
 	} {

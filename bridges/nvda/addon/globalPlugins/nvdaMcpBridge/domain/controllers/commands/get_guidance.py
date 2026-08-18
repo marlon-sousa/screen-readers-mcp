@@ -30,7 +30,7 @@ class GetGuidanceHandler(CommandHandler):
 	marks_log = False
 
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
-		text, recognised = guidance_for(ctx.persona)
+		text, recognised = guidance_for(ctx.persona, ctx.gesture_resolver)
 		return protocol.GetGuidanceResult(
 			# Echoed AS RECEIVED, including an unrecognised value: the field says
 			# what was asked, so a server can tell which declaration this document

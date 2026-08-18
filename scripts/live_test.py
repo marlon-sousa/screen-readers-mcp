@@ -1097,6 +1097,25 @@ def scenario_persona(server, console, checks, mode):
 		)
 
 
+def _gesture_for(document, command):
+	"""The first gesture the resolved tables bind to *command*, or None.
+
+	Keyed on the COMMAND ID column rather than the description, because the
+	description is NVDA's own string and arrives in NVDA's language -- matching
+	"Report the window title" would pass on an English install and fail on this
+	one, which runs in Portuguese.
+	"""
+	for line in document.splitlines():
+		cells = [cell.strip() for cell in line.split("|")]
+		if len(cells) < 5 or cells[2] != f"`{command}`":
+			continue
+		keys = cells[3]
+		if not keys.startswith("`"):
+			return None
+		return keys.split(",")[0].strip().strip("`")
+	return None
+
+
 def scenario_guidance(server, console, checks, mode):
 	"""Spec 0029 Part 4: the INSTALLED add-on hands over its own persona document.
 
@@ -1146,10 +1165,64 @@ def scenario_guidance(server, console, checks, mode):
 			f"{persona}: the INSTALLED add-on's common section arrived",
 			"The ordinary vocabulary on this reader" in document,
 		)
+		# RESOLVED, not asserted. The document no longer carries NVDA's published
+		# defaults -- it prints what this machine has bound, read out of NVDA at
+		# the moment the document was asked for. So the check is that a table
+		# arrived and that no placeholder survived, not that a particular key did:
+		# asserting "NVDA+numpad6" would pass on a stock machine and fail on a
+		# remapped one, which is precisely the assumption this design removed.
 		checks.check(
-			f"{persona}: with actual gestures, which no server document can name",
-			"NVDA+numpad6" in document and "NVDA+shift+rightArrow" in document,
+			f"{persona}: the gesture tables were filled in from the reader",
+			"| What it does | Command | Press |" in document,
 		)
+		checks.check(
+			f"{persona}: no unsubstituted marker reached the agent",
+			"{{gestures:" not in document,
+		)
+		checks.check(
+			f"{persona}: and the tables name real bindings rather than an apology",
+			"could not be asked what is bound here" not in document,
+		)
+
+		# THE CHECK THAT CLOSES THE LOOP, and the only one that can. Everything
+		# above proves a table arrived; this proves the table is TRUE, by taking
+		# the gesture the document says reports the window title, pressing it,
+		# and listening. Nothing headless can do this: the fake resolver answers
+		# with synthetic keys precisely so it cannot.
+		#
+		# Read-only by design: `title` only re-reads what is already there, so it
+		# is safe on a machine somebody is using. The boundary commands are NOT
+		# pressed -- a simulated click would land wherever the pointer happens to
+		# be.
+		# `speakForeground` and not `title`, deliberately. NVDA stores its
+		# identifiers alphabetically sorted, so this one comes out of the gesture
+		# map as `b+nvda` -- and `fromName` reads the LAST token as the key, so
+		# pressing it unreordered presses NVDA with B held and reads nothing.
+		# `title` sorts as `nvda+t` and is therefore right by accident, which is
+		# exactly why it is the wrong command to prove this with.
+		for command in ("speakForeground", "title"):
+			gesture = _gesture_for(document, command)
+			checks.check(
+				f"{persona}: the document names a gesture for {command}",
+				gesture is not None,
+				detail=f"resolved to {gesture!r}",
+			)
+			if not gesture:
+				continue
+			checks.check(
+				f"{persona}: {command}'s gesture is ordered for pressing, key last",
+				not gesture.endswith("nvda"),
+				detail=f"{gesture!r} -- a trailing modifier would be pressed as the key",
+			)
+			mark = server.tool("get_next_speech_index")["index"]
+			server.tool("press_gesture", {"gestures": [gesture]})
+			server.tool("wait_for_speech_to_finish", {"timeout": 3.0})
+			said = [e["text"] for e in server.tool("get_speech", {"since_index": mark})["entries"]]
+			checks.check(
+				f"{persona}: pressing {command} makes NVDA speak -- the table is TRUE, not just present",
+				any(text.strip() for text in said),
+				detail=f"pressed {gesture!r}, heard {said!r}",
+			)
 		checks.check(
 			f"{persona}: and the section for this stance",
 			f"Holding the `{persona}` stance on NVDA" in document,

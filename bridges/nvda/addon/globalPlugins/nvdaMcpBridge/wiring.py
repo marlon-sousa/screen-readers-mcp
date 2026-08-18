@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 	from .adapters.ports.transport import Transport
 	from .domain.ports.adapter_factory import AdapterFactory
 	from .domain.ports.announcer import Announcer
+	from .domain.ports.gesture_resolver import GestureResolver
 	from .domain.ports.log_capture import LogCapture
 	from .domain.ports.session_signals import SessionSignals
 	from .domain.ports.user_prompter import UserPrompter
@@ -42,6 +43,7 @@ def build_session(
 	announcer: Announcer,
 	log_capture: LogCapture,
 	user_prompter: UserPrompter,
+	gesture_resolver: GestureResolver,
 	*,
 	bridge_version: str = "unknown",
 	heartbeat_timeout: float = 30.0,
@@ -56,7 +58,10 @@ def build_session(
 	real synth, for the hello synth name and the announce hint channel),
 	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
 	``user_prompter`` (presents prompts to the human during silent mode).
-	``log_capture``/``user_prompter`` are NVDA-facing like ``signals``/``announcer``,
+	``gesture_resolver`` (reports which gestures the reader has bound right now,
+	for the persona guidance document).
+	``log_capture``/``user_prompter``/``gesture_resolver`` are NVDA-facing like
+	``signals``/``announcer``,
 	so they are parameters built at the edge (plugin.py), not constructed here --
 	wiring.py stays pure.
 	"""
@@ -79,4 +84,5 @@ def build_session(
 		announcer,
 		log_capture,
 		user_prompter,
+		gesture_resolver,
 	)
