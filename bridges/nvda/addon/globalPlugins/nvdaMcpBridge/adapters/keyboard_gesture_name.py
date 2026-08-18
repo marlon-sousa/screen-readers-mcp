@@ -24,3 +24,44 @@ def bare_key_name(gesture_id: str) -> str:
 	"NVDA+f7". An id with no ":" is already bare and is returned unchanged.
 	"""
 	return gesture_id.split(":", 1)[1] if ":" in gesture_id else gesture_id
+
+
+#: The modifier tokens, in the order a person writes them. Everything else in a
+#: gesture is the key actually being pressed.
+MODIFIERS: tuple[str, ...] = ("nvda", "control", "alt", "shift", "windows")
+
+
+def press_order(keys: str) -> str:
+	"""Reorder a bare key combo so the MAIN KEY IS LAST.
+
+	Needed because ``inputCore.normalizeGestureIdentifier`` sorts a gesture's
+	parts ALPHABETICALLY before storing them, so NVDA holds "read the whole
+	window" as ``b+nvda`` -- while ``KeyboardInputGesture.fromName`` treats the
+	LAST token as the key and every earlier one as a modifier::
+
+		return cls(keys[:-1], vk, 0, ext)
+
+	So pressing ``b+nvda`` presses NVDA with B held down, not NVDA+B. The sorting
+	is harmless whenever the key happens to sort after its modifiers (``nvda+t``)
+	and wrong whenever it does not (``b+nvda``, ``downarrow+nvda``,
+	``numpad5+nvda``) -- which is most of them.
+
+	THE FAILURE IS INVISIBLE WITHOUT THIS. A gesture read back out of NVDA looks
+	perfectly well-formed either way; it simply does the wrong thing when pressed.
+	That is why spec 0029's guidance tables, which are read out of NVDA and handed
+	to an agent to paste into ``pressGesture``, pass through here first.
+
+	A token this function does not recognise is treated as the key, not as a
+	modifier: a real modifier missing from the list would otherwise be hoisted to
+	the end and pressed as the key, so the list holds exactly the five that exist.
+	"""
+	parts = [part for part in keys.split("+") if part]
+	main = [part for part in parts if part.lower() not in MODIFIERS]
+	if not main:
+		# All modifiers and no key. NVDA does bind a few (a double-tapped
+		# modifier, for one), and there is nothing to hoist -- leave it alone
+		# rather than inventing an order for it.
+		return keys
+	present = {part.lower() for part in parts}
+	ordered = [modifier for modifier in MODIFIERS if modifier in present]
+	return "+".join(ordered + main)

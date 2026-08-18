@@ -13,8 +13,10 @@ from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 
 
 def test_announced_capabilities_match_what_the_bridge_serves() -> None:
-	# All nine capability groups are now served with real ports and NVDA
-	# adapters. LOG joined with entry 11.4 (spec 0020).
+	# All ten capability groups are now served with real ports and NVDA
+	# adapters. LOG joined with entry 11.4 (spec 0020); GUIDANCE with 11.20
+	# (spec 0029), and it is the only one that gates a RESOURCE rather than a
+	# set of tools.
 	assert NVDA_CAPABILITIES == (
 		p.Capability.SPEECH,
 		p.Capability.BRAILLE,
@@ -25,8 +27,9 @@ def test_announced_capabilities_match_what_the_bridge_serves() -> None:
 		p.Capability.INTERACT,
 		p.Capability.TYPING,
 		p.Capability.LOG,
+		p.Capability.GUIDANCE,
 	)
-	assert len(NVDA_CAPABILITIES) == 9
+	assert len(NVDA_CAPABILITIES) == 10
 
 
 def test_every_wire_command_has_a_handler() -> None:

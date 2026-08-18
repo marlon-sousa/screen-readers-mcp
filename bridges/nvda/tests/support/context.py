@@ -13,6 +13,7 @@ from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
 from fakes.announcer import FakeAnnouncer
+from fakes.gesture_resolver import FakeGestureResolver
 from fakes.log_capture import FakeLogCapture
 from fakes.transcript import FakeTranscript
 from fakes.user_prompter import FakeUserPrompter
@@ -49,6 +50,7 @@ def make_context(
 	announcer: FakeAnnouncer | None = None,
 	log_capture: FakeLogCapture | None = None,
 	user_prompter: FakeUserPrompter | None = None,
+	gesture_resolver: FakeGestureResolver | None = None,
 	teardown_requested: Callable[[], bool] | None = None,
 ) -> SessionContext:
 	"""Build a SessionContext for a handler test, seeded with only what it needs."""
@@ -59,6 +61,7 @@ def make_context(
 		announcer or FakeAnnouncer(),
 		log_capture or FakeLogCapture(),
 		user_prompter or FakeUserPrompter(),
+		gesture_resolver or FakeGestureResolver(),
 		teardown_requested,
 	)
 	ctx.speech = speech

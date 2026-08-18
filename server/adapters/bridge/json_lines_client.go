@@ -148,6 +148,7 @@ var (
 	_ ports.ConfigAccessor   = (*JSONLinesClient)(nil)
 	_ ports.Interact         = (*JSONLinesClient)(nil)
 	_ ports.TextTyper        = (*JSONLinesClient)(nil)
+	_ ports.GuidanceReader   = (*JSONLinesClient)(nil)
 	_ ports.SessionLifecycle = (*JSONLinesClient)(nil)
 )
 
@@ -479,6 +480,27 @@ func (c *JSONLinesClient) SetLogLevel(level string) (ports.LogLevelResult, error
 	return ports.LogLevelResult{
 		Level:    string(wireResult.Level),
 		Previous: string(wireResult.Previous),
+	}, nil
+}
+
+// --- the guidance capability port ----------------------------------------------
+
+// Guidance asks the bridge what it says about this session's persona.
+//
+// No parameters go out: the persona was fixed at `hello` and the bridge answers
+// for that one (protocol.md §5). The text comes back OPAQUE and is not touched
+// here -- not parsed, not trimmed, not checked -- because the whole point of the
+// arrangement is that a bridge author writes for their own reader without
+// agreeing a shape with this server.
+func (c *JSONLinesClient) Guidance() (ports.ReaderGuidance, error) {
+	var result wire.GetGuidanceResult
+	if err := c.call(wire.CommandGetGuidance, nil, &result, DefaultCallTimeout); err != nil {
+		return ports.ReaderGuidance{}, err
+	}
+	return ports.ReaderGuidance{
+		Persona:    result.Persona,
+		Recognised: result.Recognised,
+		Text:       result.Text,
 	}, nil
 }
 

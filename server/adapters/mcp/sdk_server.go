@@ -73,7 +73,7 @@ func NewServer(registry *tools.Registry, log ports.Log) (*Server, error) {
 // Only the UNGATED tools are registered here. That is acceptance criterion 3: a
 // freshly started server advertises exactly the four discovery and connection
 // tools, and has dialed nothing.
-func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource) {
+func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource, guidance GuidanceSource) {
 	s.mu.Lock()
 	s.bound = dispatch
 	s.mu.Unlock()
@@ -91,6 +91,10 @@ func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource) {
 	// How to drive a reader at all (spec 0023). Takes no source: it is static,
 	// so it can be read before anything is connected -- which is when it helps.
 	s.addGuidanceResource()
+	// And what the CONNECTED reader says about the stance this session declared
+	// (spec 0029). The one resource of the four that needs a round trip, which
+	// is why it takes a controller rather than reading a value.
+	s.addReaderGuidanceResource(guidance)
 }
 
 // Publish advertises the named tools. Called by the connection controller on a

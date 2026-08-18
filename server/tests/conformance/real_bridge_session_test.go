@@ -153,6 +153,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseTyping(t, harness)
 	exerciseLog(t, harness)
 	exerciseLogObservation(t, harness)
+	exerciseGuidance(t, harness)
 	assertStatusIsProvenOnTheWire(t, harness)
 	assertInfoDescribesTheSession(t, harness, session)
 
@@ -229,8 +230,11 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("stance = %q, want the persona's stance in full", session.Stance)
 	}
 
+	// `guidance` joined in entry 11.20 (spec 0029). It is the only member here
+	// that gates no tool, which is why gatedTools above is unchanged -- and
+	// asserting the exact set is what makes that visible rather than assumed.
 	want := []string{
-		"braille", "config", "focus", "gestures",
+		"braille", "config", "focus", "gestures", "guidance",
 		"interact", "log", "speech", "state", "typing",
 	}
 	got := slices.Clone(session.Capabilities)
@@ -711,6 +715,53 @@ func exerciseTyping(t *testing.T, harness *testsupport.MCPHarness) {
 	if want := utf8.RuneCountInString(typedText); typed.Typed != want {
 		t.Errorf("typed = %d, want %d (the rune count of %q surviving the round trip)",
 			typed.Typed, want, typedText)
+	}
+}
+
+// exerciseGuidance: the real Python bridge's own persona document, read through
+// the resource the agent actually uses (spec 0029 Part 4).
+//
+// This is the ONLY tier where the text is genuinely the bridge's: everywhere
+// else it comes from a Go fake that could not disagree with the Go server about
+// the field names. `getGuidance` is also the one command with no params at all,
+// so a binding that got `recognised` or `text` wrong -- or dropped the whole
+// result because there was nothing to send -- shows up here and nowhere else.
+//
+// The phrases asserted on are headings from the ADD-ON's own markdown
+// (bridges/nvda/addon/.../documents/), which the harness ships and reads at run
+// time. That makes this a packaging check too: a document missing from the tree
+// fails here rather than at a live NVDA.
+func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	document := harness.ReadReaderGuidance(t)
+
+	if strings.Contains(document, "{{gestures:") {
+		t.Errorf("an unsubstituted gesture marker reached the agent:\n%s", document)
+	}
+
+	for _, want := range []string{
+		// The server's frame, with the live session substituted into it.
+		"nvda's guidance for the `user` stance",
+		"the stance wins",
+		// The bridge's common section -- the ordinary vocabulary, which no
+		// server-owned document could state.
+		"The ordinary vocabulary on this reader",
+		// A RESOLVED gesture table. The conformance harness stands in for NVDA
+		// with a fake resolver whose bindings are deliberately synthetic, so
+		// this string could only have arrived by the document asking the reader
+		// what is bound -- which is the whole point of the design, and would
+		// still pass if the document had hard-coded NVDA's real defaults.
+		"`fake+next`",
+		// A marker that survived substitution would reach the agent as an
+		// unfilled placeholder read as instruction.
+		"| What it does | Command | Press |",
+		// And the section for the persona this session actually declared.
+		"Holding the `user` stance on NVDA",
+	} {
+		if !strings.Contains(document, want) {
+			t.Errorf("the reader guidance never says %q; got:\n%s", want, document)
+		}
 	}
 }
 

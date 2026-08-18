@@ -37,6 +37,7 @@ from .teardown_reason import TeardownReason
 if TYPE_CHECKING:
 	from ..ports.announcer import Announcer
 	from ..ports.clock import Clock
+	from ..ports.gesture_resolver import GestureResolver
 	from ..ports.log_capture import LogCapture
 	from ..ports.message_channel import MessageChannel
 	from ..ports.session_signals import SessionSignals
@@ -87,6 +88,7 @@ class Session:
 		announcer: Announcer,
 		log_capture: LogCapture,
 		user_prompter: UserPrompter,
+		gesture_resolver: GestureResolver,
 	) -> None:
 		self._channel = channel
 		self._transcript = transcript
@@ -103,6 +105,7 @@ class Session:
 			announcer,
 			log_capture,
 			user_prompter,
+			gesture_resolver,
 			self._teardown_was_requested,
 		)
 		self._state = _State.PRE_HELLO

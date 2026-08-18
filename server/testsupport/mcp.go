@@ -270,6 +270,14 @@ func (h *MCPHarness) ReadGuidance(t *testing.T) string {
 	return h.ReadResourceText(t, "screenreader://guidance")
 }
 
+// ReadReaderGuidance reads screenreader://reader-guidance as text (spec 0029) --
+// the connected reader's own account of the declared stance, framed by the
+// server.
+func (h *MCPHarness) ReadReaderGuidance(t *testing.T) string {
+	t.Helper()
+	return h.ReadResourceText(t, "screenreader://reader-guidance")
+}
+
 // ReadResourceText reads any resource the server publishes, undecoded.
 func (h *MCPHarness) ReadResourceText(t *testing.T, uri string) string {
 	t.Helper()

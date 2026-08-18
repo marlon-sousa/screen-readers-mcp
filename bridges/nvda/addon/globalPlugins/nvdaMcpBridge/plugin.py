@@ -35,6 +35,7 @@ from .adapters.build_listener import build_listener
 from .adapters.ini_bridge_config import IniBridgeConfig
 from .adapters.nvda_adapter_factory import NvdaAdapterFactory
 from .adapters.nvda_announcer import NvdaAnnouncer
+from .adapters.nvda_gesture_resolver import NvdaGestureResolver
 from .adapters.nvda_log import NvdaLog
 from .adapters.nvda_log_capture import NvdaLogCapture
 from .adapters.nvda_session_signals import NvdaSessionSignals
@@ -105,6 +106,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		announcer = NvdaAnnouncer()
 		log_capture = NvdaLogCapture()
 		user_prompter = NvdaUserPrompter()
+		gesture_resolver = NvdaGestureResolver()
 		self._event_bus = SimpleEventBus()
 
 		def make_session(transport):
@@ -117,6 +119,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				announcer,
 				log_capture,
 				user_prompter,
+				gesture_resolver,
 				bridge_version=bridge_version,
 			)
 

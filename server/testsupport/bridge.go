@@ -58,6 +58,7 @@ type FakeBridge struct {
 	handlers map[wire.Command]func(params json.RawMessage) (any, error)
 	received []wire.Command
 	byeSeen  bool
+	persona  string
 	conn     net.Conn
 }
 
@@ -73,8 +74,18 @@ func EveryWireCapability() []wire.Capability {
 		wire.CapabilitySpeech, wire.CapabilityBraille, wire.CapabilityGestures,
 		wire.CapabilityFocus, wire.CapabilityState, wire.CapabilityConfig,
 		wire.CapabilityInteract, wire.CapabilityTyping, wire.CapabilityLog,
+		wire.CapabilityGuidance,
 	}
 }
+
+// DefaultGuidanceText is what this bridge answers getGuidance with unless a test
+// registers its own handler.
+//
+// It is deliberately UNLIKE anything the server writes: every degraded document
+// and every frame is the server's own prose, so a test asserting that the
+// bridge's text reached the agent needs a phrase that could only have come from
+// the far side of the wire.
+const DefaultGuidanceText = "# fakereader's own guidance\n\nPress the fake key to do the fake thing.\n"
 
 // NewFakeBridge builds a bridge that answers the lifecycle commands, plus
 // whatever handlers a test adds.
@@ -185,10 +196,22 @@ func (b *FakeBridge) serve(conn net.Conn) {
 		)
 		switch {
 		case command == wire.CommandHello:
+			b.recordPersona(request.Params)
 			result = b.helloResult()
 		case command == wire.CommandPing, command == wire.CommandBye:
 			ok := true
 			result = wire.AckResult{OK: &ok}
+		case command == wire.CommandGetGuidance && !hasHandler:
+			// Answered like `hello` rather than left to each test, because the
+			// real NVDA bridge announces `guidance` and every test facing this
+			// fake would otherwise have to script a command it does not care
+			// about. A test that IS about the guidance registers its own
+			// handler and takes this branch out of play.
+			result = wire.GetGuidanceResult{
+				Persona:    b.lastPersona(),
+				Recognised: true,
+				Text:       DefaultGuidanceText,
+			}
 		case hasHandler:
 			result, err = handler(request.Params)
 		default:
@@ -204,6 +227,33 @@ func (b *FakeBridge) serve(conn net.Conn) {
 			return
 		}
 	}
+}
+
+// Persona is what `hello` declared this session stands for, empty if it declared
+// nothing (spec 0029). A real bridge records it; so does this one, which is what
+// lets a test assert the declaration crossed the wire rather than only that the
+// server remembered it.
+func (b *FakeBridge) Persona() string { return b.lastPersona() }
+
+func (b *FakeBridge) lastPersona() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.persona
+}
+
+// recordPersona reads the declaration out of `hello`'s params.
+//
+// A params blob that will not decode is IGNORED rather than fatal: this is a
+// fake bridge, and the tests that send a malformed handshake are testing the
+// server's behaviour on one, not this bookkeeping.
+func (b *FakeBridge) recordPersona(params json.RawMessage) {
+	var hello wire.HelloParams
+	if err := json.Unmarshal(params, &hello); err != nil || hello.Persona == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.persona = *hello.Persona
 }
 
 func (b *FakeBridge) helloResult() wire.HelloResult {

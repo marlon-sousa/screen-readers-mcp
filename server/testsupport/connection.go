@@ -39,6 +39,7 @@ type Connection struct {
 	Interact  *fakes.FakeInteractPort
 	Text      *fakes.FakeTextTyper
 	LogReader *fakes.FakeLogReader
+	Guidance  *fakes.FakeGuidanceReader
 }
 
 // NewConnection builds a session for a reader announcing exactly these
@@ -104,6 +105,10 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 		built.LogReader = fakes.NewFakeLogReader()
 		built.Connection.ReaderLog = built.LogReader
 	}
+	if set.Has(entities.CapabilityGuidance) {
+		built.Guidance = fakes.NewFakeGuidanceReader()
+		built.Connection.Guidance = built.Guidance
+	}
 	return built
 }
 
@@ -114,6 +119,6 @@ func EveryCapability() []entities.Capability {
 		entities.CapabilitySpeech, entities.CapabilityBraille, entities.CapabilityGestures,
 		entities.CapabilityFocus, entities.CapabilityState, entities.CapabilityConfig,
 		entities.CapabilityInteract, entities.CapabilityTyping,
-		entities.CapabilityLog,
+		entities.CapabilityLog, entities.CapabilityGuidance,
 	}
 }

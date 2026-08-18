@@ -43,6 +43,26 @@ pythonSources: list[str] = [
 ]
 i18nSources: list[str] = [*pythonSources, "buildVars.py"]
 
+# NON-PYTHON FILES THE ADDON SHIPS AND READS AT RUN TIME -- today, the persona
+# guidance documents `getGuidance` serves (spec 0029). The bundler rglobs the
+# whole addon tree, so these are packaged whether or not they are named here;
+# what this list buys is that scons treats an EDITED one as a reason to rebuild.
+#
+# Without it the failure is silent and total: reword a document, run
+# `poe build-addon`, get "is up to date", install an addon carrying the previous
+# text, and read it back believing it is what the file says. That is this
+# platform's version of the trap //go:embed has on the server side -- there the
+# bytes are copied at compile time and a stale binary serves old prose; here they
+# are read at run time and a stale BUNDLE ships old prose. Same class, opposite
+# mechanism, and neither is caught by anything else.
+#
+# Kept OUT of i18nSources, deliberately: that list is fed to xgettext, which
+# parses its inputs as Python. These documents are for the agent, not the human
+# at the reader, and are not translated.
+bundledDataSources: list[str] = [
+	"addon/globalPlugins/nvdaMcpBridge/**/documents/*.md",
+]
+
 # Paths are relative to the addon directory when building the bundle.
 excludedFiles: list[str] = [
 	"doc/*/contributing*.*",

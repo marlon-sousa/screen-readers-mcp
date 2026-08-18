@@ -116,9 +116,17 @@ func Build(opts Options) (*Server, error) {
 	// One record for the process's whole life, built from the traffic the
 	// dispatcher already handles (spec 0021) and published beside the info
 	// resource. Nothing is asked of the bridge to keep it.
+	//
+	// The reader-guidance controller is built here and handed straight to the
+	// MCP server, because it is the only collaborator of a RESOURCE rather than
+	// of a tool: no dispatcher touches it, and the connection controller does
+	// not know it exists. It reads the live session and caches per connection
+	// (spec 0029 4.4), so it holds the only other piece of session-scoped state
+	// in this process -- and it holds it derived, never authoritative.
 	mcpServer.Bind(
 		tools.NewDispatcher(registry, connection, clock, log, entities.NewSessionRecord()),
 		connection,
+		controllers.NewReaderGuidance(connection),
 	)
 
 	return &Server{

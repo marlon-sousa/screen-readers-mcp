@@ -501,10 +501,25 @@ make the port pointless for testing.
      markdown preview — which is where **specs are reviewed**, so `specs/` is a
      first-class place for a diagram, not a grudging exception.
 
-9. **A document served to an agent is a `.md` file embedded with `//go:embed`,
-   never a Go string literal.** Every MCP resource's prose — `screenreader://guidance`,
-   the persona stances and profiles — lives in a `documents/` directory beside
-   the package that serves it, and is pulled in with one `//go:embed` per file.
+9. **A document served to an agent is a `.md` file, never a string literal in
+   code.** Every MCP resource's prose — `screenreader://guidance`, the persona
+   stances and profiles, `screenreader://reader-guidance`'s frame and the
+   bridge's own persona documents — lives in a `documents/` directory beside the
+   package that serves it. **The mechanism differs by language, and each has a
+   trap that hides perfectly:**
+   - **Go: `//go:embed`, one per file.** The bytes are copied at *compile* time,
+     so an edited document changes nothing until the binary is rebuilt.
+     `scripts/doctor.py` therefore counts `server/**/documents/*.md` among the
+     server's build inputs; without that it would rglob only `*.go`, see nothing
+     newer than the binary, and pronounce a stale one current while the running
+     server served the previous wording to every agent that read it.
+   - **Python: shipped in the add-on and read at run time**, because there is no
+     compile step to embed anything into. The bundler rglobs the whole addon
+     tree, so the files are packaged either way — but they must also be in
+     `buildVars.bundledDataSources`, or `scons` will not treat an edited document
+     as a reason to rebuild and the `.nvda-addon` ships the previous text while
+     reporting "is up to date". Same class of silent staleness, opposite
+     mechanism.
    - **Why:** these are documents, written and revised as prose, whose entire
      readership is a model reading markdown. As `const` blocks they were
      unreadable to author and to review: the guidance document had **29** places
@@ -516,7 +531,10 @@ make the port pointless for testing.
    - **One `//go:embed` per file, not an `embed.FS` keyed by name.** A missing
      document is then a *compile* error rather than an empty string discovered
      at runtime, which is the guarantee `Persona.Stance()` and `.Profile()`
-     depend on.
+     depend on. The Python side cannot have that guarantee, so it buys the next
+     best thing: a missing document raises rather than returning `""`, because an
+     empty document reads to the agent as "this reader has nothing to say", which
+     is a very different and much worse answer than "the build is broken".
    - **This does not extend to tool descriptions or JSON schemas.** Those are
      read together with the `Execute` that uses them; splitting one tool across
      three files costs more than the formatting noise it saves. The line is: a

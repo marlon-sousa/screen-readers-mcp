@@ -27,6 +27,9 @@
 #   persona    spec 0029: connect as each of user/validator/expert; the
 #              declaration reaches status, info and the bridge's transcript, and
 #              you HEAR the two tones then the persona. No window focus needed.
+#   guidance   spec 0029 part 4: screenreader://reader-guidance serves the
+#              INSTALLED add-on's own document for each persona. Proves the .md
+#              files were packaged, which nothing headless can. No focus needed.
 #   capture    a gesture's speech is captured cleanly: bookmark, open the
 #              Elements List, read back only the new speech, prove the ranges
 #              join and that a wait for absent text times out (not disconnects).
@@ -78,6 +81,11 @@ guided, interactive experience):
               declaration reaches status, screenreader://info and the bridge's
               own transcript on disk, and you HEAR two ascending tones then
               "MCP session open, as <persona>". No window focus needed.
+  guidance    spec 0029 part 4: screenreader://reader-guidance hands over the
+              INSTALLED add-on's own document for each stance -- the ordinary
+              vocabulary on NVDA and the gestures that fall outside it, framed
+              with the precedence rule. Proves the .md files were packaged,
+              which nothing headless can. No window focus needed.
   capture     a gesture's speech is captured cleanly, ranges join, an absent
               wait times out. Needs a browse-mode document focused.
   braille     read the braille display; its indices are their own space.
@@ -1089,9 +1097,166 @@ def scenario_persona(server, console, checks, mode):
 		)
 
 
+def _gesture_for(document, command):
+	"""The first gesture the resolved tables bind to *command*, or None.
+
+	Keyed on the COMMAND ID column rather than the description, because the
+	description is NVDA's own string and arrives in NVDA's language -- matching
+	"Report the window title" would pass on an English install and fail on this
+	one, which runs in Portuguese.
+	"""
+	for line in document.splitlines():
+		cells = [cell.strip() for cell in line.split("|")]
+		if len(cells) < 5 or cells[2] != f"`{command}`":
+			continue
+		keys = cells[3]
+		if not keys.startswith("`"):
+			return None
+		return keys.split(",")[0].strip().strip("`")
+	return None
+
+
+def scenario_guidance(server, console, checks, mode):
+	"""Spec 0029 Part 4: the INSTALLED add-on hands over its own persona document.
+
+	Every assertion below is also made headlessly, and one thing is not: that the
+	documents are inside the .nvda-addon THIS NVDA has installed. They are read
+	from disk at run time rather than compiled in, so a build that forgot them --
+	or a scons run that decided it was up to date over an edited one -- fails only
+	here. That is the whole reason this scenario exists rather than being left to
+	the conformance tier.
+
+	No window to focus and nothing audible: it is quick, and it is the first thing
+	to run after installing a new build.
+	"""
+	console.step("the reader's own guidance, per persona")
+
+	seen = {}
+	for persona in ("user", "validator", "expert"):
+		console.note(f"--- {persona} ---")
+		session = _connect(server, console, mode, persona=persona)
+
+		checks.check(
+			f"connect as {persona}: the reader's document is named in the result",
+			session.get("readerGuidance") == "screenreader://reader-guidance",
+			detail=f"readerGuidance={session.get('readerGuidance')!r}",
+		)
+		checks.check(
+			"the installed bridge announces the `guidance` capability",
+			"guidance" in (session.get("capabilities") or []),
+			detail=f"capabilities={session.get('capabilities')}",
+		)
+
+		document = server.resource("screenreader://reader-guidance").get("text", "")
+		seen[persona] = document
+
+		checks.check(
+			f"{persona}: the server's frame names the reader and the stance",
+			f"nvda's guidance for the `{persona}` stance" in document,
+			detail=f"{len(document)} chars",
+		)
+		checks.check(
+			f"{persona}: the precedence rule is in the frame",
+			"the stance wins" in document,
+		)
+		# The packaging check, stated as the thing it proves: this text lives in a
+		# .md file inside the installed add-on and nowhere else.
+		checks.check(
+			f"{persona}: the INSTALLED add-on's common section arrived",
+			"The ordinary vocabulary on this reader" in document,
+		)
+		# RESOLVED, not asserted. The document no longer carries NVDA's published
+		# defaults -- it prints what this machine has bound, read out of NVDA at
+		# the moment the document was asked for. So the check is that a table
+		# arrived and that no placeholder survived, not that a particular key did:
+		# asserting "NVDA+numpad6" would pass on a stock machine and fail on a
+		# remapped one, which is precisely the assumption this design removed.
+		checks.check(
+			f"{persona}: the gesture tables were filled in from the reader",
+			"| What it does | Command | Press |" in document,
+		)
+		checks.check(
+			f"{persona}: no unsubstituted marker reached the agent",
+			"{{gestures:" not in document,
+		)
+		checks.check(
+			f"{persona}: and the tables name real bindings rather than an apology",
+			"could not be asked what is bound here" not in document,
+		)
+
+		# THE CHECK THAT CLOSES THE LOOP, and the only one that can. Everything
+		# above proves a table arrived; this proves the table is TRUE, by taking
+		# the gesture the document says reports the window title, pressing it,
+		# and listening. Nothing headless can do this: the fake resolver answers
+		# with synthetic keys precisely so it cannot.
+		#
+		# Read-only by design: `title` only re-reads what is already there, so it
+		# is safe on a machine somebody is using. The boundary commands are NOT
+		# pressed -- a simulated click would land wherever the pointer happens to
+		# be.
+		# `speakForeground` and not `title`, deliberately. NVDA stores its
+		# identifiers alphabetically sorted, so this one comes out of the gesture
+		# map as `b+nvda` -- and `fromName` reads the LAST token as the key, so
+		# pressing it unreordered presses NVDA with B held and reads nothing.
+		# `title` sorts as `nvda+t` and is therefore right by accident, which is
+		# exactly why it is the wrong command to prove this with.
+		for command in ("speakForeground", "title"):
+			gesture = _gesture_for(document, command)
+			checks.check(
+				f"{persona}: the document names a gesture for {command}",
+				gesture is not None,
+				detail=f"resolved to {gesture!r}",
+			)
+			if not gesture:
+				continue
+			checks.check(
+				f"{persona}: {command}'s gesture is ordered for pressing, key last",
+				not gesture.endswith("nvda"),
+				detail=f"{gesture!r} -- a trailing modifier would be pressed as the key",
+			)
+			mark = server.tool("get_next_speech_index")["index"]
+			server.tool("press_gesture", {"gestures": [gesture]})
+			server.tool("wait_for_speech_to_finish", {"timeout": 3.0})
+			said = [e["text"] for e in server.tool("get_speech", {"since_index": mark})["entries"]]
+			checks.check(
+				f"{persona}: pressing {command} makes NVDA speak -- the table is TRUE, not just present",
+				any(text.strip() for text in said),
+				detail=f"pressed {gesture!r}, heard {said!r}",
+			)
+		checks.check(
+			f"{persona}: and the section for this stance",
+			f"Holding the `{persona}` stance on NVDA" in document,
+		)
+
+		# A second read must not change the answer. It also must not cost a round
+		# trip, which is provable headlessly and not from here.
+		again = server.resource("screenreader://reader-guidance").get("text", "")
+		checks.check(
+			f"{persona}: reading it twice gives the same document",
+			again == document,
+		)
+		_disconnect(server, console)
+
+	distinct = len(set(seen.values()))
+	checks.check(
+		"reconnecting under another persona serves another document",
+		distinct == 3,
+		detail=f"the three stances produced {distinct} distinct documents",
+	)
+
+	console.step("with nothing connected")
+	orphan = server.resource("screenreader://reader-guidance").get("text", "")
+	checks.check(
+		"with no session it explains itself rather than failing",
+		"No reader is connected" in orphan and "screenreader://guidance" in orphan,
+		detail=orphan[:120],
+	)
+
+
 SCENARIOS = {
 	"smoke": scenario_smoke,
 	"persona": scenario_persona,
+	"guidance": scenario_guidance,
 	"capture": scenario_capture,
 	"braille": scenario_braille,
 	"finddialog": scenario_finddialog,

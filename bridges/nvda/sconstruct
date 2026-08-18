@@ -108,6 +108,14 @@ pythonFiles = expandGlobs(buildVars.pythonSources)
 for file in pythonFiles:
     env.Depends(addon, file)
 
+# Non-Python files the addon ships and READS AT RUN TIME -- the persona guidance
+# documents (spec 0029). The bundler rglobs the whole tree, so they are packaged
+# either way; this is what makes an edited one rebuild the addon rather than
+# leaving `scons` reporting "is up to date" over stale prose. See the comment on
+# buildVars.bundledDataSources for why it is a separate list from pythonSources.
+for file in expandGlobs(buildVars.bundledDataSources):
+    env.Depends(addon, file)
+
 # Convert markdown files to html
 # We need at least doc in English and should enable the Help button for the add-on in Add-ons Manager
 if (cssFile := Path("style.css")).is_file():

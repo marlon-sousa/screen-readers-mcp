@@ -25,6 +25,18 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
+// readerGuidanceURI is where the connected reader's own persona document is
+// served, repeated here because the DOMAIN MAY NOT IMPORT THE ADAPTER that
+// publishes it (the architecture test enforces that, and it is the rule that
+// keeps a future wire v2 out of the domain).
+//
+// One integration test asserts this equals adapters/mcp.ReaderGuidanceURI and
+// that the URI is really published, which is what keeps the repetition honest --
+// a dangling pointer in a connect result is invisible to everything else: the
+// call succeeds, and the agent gets resource-not-found at the moment it takes
+// our advice.
+const readerGuidanceURI = "screenreader://reader-guidance"
+
 // ConnectReader opens the one session.
 type ConnectReader struct{}
 
@@ -41,8 +53,11 @@ func (t *ConnectReader) Description() string {
 		"Errors if a session is already live -- disconnect_reader first. " +
 		"You must say WHO YOU ARE STANDING IN FOR (persona): it decides what a " +
 		"finding from this session means, and it is returned with the stance it " +
-		"puts you under. The capture mode, persona and log level are fixed for " +
-		"the whole session and cannot be changed without reconnecting."
+		"puts you under -- together with screenreader://reader-guidance, where " +
+		"that reader says which of ITS OWN commands your stance may and may not " +
+		"use. Read that before you drive. The capture mode, persona and log " +
+		"level are fixed for the whole session and cannot be changed without " +
+		"reconnecting."
 }
 
 func (t *ConnectReader) InputSchema() json.RawMessage {
@@ -99,7 +114,19 @@ type connectResult struct {
 	// (spec 0027) never read screenreader://guidance at all and dropped to
 	// PowerShell for something it would have been told.
 	Stance string `json:"stance"`
-	Synth  string `json:"synth"`
+	// ReaderGuidance is where THIS reader's own account of that stance can be
+	// read -- which of its commands make up the ordinary vocabulary, and which
+	// reach past focus and are therefore outside it (spec 0029 Part 4).
+	//
+	// PRESENT ONLY WHEN THE BRIDGE ANNOUNCED `guidance`, so an absent field is
+	// the honest answer "this reader publishes none" rather than a pointer at a
+	// document that would explain nothing.
+	//
+	// It is named here because this is the earliest instant it exists: the
+	// persona is chosen BEFORE connecting and can only be instantiated on a
+	// particular reader AFTER, and an agent left to discover that would not.
+	ReaderGuidance string `json:"readerGuidance,omitempty"`
+	Synth          string `json:"synth"`
 	// LogPath names the READER-SIDE session transcript, and it is a convenience
 	// rather than a contract to depend on (spec 0021): the artifact is written
 	// for the human at the reader, on the reader's disk, so for a remote bridge
@@ -160,6 +187,13 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 	}
 
 	session := connection.Session
+	// The capability gate, read structurally: the port is nil exactly when the
+	// bridge did not announce `guidance`, so there is no boolean anyone has to
+	// remember to check.
+	readerGuidance := ""
+	if connection.Guidance != nil {
+		readerGuidance = readerGuidanceURI
+	}
 	return connectResult{
 		Reader:        session.Reader.Name,
 		ReaderVersion: session.Reader.Version,
@@ -171,11 +205,12 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Mode: session.Mode.String(),
 		// From the session rather than from the request, so this reports what
 		// was actually recorded against the run.
-		Persona:       session.Persona.String(),
-		Stance:        session.Persona.Stance(),
-		Synth:         session.Synth,
-		LogPath:       session.LogPath,
-		BridgeVersion: session.BridgeVersion,
+		Persona:        session.Persona.String(),
+		Stance:         session.Persona.Stance(),
+		ReaderGuidance: readerGuidance,
+		Synth:          session.Synth,
+		LogPath:        session.LogPath,
+		BridgeVersion:  session.BridgeVersion,
 	}, nil
 }
 

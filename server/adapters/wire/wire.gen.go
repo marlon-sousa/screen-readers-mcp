@@ -71,6 +71,7 @@ const (
 	CommandGetLogPosition        Command = "getLogPosition"
 	CommandWaitForLog            Command = "waitForLog"
 	CommandSetLogLevel           Command = "setLogLevel"
+	CommandGetGuidance           Command = "getGuidance"
 	CommandBye                   Command = "bye"
 )
 
@@ -98,6 +99,7 @@ const (
 	CapabilityInteract Capability = "interact"
 	CapabilityTyping   Capability = "typing"
 	CapabilityLog      Capability = "log"
+	CapabilityGuidance Capability = "guidance"
 )
 
 // CaptureMode is a closed value set in the wire contract.
@@ -194,6 +196,13 @@ type GetBrailleParams struct {
 // GetConfigParams is the wire shape of the same name.
 type GetConfigParams struct {
 	KeyPath []string `json:"keyPath"`
+}
+
+// GetGuidanceResult is the wire shape of the same name.
+type GetGuidanceResult struct {
+	Persona    string `json:"persona"`
+	Recognised bool   `json:"recognised"`
+	Text       string `json:"text"`
 }
 
 // GetLogParams is the wire shape of the same name.

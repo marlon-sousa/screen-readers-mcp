@@ -27,6 +27,7 @@ from .echo import EchoHandler
 from .get_braille import GetBrailleHandler
 from .get_config import GetConfigHandler
 from .get_focus_info import GetFocusInfoHandler
+from .get_guidance import GetGuidanceHandler
 from .get_last_speech import GetLastSpeechHandler
 from .get_log import GetLogHandler
 from .get_log_position import GetLogPositionHandler
@@ -47,9 +48,9 @@ from .wait_for_user_reply import WaitForUserReplyHandler
 if TYPE_CHECKING:
 	from ...ports.adapter_factory import AdapterFactory
 
-#: The command groups the NVDA bridge serves (spec 0007). All nine groups are
+#: The command groups the NVDA bridge serves (spec 0007). All ten groups are
 #: live: interact (announce, askUser, waitForUserReply), speech, braille,
-#: gestures, focus, state, config, typing, and log.
+#: gestures, focus, state, config, typing, log, and guidance.
 NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 	protocol.Capability.SPEECH,
 	protocol.Capability.BRAILLE,
@@ -60,6 +61,11 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 	protocol.Capability.INTERACT,
 	protocol.Capability.TYPING,
 	protocol.Capability.LOG,
+	# Spec 0029: this bridge has written guidance for a persona on NVDA. The
+	# first capability that gates a RESOURCE rather than a tool -- a bridge with
+	# no reader-specific instruction to give simply leaves it out, and the agent
+	# falls back on the server's reader-agnostic documents.
+	protocol.Capability.GUIDANCE,
 )
 
 
@@ -70,7 +76,7 @@ def build_command_registry(
 
 	This is the NVDA bridge, so it stamps its reader identity here: name
 	``"nvda"``, the version wiring passed, and the capabilities it actually
-	serves (:data:`NVDA_CAPABILITIES` -- all eight groups).
+	serves (:data:`NVDA_CAPABILITIES` -- all ten groups).
 	"""
 	reader = protocol.ReaderInfo(name="nvda", version=nvda_version)
 	capabilities = list(NVDA_CAPABILITIES)
@@ -98,5 +104,6 @@ def build_command_registry(
 		protocol.Command.GET_LOG_POSITION: GetLogPositionHandler(),
 		protocol.Command.WAIT_FOR_LOG: WaitForLogHandler(),
 		protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
+		protocol.Command.GET_GUIDANCE: GetGuidanceHandler(),
 	}
 	return registry

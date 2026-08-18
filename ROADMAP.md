@@ -189,10 +189,11 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-17**:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18,
-11.20 — eleven entries. Of the external run's four, 11.14 and 11.15 are settled.
-**11.19 is Done (PR #61)**, so personas exist and travel; 11.20 is the half that
-remains, and it is in flight in neither lane until someone takes it.
+11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **ten
+entries**. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
+is complete**: 11.19 (PR #61) made the persona exist and travel, and 11.20
+gave the reader its own document, so an agent now declares a stance and is told
+what that stance means on the reader in front of it.
 
 Their order is **not** simply the numbering. Read as a strict lane order both
 lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
@@ -1023,6 +1024,34 @@ rather than before it.
     (agreed 2026-08-17; covers 11.20 as well, and records two amendments made
     during this entry's implementation).
 11.20. **E, personas — the reader says what its vocabulary is** (both lanes).
+    **Done (PR #63, 2026-08-17.)** The `guidance` capability, `getGuidance`,
+    `screenreader://reader-guidance` with its lazy per-session cache, and NVDA's
+    own documents — the ordinary vocabulary on this reader, the desktop's keys,
+    its reading commands, and the object-navigation, review-cursor and
+    simulated-click commands that fall outside the boundary.
+    **The gesture tables are RESOLVED FROM THE READER, not documented.** The first
+    implementation transcribed NVDA's defaults out of `globalCommands.py`, and that
+    was wrong in the unsafe direction: NVDA lets anyone remap, a remapped gesture
+    does not fail but quietly does something else, so a `user` session would be
+    warned off a harmless key and told nothing about the one that now reaches past
+    focus. The bridge now asks `inputCore.manager.getAllGestureMappings()` — the
+    same question the Input Gestures dialog asks — keyed on NVDA's own script
+    CATEGORIES rather than a script list, so it is self-maintaining and picked up
+    16 object-navigation commands where the transcription had 9. It also caught the
+    transcription being wrong on the very machine it was tested on:
+    `toggleSimpleReviewMode` is unbound here, while the hand-written table claimed
+    `NVDA+numpad1` — which this machine binds to `reviewMode_previous`.
+    **One trap found by looking rather than assuming:** NVDA stores identifiers
+    alphabetically sorted and `fromName` reads the LAST token as the key, so
+    "read the whole window" comes out as `b+nvda` and pressing it verbatim presses
+    NVDA with B held. `press_order` hoists the key last; the live checklist proves
+    it by pressing `speakForeground`, the case that was broken, rather than `title`,
+    which sorts correctly by luck.
+    **And the bridge's documents ship as files read at run time**
+    rather than compiled in, which needed `buildVars.bundledDataSources` — without
+    it scons reports "up to date" over an edited document and the add-on ships the
+    previous text. Same class of silent staleness as `//go:embed` on the server
+    side, opposite mechanism; AGENTS.md invariant 9 now carries both.
     **Re-scoped 2026-08-17** from *the reader half*: the wire's `persona` field
     and the bridge's recording of it moved into 11.19, so what is left here is
     exactly the document and the machinery that serves it — the `guidance`

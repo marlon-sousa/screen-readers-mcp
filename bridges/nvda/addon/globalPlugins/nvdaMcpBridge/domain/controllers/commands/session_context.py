@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 	from ...ports.adapter_factory import AdapterSet
 	from ...ports.announcer import Announcer
 	from ...ports.clock import Clock
+	from ...ports.gesture_resolver import GestureResolver
 	from ...ports.log_capture import LogCapture
 	from ...ports.transcript import Transcript
 	from ...ports.user_prompter import UserPrompter
@@ -46,6 +47,7 @@ class SessionContext:
 		announcer: Announcer,
 		log_capture: LogCapture,
 		user_prompter: UserPrompter,
+		gesture_resolver: GestureResolver,
 		teardown_requested: Callable[[], bool] | None = None,
 	) -> None:
 		self.clock = clock
@@ -64,6 +66,11 @@ class SessionContext:
 		#: Presents prompts to the human and acknowledges answers. Always present
 		#: -- like the announcer, it never depends on hello.
 		self.user_prompter = user_prompter
+		#: Reports which gestures the reader has bound RIGHT NOW, for the guidance
+		#: document to print (spec 0029). Always present, like the announcer: it
+		#: describes the reader rather than the session, so it never depends on
+		#: hello.
+		self.gesture_resolver = gesture_resolver
 		# Installed by the hello handler; None before it runs.
 		self.speech: SpeechBuffer | None = None
 		self.braille: BrailleBuffer | None = None

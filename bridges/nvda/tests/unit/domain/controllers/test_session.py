@@ -26,6 +26,7 @@ from fakes.announcer import FakeAnnouncer
 from fakes.clock import FakeClock
 from fakes.command_handler import FakeCommandHandler
 from fakes.config_accessor import FakeConfigAccessor
+from fakes.gesture_resolver import FakeGestureResolver
 from fakes.log_capture import FakeLogCapture
 from fakes.message_channel import FakeChannel
 from fakes.script import TIMEOUT_EVENT
@@ -119,7 +120,16 @@ def run_session(
 		inactivity_timeout=inactivity_timeout,
 	)
 	session = Session(
-		channel, transcript, clock, config, registry, signals, announcer, log_capture, user_prompter
+		channel,
+		transcript,
+		clock,
+		config,
+		registry,
+		signals,
+		announcer,
+		log_capture,
+		user_prompter,
+		FakeGestureResolver(),
 	)
 	if start:
 		session.run()
@@ -786,6 +796,7 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 		FakeAnnouncer(),
 		FakeLogCapture(),
 		FakeUserPrompter(),
+		FakeGestureResolver(),
 	)
 
 	thread = threading.Thread(target=session.run)
@@ -861,6 +872,7 @@ def test_request_teardown_cancels_an_open_prompt_window() -> None:
 		FakeAnnouncer(),
 		FakeLogCapture(),
 		FakeUserPrompter(),
+		FakeGestureResolver(),
 	)
 	prompt = UserPrompt("do the thing", clock)
 	session.session_context.set_outstanding_prompt(prompt)
@@ -907,6 +919,7 @@ def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
 		FakeAnnouncer(),
 		FakeLogCapture(),
 		FakeUserPrompter(),
+		FakeGestureResolver(),
 	)
 
 	thread = threading.Thread(target=session.run, daemon=True)

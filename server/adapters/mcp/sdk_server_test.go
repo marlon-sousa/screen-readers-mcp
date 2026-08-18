@@ -24,6 +24,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	mcpadapter "github.com/marlon-sousa/screen-readers-mcp/server/adapters/mcp"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/fakes"
@@ -75,7 +76,15 @@ func newHarness(t *testing.T, list ...tools.Tool) *harness {
 	if err != nil {
 		t.Fatalf("building the server: %v", err)
 	}
-	server.Bind(tools.NewDispatcher(registry, control, fakes.NewFakeClock(), log, nil), control)
+	server.Bind(
+		tools.NewDispatcher(registry, control, fakes.NewFakeClock(), log, nil),
+		control,
+		// The reader-guidance controller reads the same connection source, so a
+		// harness whose subject is tool publication gets the real one rather
+		// than a fifth double: with nothing connected it answers ErrNoSession
+		// and the resource renders the "connect first" document.
+		controllers.NewReaderGuidance(control),
+	)
 
 	ctx := context.Background()
 	clientTransport, serverTransport := sdk.NewInMemoryTransports()

@@ -67,6 +67,7 @@ _bootstrap()
 # the fakes are importable until globalPlugins and tests/ are on sys.path.
 from fakes.adapter_factory import FakeAdapterFactory  # noqa: E402
 from fakes.announcer import FakeAnnouncer  # noqa: E402
+from fakes.gesture_resolver import FakeGestureResolver  # noqa: E402
 from fakes.log_capture import FakeLogCapture  # noqa: E402
 from fakes.session_signals import FakeSessionSignals  # noqa: E402
 from fakes.user_prompter import FakeUserPrompter  # noqa: E402
@@ -138,6 +139,7 @@ def _session_factory(logs_dir: Path) -> SessionFactory:
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			FakeUserPrompter(),
+			FakeGestureResolver(),
 		)
 
 	return build

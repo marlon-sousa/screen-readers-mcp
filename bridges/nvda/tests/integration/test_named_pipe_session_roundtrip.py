@@ -23,6 +23,7 @@ from typing import Any
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
+from fakes.gesture_resolver import FakeGestureResolver
 from fakes.log_capture import FakeLogCapture
 from fakes.session_signals import FakeSessionSignals
 from fakes.user_prompter import FakeUserPrompter
@@ -88,6 +89,7 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			FakeUserPrompter(),
+			FakeGestureResolver(),
 		)
 
 	pipe_name = _unique_pipe_name()
@@ -161,6 +163,7 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			FakeUserPrompter(),
+			FakeGestureResolver(),
 		)
 
 	server = BridgeServer(NamedPipeListener(_unique_pipe_name()), session_factory)
@@ -186,6 +189,7 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			FakeUserPrompter(),
+			FakeGestureResolver(),
 		)
 
 	pipe_name = _unique_pipe_name()
@@ -240,6 +244,7 @@ def test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on(tmp_path: Pa
 			FakeAnnouncer(),
 			FakeLogCapture(),
 			prompter,
+			FakeGestureResolver(),
 		)
 
 	pipe_name = _unique_pipe_name()

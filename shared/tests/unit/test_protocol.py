@@ -286,6 +286,7 @@ def test_command_set_matches_plan_v1() -> None:
 		"getLogPosition",
 		"waitForLog",
 		"setLogLevel",
+		"getGuidance",
 		"bye",
 	}
 	assert {c.value for c in p.Command} == expected
@@ -344,6 +345,9 @@ def test_capabilities_cover_one_per_command_group() -> None:
 		"interact",
 		"typing",
 		"log",
+		# The one member that names a group of ONE, and the only one that gates a
+		# resource rather than a set of tools (spec 0029).
+		"guidance",
 	}
 
 

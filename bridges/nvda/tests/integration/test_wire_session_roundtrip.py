@@ -17,6 +17,7 @@ from typing import Any
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
+from fakes.gesture_resolver import FakeGestureResolver
 from fakes.log_capture import FakeLogCapture
 from fakes.loopback_transport import loopback_pair
 from fakes.session_signals import FakeSessionSignals
@@ -58,6 +59,7 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		announcer,
 		log_capture,
 		user_prompter,
+		FakeGestureResolver(),
 	)
 	agent = JsonLinesChannel(agent_end)
 
@@ -166,3 +168,66 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 	# Config was seeded then read/written; teardown should have restored.
 	assert factory.config_accessor.get(["speech", "synth"]) == "espeak"
 	assert factory.config_accessor.restore_calls >= 1
+
+
+def test_get_guidance_answers_for_the_persona_hello_declared(tmp_path: Path) -> None:
+	"""The persona crosses the wire at hello and decides what getGuidance returns.
+
+	Over a REAL session rather than a hand-built context, because the thing being
+	proved is the hop: hello writes the persona into the session, getGuidance
+	reads it back, and no parameter is involved. A handler test cannot show that
+	-- it sets ``ctx.persona`` itself.
+	"""
+	text, unknown_text = _guidance_over_a_session(tmp_path, "expert", "auditor")
+
+	assert "`expert` stance" in text
+	# The unknown persona is the case the SERVER's own tool surface can never
+	# reach, because connect_reader validates the value at its boundary
+	# (spec 0029 3.1). Here nothing validates it, which is the point: this is
+	# what an older bridge sees when a newer server adds a fourth persona, and
+	# it must be an ordinary answer rather than a failed handshake.
+	assert "No section for the persona you declared" in unknown_text
+
+
+def _guidance_over_a_session(tmp_path: Path, *personas: str) -> tuple[str, ...]:
+	"""Run one real session per persona and return each getGuidance text."""
+	texts: list[str] = []
+	for index, persona in enumerate(personas):
+		bridge_end, agent_end = loopback_pair()
+		session = build_session(
+			bridge_end,
+			FakeAdapterFactory(),
+			tmp_path / f"session{index}",
+			"2026.1.0",
+			FakeSessionSignals(),
+			FakeAnnouncer(),
+			FakeLogCapture(),
+			FakeUserPrompter(),
+			FakeGestureResolver(),
+		)
+		agent = JsonLinesChannel(agent_end)
+		thread = threading.Thread(target=session.run, daemon=True)
+		thread.start()
+		try:
+			agent.write(
+				_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION, persona=persona)
+			)
+			hello = _read_reply(agent)
+			# The handshake SUCCEEDS whatever the persona is -- including one this
+			# bridge has never heard of (protocol.md §4).
+			assert hello["result"]["mode"] == "silent"
+			assert p.Capability.GUIDANCE.value in hello["result"]["capabilities"]
+
+			agent.write(_request(2, "getGuidance"))
+			guidance = _read_reply(agent)["result"]
+			# Echoed as received, and answered for the session's own persona:
+			# there is no parameter to have got wrong.
+			assert guidance["persona"] == persona
+			assert guidance["recognised"] is (persona != "auditor")
+			texts.append(guidance["text"])
+
+			agent.write(_request(3, "bye"))
+			_read_reply(agent)
+		finally:
+			thread.join(timeout=5.0)
+	return tuple(texts)
