@@ -1072,8 +1072,14 @@ rather than before it.
     returns nothing acknowledging that the announcement was made, so an agent
     narrating to a human it cannot hear is assuming rather than confirming —
     which matters most in the silent sessions where narration is the human's
-    only channel. An `announced` field in the result would close it. Spec: none
-    yet.
+    only channel. An `announced` field in the result would close it.
+    **What such an ack must not overclaim**, measured 2026-08-18 and recorded in
+    protocol.md §7.1: emission runs **two to three utterances, about five
+    seconds, ahead of audio**. So an ack can honestly say the announcement was
+    *made*, never that it was *heard*, and an agent that narrates then acts at
+    once is acting ahead of its own narration. Whether the remedy is a field or a
+    way to wait for the listener to catch up is the thing to settle rather than
+    assume. Spec: none yet.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
