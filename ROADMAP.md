@@ -985,21 +985,43 @@ rather than before it.
     answer a question about audio. What 11.12 changed is that the caveat now
     matters more: with the settle no longer the universal second step, its
     remaining use case is precisely the one it is worst at.
-    **Shipped (a) and (c) together, and (c) turned out to be the cheap one.**
-    The entry filed it as needing a spec conversation; it does not. NVDA already
-    tracks its own say all — `sayAll.SayAllHandler.isRunning()`, which NVDA
-    consults in five places of its own, and which is true across exactly the gap
-    the heuristic misreads, because the handler holds a weakref to the reader
-    object that stays alive between chunks. So the bridge asks instead of
-    inferring, through a new `ContinuousRead` port named for the general property
-    rather than for NVDA's command: **nothing above the bridge learns that say
-    all exists.** No tool, no parameter, nothing on the wire names it — an agent
+    **Shipped (a) and (c) together**, through a new `ContinuousRead` port named
+    for the general property rather than for NVDA's command: **nothing above the
+    bridge learns that say all exists.**
+    (c) took two attempts, and the first is worth recording because it passed
+    every automated tier. `SayAllHandler.isRunning()` is the obvious call and is
+    the wrong one: it is `bool(self._getActiveSayAll())`, a **weakref to the
+    reader object**, assigned when a read starts and never reset — so it answers
+    "has the reader been garbage-collected yet?", and `_Reader` inherits
+    `garbageHandler.TrackedObject`, which is expressly about objects reclaimed by
+    the *cyclic* collector rather than by refcounting. Live, that settle went on
+    answering "not finished" after the document ended and after a keypress that
+    stopped the read: **a settle that never settles, which is worse than the
+    imprecision it replaced.** The unit tests all passed, because the fake
+    answered honestly and the flaw was in what the real signal MEANS — so the
+    adapter now has tests of its own, against a stubbed `speech.sayAll`, holding
+    the state that broke it: a reader object present but stopped.
+    What it reads instead is the reader's own guard field — `_TextReader.reader`,
+    `_ObjectsReader.walker`, each nulled by its own `stop()` and checked by it on
+    entry — set on both routes out, normal completion and interruption. Private
+    attributes, but they fail closed: a rename returns None and the settle falls
+    back to the pre-11.21 heuristic. A rename cannot produce the hang.
+    The buffer also caps how long a claimed read may hold the settle open with
+    nothing arriving (`CONTINUOUS_READ_STALE_SECONDS`, 6 s), because we have now
+    shipped one wrong version of a port that speaks for a reader we do not
+    control: a wrong answer that expires is an imprecision, one that does not is
+    a hang. No tool, no parameter, nothing on the wire names it — an agent
     still starts one by pressing the reader's own key, and only the ANSWER to a
     question the wire already asked gets better. A bridge whose reader has no
     such notion returns False and keeps today's behaviour exactly.
-    Two traps, both silent, both now covered: `SayAllHandler` is a module
+    Two further traps, both silent, both now covered: `SayAllHandler` is a module
     attribute REBOUND by `initialize()`, so importing the name by value captures
     `None` for the life of the process; and it is `None` before initialize runs.
+    **Measured live, and it makes the original bug bigger than this entry first
+    recorded**: chunks arrive **1.8–2.0 s apart, for every one of thirty lines**
+    under ibmeci. So the 1 s rule did not misfire once at the start of a say all
+    — it misfired on every gap in it, and a whole document could be reported
+    finished at line 1.
     (a) shipped alongside, because (c) fixes continuous reads and nothing else:
     the description now says the tool measures speech ARRIVING rather than audio
     playing, and that any other bursty producer will still read as finished. (b)
