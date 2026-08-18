@@ -20,6 +20,7 @@ from .. import protocol
 from ..domain.ports.adapter_factory import AdapterFactory, AdapterSet
 from .nvda_braille_source import NvdaBrailleSource
 from .nvda_config_accessor import NvdaConfigAccessor
+from .nvda_continuous_read import NvdaContinuousRead
 from .nvda_focus_inspector import NvdaFocusInspector
 from .nvda_gesture_sender import NvdaGestureSender
 from .nvda_live_speech_source import NvdaLiveSpeechSource
@@ -42,4 +43,5 @@ class NvdaAdapterFactory(AdapterFactory):
 			focus_inspector=NvdaFocusInspector(),
 			state_inspector=NvdaStateInspector(),
 			config_accessor=NvdaConfigAccessor(),
+			continuous_read=NvdaContinuousRead(),
 		)

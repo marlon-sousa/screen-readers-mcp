@@ -31,8 +31,14 @@ func (t *WaitForSpeechToFinish) Description() string {
 		"observes nothing. It asks \"has speech STOPPED?\", which cannot be answered " +
 		"the moment you ask it -- silence before speech starts and silence after it " +
 		"ends are the same thing to look at. Use it where that really is the " +
-		"question: a long deliberate announcement, or a say-all reading a whole " +
-		"document, where you want to know whether it is still going. To learn what a " +
+		"question: a long deliberate announcement, or a continuous read of a whole " +
+		"document, where you want to know whether it is still going. WHAT IT " +
+		"MEASURES: speech ARRIVING, not audio playing, and finished=true means " +
+		"nothing more has arrived -- the reader may still be speaking aloud what it " +
+		"already produced. Where the reader can tell the server a continuous read is " +
+		"part-way through, that counts as still going even while no speech arrives, " +
+		"because a read of that kind pauses between chunks; where it cannot, a long " +
+		"enough pause by any other producer will read as finished. To learn what a " +
 		"key said, read the result of the call that pressed it; to wait for something " +
 		"specific, name it with wait_for_speech. See screenreader://guidance."
 }

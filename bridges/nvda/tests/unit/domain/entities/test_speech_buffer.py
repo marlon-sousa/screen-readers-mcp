@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import pytest
 from fakes.clock import FakeClock
+from fakes.continuous_read import FakeContinuousRead
+from nvdaMcpBridge.domain.entities.indexed_buffer import POLL_INTERVAL
 from nvdaMcpBridge.domain.entities.speech_buffer import SPEECH_FINISHED_SECONDS, SpeechBuffer
 
 
@@ -166,6 +168,59 @@ def test_silent_mode_finish_waits_for_the_synth_done_signal(
 	assert silent_speech.wait_to_finish(timeout=0.0) is False
 	silent_speech.notify_finished()
 	assert silent_speech.wait_to_finish(timeout=0.0) is True
+
+
+# -- a continuous read in progress (entry 11.21) -------------------------------
+
+
+def test_a_running_continuous_read_is_never_finished(clock: FakeClock) -> None:
+	# The state the heuristic alone gets WRONG, and the reason this port exists.
+	# NVDA hands the synth one chunk of a say all and asks for the next only when
+	# the synth reports reaching it -- so between chunks nothing arrives, for as
+	# long as a chunk takes to speak. To the elapsed-time rule that is
+	# indistinguishable from a read that ended, and it used to answer "finished"
+	# to a user who could plainly hear the reading continue.
+	read = FakeContinuousRead(running=True)
+	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
+	speech.append(["the first chunk of the document"])
+	clock.advance(SPEECH_FINISHED_SECONDS + 60.0)
+
+	assert speech.wait_to_finish(timeout=0.0) is False, "a say all between chunks was reported finished"
+
+
+def test_the_settle_finishes_once_the_continuous_read_ends(clock: FakeClock) -> None:
+	read = FakeContinuousRead(running=True)
+	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
+	speech.append(["the last chunk"])
+	clock.advance(SPEECH_FINISHED_SECONDS + 0.01)
+	assert speech.wait_to_finish(timeout=0.0) is False
+
+	read.running = False
+
+	assert speech.wait_to_finish(timeout=0.0) is True
+
+
+def test_the_read_is_asked_again_on_every_poll(clock: FakeClock) -> None:
+	# It has to be asked repeatedly or the wait could never end: a settle that
+	# cached the first answer would block for its whole timeout on any say all,
+	# which is a worse failure than the one being fixed.
+	read = FakeContinuousRead(running=True)
+	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
+
+	speech.wait_to_finish(timeout=POLL_INTERVAL * 3)
+
+	assert read.asked > 1, "the settle asked once and cached it"
+
+
+def test_without_the_port_the_buffer_behaves_exactly_as_before(
+	clock: FakeClock, speech: SpeechBuffer
+) -> None:
+	# A bridge for a reader with no such notion passes nothing, and nothing about
+	# the old answer changes -- the correction is additive.
+	speech.append(["talking"])
+	clock.advance(SPEECH_FINISHED_SECONDS + 0.01)
+
+	assert speech.wait_to_finish(timeout=0.0) is True
 
 
 # -- observer -----------------------------------------------------------------

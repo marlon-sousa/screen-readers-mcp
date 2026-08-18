@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from ... import protocol
 from .braille_source import BrailleSource
 from .config_accessor import ConfigAccessor
+from .continuous_read import ContinuousRead
 from .focus_inspector import FocusInspector
 from .gesture_sender import GestureSender
 from .speech_source import SpeechSource
@@ -42,6 +43,9 @@ class AdapterSet:
 	focus_inspector: FocusInspector
 	state_inspector: StateInspector
 	config_accessor: ConfigAccessor
+	#: Whether a self-advancing read is running; see the port for why the
+	#: settle cannot answer honestly without it (entry 11.21).
+	continuous_read: ContinuousRead
 
 
 class AdapterFactory(ABC):

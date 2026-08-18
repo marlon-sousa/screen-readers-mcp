@@ -189,9 +189,10 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-18**:
-11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.21, 11.22, 11.23, 11.24 —
-**eleven entries** (11.21 was opened by 11.12's own live run; 11.22-11.24 by the
-second external run, [0030](specs/0030-the-second-external-run.md)). 11.3 was
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.22, 11.23, 11.24 —
+**ten entries** (11.22-11.24 opened by the second external run,
+[0030](specs/0030-the-second-external-run.md)). **11.21 is Done** in the same PR
+that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
 what 11.9 existed to have built, so the pair closes together. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
@@ -968,8 +969,9 @@ rather than before it.
     `gate-binding`, which cannot cry wolf because both sides are machine-readable.
     That is a next-phase conversation. Do not build the gate above without
     revisiting this first. Spec: none yet.
-11.21. **E, the settle answers about emission, not about audio** (lane 1, bridge;
-    small). Found live on 2026-08-18 running 11.12's checklist. Spec 0025 narrowed
+11.21. **Done (PR #64, 2026-08-18)** — E, the settle answers about emission, not
+    about audio (lane 1, bridge; small). Found live on 2026-08-18 running 11.12's
+    checklist. Spec 0025 narrowed
     `waitForSpeechToFinish` to "a long deliberate announcement or a say-all, where
     *is it still going?* is genuinely the question" — and the live run found that
     it cannot answer that either. In LIVE mode NVDA queues a say-all in bursts:
@@ -983,13 +985,26 @@ rather than before it.
     answer a question about audio. What 11.12 changed is that the caveat now
     matters more: with the settle no longer the universal second step, its
     remaining use case is precisely the one it is worst at.
-    Options, none of them free: (a) say so in the description and leave it — the
-    honest minimum, since a tool that overclaims is worse than one that admits a
-    limit; (b) capture at the synth instead, which spec 0008 deliberately gave up
-    when it removed the spy synth; (c) ask NVDA whether a say-all is in progress
-    (`speech.sayAll` state) and answer from that, a reader-specific fact the
-    bridge is allowed to know and the server is not. **(a) is the floor and
-    should not wait for the spec conversation about (b)/(c).** Spec: none yet.
+    **Shipped (a) and (c) together, and (c) turned out to be the cheap one.**
+    The entry filed it as needing a spec conversation; it does not. NVDA already
+    tracks its own say all — `sayAll.SayAllHandler.isRunning()`, which NVDA
+    consults in five places of its own, and which is true across exactly the gap
+    the heuristic misreads, because the handler holds a weakref to the reader
+    object that stays alive between chunks. So the bridge asks instead of
+    inferring, through a new `ContinuousRead` port named for the general property
+    rather than for NVDA's command: **nothing above the bridge learns that say
+    all exists.** No tool, no parameter, nothing on the wire names it — an agent
+    still starts one by pressing the reader's own key, and only the ANSWER to a
+    question the wire already asked gets better. A bridge whose reader has no
+    such notion returns False and keeps today's behaviour exactly.
+    Two traps, both silent, both now covered: `SayAllHandler` is a module
+    attribute REBOUND by `initialize()`, so importing the name by value captures
+    `None` for the life of the process; and it is `None` before initialize runs.
+    (a) shipped alongside, because (c) fixes continuous reads and nothing else:
+    the description now says the tool measures speech ARRIVING rather than audio
+    playing, and that any other bursty producer will still read as finished. (b)
+    stays rejected — spec 0008 gave up the spy synth deliberately, and this
+    closes the gap without it. Spec: none needed.
 11.22. **E, an agent cannot see the tools it is allowed to call** (server lane,
     docs + resource). From the **second external run**, 2026-08-18 — see
     [0030](specs/0030-the-second-external-run.md), ask 1b. The gated tools exist

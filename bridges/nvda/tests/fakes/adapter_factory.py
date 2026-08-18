@@ -22,6 +22,7 @@ from nvdaMcpBridge.domain.ports.adapter_factory import AdapterFactory, AdapterSe
 
 from .braille_source import FakeBrailleSource
 from .config_accessor import FakeConfigAccessor
+from .continuous_read import FakeContinuousRead
 from .focus_inspector import FakeFocusInspector
 from .gesture_sender import FakeGestureSender
 from .speech_source import FakeSpeechSource
@@ -49,6 +50,7 @@ class FakeAdapterFactory(AdapterFactory):
 		self.focus_inspector = FakeFocusInspector()
 		self.state_inspector = FakeStateInspector()
 		self.config_accessor = FakeConfigAccessor()
+		self.continuous_read = FakeContinuousRead()
 		self.built_mode: protocol.CaptureMode | None = None
 
 	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
@@ -61,4 +63,5 @@ class FakeAdapterFactory(AdapterFactory):
 			focus_inspector=self.focus_inspector,
 			state_inspector=self.state_inspector,
 			config_accessor=self.config_accessor,
+			continuous_read=self.continuous_read,
 		)

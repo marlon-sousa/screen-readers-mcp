@@ -16,6 +16,7 @@ from .indexed_buffer import IndexedBuffer
 
 if TYPE_CHECKING:
 	from ..ports.clock import Clock
+	from ..ports.continuous_read import ContinuousRead
 
 #: Neither mode has an exact "speech finished" signal (spec 0008 removed the spy
 #: synth; silent mode suppresses at the speak() filter, so no synth ever runs),
@@ -59,11 +60,20 @@ class SpeechBuffer(IndexedBuffer):
 	it false and fall back to the elapsed-time heuristic.
 	"""
 
-	def __init__(self, clock: Clock, *, exact_finish: bool = False) -> None:
+	def __init__(
+		self,
+		clock: Clock,
+		*,
+		exact_finish: bool = False,
+		continuous_read: ContinuousRead | None = None,
+	) -> None:
 		super().__init__(clock)
 		self.exact_finish: bool = exact_finish
 		self._speaking: bool = False
 		self._observer: Callable[[str], None] | None = None
+		#: Optional, and None means "assume not" -- so a reader whose bridge has
+		#: no way to see a continuous read keeps exactly today's behaviour.
+		self._continuous_read: ContinuousRead | None = continuous_read
 
 	def _sentinel(self) -> Any:
 		return [""]
@@ -168,6 +178,13 @@ class SpeechBuffer(IndexedBuffer):
 		return self._wait(self._has_finished, timeout)
 
 	def _has_finished(self) -> bool:
+		# Asked FIRST, and outside the lock. A continuous read that is part-way
+		# through is not finished however long the gap since the last chunk has
+		# been -- the gap IS the read, waiting on audio for the chunk it just
+		# handed over. Reading it before taking the lock keeps a port call off
+		# the buffer's own mutex, which append() takes from NVDA's thread.
+		if self._continuous_read is not None and self._continuous_read.in_progress():
+			return False
 		with self._lock:
 			if self.exact_finish:
 				return not self._speaking
