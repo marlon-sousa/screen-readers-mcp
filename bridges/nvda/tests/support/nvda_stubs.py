@@ -67,6 +67,9 @@ class StubLog:
 	def info(self, message: str) -> None:
 		self.messages.append(message)
 
+	def exception(self, message: str) -> None:
+		self.messages.append(message)
+
 
 class StubExtensionPoint:
 	"""Stands in for an NVDA Action/Filter: holds handlers, fires on demand."""
@@ -82,12 +85,83 @@ class StubExtensionPoint:
 			self.handlers.remove(handler)
 
 
+class StubEventQueue:
+	"""Stands in for queueHandler.eventQueue plus its pump.
+
+	The silent speech source queues the callbacks it would otherwise have eaten
+	rather than calling them inline, because a say-all callback speaks again and
+	inline would recurse. A stub that RAN them on submit would therefore test the
+	one shape the adapter must not have, so this one holds them until a test
+	pumps -- which is what makes the deferral itself observable.
+	"""
+
+	def __init__(self) -> None:
+		self.queued: list[tuple[Any, tuple[Any, ...]]] = []
+
+	def pump(self) -> None:
+		"""Run everything queued so far, in order, as NVDA's event loop would."""
+		while self.queued:
+			func, args = self.queued.pop(0)
+			func(*args)
+
+
+class StubSpeechCommand:
+	"""speech.commands.SpeechCommand, reduced to being a distinct base type."""
+
+
+class StubBaseCallbackCommand(StubSpeechCommand):
+	"""The class the adapter tests isinstance against; run() is the contract."""
+
+	def run(self) -> None:
+		raise NotImplementedError
+
+
+class StubCallbackCommand(StubBaseCallbackCommand):
+	"""NVDA's generic callback -- the one say all clocks its next chunk with."""
+
+	def __init__(self, callback: Any, name: str | None = None) -> None:
+		self._callback = callback
+		self._name = name or repr(callback)
+
+	def run(self) -> None:
+		self._callback()
+
+
+class StubBeepCommand(StubBaseCallbackCommand):
+	"""A callback whose whole job is to make a sound, so silent mode drops it."""
+
+	def __init__(self, hz: int = 440, length: int = 10) -> None:
+		self.hz = hz
+		self.length = length
+		self.beeped = False
+
+	def run(self) -> None:
+		self.beeped = True
+
+
+class StubWaveFileCommand(StubBaseCallbackCommand):
+	"""The other audible callback; dropped for the same reason as the beep."""
+
+	def __init__(self, fileName: str = "sound.wav") -> None:
+		self.fileName = fileName
+		self.played = False
+
+	def run(self) -> None:
+		self.played = True
+
+
 #: The one instance of each, shared by every test module that installs them --
 #: which is what makes the install idempotent and order-independent.
 log = StubLog()
+eventQueue = StubEventQueue()
 filter_speechSequence = StubExtensionPoint()
 pre_speechQueued = StubExtensionPoint()
 pre_writeCells = StubExtensionPoint()
+
+
+def _queueFunction(queue: StubEventQueue, func: Any, *args: Any, **kwargs: Any) -> None:
+	"""queueHandler.queueFunction: put it on the queue, do NOT run it here."""
+	queue.queued.append((func, args))
 
 
 def install() -> None:
@@ -107,6 +181,24 @@ def install() -> None:
 		sys.modules["speech"] = speech
 		sys.modules["speech.extensions"] = extensions
 
+	if "speech.commands" not in sys.modules:
+		commands = types.ModuleType("speech.commands")
+		commands.SpeechCommand = StubSpeechCommand  # type: ignore[attr-defined]
+		commands.BaseCallbackCommand = StubBaseCallbackCommand  # type: ignore[attr-defined]
+		commands.CallbackCommand = StubCallbackCommand  # type: ignore[attr-defined]
+		commands.BeepCommand = StubBeepCommand  # type: ignore[attr-defined]
+		commands.WaveFileCommand = StubWaveFileCommand  # type: ignore[attr-defined]
+		speech = sys.modules.get("speech") or types.ModuleType("speech")
+		speech.commands = commands  # type: ignore[attr-defined]
+		sys.modules["speech"] = speech
+		sys.modules["speech.commands"] = commands
+
+	if "queueHandler" not in sys.modules:
+		queue_handler = types.ModuleType("queueHandler")
+		queue_handler.eventQueue = eventQueue  # type: ignore[attr-defined]
+		queue_handler.queueFunction = _queueFunction  # type: ignore[attr-defined]
+		sys.modules["queueHandler"] = queue_handler
+
 	if "braille" not in sys.modules:
 		braille = types.ModuleType("braille")
 		braille.pre_writeCells = pre_writeCells  # type: ignore[attr-defined]
@@ -116,5 +208,6 @@ def install() -> None:
 def reset() -> None:
 	"""Forget every registration and message; the stubs outlive any one test."""
 	log.messages.clear()
+	eventQueue.queued.clear()
 	for point in (filter_speechSequence, pre_speechQueued, pre_writeCells):
 		point.handlers.clear()

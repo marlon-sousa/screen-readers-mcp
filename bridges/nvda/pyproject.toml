@@ -121,6 +121,9 @@ ignore = [
 # Same reason: NVDA's speech/braille extension points are stubbed into
 # sys.modules before the three capture source adapters can be imported.
 "tests/unit/adapters/test_capture_sources_carry_the_log_position.py" = ["E402"]
+# And again: the silent source imports speech.commands and queueHandler at module
+# level, so both have to be in sys.modules before the import line runs.
+"tests/unit/adapters/test_silent_mode_keeps_speech_callbacks_alive.py" = ["E402"]
 
 [tool.pyright]
 pythonVersion = "3.13"       # NVDA 2026.1 embeds CPython 3.13

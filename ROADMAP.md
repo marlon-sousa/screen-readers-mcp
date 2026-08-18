@@ -722,17 +722,32 @@ rather than before it.
     rediscovered in it. The 0023 tension resolves on the same test as 11.11:
     browse mode **is** a flat text rendering the user arrows through, so a
     snapshot changes the channel, not the substance. Say-all capture was the more
-    faithful design and is deferred, not on principle but because **nobody has
+    faithful design and was deferred, not on principle but because **nobody had
     tested whether say-all advances when no synth runs** — a cheap experiment
-    that should happen before this is agreed. **Run 2026-08-18, during 11.12's
-    live checklist: it does NOT.** In a silent session `NVDA+downArrow` emitted
-    two chunks (the heading and the nav list) and then stopped; nothing further
-    arrived, and `waitForSpeechToFinish` returned `finished: true` against a
-    say-all that had gone no further. NVDA drives say-all from the synth's own
-    callbacks, so with no synth running there is nothing to advance it. That
-    settles the question this entry was waiting on: **say-all capture is not a
-    route to reading a document in a silent session**, and 0026's snapshot is the
-    only candidate left rather than the pragmatic one of two.
+    that should happen before this is agreed. **Run 2026-08-18, and then run
+    again.** The first run, during 11.12's live checklist, said it does not: in a
+    silent session `NVDA+downArrow` emitted two chunks and stopped. The
+    observation was real; the cause named for it was wrong, and the conclusion
+    drawn — that say-all capture is dead — is **retracted**. The stall was ours.
+    NVDA clocks say-all on a `CallbackCommand` it inserts at position 0 of every
+    chunk (`speech/sayAll.py`), whose callback moves the caret and asks for the
+    next chunk; silent mode returned an empty sequence from
+    `filter_speechSequence`, deleting that callback along with the words, and
+    `speech.speak()` then returns early on an empty sequence — so the speech
+    manager, which is what turns callbacks into indexes, never saw it and
+    `lineReached` could not fire. The two chunks were say-all's own
+    `MAX_BUFFERED_LINES` fallback, the one path that advances without the
+    callback. Fixed in PR #64 by running the non-audible callbacks ourselves,
+    queued onto NVDA's event loop rather than passing them to the synth: an
+    audit of every driver on the maintainer's machine found that only sapi5
+    reports an index for a text-free utterance, while espeak, oneCore, RHVoice
+    and ibmeci all clock indexes off audio, and NVDA's own `silence` driver
+    notifies nobody at all — so pass-through would have made correctness depend
+    on the tester's voice. **Re-run 2026-08-18 after the fix: say-all reads the
+    whole document and carries the caret with it** — a heading, 30 paragraphs
+    and a closing line captured complete in 328 ms, under `ibmeci`. So say-all
+    capture *is* a route to reading a document in a silent session, and this
+    entry still has two candidate designs to weigh rather than one.
     Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
     (drafted 2026-08-03, not agreed).
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
