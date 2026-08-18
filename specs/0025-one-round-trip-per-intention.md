@@ -240,6 +240,25 @@ Per AGENTS.md, "a spec MUST include the class/file layout".
 No new port, no new entity, no new adapter: every collaborator already exists
 and this is a change of *shape*, which is the reason it is affordable.
 
+### Layout amendments made while implementing (2026-08-18)
+
+Per AGENTS.md, an amendment rides in the PR with a one-line why. Four, all of
+them the same shape — the table named the two controllers, and what actually
+turned out to be shared was *between* them:
+
+| Added | Why |
+|---|---|
+| `bridges/.../commands/observation.py` — supporting construct, two pure mappings | Three commands assemble the same two answers (`getSpeech` and both mutating handlers report utterances; `getState` and both report modes). Written out five times, the wallclock formatting or the `BrowseMode` widening gets corrected in four places and missed in the fifth — the exact failure spec 0028 recorded when three `append` implementations each grew one field by hand. `getSpeech` and `getState` now call it too, so there is one mapping rather than a new second one. |
+| `server/domain/controllers/tools/observation.go` — the shared result half, plus `DefaultGraceMs` / `DefaultTypeGraceMs` | `press_gesture` and `type_text` publish an identical window, resume coordinate and state snapshot. The two agreeing is the point rather than a coincidence, so the shape is declared once; written twice it would drift the first time one of them gained a field. |
+| `ports.Observation` / `GesturePress` / `GestureOutcome` / `TypeOutcome` in `gesture_sender.go` | The table said "params and result pass-through" without naming the domain types that carry them. A port that returned the wire struct would put a generated type in the domain, which spec 0013 forbids. |
+| `callTimeoutFor` in `json_lines_client.go` | The grace is spent INSIDE the bridge, so the reply cannot arrive before it elapses. A fixed 15 s call timeout would turn a 20-key batch at 100 ms into a "the bridge did not answer" transport failure — a self-inflicted bug the parameter would have introduced on its first large batch. |
+
+One deliberate departure from the table's wording: **`typed` is the reader's
+count, passed through, not recomputed in the server** (the Go tool used to count
+runes itself). The side that injected the characters is the one authority on how
+many there were, and two independent counts of one string is exactly how they
+come to disagree.
+
 ---
 
 ## What is deliberately not built

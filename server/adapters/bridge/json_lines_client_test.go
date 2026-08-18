@@ -156,7 +156,7 @@ func TestABridgeErrorFailsTheCommandButNotTheConnection(t *testing.T) {
 		return wire.NextIndexResult{Index: 1}, nil
 	})
 
-	err := client.PressGestures([]string{"kb:NVDA+nonsense"})
+	_, err := client.PressGestures([]string{"kb:NVDA+nonsense"}, 0, "")
 
 	var bridgeErr *bridge.BridgeError
 	if !errors.As(err, &bridgeErr) {

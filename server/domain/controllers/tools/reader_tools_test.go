@@ -59,7 +59,11 @@ func TestPressGesturePassesOpaqueIdsThroughInOrder(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
 
 	var pressed struct {
-		Pressed []string `json:"pressed"`
+		Pressed []struct {
+			Gesture    string `json:"gesture"`
+			SpeechFrom int    `json:"speechFrom"`
+			SpeechTo   int    `json:"speechTo"`
+		} `json:"pressed"`
 	}
 	result, err := call.Run(`{"gestures":["kb:NVDA+control+f7","kb:downArrow"]}`)
 	if err != nil {
@@ -75,7 +79,126 @@ func TestPressGesturePassesOpaqueIdsThroughInOrder(t *testing.T) {
 		t.Errorf("pressed %v, want the ids unchanged and in order", sent[0])
 	}
 	if len(pressed.Pressed) != 2 {
-		t.Errorf("result = %v, want the pressed ids echoed", pressed.Pressed)
+		t.Fatalf("result = %v, want both pressed ids echoed", pressed.Pressed)
+	}
+	if pressed.Pressed[0].Gesture != "kb:NVDA+control+f7" || pressed.Pressed[1].Gesture != "kb:downArrow" {
+		t.Errorf("echoed %v, want the ids unchanged and in order", pressed.Pressed)
+	}
+}
+
+// Spec 0025: the agent asks for a window, the reader waits it out, and the
+// server carries the number through without an opinion about it. What it DOES
+// own is the default, so an agent that says nothing still gets the collapse.
+func TestPressGestureCarriesTheGraceAndTheAnnouncementToTheReader(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
+	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
+
+	if _, err := call.Run(`{"gestures":["h"],"grace_ms":250,"announce":"pressing h"}`); err != nil {
+		t.Fatalf("press_gesture: %v", err)
+	}
+	if _, err := call.Run(`{"gestures":["h"]}`); err != nil {
+		t.Fatalf("press_gesture: %v", err)
+	}
+
+	if graces := built.Gestures.Graces(); len(graces) != 2 || graces[0] != 250 || graces[1] != tools.DefaultGraceMs {
+		t.Errorf("graces = %v, want [250 %d] -- asked for, then the default", graces, tools.DefaultGraceMs)
+	}
+	if said := built.Gestures.Announcements(); len(said) != 2 || said[0] != "pressing h" || said[1] != "" {
+		t.Errorf("announcements = %q, want the hint then nothing", said)
+	}
+}
+
+// An explicit 0 is an opt-out and must reach the reader as 0 -- if it were read
+// as "absent" the agent could never turn the window off.
+func TestPressGestureTreatsAnExplicitZeroGraceAsAnOptOut(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
+	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
+
+	if _, err := call.Run(`{"gestures":["h"],"grace_ms":0}`); err != nil {
+		t.Fatalf("press_gesture: %v", err)
+	}
+
+	if graces := built.Gestures.Graces(); len(graces) != 1 || graces[0] != 0 {
+		t.Errorf("graces = %v, want [0]", graces)
+	}
+}
+
+// The whole point of the entry, at the server's edge: one call, and what the
+// key said is already in the result -- with the silent key visible as an empty
+// span rather than missing from the list.
+func TestPressGestureReportsWhatWasSaidAndWhichKeySaidIt(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
+	built.Gestures.AnswerWith(ports.GestureOutcome{
+		Pressed: []ports.GesturePress{
+			{Gesture: "h", SpeechFrom: 7, SpeechTo: 8},
+			{Gesture: "h", SpeechFrom: 8, SpeechTo: 8},
+		},
+		Observation: ports.Observation{
+			Speech:    []ports.SpeechEntry{{Text: "Notícias heading level 1", Index: 7, LogPosition: 3329}},
+			FromIndex: 7,
+			ToIndex:   8,
+			State:     &ports.ReaderState{BrowseMode: "browse", SpeechMode: "talk"},
+		},
+	})
+	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
+
+	result, err := call.Run(`{"gestures":["h","h"]}`)
+	if err != nil {
+		t.Fatalf("press_gesture: %v", err)
+	}
+	var got struct {
+		Pressed []struct {
+			SpeechFrom int `json:"speechFrom"`
+			SpeechTo   int `json:"speechTo"`
+		} `json:"pressed"`
+		Speech []struct {
+			Text  string `json:"text"`
+			Index int    `json:"index"`
+		} `json:"speech"`
+		SpeechFrom int `json:"speechFrom"`
+		SpeechTo   int `json:"speechTo"`
+		State      *struct {
+			BrowseMode string `json:"browseMode"`
+		} `json:"state"`
+	}
+	decode(t, result, &got)
+
+	if len(got.Speech) != 1 || got.Speech[0].Text != "Notícias heading level 1" {
+		t.Errorf("speech = %v, want the utterance the key caused", got.Speech)
+	}
+	if got.SpeechFrom != 7 || got.SpeechTo != 8 {
+		t.Errorf("window = [%d,%d), want [7,8)", got.SpeechFrom, got.SpeechTo)
+	}
+	if len(got.Pressed) != 2 || got.Pressed[1].SpeechFrom != got.Pressed[1].SpeechTo {
+		t.Errorf("pressed = %v, want the second key to carry an EMPTY span", got.Pressed)
+	}
+	if got.State == nil || got.State.BrowseMode != "browse" {
+		t.Errorf("state = %v, want the modes the agent cannot hear", got.State)
+	}
+}
+
+// The contract a result may never exceed (protocol.md §7.3): it reports what had
+// arrived by an instant and where to resume, and says nothing about whether more
+// is coming. A completeness flag is the one field that must never appear.
+func TestAQuietPressReportsAnEmptyListAndNoClaimOfCompleteness(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
+	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
+
+	result, err := call.Run(`{"gestures":["h"]}`)
+	if err != nil {
+		t.Fatalf("press_gesture: %v", err)
+	}
+	var got map[string]any
+	decode(t, result, &got)
+
+	speech, ok := got["speech"].([]any)
+	if !ok || len(speech) != 0 {
+		t.Errorf("speech = %v, want an empty LIST -- never null, never absent", got["speech"])
+	}
+	for _, forbidden := range []string{"complete", "finished", "done"} {
+		if _, present := got[forbidden]; present {
+			t.Errorf("result carries %q; an empty window is a fact about an instant, not a claim", forbidden)
+		}
 	}
 }
 

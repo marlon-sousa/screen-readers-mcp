@@ -54,8 +54,8 @@ keys they use for it, so do not assume a facility exists just because another
 reader has one. If you cannot establish where you are by the loop below, say so
 with `ask_user` rather than guessing at a command that may not exist.
 
-Then settle and listen for the window title, exactly as in the loop below — that
-is your confirmation that you arrived, and the reader volunteers it without being
+The window title comes back in the same call that pressed the key, exactly as in
+the loop below — that is your confirmation that you arrived, and the reader volunteers it without being
 asked. **Confirm by listening rather than by counting presses**, and do not
 assume how a switcher is ordered. An agent that assumes it is in the right window
 types into whatever was already focused, and that surfaces later as an unrelated
@@ -66,29 +66,49 @@ If the application is not running at all, start it with whatever tooling you hav
 outside this server. That is setup rather than testing, and it is the one part of
 driving a screen reader this server deliberately leaves alone.
 
-## The loop: act, settle, listen, orient, escalate
+## The loop: act and read, orient, escalate
 
-**1. Act.** `press_gesture` or `type_text`.
+**1. Act, and read what it said — in one call.** `press_gesture` or `type_text`
+waits a short grace after each key and returns the speech that arrived, so
+acting and listening are the *same* call. Speech is the one thing a reader
+produces for everything it does, which is why it is the channel you key on.
 
-**2. Settle.** `wait_for_speech_to_finish`. This is the one wait that applies
-after **any** action, because speech is the one thing a reader produces for
-everything it does. Never sleep instead: a sleep is either too short and flaky
-or too long and slow, and it is never evidence.
+A window that opens announces its title -- that is your confirmation that you
+are where you meant to be, and the reader volunteers it without being asked. If
+you hear the wrong title, you are somewhere else: the gesture may be remapped on
+this machine, or the application may have opened something you did not expect.
 
-**3. Listen.** `get_speech` (or `get_last_speech`). A window that opens
-announces its title -- that is your confirmation that you are where you meant to
-be, and the reader volunteers it without being asked. If you hear the wrong
-title, you are somewhere else: the gesture may be remapped on this machine, or
-the application may have opened something you did not expect.
+In a batch, each key reports its own `speechFrom`/`speechTo`, so you can see
+*which* key spoke. An empty span for a key is a real answer: that key said
+nothing.
 
-**4. Orient**, if what you heard was not enough. Press the reader's own
+**2. If the result was quiet, read again — do not re-press.** An empty `speech`
+list means **nothing had arrived by that instant**. It does not mean nothing
+happened. Slow effects — a browser window opening, a page loading, a dialog
+appearing — take longer than any grace worth paying, and they are exactly the
+cases where re-pressing does damage: the key lands twice. Read on from
+`speechTo` with `get_speech`, or name what you expect with `wait_for_speech`.
+
+**Never sleep instead.** The distinction is not the waiting, it is what you do
+with it: *a blind wait you treat as evidence is forbidden; a bounded wait
+followed by an honest observation is the mechanism.* The grace window is the
+second kind — it waits, then reports exactly what it saw and claims nothing
+beyond it. A sleep followed by an assumption is the first.
+
+`wait_for_speech_to_finish` is **not** the step after every action. It asks "has
+speech *stopped*?", which cannot be answered at the moment it is asked: silence
+before speech starts and silence after it ends are the same observable. Keep it
+for a long deliberate announcement or a say-all, where "is it still going?" is
+genuinely the question.
+
+**3. Orient**, if what you heard was not enough. Press the reader's own
 "report the focused object" command and listen to the answer. Its report-title
 and read-whole-window commands are there for the same reason. This is ordinary
 screen reader operating knowledge -- asking the reader where you are is a
 *command you send*, and its answer arrives on the same channel as everything
-else. Then settle and listen again.
+else. Its answer arrives in that same call.
 
-**5. Escalate.** Try what a user would try next -- Tab, Escape -- and notice
+**4. Escalate.** Try what a user would try next -- Tab, Escape -- and notice
 when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
@@ -145,7 +165,7 @@ configuration and its log are legitimate first resorts.
 
 ## In short
 
-Act, wait for speech to settle, read what was said. If that does not tell you
+Act and read what was said, in one call. If that does not tell you
 where you are, ask the reader with its own command and listen again. If that
 still does not, ask the human. Introspect on purpose, not by reflex, and never
 sleep.

@@ -17,9 +17,12 @@ import (
 
 // FakeTextTyper records the text it was asked to type.
 type FakeTextTyper struct {
-	mu    sync.Mutex
-	typed []string
-	err   error
+	mu       sync.Mutex
+	typed    []string
+	graces   []int
+	announce []string
+	err      error
+	outcome  *ports.TypeOutcome
 }
 
 var _ ports.TextTyper = (*FakeTextTyper)(nil)
@@ -34,6 +37,28 @@ func (f *FakeTextTyper) FailWith(err error) {
 	f.err = err
 }
 
+// AnswerWith scripts the outcome every call returns, standing in for a reader
+// that spoke while the text went in.
+func (f *FakeTextTyper) AnswerWith(outcome ports.TypeOutcome) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.outcome = &outcome
+}
+
+// Graces is the grace window each call asked for, in order.
+func (f *FakeTextTyper) Graces() []int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int(nil), f.graces...)
+}
+
+// Announcements is what each call asked to be spoken to the human, in order.
+func (f *FakeTextTyper) Announcements() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.announce...)
+}
+
 // Typed is every string this typer was asked to insert, in order.
 func (f *FakeTextTyper) Typed() []string {
 	f.mu.Lock()
@@ -41,12 +66,20 @@ func (f *FakeTextTyper) Typed() []string {
 	return append([]string(nil), f.typed...)
 }
 
-func (f *FakeTextTyper) TypeText(text string) error {
+func (f *FakeTextTyper) TypeText(text string, graceMs int, announce string) (ports.TypeOutcome, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.err != nil {
-		return f.err
+		return ports.TypeOutcome{}, f.err
 	}
 	f.typed = append(f.typed, text)
-	return nil
+	f.graces = append(f.graces, graceMs)
+	f.announce = append(f.announce, announce)
+	if f.outcome != nil {
+		return *f.outcome, nil
+	}
+	// Unscripted: the reader took the text and said nothing. The count is the
+	// reader's answer in production, so the fake answers it here too -- in
+	// characters, so an accented one counts once.
+	return ports.TypeOutcome{Typed: len([]rune(text))}, nil
 }

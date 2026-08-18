@@ -16,7 +16,6 @@ package tools
 import (
 	"encoding/json"
 	"errors"
-	"unicode/utf8"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
@@ -32,20 +31,26 @@ func (t *TypeText) Capability() entities.Capability { return entities.Capability
 
 func (t *TypeText) Description() string {
 	return "Type literal text into whatever currently holds focus -- a URL, a search " +
-		"phrase, a form field. Unlike press_gesture, text is layout-independent Unicode " +
-		"content, not a sequence of key commands: it lands correctly regardless of the " +
-		"active keyboard layout, including punctuation and accented characters. Focus " +
-		"the target control first (e.g. press_gesture [\"control+l\"] for a browser's " +
-		"address bar), then call this. It does NOT interpret control characters, " +
-		"newlines or Enter and does not submit anything -- compose that with " +
-		"press_gesture afterwards. IMPORTANT -- KNOW WHERE FOCUS IS FIRST: text goes " +
-		"wherever focus happens to be, so if the window you believe is open is not, " +
-		"this lands in a document or a chat you did not mean to touch. A field that " +
-		"is open is also not necessarily empty; some windows keep their contents " +
-		"between openings and append to them. Confirm with wait_for_speech_to_finish " +
-		"and get_speech before and after (see screenreader://guidance). The `typed` " +
-		"count is the length of what was SENT, counted here -- it says nothing about " +
-		"what arrived anywhere."
+		"phrase, a form field -- and receive what the reader said. Unlike press_gesture, " +
+		"text is layout-independent Unicode content, not a sequence of key commands: it " +
+		"lands correctly regardless of the active keyboard layout, including " +
+		"punctuation and accented characters. Focus the target control first (e.g. " +
+		"press_gesture [\"control+l\"] for a browser's address bar), then call this. It " +
+		"does NOT interpret control characters, newlines or Enter and does not submit " +
+		"anything -- compose that with press_gesture afterwards. IMPORTANT -- KNOW " +
+		"WHERE FOCUS IS FIRST: text goes wherever focus happens to be, so if the window " +
+		"you believe is open is not, this lands in a document or a chat you did not " +
+		"mean to touch. A field that is open is also not necessarily empty; some " +
+		"windows keep their contents between openings and append to them. `grace_ms` " +
+		"defaults to 0 here, unlike press_gesture: with \"speak typed characters\" on, " +
+		"typing emits one utterance per character and none is worth waiting for -- raise " +
+		"it when you expect the field itself to announce something. An empty `speech` " +
+		"means nothing had arrived by that instant, never that nothing happened. " +
+		"`state` reports the modes you cannot hear. Use `announce` to tell the human " +
+		"what you are about to type, in your own words. The `typed` count is the length " +
+		"of what was SENT, counted here -- it says nothing about what arrived anywhere, " +
+		"and the text itself is never echoed back, because this is exactly how a " +
+		"secret would be entered."
 }
 
 func (t *TypeText) InputSchema() json.RawMessage {
@@ -55,6 +60,15 @@ func (t *TypeText) InputSchema() json.RawMessage {
 		"text": {
 			"type": "string",
 			"description": "The literal text to insert at the focused control, unchanged. Not interpreted: newlines and control characters are not acted on, and nothing is submitted."
+		},
+		"grace_ms": {
+			"type": "integer",
+			"minimum": 0,
+			"description": "How long to wait after the text goes in for the speech it caused, in milliseconds. Omit for the default (0): typing usually announces one character at a time, which is noise. Raise it when the field itself should say something."
+		},
+		"announce": {
+			"type": "string",
+			"description": "Spoken aloud to the human at the reader before the text is injected -- audible even in a silent session. Describe what you are typing rather than repeating it, if it is sensitive."
 		}
 	},
 	"required": ["text"],
@@ -63,11 +77,17 @@ func (t *TypeText) InputSchema() json.RawMessage {
 }
 
 type typeTextParams struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	GraceMs  *int   `json:"grace_ms"`
+	Announce string `json:"announce"`
 }
 
 type typeTextResult struct {
+	// Typed is the LENGTH of what was sent, never the text: type_text is exactly
+	// how a secret would be entered, and echoing it back would put the secret in
+	// the tool result (spec 0019's transcript decision applies here too).
 	Typed int `json:"typed"`
+	observation
 }
 
 func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -86,14 +106,23 @@ func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if request.Text == "" {
 		return nil, errors.New("text is required")
 	}
+	grace := DefaultTypeGraceMs
+	if request.GraceMs != nil {
+		grace = *request.GraceMs
+		if grace < 0 {
+			return nil, errors.New("grace_ms cannot be negative")
+		}
+	}
 
-	if err := typer.TypeText(request.Text); err != nil {
+	outcome, err := typer.TypeText(request.Text, grace, request.Announce)
+	if err != nil {
 		return nil, err
 	}
-	// The length, not the text: type_text is exactly how a secret would be
-	// entered, and echoing it back would put the secret in the tool result
-	// (spec 0019's transcript decision applies here too). Rune count, not byte
-	// count, so a multi-byte character (e.g. "café") reports as one typed
-	// character rather than however many UTF-8 bytes it took.
-	return typeTextResult{Typed: utf8.RuneCountInString(request.Text)}, nil
+	return typeTextResult{
+		// The reader counts what it received; this server does not recount it.
+		// One authority for the number, and it is the side that actually
+		// injected the characters.
+		Typed:       outcome.Typed,
+		observation: observed(outcome.Observation),
+	}, nil
 }

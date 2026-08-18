@@ -189,9 +189,10 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-18**:
-11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **nine
-entries**. 11.3 was taken out of the queue on 2026-08-18 and is on hold; see its
-entry. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18 — **seven entries**. 11.3 was
+taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
+11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
+what 11.9 existed to have built, so the pair closes together. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
 is complete**: 11.19 (PR #61) made the persona exist and travel, and 11.20
 gave the reader its own document, so an agent now declares a stance and is told
 what that stance means on the reader in front of it.
@@ -588,7 +589,12 @@ rather than before it.
     are now realistic (no trailing spaces) and were verified to fail against the
     old join with the live string. Spec: none needed — a defect fix with its
     guard corrected.
-11.9. **E, the round trip is the cost — the settle is a no-op** (lane 2, server).
+11.9. **Done (PR #64, 2026-08-18)** — E, the round trip is the cost — the settle
+    is a no-op (lane 2, server). This entry was the ANALYSIS; 11.12 built both
+    routes it named, in the same PR, so it closes with them. Its measurements
+    are the whole argument for spec 0025 and are kept here in full rather than
+    summarised away — the numbers are what make the design defensible, and the
+    next person to doubt the grace window should be able to read them.
     **Measured 2026-08-03; the measurement reversed the premise, twice.** The
     session was slow, and the diagnosis started at `SPEECH_FINISHED_SECONDS`:
     both modes settle by an elapsed-time heuristic (spec 0008 removed the spy
@@ -663,7 +669,8 @@ rather than before it.
     (drafted 2026-08-03, not agreed). **Paired with 11.17** — see that entry for
     why the two remedies for this gesture are complementary and should be
     decided together.
-11.12. **E, one round trip per intention** (lane 2, server + bridge). Implements
+11.12. **Done (PR #64, 2026-08-18)** — E, one round trip per intention (lane 2,
+    server + bridge). Implements
     the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
     (~7.9 s) to carry ~124 ms of reader work, and 11.9 measured that one of the
     three observes nothing at all. The maintainer's reframing is the substance:
@@ -687,20 +694,13 @@ rather than before it.
     agreed**: it is the client model's own turn time between tool calls, which
     grows with the conversation's context. Nothing is faulty, and it strengthens
     the case — if per-call model turns dominate, call *count* is the right lever.
-    **Delivered as two sequential PRs**, because the change spans both lanes and
-    the halves are separately reviewable:
-    - **11.12a — the wire and the bridge.** The grace window as an entity
-      capability (`SpeechBuffer.collect_since`), per-gesture bookmarks, the state
-      snapshot and the riding `announce` on both mutating handlers, the new
-      `pressGesture`/`typeText` shapes with their regenerated schema and Go
-      binding, and protocol.md §7.3 — the contract sentence a result may never
-      exceed. The server still sends no `graceMs` and discards the new fields,
-      so main stays coherent between the two.
-    - **11.12b — the server.** The ports and tools carrying the new params and
-      results through to the agent, the narrowed `wait_for_speech_to_finish`
-      description, `getNextSpeechIndex` told what it is now for, and 0023's
-      published loop reworded in the guidance resource — the settle stops being
-      the universal second step.
+    **Shipped as ONE PR** covering both lanes, though it was scoped as two. The
+    halves are separately reviewable, but the wire change is not separately
+    *testable*: `poe conformance` is the only tier where a Go server asking for a
+    window meets a Python bridge actually waiting one out, and a live NVDA
+    session is the only place the collapse can be judged at all. Splitting it
+    would have bought a shorter diff at the price of two live sessions, and the
+    second half is what the checklist actually exercises.
     Spec: [0025-one-round-trip-per-intention.md](specs/0025-one-round-trip-per-intention.md)
     (drafted 2026-08-03, **agreed 2026-08-16** — all five open questions settled
     there). The board read "not agreed" until 2026-08-18 while the spec said
