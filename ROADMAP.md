@@ -189,8 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-18**:
-11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.21 — **eight entries**
-(11.21 was opened by 11.12's own live run). 11.3 was
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.21, 11.22, 11.23, 11.24 —
+**eleven entries** (11.21 was opened by 11.12's own live run; 11.22-11.24 by the
+second external run, [0030](specs/0030-the-second-external-run.md)). 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
 what 11.9 existed to have built, so the pair closes together. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
@@ -506,7 +507,19 @@ rather than before it.
     entirely and retire `redeploy.py`'s kill-by-image-path; it is the only route
     to an autonomous rebuild-and-test loop, and it is boardable separately
     rather than required here. Still needs a spec conversation: it revisits a
-    decision spec 0013 made deliberately. Spec:
+    decision spec 0013 made deliberately.
+    **Corroborated from outside, 2026-08-18** ([0030](specs/0030-the-second-external-run.md),
+    ask 1a): a second external run, driven by a non-Claude model in a different
+    client, hit the same *"I can call it but I cannot see it listed"* gap — and
+    hit it **without a redeploy**. That widens the entry: the diagnosis above
+    explains this project's dev loop severing the surface, but it does not
+    explain an agent that connected cleanly and still had no schemas in front of
+    it. It also sharpens the cost, because the documented consequence was the
+    agent reading our Go source to find out what it could call. Option (c) or
+    (d) — a tool list that never changes — answers both readings at once, which
+    is a point in their favour that the redeploy analysis alone did not surface.
+    See also **11.22**, which publishes the same information as a document and
+    therefore does not depend on any client honouring anything. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
     (premise corrected 2026-08-02, not agreed).
 11.7. **Done (PR #49, 2026-08-01)** — E, drive it like a user (server lane).
@@ -977,6 +990,53 @@ rather than before it.
     (`speech.sayAll` state) and answer from that, a reader-specific fact the
     bridge is allowed to know and the server is not. **(a) is the floor and
     should not wait for the spec conversation about (b)/(c).** Spec: none yet.
+11.22. **E, an agent cannot see the tools it is allowed to call** (server lane,
+    docs + resource). From the **second external run**, 2026-08-18 — see
+    [0030](specs/0030-the-second-external-run.md), ask 1b. The gated tools exist
+    after `connect_reader` and can be called, but the agent has no authoritative
+    list of their names, parameters and return shapes in front of it. The
+    reporter's account of what that costs is the entry's whole justification:
+    **it read the Go source**, and says so plainly — *"fix that and I won't"*.
+    Proposes a single `screenreader://tools` resource: every tool, the capability
+    that gates it, its parameters and what it returns, reader-agnostic, served
+    for reading. Distinct from 11.6, which is about the CLIENT's tool list going
+    stale; this is about the SERVER publishing the same information as a document,
+    which works no matter what any client does with `tools/list_changed`. That
+    independence is the argument for doing this one first. The obvious hazard is
+    drift — a hand-written cheat-sheet that disagrees with the registry is worse
+    than none — so it should be composed from `tools.BuildRegistry()` the way
+    `screenreader://guidance` composes persona profiles from the domain, and
+    guarded by the same kind of test. Spec: none yet.
+11.23. **E, a session dies while the agent is thinking, and nothing says so**
+    (both lanes). From the second external run, ask 2. The ~120s inactivity
+    watchdog dropped a live silent session while the agent was reasoning between
+    tool calls; it learned only when the next call failed with "needs a connected
+    reader", and the recovery cost a reconnect and a hand-off to the human.
+    **The reporter explicitly agrees the policy is right** — `ping` proving
+    liveness without resetting the watchdog is what protects a human from being
+    left mute by a wedged agent (the reason the watchdog exists at all). So this
+    is about VISIBILITY, not about relaxing the timeout: an agent's idle time
+    between calls is exactly when it reasons, and the clock runs invisibly
+    through it. Three candidates offered, not yet weighed: `status` reports
+    seconds remaining; the bridge warns once before dropping; or an explicit
+    `keepalive` whose absence is cheap to notice. Note the tension to resolve
+    before choosing — a `keepalive` an agent may send at will is a watchdog it
+    can defeat, which is the thing the current policy deliberately prevents.
+    Spec: none yet.
+11.24. **E, two small promises the caller cannot check** (both lanes, small).
+    From the second external run, ask 3. Two unrelated defects, kept together
+    because both are about a caller being able to trust what it was told.
+    (a) `press_gesture`'s description spells a gesture `"NVDA+f7"` while
+    `screenreader://reader-guidance` correctly gives the literal form as
+    lower-cased and sorted (`"nvda+tab"`). The lower-cased form works; the two
+    documents simply disagree, and the one an agent is likelier to copy is the
+    wrong one. A documentation defect of exactly the class an outside reader
+    finds and an inside one cannot. (b) `announce` on `press_gesture`/`type_text`
+    returns nothing acknowledging that the announcement was made, so an agent
+    narrating to a human it cannot hear is assuming rather than confirming —
+    which matters most in the silent sessions where narration is the human's
+    only channel. An `announced` field in the result would close it. Spec: none
+    yet.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
