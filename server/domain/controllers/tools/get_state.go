@@ -39,6 +39,23 @@ func (t *GetState) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *GetState) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"browseMode": {
+			"type": "string",
+			"enum": ["browse", "focus", "none"],
+			"description": "\"none\" when there is no browsable document, so the absence IS one of the three answers and never a missing field."
+		},
+		"speechMode": {"type": "string", "description": "The reader's speech mode, in its own vocabulary."},
+		"sleepMode": {"type": "boolean", "description": "Whether the reader is asleep for the focused application -- when it is, it deliberately says nothing, which is not a fault to chase."},
+		"inputHelp": {"type": "boolean", "description": "Whether input help is on. If it is, keys are DESCRIBED rather than acted on, which is a common explanation for a gesture appearing to do nothing."}
+	},
+	"required": ["browseMode", "speechMode", "sleepMode", "inputHelp"]
+}`)
+}
+
 // stateResult reports BrowseMode as one of "browse" / "focus" / "none" (spec
 // 0015). A reader with no browsable document says "none" rather than null: the
 // absence IS one of the three answers, so an agent never has to special-case a

@@ -54,6 +54,23 @@ func (t *SetLogLevel) InputSchema() json.RawMessage {
 	}`)
 }
 
+func (t *SetLogLevel) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"level": {
+				"type": "string",
+				"description": "The level now in force for the rest of the session. Restored at teardown however the session ends."
+			},
+			"previous": {
+				"type": "string",
+				"description": "What it was before. Records that were never emitted at the previous level cannot be recovered by raising it now -- re-run the command you are debugging, then read the log."
+			}
+		},
+		"required": ["level", "previous"]
+	}`)
+}
+
 type setLogLevelRequest struct {
 	Level string `json:"level"`
 }

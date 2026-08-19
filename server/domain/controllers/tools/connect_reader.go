@@ -89,6 +89,62 @@ func (t *ConnectReader) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *ConnectReader) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"reader": {
+			"type": "string",
+			"description": "The reader that answered."
+		},
+		"readerVersion": {
+			"type": "string",
+			"description": "The reader's own version -- NVDA's, not the bridge's."
+		},
+		"endpoint": {
+			"type": "string",
+			"description": "Which of the reader's endpoints answered."
+		},
+		"capabilities": {
+			"type": "array",
+			"items": {"type": "string"},
+			"description": "What this reader announced it can do, from the vocabulary screenreader://tools groups its tools by. The tools those capabilities allow are advertised from this moment on."
+		},
+		"mode": {
+			"type": "string",
+			"enum": ["silent", "live"],
+			"description": "The capture mode the BRIDGE confirmed, not the one that was asked for. Fixed for the session."
+		},
+		"persona": {
+			"type": "string",
+			"enum": ["user", "validator", "expert"],
+			"description": "What this session declared it stands for, echoed so the declaration is recorded beside everything the session produces."
+		},
+		"stance": {
+			"type": "string",
+			"description": "The persona's instruction, in full. Read it: it is what your findings will mean."
+		},
+		"readerGuidance": {
+			"type": "string",
+			"description": "Where THIS reader's own account of your stance can be read (screenreader://reader-guidance). ABSENT when the bridge announced no 'guidance' capability, which is the honest answer that this reader publishes none."
+		},
+		"synth": {
+			"type": "string",
+			"description": "The speech synthesizer the reader is using."
+		},
+		"logPath": {
+			"type": "string",
+			"description": "The READER-SIDE session transcript, on the reader's own disk -- a convenience, not a contract: for a remote bridge it names a file you cannot open. For your own complete record read screenreader://session-record."
+		},
+		"bridgeVersion": {
+			"type": "string",
+			"description": "The bridge build that answered, distinct from the reader version. Absent when the bridge did not say."
+		}
+	},
+	"required": ["reader", "readerVersion", "endpoint", "capabilities", "mode", "persona", "stance", "synth", "logPath"]
+}`)
+}
+
 // connectParams is what the agent sent.
 type connectParams struct {
 	Reader   string `json:"reader"`

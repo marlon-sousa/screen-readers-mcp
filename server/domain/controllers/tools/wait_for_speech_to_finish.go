@@ -57,6 +57,19 @@ func (t *WaitForSpeechToFinish) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *WaitForSpeechToFinish) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"finished": {
+			"type": "boolean",
+			"description": "True when speech settled, false when it was still going at the timeout -- neither is an error. It measures speech ARRIVING, not audio playing: true means nothing more has arrived, and the reader may still be speaking aloud what it already produced."
+		}
+	},
+	"required": ["finished"]
+}`)
+}
+
 type waitToFinishParams struct {
 	Timeout float64 `json:"timeout"`
 }

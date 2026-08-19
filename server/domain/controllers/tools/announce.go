@@ -68,6 +68,19 @@ func (t *Announce) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *Announce) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"announced": {
+			"type": "string",
+			"description": "The text that reached the reader, echoed back. The reader returns only an acknowledgement, so this exact text having arrived is the useful confirmation -- it does not tell you the human understood it, or that they are still there."
+		}
+	},
+	"required": ["announced"]
+}`)
+}
+
 type announceParams struct {
 	Text string `json:"text"`
 }

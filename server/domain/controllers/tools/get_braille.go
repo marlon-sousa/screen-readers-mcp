@@ -50,6 +50,31 @@ func (t *GetBraille) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *GetBraille) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"entries": {
+			"type": "array",
+			"description": "One entry per braille display update, oldest first. Empty when nothing was brailled in the range -- never null.",
+			"items": {
+				"type": "object",
+				"properties": {
+					"text": {"type": "string", "description": "What was sent to the display. Often abbreviated differently from what was spoken, which is the point of checking both."},
+					"index": {"type": "integer", "description": "This update's place in the BRAILLE ring, which is not interchangeable with a speech index."},
+					"logPosition": {"type": "integer", "description": "Where this update sits on the reader's log journal. This is the only braille fetch, so it is the sole route to a braille coordinate."},
+					"emittedAt": {"type": "string", "description": "Always absent here: braille updates carry no emission time. The field exists because speech and braille share one entry shape."}
+				},
+				"required": ["text", "index", "logPosition"]
+			}
+		},
+		"fromIndex": {"type": "integer", "description": "The first braille index this read covered."},
+		"toIndex": {"type": "integer", "description": "One past the last: the range is [fromIndex, toIndex), so toIndex is exactly the since_index to pass next."}
+	},
+	"required": ["entries", "fromIndex", "toIndex"]
+}`)
+}
+
 func (t *GetBraille) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
 	braille, err := ctx.Braille()
 	if err != nil {

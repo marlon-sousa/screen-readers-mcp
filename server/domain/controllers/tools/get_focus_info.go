@@ -42,6 +42,20 @@ func (t *GetFocusInfo) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *GetFocusInfo) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"name": {"type": "string", "description": "The object's accessible name. AN EMPTY NAME IS A FINDING, not a blank: it is a control the person at the machine cannot identify."},
+		"role": {"type": "string", "description": "Its role, in the READER's own vocabulary -- not a normalised one. Read screenreader://info to learn which reader you are driving."},
+		"states": {"type": "array", "items": {"type": "string"}, "description": "Its states, in the reader's vocabulary. Empty list, never null."},
+		"value": {"type": ["string", "null"], "description": "Its value, or null. Null and the empty string are DIFFERENT answers -- \"this object has no value\" against \"its value is empty\" -- so both are reported as they come."},
+		"appModule": {"type": ["string", "null"], "description": "The reader's own module handling the owning application, or null where the reader names none."}
+	},
+	"required": ["name", "role", "states", "value", "appModule"]
+}`)
+}
+
 // focusResult keeps Value and AppModule as pointers, because the wire
 // distinguishes "this object has no value" from "its value is the empty string",
 // and collapsing the two would throw away a real answer.

@@ -50,6 +50,19 @@ func (t *AskUser) InputSchema() json.RawMessage {
 	}`)
 }
 
+func (t *AskUser) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"ticket": {
+			"type": "string",
+			"description": "The outstanding prompt's ticket. Pass it to wait_for_user_reply, and keep polling until answered is true or the bridge says the window expired. Only one prompt may be outstanding at a time."
+		}
+	},
+	"required": ["ticket"]
+}`)
+}
+
 type askUserParams struct {
 	Prompt string `json:"prompt"`
 }

@@ -45,6 +45,53 @@ func (t *Status) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *Status) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"state": {
+			"type": "string",
+			"enum": ["disconnected", "connecting", "connected", "incompatible"],
+			"description": "Where the one connection stands. \"incompatible\" is a bridge that answered while announcing a protocol version this server does not support: the remedy is to update one of the two components, not to retry."
+		},
+		"reason": {
+			"type": "string",
+			"description": "Why the state holds. Populated for the states you must act on, absent for the uneventful ones."
+		},
+		"live": {
+			"type": "boolean",
+			"description": "The outcome of a REAL round trip to the reader: true when it answered, false when it did not, and ABSENT when there was no session to ask. This is why the answer is proof rather than a cached guess."
+		},
+		"liveError": {
+			"type": "string",
+			"description": "Why the round trip failed, when it did."
+		},
+		"session": {
+			"type": "object",
+			"description": "The live session. Absent when none is -- including when the round trip above just discovered it was gone.",
+			"properties": {
+				"reader": {"type": "string", "description": "The connected reader's name."},
+				"readerVersion": {"type": "string", "description": "The reader's own version."},
+				"endpoint": {"type": "string", "description": "The endpoint it is connected over."},
+				"capabilities": {
+					"type": "array",
+					"items": {"type": "string"},
+					"description": "What this reader announced it can do. Intersect this with screenreader://tools to know which tools are callable right now."
+				},
+				"mode": {"type": "string", "enum": ["silent", "live"], "description": "The capture mode this session is fixed to."},
+				"persona": {"type": "string", "description": "What this session declared it stands for. Absent for a session that predates personas."},
+				"synth": {"type": "string", "description": "The speech synthesizer in use."},
+				"logPath": {"type": "string", "description": "The reader-side session transcript."},
+				"bridgeVersion": {"type": "string", "description": "The bridge build serving this session. Absent when the bridge did not say."},
+				"protocolVersion": {"type": "integer", "description": "The wire protocol version both halves agreed on."}
+			},
+			"required": ["reader", "readerVersion", "endpoint", "capabilities", "mode", "synth", "logPath", "protocolVersion"]
+		}
+	},
+	"required": ["state"]
+}`)
+}
+
 // statusSession is the live session as the agent sees it.
 type statusSession struct {
 	Reader        string   `json:"reader"`

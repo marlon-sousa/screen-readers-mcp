@@ -57,6 +57,31 @@ func (t *GetSpeech) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *GetSpeech) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"entries": {
+			"type": "array",
+			"description": "One entry per utterance, oldest first. Empty when nothing was said in the range -- never null. Utterances that rendered empty are omitted, so entries[i] is NOT at index fromIndex + i: use each entry's own index.",
+			"items": {
+				"type": "object",
+				"properties": {
+					"text": {"type": "string", "description": "What the reader spoke."},
+					"index": {"type": "integer", "description": "This utterance's own place in the speech ring."},
+					"logPosition": {"type": "integer", "description": "Where this utterance sits on the reader's log journal. Hand it to get_log as sincePosition to see what the reader was doing around it."},
+					"emittedAt": {"type": "string", "description": "When the reader EMITTED this, as \"YYYY-MM-DD HH:MM:SS.mmm\" -- the same shape the reader's own log uses. Two of these subtract to answer \"how long after\". Emitted is not heard: in live mode an utterance queued behind a longer one can be seconds from audible. Absent if the reader supplied none."}
+				},
+				"required": ["text", "index", "logPosition"]
+			}
+		},
+		"fromIndex": {"type": "integer", "description": "The first index this read covered."},
+		"toIndex": {"type": "integer", "description": "One past the last: the half-open range is [fromIndex, toIndex), so toIndex is exactly the since_index to pass next -- no overlap, no gap."}
+	},
+	"required": ["entries", "fromIndex", "toIndex"]
+}`)
+}
+
 type speechRangeParams struct {
 	SinceIndex int `json:"since_index"`
 }

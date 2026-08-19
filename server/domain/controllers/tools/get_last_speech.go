@@ -32,6 +32,19 @@ func (t *GetLastSpeech) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *GetLastSpeech) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"text": {"type": "string", "description": "The most recent utterance. Empty when nothing has been said yet in this session."},
+		"index": {"type": "integer", "description": "The index it occupies in the speech ring."},
+		"logPosition": {"type": "integer", "description": "Where it sits on the reader's log journal; hand it to get_log as sincePosition."},
+		"emittedAt": {"type": "string", "description": "When the reader emitted it. Absent for the sentinel returned when nothing has been said yet."}
+	},
+	"required": ["text", "index", "logPosition"]
+}`)
+}
+
 type lastSpeechResult struct {
 	Text  string `json:"text"`
 	Index int    `json:"index"`

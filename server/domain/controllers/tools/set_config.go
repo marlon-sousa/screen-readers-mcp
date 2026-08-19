@@ -54,6 +54,18 @@ func (t *SetConfig) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *SetConfig) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"value": {
+			"description": "What the reader NOW HOLDS, which is not always what was sent -- a reader may normalise, clamp or partly reject a value. Read it rather than assuming the write landed as written."
+		}
+	},
+	"required": ["value"]
+}`)
+}
+
 func (t *SetConfig) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
 	config, err := ctx.Config()
 	if err != nil {

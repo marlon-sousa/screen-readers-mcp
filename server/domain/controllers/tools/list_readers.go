@@ -42,6 +42,48 @@ func (t *ListReaders) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *ListReaders) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"readers": {
+			"type": "array",
+			"description": "Every reader this server is configured to reach. Known before the process starts, so this is what CAN be reached, not what happens to be running.",
+			"items": {
+				"type": "object",
+				"properties": {
+					"reader": {
+						"type": "string",
+						"description": "The reader's name, and exactly what connect_reader's \"reader\" argument wants."
+					},
+					"endpoints": {
+						"type": "array",
+						"description": "This reader's endpoints, in the order connect_reader will try them.",
+						"items": {
+							"type": "object",
+							"properties": {
+								"endpoint": {
+									"type": "string",
+									"description": "The endpoint's own spelling, which round-trips: what is shown here is what may be written back into a --reader flag."
+								},
+								"liveness": {
+									"type": "string",
+									"enum": ["listening", "not listening", "unknown"],
+									"description": "Whether a bridge is listening there. \"unknown\" for TCP, which cannot be tested without connecting -- it is not a failure, and connect_reader will still try it."
+								}
+							},
+							"required": ["endpoint", "liveness"]
+						}
+					}
+				},
+				"required": ["reader", "endpoints"]
+			}
+		}
+	},
+	"required": ["readers"]
+}`)
+}
+
 // listedEndpoint and listedReader are this tool's OUTPUT shape.
 //
 // Its own shape rather than marshalling the entity directly: what an agent reads

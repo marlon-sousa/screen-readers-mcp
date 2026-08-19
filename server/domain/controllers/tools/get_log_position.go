@@ -49,6 +49,23 @@ func (t *GetLogPosition) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *GetLogPosition) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"position": {
+				"type": "integer",
+				"description": "The journal's current append position: the mark. Hand it back to get_log as sincePosition to read exactly what happened after this instant. No records are returned here -- that is the point of the call."
+			},
+			"time": {
+				"type": "string",
+				"description": "The wall clock at the mark, for lining it up against a session transcript or against a human's account of when something happened."
+			}
+		},
+		"required": ["position", "time"]
+	}`)
+}
+
 type logPositionResult struct {
 	Position int    `json:"position"`
 	Time     string `json:"time"`

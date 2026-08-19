@@ -39,6 +39,23 @@ func (t *DisconnectReader) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *DisconnectReader) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"disconnected": {
+			"type": "boolean",
+			"description": "Whether a live session was actually ended. False means there was nothing to disconnect -- a different fact from having ended one, and neither is a failure."
+		},
+		"reader": {
+			"type": "string",
+			"description": "The reader whose session ended. Absent when none was live."
+		}
+	},
+	"required": ["disconnected"]
+}`)
+}
+
 // disconnectResult tells the agent what the call actually did, since "there was
 // nothing to disconnect" is a different fact from "a live session was ended"
 // even though neither is a failure.

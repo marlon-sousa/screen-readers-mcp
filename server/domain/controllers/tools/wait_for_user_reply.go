@@ -81,6 +81,23 @@ func (t *WaitForUserReply) InputSchema() json.RawMessage {
 	}`)
 }
 
+func (t *WaitForUserReply) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"answered": {
+			"type": "boolean",
+			"description": "Whether the human acknowledged before THIS poll timed out. False is normal: re-call with the same ticket. The prompt's own window is separate and longer."
+		},
+		"text": {
+			"type": "string",
+			"description": "What the human said, when the bridge collects a reply. Empty when they only acknowledged, and when the poll returned unanswered."
+		}
+	},
+	"required": ["answered", "text"]
+}`)
+}
+
 type waitForUserReplyParams struct {
 	Ticket  string  `json:"ticket"`
 	Timeout float64 `json:"timeout,omitempty"`
