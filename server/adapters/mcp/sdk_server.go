@@ -91,6 +91,11 @@ func (s *Server) Bind(dispatch *tools.Dispatcher, sessions SessionSource, guidan
 	// How to drive a reader at all (spec 0023). Takes no source: it is static,
 	// so it can be read before anything is connected -- which is when it helps.
 	s.addGuidanceResource()
+	// And WHAT there is to drive it with (spec 0031): every tool, gated or not,
+	// with the capability that gates it and both of its schemas. Static for the
+	// same reason and one more -- being complete is what it is for, so it must
+	// not narrow to the session.
+	s.addToolsResource()
 	// And what the CONNECTED reader says about the stance this session declared
 	// (spec 0029). The one resource of the four that needs a round trip, which
 	// is why it takes a controller rather than reading a value.
