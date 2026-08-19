@@ -36,7 +36,12 @@ type stubTool struct {
 	name       string
 	capability entities.Capability
 	schema     string
-	run        func(ctx tools.ToolContext, params json.RawMessage) (any, error)
+	// output is the declared OUTPUT schema, empty for the plain object one.
+	// Separate from schema above rather than a second field nobody sets,
+	// because the pair being independently wrong is what tool_binding_test.go
+	// is about.
+	output string
+	run    func(ctx tools.ToolContext, params json.RawMessage) (any, error)
 }
 
 func (s *stubTool) Name() string                    { return s.name }
@@ -48,6 +53,13 @@ func (s *stubTool) InputSchema() json.RawMessage {
 		return json.RawMessage(`{"type":"object"}`)
 	}
 	return json.RawMessage(s.schema)
+}
+
+func (s *stubTool) OutputSchema() json.RawMessage {
+	if s.output == "" {
+		return json.RawMessage(`{"type":"object"}`)
+	}
+	return json.RawMessage(s.output)
 }
 
 func (s *stubTool) Execute(ctx tools.ToolContext, params json.RawMessage) (any, error) {
