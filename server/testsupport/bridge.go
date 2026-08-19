@@ -48,6 +48,15 @@ type BridgeOptions struct {
 	// Synth and LogPath fill out the `hello` reply.
 	Synth   string
 	LogPath string
+
+	// OmitHandshakeGuidance makes `hello` answer WITHOUT the guidance
+	// document, the way a bridge built before spec 0022 A.5 does.
+	//
+	// It exists so the fallback is exercised rather than assumed: the server
+	// must still serve screenreader://reader-guidance for such a bridge, by
+	// making the `getGuidance` round trip this field's absence implies. A
+	// forward-compatibility promise nothing tests is a promise.
+	OmitHandshakeGuidance bool
 }
 
 // FakeBridge serves the wire contract over one connection.
@@ -257,7 +266,7 @@ func (b *FakeBridge) recordPersona(params json.RawMessage) {
 }
 
 func (b *FakeBridge) helloResult() wire.HelloResult {
-	return wire.HelloResult{
+	result := wire.HelloResult{
 		ProtocolVersion: b.opts.ProtocolVersion,
 		Reader:          b.opts.Reader,
 		Capabilities:    b.opts.Capabilities,
@@ -265,6 +274,55 @@ func (b *FakeBridge) helloResult() wire.HelloResult {
 		Synth:           b.opts.Synth,
 		LogPath:         b.opts.LogPath,
 	}
+	// The guidance document rides back in the handshake (spec 0022 A.5), as
+	// the real bridge does -- and only when this bridge announced `guidance`,
+	// so "a reader that publishes none" stays expressible.
+	if !b.opts.OmitHandshakeGuidance && b.announces(wire.CapabilityGuidance) {
+		result.Guidance = b.guidanceDocument()
+	}
+	return result
+}
+
+// guidanceDocument is what this bridge says about the session's stance.
+//
+// COMPOSED THROUGH THE SAME PATH BOTH ROUTES USE, including a handler a test
+// registered for `getGuidance`. The real bridge builds the handshake copy and
+// the on-demand copy from one function; a fake that answered the handshake with
+// a fixed document while `getGuidance` answered a scripted one would let a test
+// pass against a disagreement the real bridge cannot produce.
+func (b *FakeBridge) guidanceDocument() *wire.GetGuidanceResult {
+	if handler := b.handlerFor(wire.CommandGetGuidance); handler != nil {
+		scripted, err := handler(nil)
+		if err != nil {
+			return nil
+		}
+		if document, ok := scripted.(wire.GetGuidanceResult); ok {
+			return &document
+		}
+		return nil
+	}
+	return &wire.GetGuidanceResult{
+		Persona:    b.lastPersona(),
+		Recognised: true,
+		Text:       DefaultGuidanceText,
+	}
+}
+
+// handlerFor is the handler a test registered for a command, or nil.
+func (b *FakeBridge) handlerFor(command wire.Command) func(json.RawMessage) (any, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.handlers[command]
+}
+
+// announces reports whether this bridge's `hello` claims a capability.
+func (b *FakeBridge) announces(capability wire.Capability) bool {
+	for _, announced := range b.opts.Capabilities {
+		if announced == capability {
+			return true
+		}
+	}
+	return false
 }
 
 func (b *FakeBridge) respond(conn net.Conn, id int, result any, failure error) error {

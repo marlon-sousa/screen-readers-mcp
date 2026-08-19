@@ -66,7 +66,7 @@ func TestTheCatalogCoversExactlyTheRegisteredTools(t *testing.T) {
 	for _, tool := range registry.All() {
 		registered = append(registered, tool.Name())
 	}
-	for _, name := range append(catalog.Ungated(), catalog.Gated()...) {
+	for _, name := range catalog.All() {
 		if !slices.Contains(registered, name) {
 			t.Errorf("the catalog knows %q, which is not a registered tool", name)
 		}

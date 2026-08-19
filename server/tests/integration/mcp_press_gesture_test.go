@@ -52,7 +52,6 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	var asked wire.PressGestureParams
 	h.Bridge.Handle(wire.CommandPressGesture, func(params json.RawMessage) (any, error) {
@@ -135,7 +134,6 @@ func TestAQuietWindowIsAnEmptyListAndAnAbsentStateIsAbsent(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	h.Bridge.Handle(wire.CommandPressGesture, func(json.RawMessage) (any, error) {
 		// A reader that took the key, said nothing, and serves no state.

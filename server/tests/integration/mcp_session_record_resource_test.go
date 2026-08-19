@@ -63,7 +63,6 @@ func TestTheRecordCoversAWholeSessionWithNoBridgeCallAdded(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader failed: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	before := len(h.Bridge.Received())
 	if got := h.Call(t, "get_speech", map[string]any{"since_index": 0}); got.IsError {
@@ -120,7 +119,6 @@ func TestTheRecordKeepsWhatWasAskedAndWhatCameBack(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader failed: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 	if got := h.Call(t, "get_speech", map[string]any{"since_index": 0}); got.IsError {
 		t.Fatalf("get_speech failed: %s", got.Text)
 	}
@@ -174,7 +172,6 @@ func TestThePersonaSurvivesTheConnectCallAgeingOutOfTheRecord(t *testing.T) {
 	if got := h.ConnectAs(t, "expert"); got.IsError {
 		t.Fatalf("connect_reader failed: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	// One more call than the record holds, so the connect is certainly gone.
 	for i := 0; i < entities.MaxRecordedCalls; i++ {

@@ -8,10 +8,22 @@
 // GESTURE IDS ARE OPAQUE (spec 0005, principle 3). `NVDA+f7` means something
 // to NVDA and to the agent, and nothing to this server, which routes the string
 // without interpreting it. That is what keeps the chassis reader-agnostic: a
-// JAWS gesture vocabulary needs no code change here, and this file contains no
-// reader's syntax except as an example in the text an agent reads. The example
-// is deliberately the reader's user-facing command notation (what its manual
-// prints), not an internal identifier -- the vocabulary any agent already knows.
+// JAWS gesture vocabulary needs no code change here.
+//
+// AND NO EXAMPLE OF ONE APPEARS IN THE TEXT BELOW (spec 0022 A.6, board entry
+// 11.24(a)). It used to: the description offered "NVDA+f7" while the reader's
+// own document gave the literal form as "nvda+tab", and the one an agent was
+// likelier to copy was the one the reader does not publish. An outside reader
+// found that and we could not.
+//
+// Two reasons it is gone rather than corrected. The reader's document is
+// GENERATED out of the running reader, so it is right even where the user has
+// rebound a command, which a hand-written example can never be. And under spec
+// 0022's option (c) every tool is advertised from startup, so this text is read
+// BEFORE any reader is chosen -- an NVDA example here presumes a reader nobody
+// has selected yet, on a session that may turn out to be JAWS or TalkBack.
+//
+// adapters/mcp/surface_text_test.go is what keeps it gone.
 package tools
 
 import (
@@ -33,11 +45,13 @@ func (t *PressGesture) Capability() entities.Capability { return entities.Capabi
 func (t *PressGesture) Description() string {
 	return "Press one or more screen reader gestures, in order, and receive what the " +
 		"reader SAID in response. Gesture ids are the reader's own user-facing " +
-		"command notation -- the key combo as its documentation writes it -- and pass " +
-		"through untouched: for NVDA, the User Guide form like \"NVDA+f7\", " +
-		"\"downArrow\" or \"control+home\", not an internal identifier. Read " +
-		"screenreader://info to learn which reader you are driving, then use that " +
-		"reader's vocabulary. Gestures land wherever the system focus currently is. " +
+		"command notation -- modifier+key as that reader's own guidance spells it, " +
+		"not an internal identifier -- and pass through untouched. WHERE TO GET THEM: " +
+		"screenreader://reader-guidance is the connected reader's own list, read out " +
+		"of the running reader rather than transcribed, so it is right even where the " +
+		"user has rebound something; connect_reader returns it in full. Do not copy a " +
+		"combination from anywhere else, including from memory of a different reader. " +
+		"Gestures land wherever the system focus currently is. " +
 		"THIS IS ONE CALL, NOT THREE: after each key the reader waits `grace_ms` (100 " +
 		"by default) and returns the speech that arrived, so you do NOT need to " +
 		"follow this with wait_for_speech_to_finish and get_speech. WHAT AN EMPTY " +
@@ -64,7 +78,7 @@ func (t *PressGesture) InputSchema() json.RawMessage {
 			"type": "array",
 			"items": {"type": "string"},
 			"minItems": 1,
-			"description": "The gesture ids to press, in order. The reader's user-facing command notation, passed through unchanged (NVDA example: [\"NVDA+control+f7\"])."
+			"description": "The gesture ids to press, in order. The reader's user-facing command notation, passed through unchanged. Take the spelling from screenreader://reader-guidance, which connect_reader returns in full -- it is generated from the running reader, so it matches what is actually bound."
 		},
 		"grace_ms": {
 			"type": "integer",

@@ -156,3 +156,68 @@ def test_captured_speech_flows_to_the_transcript(clock: FakeClock) -> None:
 	_handler(factory, "x").execute(ctx, _hello("silent"))
 	ctx.speech_buffer.append(["Elements list"])
 	assert ("speech", "Elements list") in transcript.events
+
+
+# -- the guidance document rides in the handshake (spec 0022 A.5) -------------
+
+
+def test_hello_returns_the_guidance_document_for_the_declared_persona(
+	clock: FakeClock,
+) -> None:
+	"""The document arrives WITH the session, not on a later request.
+
+	A pointer at it is a pointer agents do not follow: two external runs (specs
+	0027 and 0030) each held one and each went elsewhere. It costs nothing to
+	send -- the persona arrived in these very params, and this reply was already
+	being written.
+	"""
+	ctx = make_context(clock)
+
+	result = _handler(FakeAdapterFactory()).execute(ctx, _hello("silent", persona="user"))
+
+	assert result.guidance is not None
+	# Echoed AS RECEIVED, like getGuidance's, so a server can tell which
+	# declaration the document answers without its own bookkeeping.
+	assert result.guidance.persona == "user"
+	assert result.guidance.recognised is True
+	assert result.guidance.text.strip() != ""
+
+
+def test_the_handshake_document_matches_what_get_guidance_would_answer(
+	clock: FakeClock,
+) -> None:
+	"""One document, two routes -- so the two cannot describe it differently.
+
+	``getGuidance`` remains for a re-read; what must never happen is the
+	handshake and the command disagreeing about the same session's stance.
+	"""
+	from nvdaMcpBridge.domain.controllers.commands.get_guidance import GetGuidanceHandler
+
+	ctx = make_context(clock)
+	handshake = _handler(FakeAdapterFactory()).execute(ctx, _hello("silent", persona="expert"))
+
+	on_demand = GetGuidanceHandler().execute(ctx, p.Request(id=2, cmd="getGuidance", params={}))
+
+	assert handshake.guidance is not None
+	assert handshake.guidance.text == on_demand.text
+	assert handshake.guidance.recognised == on_demand.recognised
+	assert handshake.guidance.persona == on_demand.persona
+
+
+def test_an_unrecognised_persona_still_gets_a_document_marked_unrecognised(
+	clock: FakeClock,
+) -> None:
+	"""Degrading, never erroring -- the same carve-out the persona itself gets.
+
+	``recognised=False`` with the general text is a real answer, and a necessary
+	one: silence would leave an agent believing it had been instructed when it
+	had not.
+	"""
+	ctx = make_context(clock)
+
+	result = _handler(FakeAdapterFactory()).execute(ctx, _hello("silent", persona="archaeologist"))
+
+	assert result.guidance is not None
+	assert result.guidance.persona == "archaeologist"
+	assert result.guidance.recognised is False
+	assert result.guidance.text.strip() != ""

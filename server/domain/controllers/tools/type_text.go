@@ -34,8 +34,8 @@ func (t *TypeText) Description() string {
 		"phrase, a form field -- and receive what the reader said. Unlike press_gesture, " +
 		"text is layout-independent Unicode content, not a sequence of key commands: it " +
 		"lands correctly regardless of the active keyboard layout, including " +
-		"punctuation and accented characters. Focus the target control first (e.g. " +
-		"press_gesture [\"control+l\"] for a browser's address bar), then call this. It " +
+		"punctuation and accented characters. Focus the target control first with " +
+		"press_gesture, then call this. It " +
 		"does NOT interpret control characters, newlines or Enter and does not submit " +
 		"anything -- compose that with press_gesture afterwards. IMPORTANT -- KNOW " +
 		"WHERE FOCUS IS FIRST: text goes wherever focus happens to be, so if the window " +

@@ -25,7 +25,7 @@ func (t *SetLogLevel) Description() string {
 	return "Change the screen reader's own diagnostic logging level for the rest of " +
 		"this session. IMPORTANT: a log level CANNOT be raised retroactively. " +
 		"Python's logging decides at the *logger* whether a record exists at all, " +
-		"so if NVDA's root was at INFO when a command ran, DEBUG records were never " +
+		"so if the reader's root logger was at INFO when a command ran, DEBUG records were never " +
 		"created and no filter can recover them. The loop is: raise the level with " +
 		"set_log_level, re-run the command you are debugging, then get_log. " +
 		"Downwards is free: the journal holds more than asked for and a filter " +

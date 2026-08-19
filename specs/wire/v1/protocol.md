@@ -118,6 +118,27 @@ Fault handling, all of which keep the session alive once established (§3):
      `getTranscript`: transmitting the file would buy nothing that command does
      not already give, and the transcript's value is its capture-time timestamps,
      which only the bridge can write.
+   - `bridgeVersion` (string, optional) — the BRIDGE add-on's own version, not
+     the reader's. Absent from a build predating the field.
+   - `guidance` (object, optional) — **this reader's own written guidance for
+     the persona this session declared**, in exactly the shape `getGuidance`
+     answers with (`{ persona, recognised, text }`). Spec 0022 A.5.
+
+     Sent in the handshake because the persona arrived in `HelloParams`, so the
+     bridge already knows which document is wanted, and this reply was already
+     being written: the document therefore costs **no additional round trip**,
+     and connect stays one (spec 0025).
+
+     `getGuidance` is unchanged and remains, for a re-read and for a bridge that
+     would rather answer on demand. **A server that receives this field MUST NOT
+     also call `getGuidance` for the same session**; one that does not receive it
+     falls back to calling it, which is how a bridge predating this field keeps
+     working. Both routes describe one document, so a bridge that sends this
+     field MUST compose it the same way it composes `getGuidance`'s answer.
+
+     Omitted means this bridge publishes no guidance of its own — a supported
+     configuration, not a failure. A bridge that does not announce the `guidance`
+     capability (§4) MUST omit it.
 4. After a successful handshake the session is **tolerant**: a failing command
    yields an error response and the session keeps running. Only the conditions in
    §6 (teardown) end it.
@@ -563,3 +584,11 @@ effect land".
 - `protocolVersion` 1 is pre-release: it may be amended in place until an external
   (non-Python) bridge depends on it. After that, an incompatible change bumps the
   version and ships a new `specs/wire/vN/` directory.
+
+**Amendments made in place under that rule**, newest first:
+
+- **2026-08-19** — `HelloResult.guidance` added (§3, spec 0022 A.5). Additive and
+  optional, so it needed no version bump under either forward-compatibility rule
+  above: a newer bridge sending it to an older server has the field ignored, and
+  a newer server receiving nothing from an older bridge falls back to
+  `getGuidance`. Both directions degrade, which is what the rule is for.

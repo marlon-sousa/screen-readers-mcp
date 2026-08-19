@@ -249,13 +249,14 @@ type HelloParams struct {
 
 // HelloResult is the wire shape of the same name.
 type HelloResult struct {
-	ProtocolVersion int          `json:"protocolVersion"`
-	Reader          ReaderInfo   `json:"reader"`
-	Capabilities    []Capability `json:"capabilities"`
-	Mode            CaptureMode  `json:"mode"`
-	Synth           string       `json:"synth"`
-	LogPath         string       `json:"logPath"`
-	BridgeVersion   *string      `json:"bridgeVersion,omitempty"`
+	ProtocolVersion int                `json:"protocolVersion"`
+	Reader          ReaderInfo         `json:"reader"`
+	Capabilities    []Capability       `json:"capabilities"`
+	Mode            CaptureMode        `json:"mode"`
+	Synth           string             `json:"synth"`
+	LogPath         string             `json:"logPath"`
+	BridgeVersion   *string            `json:"bridgeVersion,omitempty"`
+	Guidance        *GetGuidanceResult `json:"guidance,omitempty"`
 }
 
 // LastSpeechResult is the wire shape of the same name.

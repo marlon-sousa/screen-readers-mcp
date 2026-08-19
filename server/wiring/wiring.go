@@ -97,21 +97,21 @@ func Build(opts Options) (*Server, error) {
 	// and the handshake drives the ordered attempt and the `hello` exchange.
 	dialer := bridge.NewHandshake(bridge.DialerFor, clock, log)
 
-	// The tool list, and the gate derived from it. One list, one gate.
+	// The one tool list, and the capability table derived from it.
 	registry := tools.BuildRegistry()
 
-	// The MCP server is built first because the connection controller needs a
-	// publisher; it is BOUND last, because it needs the dispatcher, which
-	// needs the controller. That ring is the reason Bind exists (see
-	// adapters/mcp/sdk_server.go), and this is the only place it is visible.
+	// The MCP server is built first and BOUND last, because Bind needs the
+	// dispatcher, which needs the connection controller. That ring is the
+	// reason Bind exists (see adapters/mcp/sdk_server.go), and this is the
+	// only place it is visible. The controller no longer takes the server at
+	// all: with every tool advertised from startup (spec 0022, option (c)),
+	// there is nothing for the lifecycle to publish or retract.
 	mcpServer, err := mcpadapter.NewServer(registry, log)
 	if err != nil {
 		return nil, err
 	}
 
-	connection := controllers.NewConnection(
-		endpoints, probe, dialer, mcpServer, registry.Catalog(), clock, log,
-	)
+	connection := controllers.NewConnection(endpoints, probe, dialer, clock, log)
 
 	// One record for the process's whole life, built from the traffic the
 	// dispatcher already handles (spec 0021) and published beside the info

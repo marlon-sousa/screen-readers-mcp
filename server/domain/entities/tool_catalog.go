@@ -1,17 +1,22 @@
-// screenreader-mcp domain -- ToolCatalog: the capability gate.
+// screenreader-mcp domain -- ToolCatalog: what gates what.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: entity. A pure decision table -- a capability set goes in, tool names
-// come out. This IS the gate spec 0013 describes; there is no second place where
-// a tool's visibility is decided.
+// ROLE: entity. The record of which capability gates which tool.
+//
+// It was spec 0013's VISIBILITY gate, keyed on the announced capability set.
+// Spec 0022 (agreed 2026-08-19, option (c)) took visibility away from it: every
+// tool is advertised from startup now, so `All()` is the whole publication
+// answer and no capability set goes in. What survives is the TABLE -- which
+// capability gates which tool -- because that is still true, still published in
+// `screenreader://tools`, and still what ToolContext enforces per call.
 // BUILT BY: domain/controllers/tools/registry.go, from the one hand-written tool
 // list. (SPEC AMENDMENT, rides in 10b: the layout summary's "Built by" column
 // says connection.go. Deriving the gate from the registry instead is what keeps
 // the two from drifting -- the registry is the single tool list, so a tool that
 // exists is a tool the catalog knows about, by construction rather than by
 // somebody remembering.)
-// READ BY: domain/controllers/connection.go (which names to publish and retract)
-// and adapters/mcp's backstop (what a retracted name was gated on).
+// READ BY: adapters/mcp/sdk_server.go (which names to register, once, at Bind)
+// and adapters/mcp/tools_resource.go (what gates each tool, for the document).
 //
 // NO READER NAME APPEARS HERE, only capability strings. That is spec 0005's
 // first chassis principle rendered as a type: "JAWS has no braille" is not
@@ -49,45 +54,24 @@ func NewToolCatalog(gates []ToolGate) ToolCatalog {
 	return ToolCatalog{gates: append([]ToolGate(nil), gates...), by: by}
 }
 
-// Ungated is every tool that is advertised regardless of what is connected.
+// All is every tool this server has, in registry order.
 //
-// These are published once, at startup, and never retracted: a server with no
-// session must still be able to say what readers it knows and to open one.
-func (c ToolCatalog) Ungated() []string {
-	var names []string
-	for _, gate := range c.gates {
-		if gate.Capability == "" {
-			names = append(names, gate.Name)
-		}
-	}
-	return names
-}
-
-// Allowed is every GATED tool the announced capabilities permit.
+// EVERY tool, whatever is connected and whatever any reader announced. That is
+// spec 0022's option (c), agreed 2026-08-19: the advertised list is now a
+// constant, so a client holding a stale copy of it is holding a correct one.
 //
-// Ungated tools are deliberately absent from the answer: they are not the
-// connection's to publish or retract, and including them would make a disconnect
-// withdraw the very tools an agent needs to reconnect with.
-func (c ToolCatalog) Allowed(announced Set) []string {
-	var names []string
-	for _, gate := range c.gates {
-		if gate.Capability != "" && announced.Has(gate.Capability) {
-			names = append(names, gate.Name)
-		}
-	}
-	return names
-}
-
-// Gated is every gated tool this server has, whatever any reader announced.
+// What this does NOT change is who may CALL one. Advertisement and enforcement
+// were already separate -- a tool reaches its port through ToolContext's
+// accessors, which answer a CapabilityError whenever there is no session or the
+// reader announced nothing (see controllers/tools/tool_context.go). The gate on
+// the LIST only ever bought a shorter list; it never made an unusable call fail.
 //
-// What it is for: retracting on a path where the announced set is no longer
-// trustworthy, and answering the backstop's question "is this name one of ours?"
-func (c ToolCatalog) Gated() []string {
-	var names []string
+// The order is preserved because it is the order the list is published in, and a
+// stable order is worth having wherever an agent or a diff reads the result.
+func (c ToolCatalog) All() []string {
+	names := make([]string, 0, len(c.gates))
 	for _, gate := range c.gates {
-		if gate.Capability != "" {
-			names = append(names, gate.Name)
-		}
+		names = append(names, gate.Name)
 	}
 	return names
 }

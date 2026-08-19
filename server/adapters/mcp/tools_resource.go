@@ -109,6 +109,11 @@ func toolsDocument(registry *tools.Registry) string {
 				"\n### `%s`\n\n%s\n\n%s\n\nParameters:\n\n```json\n%s\n```\n\nReturns:\n\n```json\n%s\n```\n",
 				tool.Name(),
 				gate(capability),
+				// The tool's own text, WITHOUT the precondition sentence the tool
+				// list carries: the gate() line above has already said it, at more
+				// length. They cannot drift despite being worded differently,
+				// because both render the same catalog fact rather than two
+				// hand-written claims about it (spec 0031 3.3).
 				tool.Description(),
 				readable(tool.InputSchema()),
 				readable(tool.OutputSchema()),

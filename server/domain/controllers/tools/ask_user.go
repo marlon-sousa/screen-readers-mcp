@@ -42,7 +42,7 @@ func (t *AskUser) InputSchema() json.RawMessage {
 			"prompt": {
 				"type": "string",
 				"minLength": 1,
-				"description": "What to say to the human. Keep it to a sentence or two -- it is spoken aloud. Say what you need them to do and that they should press NVDA+control+shift+A when done."
+				"description": "What to say to the human. Keep it to a sentence or two -- it is spoken aloud. Say what you need them to do, and STOP THERE: the reader appends the instruction naming the gesture that answers you, in the human's own language and matching however they have it bound. Naming a key yourself risks contradicting it."
 			}
 		},
 		"required": ["prompt"],

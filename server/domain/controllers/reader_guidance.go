@@ -9,15 +9,20 @@
 //
 // Spec 0029 Part 4.4. Three properties, and each is a decision:
 //
-//   - LAZY. Nothing is fetched at connect. The round trip happens on the first
-//     READ of the resource, so a session that never asks never pays -- and
-//     connect stays one round trip, which spec 0025 cares about.
-//   - CACHED FOR THE SESSION. The document is static while a session lives, so a
-//     second read costs nothing. The cache is keyed on the LIVE CONNECTION
-//     ITSELF rather than on a boolean or a persona name: a disconnect and
-//     reconnect produces a different *ReaderConnection, so the previous
-//     session's text cannot be served to the new one even if the persona is the
-//     same. That is the property a "fetched bool" would silently lose.
+//   - IT PREFERS THE HANDSHAKE (spec 0022 A.5). A bridge that speaks the current
+//     wire sends the document in `hello`, so the usual path makes no round trip
+//     at all and this controller is a reader of a value the connection already
+//     holds. LAZINESS SURVIVES only as the FALLBACK, for a bridge that predates
+//     the field: there the first READ of the resource still fetches, so a
+//     session that never asks still never pays, and connect stays one round
+//     trip either way -- which is what spec 0025 cares about.
+//   - CACHED FOR THE SESSION, on that fallback path. The cache is keyed on the
+//     LIVE CONNECTION ITSELF rather than on a boolean or a persona name: a
+//     disconnect and reconnect produces a different *ReaderConnection, so the
+//     previous session's text cannot be served to the new one even if the
+//     persona is the same. That is the property a "fetched bool" would silently
+//     lose -- and it is the property the handshake path gets for free, by
+//     holding the document on the connection instead of beside it.
 //   - OPAQUE. The text is carried and never parsed. The precedence frame is the
 //     adapter's business (4.1) and framing is all this server ever does to it.
 //
@@ -60,22 +65,11 @@ type GuidanceSessionSource interface {
 	Current() *ports.ReaderConnection
 }
 
-// ReaderGuidanceDocument is one session's reader-supplied guidance, with the
-// facts a frame around it needs: whose account this is, and what it answers for.
-type ReaderGuidanceDocument struct {
-	// Reader is the name the bridge announced, so the frame can say whose
-	// account the agent is reading.
-	Reader string
-
-	// Persona is what the bridge answered for, as it echoed it back.
-	Persona entities.Persona
-
-	// Recognised is false when the bridge had no section for that persona.
-	Recognised bool
-
-	// Text is the bridge's markdown, untouched.
-	Text string
-}
+// ReaderGuidanceDocument is the entity, re-exported under the name this
+// package's callers already use. The type moved to entities when the handshake
+// began delivering it (spec 0022 A.5): ReaderConnection carries one, and a port
+// may not import a controller.
+type ReaderGuidanceDocument = entities.ReaderGuidanceDocument
 
 // ReaderGuidance serves the connected reader's own guidance, once per session.
 type ReaderGuidance struct {
@@ -106,6 +100,13 @@ func (g *ReaderGuidance) Document() (ReaderGuidanceDocument, error) {
 	connection := g.sessions.Current()
 	if connection == nil {
 		return ReaderGuidanceDocument{}, ErrNoSession
+	}
+	// THE USUAL ROUTE, and it costs nothing: the handshake already carried the
+	// document (spec 0022 A.5). No round trip, and no cache needed to avoid one
+	// -- the value hangs off this very connection, so a reconnect cannot serve
+	// the previous session's text even in principle.
+	if connection.GuidanceDocument != nil {
+		return *connection.GuidanceDocument, nil
 	}
 	if connection.Guidance == nil {
 		return ReaderGuidanceDocument{}, ErrNoReaderGuidance

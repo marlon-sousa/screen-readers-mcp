@@ -43,7 +43,7 @@ func (t *SetConfig) InputSchema() json.RawMessage {
 			"type": "array",
 			"items": {"type": "string"},
 			"minItems": 1,
-			"description": "The path into the reader's configuration tree, outermost key first. Reader-specific (NVDA example: [\"speech\", \"symbolLevel\"])."
+			"description": "The path into the reader's configuration tree, outermost key first, as that reader spells it. Reader-specific and passed through untouched; this server never interprets it."
 		},
 		"value": {
 			"description": "The value to write. Any JSON the reader accepts for this key -- a string, number, boolean, object or array."

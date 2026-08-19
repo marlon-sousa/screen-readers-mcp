@@ -29,11 +29,11 @@ type ConnectionControl interface {
 	List() entities.ReaderListing
 
 	// Connect tries the named reader's endpoints in declared order and
-	// completes the handshake, publishing the gated tools on success.
+	// completes the handshake.
 	// Errors -- it never retries and never falls back to a different reader.
 	Connect(readerName string, opts ports.SessionOptions) (*ports.ReaderConnection, error)
 
-	// Disconnect sends `bye` and retracts the gated tools.
+	// Disconnect sends `bye` and ends the session.
 	Disconnect() error
 
 	// Status is the recorded state and why it holds.
@@ -42,11 +42,11 @@ type ConnectionControl interface {
 	// Current is the live connection, or nil when there is none.
 	Current() *ports.ReaderConnection
 
-	// Verify makes a real `ping` round trip, and RECORDS a loss it finds --
-	// retracting the tools and updating the state. That is what lets `status`
-	// answer with what the wire says rather than with what this process
-	// remembers. Nil error means the connection is real right now; nil is
-	// also the answer when there is no session to verify.
+	// Verify makes a real `ping` round trip, and RECORDS a loss it finds,
+	// updating the state. That is what lets `status` answer with what the
+	// wire says rather than with what this process remembers. Nil error
+	// means the connection is real right now; nil is also the answer when
+	// there is no session to verify.
 	Verify() error
 }
 

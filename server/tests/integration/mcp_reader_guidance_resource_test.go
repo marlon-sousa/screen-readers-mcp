@@ -78,25 +78,65 @@ func TestTheReadersOwnTextArrivesFramedByTheServer(t *testing.T) {
 	}
 }
 
-// Cached for the session (spec 0029 4.4). Counted at the BRIDGE, because that is
-// the round trip the cache exists to avoid -- counting reads at the resource
-// would prove nothing.
-func TestReadingTheReaderGuidanceTwiceMakesOneRoundTrip(t *testing.T) {
+// ZERO round trips, however many times it is read (spec 0022 A.5).
+//
+// This test used to want ONE, and the change is the point: spec 0029 4.4 made
+// the fetch lazy and cached, so a first read paid a round trip and later reads
+// did not. The document now arrives in the handshake, so no read pays. Counted
+// at the BRIDGE, because that is the round trip in question -- counting reads at
+// the resource would prove nothing.
+func TestReadingTheReaderGuidanceCostsNoRoundTripAtAll(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 	h.Connect(t)
 
-	h.ReadReaderGuidance(t)
+	first := h.ReadReaderGuidance(t)
+	second := h.ReadReaderGuidance(t)
+
+	if fetches := guidanceFetches(h); fetches != 0 {
+		t.Errorf("the bridge was asked for its guidance %d times; want 0 -- the "+
+			"handshake already carried it", fetches)
+	}
+	if first != second {
+		t.Error("two reads of one session's guidance returned different documents")
+	}
+	if first == "" {
+		t.Error("the document is empty; the handshake copy never reached the resource")
+	}
+}
+
+// A bridge built before the handshake carried the document still works, and
+// still pays only once.
+//
+// THE FORWARD-COMPATIBILITY PROMISE, TESTED. protocol.md §2 says unknown fields
+// are ignored in both directions, which is what lets wire v1 be amended in
+// place -- but an older BRIDGE simply omits the field, and the server has to
+// notice and fall back to `getGuidance`. Spec 0029 4.4's lazy cache survives for
+// exactly this path, which is why it was kept rather than deleted.
+func TestAnOlderBridgeStillServesItsGuidanceInOneRoundTrip(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{OmitHandshakeGuidance: true})
+	h.Connect(t)
+
+	first := h.ReadReaderGuidance(t)
 	h.ReadReaderGuidance(t)
 
+	if fetches := guidanceFetches(h); fetches != 1 {
+		t.Errorf("the bridge was asked for its guidance %d times; want exactly 1 -- "+
+			"fetched because the handshake carried none, then cached", fetches)
+	}
+	if !strings.Contains(first, testsupport.DefaultGuidanceText) {
+		t.Errorf("the fetched document did not reach the resource:\n%s", first)
+	}
+}
+
+// guidanceFetches counts the getGuidance round trips this bridge was asked for.
+func guidanceFetches(h *testsupport.MCPHarness) int {
 	fetches := 0
 	for _, command := range h.Bridge.Received() {
 		if command == wire.CommandGetGuidance {
 			fetches++
 		}
 	}
-	if fetches != 1 {
-		t.Errorf("the bridge was asked for its guidance %d times; want 1", fetches)
-	}
+	return fetches
 }
 
 // Nothing is fetched at connect: a session that never asks never pays, and
@@ -213,5 +253,64 @@ func TestReconnectingUnderAnotherPersonaServesTheNewStance(t *testing.T) {
 	}
 	if !strings.Contains(second, "`expert` stance") {
 		t.Errorf("the second document served the previous session's stance:\n%s", second)
+	}
+}
+
+// THE DOCUMENT ARRIVES WITH THE SESSION, not on a request for it (spec 0022 A.5).
+//
+// The URI stays beside it, for a re-read; what changed is that an agent which
+// never reads a resource still has the vocabulary. That is the failure this
+// answers: two external runs (specs 0027 and 0030) each held a pointer to this
+// document and each went elsewhere -- one to PowerShell, one to the Go source.
+//
+// It matters more under option (c) than it would have before. Every tool is
+// advertised from startup, so the tool list no longer narrows itself to what
+// this reader can do; this is where an agent learns that, unasked.
+func TestConnectingReturnsTheReaderGuidanceInFull(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+
+	var result struct {
+		ReaderGuidance     string `json:"readerGuidance"`
+		ReaderGuidanceText string `json:"readerGuidanceText"`
+	}
+	h.Connect(t).Decode(t, &result)
+
+	if result.ReaderGuidanceText != testsupport.DefaultGuidanceText {
+		t.Errorf("readerGuidanceText = %q, want the bridge's own document %q",
+			result.ReaderGuidanceText, testsupport.DefaultGuidanceText)
+	}
+	// And the pointer survives: re-reading mid-session must not mean scrolling
+	// back through a transcript.
+	if result.ReaderGuidance == "" {
+		t.Error("readerGuidance is empty; the resource must still be named for a re-read")
+	}
+	// It cost nothing. connect is still one round trip (spec 0025).
+	if fetches := guidanceFetches(h); fetches != 0 {
+		t.Errorf("connecting made %d getGuidance round trips; want 0", fetches)
+	}
+}
+
+// A bridge that publishes none says so by omission, and connect still succeeds.
+func TestConnectingToABridgeWithNoGuidanceOmitsTheDocument(t *testing.T) {
+	h := testsupport.StartMCP(t, nvda(wire.CapabilitySpeech))
+
+	var result struct {
+		ReaderGuidance     string `json:"readerGuidance"`
+		ReaderGuidanceText string `json:"readerGuidanceText"`
+	}
+	connected := h.Connect(t)
+	if connected.IsError {
+		t.Fatalf("connect_reader: %s", connected.Text)
+	}
+	connected.Decode(t, &result)
+
+	if result.ReaderGuidanceText != "" {
+		t.Errorf("readerGuidanceText = %q, want it absent for a reader that "+
+			"announced no guidance", result.ReaderGuidanceText)
+	}
+	if result.ReaderGuidance != "" {
+		t.Errorf("readerGuidance = %q, want it absent too -- an absent field is "+
+			"the honest answer, not a pointer at a document that explains nothing",
+			result.ReaderGuidance)
 	}
 }

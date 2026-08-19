@@ -1,13 +1,17 @@
 // screenreader-mcp domain -- ToolCatalog's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// Black-box (package entities_test), exercising the gate through the surface the
-// connection controller uses.
+// Black-box (package entities_test), exercising the catalog through the surface
+// the MCP adapter uses.
 //
-// The catalog is where acceptance criterion 10's first clause is decided -- "a
-// tool whose capability is absent is NOT advertised" -- so these tests are the
-// gate's own proof, and the integration tier's no-braille scenario is the proof
-// that the decision actually reaches the wire.
+// WHAT THESE STOPPED PROVING, and where it went. Spec 0013's acceptance
+// criterion 10 had a first clause -- "a tool whose capability is absent is NOT
+// advertised" -- and this file was its proof. Spec 0022 (option (c), agreed
+// 2026-08-19) withdrew that clause: every tool is advertised, and what a reader
+// cannot do is enforced per CALL rather than per LIST, by ToolContext. So the
+// gate tests below became All() and the enforcement proof lives in
+// controllers/tools' context tests and in the integration tier's no-braille
+// scenario, which asserts on the ERROR rather than on an absence.
 package entities_test
 
 import (
@@ -32,61 +36,35 @@ func catalog() entities.ToolCatalog {
 	})
 }
 
-func TestTheUngatedToolsAreTheOnesNoCapabilityGates(t *testing.T) {
-	want := []string{"list_readers", "connect_reader", "disconnect_reader", "status"}
-	if got := catalog().Ungated(); !slices.Equal(got, want) {
-		t.Errorf("Ungated() = %v, want %v", got, want)
+// The whole publication answer: every tool, in the order the table was built.
+func TestAllIsEveryToolInRegistryOrder(t *testing.T) {
+	want := []string{
+		"list_readers", "connect_reader", "disconnect_reader", "status",
+		"get_speech", "get_last_speech", "get_braille", "press_gesture",
+	}
+	if got := catalog().All(); !slices.Equal(got, want) {
+		t.Errorf("All() = %v, want %v", got, want)
 	}
 }
 
-// The gate itself: a reader without braille never gets the braille tool.
-func TestOnlyToolsTheAnnouncedCapabilitiesPermitAreAllowed(t *testing.T) {
-	announced := entities.NewSet([]string{"speech", "gestures"})
+// The point of option (c), stated as a test: nothing a reader announced can
+// change what is advertised, so a client holding a stale list holds a correct
+// one. There is no argument to pass -- and that IS the property.
+func TestAllTakesNoAnnouncedCapabilitiesAtAll(t *testing.T) {
+	first := catalog().All()
+	second := catalog().All()
 
-	want := []string{"get_speech", "get_last_speech", "press_gesture"}
-	if got := catalog().Allowed(announced); !slices.Equal(got, want) {
-		t.Errorf("Allowed(speech+gestures) = %v, want %v", got, want)
+	if !slices.Equal(first, second) {
+		t.Errorf("All() = %v then %v; the advertised list must be a constant", first, second)
+	}
+	// A gated tool is present whether or not any reader could serve it. What
+	// stops the call is ToolContext, not this table.
+	if !slices.Contains(first, "get_braille") {
+		t.Error("All() omitted get_braille; every tool is advertised regardless of capability")
 	}
 }
 
-// The ungated four must survive a disconnect: they are how an agent reconnects,
-// so a gate that swept them up would strand it.
-func TestAllowedNeverIncludesTheUngatedTools(t *testing.T) {
-	everything := entities.NewSet([]string{"speech", "braille", "gestures", "focus", "state", "config"})
-
-	for _, name := range catalog().Allowed(everything) {
-		if slices.Contains(catalog().Ungated(), name) {
-			t.Errorf("Allowed() returned the ungated tool %q; a disconnect would retract it", name)
-		}
-	}
-}
-
-// A reader that announced nothing gets no gated tools at all -- and, in
-// particular, the empty announcement is not mistaken for "announced everything".
-func TestAReaderAnnouncingNothingGetsNoGatedTools(t *testing.T) {
-	if got := catalog().Allowed(entities.NewSet(nil)); len(got) != 0 {
-		t.Errorf("Allowed(nothing) = %v, want none", got)
-	}
-}
-
-// protocol.md §4: an unknown capability string must be ignored, not rejected and
-// not treated as matching something.
-func TestAnUnknownAnnouncedCapabilityAdvertisesNothing(t *testing.T) {
-	announced := entities.NewSet([]string{"telepathy"})
-
-	if got := catalog().Allowed(announced); len(got) != 0 {
-		t.Errorf("Allowed(unknown) = %v, want none", got)
-	}
-}
-
-func TestGatedIsEveryGatedToolWhateverWasAnnounced(t *testing.T) {
-	want := []string{"get_speech", "get_last_speech", "get_braille", "press_gesture"}
-	if got := catalog().Gated(); !slices.Equal(got, want) {
-		t.Errorf("Gated() = %v, want %v", got, want)
-	}
-}
-
-// The backstop's question: is this name one of ours, and what gated it?
+// Still asked, by the tools resource: what gates this tool?
 func TestCapabilityOfDistinguishesOurToolsFromStrangers(t *testing.T) {
 	capability, known := catalog().CapabilityOf("get_braille")
 	if !known || capability != entities.CapabilityBraille {
@@ -120,7 +98,7 @@ func TestTheCatalogCopiesTheGatesItWasGiven(t *testing.T) {
 
 	gates[0].Name = "mutated"
 
-	if got := built.Gated(); !slices.Equal(got, []string{"get_braille"}) {
-		t.Errorf("Gated() = %v after the caller edited its slice; want the built table", got)
+	if got := built.All(); !slices.Equal(got, []string{"get_braille"}) {
+		t.Errorf("All() = %v after the caller edited its slice; want the built table", got)
 	}
 }

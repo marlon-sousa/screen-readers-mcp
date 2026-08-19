@@ -698,25 +698,83 @@ process, and it is the argument 0031 Part 6 made.
 
 Needs an add-on rebuild and a live checklist in the PR body.
 
+### A.9a Amended while implementing, 2026-08-19
+
+Five departures from A.8's layout, each riding in the implementing PR per the
+repo rule. Four are simplifications the decision turned out to imply; one is a
+finding.
+
+**1. The backstop is DELETED, not kept.** A.1 and the layout both said
+`backstop.go` "stays, now the only route for a call the session cannot serve."
+That is exactly backwards, and the truth is better. The backstop answered calls
+for tools this server HAS but has NOT PUBLISHED — and once every tool is
+published, that case cannot arise. Every call now takes the ordinary SDK path.
+Nothing is lost, because the backstop never worded the error: it ran the call
+through the same dispatcher, and `ToolContext`'s accessor produced the answer.
+The tests that proved it prove the same things unchanged, one route later. **The
+change therefore deletes a code path rather than adding one**, which is the
+strongest form A.1's argument could have taken and stronger than it made.
+
+**2. `ports.ToolPublisher` is deleted, and the connection controller with it.**
+Once nothing is published, the port abstracts nothing: `Publish`/`Retract` went,
+`connection.go` lost its publisher, its `published` field and its catalog, and
+`NewConnection` lost two parameters. `sdk_server.go` now holds no mutable state
+at all — the dispatcher was stored so a later `Publish` could reach it, and there
+is no later.
+
+**3. The precondition sentence (A.4) is composed in the binding, not written into
+nineteen descriptions.** `tool_binding.go`'s `declare` prepends it from
+`tool.Capability()`. A tool's own `Description()` says what the tool DOES; whether
+a session is required is the catalog's fact and is already recorded there. A new
+gated tool gets the sentence for free, which is the same reason the catalog is
+derived from the registry rather than maintained beside it — and it keeps reader
+names out by construction, since a capability string is all it ever sees.
+`screenreader://tools` deliberately does NOT prepend it: its own `gate()` line
+already says it at more length, and both render the same catalog fact, so they
+cannot drift despite being worded differently.
+
+**4. The surface test found eleven reader names and six key combinations, not
+one.** Board entry 11.24(a) reported a single disagreement in `press_gesture`.
+The first run of A.7's check failed on `announce`, `ask_user`, `get_config`,
+`set_config`, `get_log`, `set_log_level`, `type_text` and `connect_reader` as
+well. **The drift was systemic and the entry had found one instance of it** —
+which is the argument for a test rather than a correction, made by the test
+before it had been agreed.
+
+Two of those were worse than stale. `announce` and `ask_user` told the agent to
+name the panic and acknowledgement gestures to the human — but the BRIDGE already
+speaks that instruction itself, translated, built from the constant it binds the
+script to (`nvda_user_prompter.py`). The server's copy could only ever have
+agreed by luck, and would contradict a user who rebound it. Both descriptions now
+say the reader tells the human, and that the agent should not guess.
+
+**5. `mode` needed no `list_readers` change** (A.10 question 1, answered in the
+implementing direction). The schema's reader-specific mechanism moved to the
+reader's document; a bridge that cannot honour a mode refuses the handshake and
+says so. `list_readers` is untouched, and the question can be reopened if a
+second bridge makes it real rather than hypothetical.
+
 ### A.10 Questions for the spec conversation
 
-1. **Unsupported capture modes.** A mode is chosen *before* the handshake, so the
-   server cannot validate it against a bridge's announcement the way capabilities
-   are validated. Today an unsupported mode can only be refused by the bridge at
-   `hello`, as a handshake failure. Sufficient, or should `list_readers` carry
-   each configured reader's supported modes — knowable from configuration, unlike
-   liveness?
-2. **Keep emitting `tools/list_changed` as a no-op?** Harmless, and keeps a
-   client fresh if the list ever *does* change. Not emitting is more honest.
-   Leaning: do not emit.
-3. **Does the surface test cover `documents/guidance-method.md` and
-   `-preamble.md`?** Both are agent-facing and reader-agnostic by charter.
-   Including them is free; the question is whether the placeholder allowlist then
-   has to grow.
-4. **Does `screenreader://info` get the same treatment?** The standing open
-   question above notes it has the same exposure to a client ignoring
-   `resources/list_changed`. Resources are already static here, so this may be
-   nothing — but it should be checked rather than assumed.
+1. **Unsupported capture modes.** **Settled: the bridge refuses at `hello`, and
+   `list_readers` is untouched.** A mode is chosen before the handshake, so the
+   server cannot validate it against an announcement the way capabilities are
+   validated; a handshake failure names the problem at the only moment the answer
+   is known. Reopen it if a second bridge makes the case real.
+2. **Keep emitting `tools/list_changed` as a no-op?** **Settled: do not emit.**
+   Announcing a change that did not happen is a small lie, and the tests now
+   assert the silence — `AssertNoToolsChanged` in the harness, at both the
+   adapter and integration tiers. A client with no notification handling at all
+   must be no worse off, which is the half of 11.6 no client-side remedy reached.
+3. **Does the surface test cover the guidance documents?** **Settled: yes**, all
+   seven embedded documents. It cost nothing and the allowlist did not have to
+   grow: one placeholder (`modifier+key`) covers the whole surface.
+4. **Does `screenreader://info` get the same treatment?** **Still open, and now
+   the only one.** The resource LIST here is already static — every resource is
+   registered at `Bind` and none is ever added or removed — so a client ignoring
+   `resources/list_changed` has nothing to miss. What is not proved is that no
+   resource's CONTENT is cached across a session change by a client that assumes
+   otherwise. Worth a look; not a blocker for this entry.
 
 ---
 
