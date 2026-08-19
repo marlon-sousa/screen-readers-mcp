@@ -2,15 +2,23 @@
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // This controller owns the whole agent-initiated lifecycle, so most of spec
-// 0013's acceptance criteria are decided here and proved here first: the gate
-// (10), no connection the agent did not ask for (9), a second connect refused
-// (7), a mismatch that reports rather than crashes (8), and both retraction
-// paths (6).
+// 0013's acceptance criteria are decided here and proved here first: no
+// connection the agent did not ask for (9), a second connect refused (7), a
+// mismatch that reports rather than crashes (8), and both teardown paths (6).
+//
+// THE GATE TESTS ARE GONE, with the gate. Spec 0022 (option (c), agreed
+// 2026-08-19) made every tool advertised from startup, so this controller no
+// longer publishes or retracts anything and there is no publisher to assert on.
+// What those tests were really guarding -- that a session begins and ends when
+// it should -- is asserted directly against Current() and Status() instead,
+// which is where it was always the truth. That a reader without braille cannot
+// be DRIVEN through braille is proved in controllers/tools, where ToolContext
+// answers a CapabilityError, and in the integration tier -- on the ERROR rather
+// than on an absence from a list.
 package controllers_test
 
 import (
 	"errors"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -32,23 +40,8 @@ import (
 type harness struct {
 	controller *controllers.Connection
 	dialer     *fakes.FakeSessionDialer
-	publisher  *fakes.FakeToolPublisher
 	clock      *fakes.FakeClock
 	log        *fakes.FakeLog
-}
-
-// catalog is a gate shaped like the real one: the ungated four, plus one gated
-// tool per capability so a test can see exactly which gate opened.
-func catalog() entities.ToolCatalog {
-	return entities.NewToolCatalog([]entities.ToolGate{
-		{Name: "list_readers"},
-		{Name: "connect_reader"},
-		{Name: "disconnect_reader"},
-		{Name: "status"},
-		{Name: "get_speech", Capability: entities.CapabilitySpeech},
-		{Name: "get_braille", Capability: entities.CapabilityBraille},
-		{Name: "press_gesture", Capability: entities.CapabilityGestures},
-	})
 }
 
 func newHarness(t *testing.T, readers ...entities.ConfiguredReader) *harness {
@@ -60,17 +53,14 @@ func newHarness(t *testing.T, readers ...entities.ConfiguredReader) *harness {
 	}
 
 	built := &harness{
-		dialer:    fakes.NewFakeSessionDialer(),
-		publisher: fakes.NewFakeToolPublisher(),
-		clock:     fakes.NewFakeClock(),
-		log:       fakes.NewFakeLog(),
+		dialer: fakes.NewFakeSessionDialer(),
+		clock:  fakes.NewFakeClock(),
+		log:    fakes.NewFakeLog(),
 	}
 	built.controller = controllers.NewConnection(
 		fakes.NewFakeEndpointSource(readers...),
 		fakes.NewFakeEndpointProbe(),
 		built.dialer,
-		built.publisher,
-		catalog(),
 		built.clock,
 		built.log,
 	)
@@ -103,14 +93,14 @@ func TestAFreshControllerIsDisconnectedAndHasDialedNothing(t *testing.T) {
 	if len(h.dialer.Calls()) != 0 {
 		t.Error("a fresh controller dialed something")
 	}
-	if len(h.publisher.Published()) != 0 {
-		t.Errorf("published = %v, want nothing until a session exists", h.publisher.Published())
-	}
 }
 
-// Acceptance criterion 5 and the gate: connecting publishes exactly the tools
-// the announced capabilities allow.
-func TestConnectingPublishesTheToolsTheCapabilitiesAllow(t *testing.T) {
+// Acceptance criterion 5: connecting records the session the bridge confirmed.
+//
+// It publishes nothing, and there is nothing here to assert that it did: under
+// spec 0022 the advertised list is a constant this controller cannot reach. What
+// connecting produces is a live session, so that is what is checked.
+func TestConnectingRecordsTheSessionTheBridgeConfirmed(t *testing.T) {
 	h := newHarness(t)
 	h.connected("nvda", entities.CapabilitySpeech, entities.CapabilityGestures)
 
@@ -125,43 +115,16 @@ func TestConnectingPublishesTheToolsTheCapabilitiesAllow(t *testing.T) {
 	if state := h.controller.Status().State; state != entities.Connected {
 		t.Errorf("state = %q, want connected", state)
 	}
-
-	want := []string{"get_speech", "press_gesture"}
-	if got := h.publisher.Published(); !slices.Equal(got, want) {
-		t.Errorf("published = %v, want %v", got, want)
+	if h.controller.Current() != connection {
+		t.Error("the connection Connect returned is not the one it recorded")
 	}
-}
-
-// Acceptance criterion 10, first clause: a reader without braille never gets the
-// braille tool. Keyed on the capability string and on nothing else -- the reader
-// here is deliberately still called nvda.
-func TestAReaderWithoutBrailleNeverGetsTheBrailleTool(t *testing.T) {
-	h := newHarness(t)
-	h.connected("nvda", entities.CapabilitySpeech)
-
-	if _, err := h.controller.Connect("nvda", silent()); err != nil {
-		t.Fatalf("Connect: %v", err)
+	// The announced set still reaches the session: it is what ToolContext
+	// enforces on, and what status and screenreader://info report.
+	if !connection.Session.Capabilities.Has(entities.CapabilitySpeech) {
+		t.Error("the announced speech capability did not reach the session")
 	}
-
-	if h.publisher.Has("get_braille") {
-		t.Error("get_braille was advertised to a reader that never announced braille")
-	}
-}
-
-// The ungated four are not the connection's to publish or retract: a disconnect
-// that swept them up would leave the agent with no way back.
-func TestConnectingNeverTouchesTheUngatedTools(t *testing.T) {
-	h := newHarness(t)
-	h.connected("nvda", testsupport.EveryCapability()...)
-
-	if _, err := h.controller.Connect("nvda", silent()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
-
-	for _, name := range []string{"list_readers", "connect_reader", "disconnect_reader", "status"} {
-		if slices.Contains(h.publisher.History(), "+"+name) {
-			t.Errorf("the connection published the ungated tool %q", name)
-		}
+	if connection.Session.Capabilities.Has(entities.CapabilityBraille) {
+		t.Error("a capability the reader never announced reached the session")
 	}
 }
 
@@ -215,9 +178,6 @@ func TestConnectingWhileConnectedIsAnErrorAndLeavesTheSessionAlone(t *testing.T)
 		t.Errorf("dialed %d times, want once -- the second connect must not dial",
 			len(h.dialer.Calls()))
 	}
-	if !h.publisher.Has("get_speech") {
-		t.Error("the gated tools were disturbed by the refused connect")
-	}
 }
 
 // The error lists the known names, so a wrong guess self-corrects in the same
@@ -260,8 +220,8 @@ func TestAProtocolMismatchIsRecordedAsIncompatible(t *testing.T) {
 	if !strings.Contains(status.Reason, "2") || !strings.Contains(status.Reason, "1") {
 		t.Errorf("reason = %q, want both versions named", status.Reason)
 	}
-	if len(h.publisher.Published()) != 0 {
-		t.Error("tools were published for a session that never began")
+	if h.controller.Current() != nil {
+		t.Error("a session was recorded for a handshake that never completed")
 	}
 }
 
@@ -306,9 +266,6 @@ func TestDisconnectingSendsByeAndRetractsTheGatedTools(t *testing.T) {
 	if built.Lifecycle.Closes() != 1 {
 		t.Errorf("closed %d times, want once", built.Lifecycle.Closes())
 	}
-	if got := h.publisher.Published(); len(got) != 0 {
-		t.Errorf("published = %v, want everything retracted", got)
-	}
 	if h.controller.Current() != nil {
 		t.Error("a session survived its own disconnect")
 	}
@@ -341,13 +298,13 @@ func TestDisconnectingAnAlreadyDeadBridgeStillSucceeds(t *testing.T) {
 	if err := h.controller.Disconnect(); err != nil {
 		t.Errorf("Disconnect: %v, want a clean disconnect anyway", err)
 	}
-	if got := h.publisher.Published(); len(got) != 0 {
-		t.Errorf("published = %v, want everything retracted regardless", got)
+	if h.controller.Current() != nil {
+		t.Error("a session survived a disconnect its bridge could not acknowledge")
 	}
 }
 
 // Acceptance criterion 6, the observed-loss path.
-func TestAnObservedLossRetractsTheToolsAndSaysWhy(t *testing.T) {
+func TestAnObservedLossEndsTheSessionAndSaysWhy(t *testing.T) {
 	h := newHarness(t)
 	built := h.connected("nvda", entities.CapabilitySpeech)
 	if _, err := h.controller.Connect("nvda", silent()); err != nil {
@@ -359,9 +316,6 @@ func TestAnObservedLossRetractsTheToolsAndSaysWhy(t *testing.T) {
 		t.Fatalf("Verify = %v, want the loss reported", err)
 	}
 
-	if got := h.publisher.Published(); len(got) != 0 {
-		t.Errorf("published = %v, want the gated tools retracted", got)
-	}
 	if h.controller.Current() != nil {
 		t.Error("the connection survived a loss")
 	}
@@ -391,9 +345,6 @@ func TestARefusedPingLeavesTheSessionStanding(t *testing.T) {
 	if h.controller.Current() == nil {
 		t.Error("a refusal ended the session; only a lost connection should")
 	}
-	if !h.publisher.Has("get_speech") {
-		t.Error("a refusal retracted the gated tools")
-	}
 }
 
 // Verifying with nothing connected is not a failed check.
@@ -405,8 +356,10 @@ func TestVerifyingWithNoSessionIsNotAFailure(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 6's last clause: a later connect republishes.
-func TestReconnectingAfterALossPublishesAgain(t *testing.T) {
+// Acceptance criterion 6's last clause: a later connect opens a FRESH session,
+// carrying the capabilities the new handshake announced rather than the old
+// one's -- which is the fact a republication used to stand in for.
+func TestReconnectingAfterALossOpensAFreshSession(t *testing.T) {
 	h := newHarness(t)
 	built := h.connected("nvda", entities.CapabilitySpeech)
 	if _, err := h.controller.Connect("nvda", silent()); err != nil {
@@ -421,34 +374,15 @@ func TestReconnectingAfterALossPublishesAgain(t *testing.T) {
 		t.Fatalf("reconnecting: %v", err)
 	}
 
-	want := []string{"get_speech", "get_braille"}
-	if got := h.publisher.Published(); !slices.Equal(got, want) {
-		t.Errorf("published = %v, want %v", got, want)
+	current := h.controller.Current()
+	if current == nil {
+		t.Fatal("reconnecting left no session")
+	}
+	if !current.Session.Capabilities.Has(entities.CapabilityBraille) {
+		t.Error("the reconnected session did not pick up the newly announced braille")
 	}
 	if state := h.controller.Status().State; state != entities.Connected {
 		t.Errorf("state = %q, want connected", state)
-	}
-}
-
-// Retraction uses what was actually published, not the catalog's whole gated
-// list: a reader that announced half the capabilities must not, on disconnect,
-// cause tools that were never there to be withdrawn.
-func TestRetractionWithdrawsOnlyWhatWasPublished(t *testing.T) {
-	h := newHarness(t)
-	h.connected("nvda", entities.CapabilitySpeech)
-	if _, err := h.controller.Connect("nvda", silent()); err != nil {
-		t.Fatalf("Connect: %v", err)
-	}
-
-	if err := h.controller.Disconnect(); err != nil {
-		t.Fatalf("Disconnect: %v", err)
-	}
-
-	if slices.Contains(h.publisher.History(), "-get_braille") {
-		t.Error("get_braille was retracted, though it was never published")
-	}
-	if !slices.Contains(h.publisher.History(), "-get_speech") {
-		t.Error("get_speech was published and never retracted")
 	}
 }
 
@@ -461,8 +395,6 @@ func TestListJoinsTheConfiguredReadersWithTheProbe(t *testing.T) {
 		fakes.NewFakeEndpointSource(reader),
 		fakes.NewFakeEndpointProbe(pipe),
 		fakes.NewFakeSessionDialer(),
-		fakes.NewFakeToolPublisher(),
-		catalog(),
 		fakes.NewFakeClock(),
 		fakes.NewFakeLog(),
 	)
@@ -534,9 +466,6 @@ func TestTheHeartbeatRetractsTheToolsWhenTheConnectionHasDied(t *testing.T) {
 
 	h.controller.RunHeartbeat(stop)
 
-	if got := h.publisher.Published(); len(got) != 0 {
-		t.Errorf("published = %v, want the gated tools retracted", got)
-	}
 	if h.controller.Current() != nil {
 		t.Error("the dead connection is still recorded as live")
 	}

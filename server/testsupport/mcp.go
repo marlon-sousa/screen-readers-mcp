@@ -51,6 +51,7 @@ type MCPHarness struct {
 	Bridge *FakeBridge
 
 	// ToolsChanged receives one value per tools/list_changed notification.
+	// Nothing should ever arrive on it -- see AssertNoToolsChanged.
 	ToolsChanged chan struct{}
 }
 
@@ -302,17 +303,25 @@ func (h *MCPHarness) ReadResource(t *testing.T, uri string) map[string]any {
 	return document
 }
 
-// AwaitToolsChanged waits for a tools/list_changed notification.
+// AssertNoToolsChanged fails if the server emitted tools/list_changed.
 //
-// The SDK debounces the notification by a few milliseconds, so a test that
-// asserted on tools/list immediately after connecting would be racing it. This
-// is the one place a real timeout is used rather than the Clock port: what is
-// being waited on is the SDK's own scheduling, which no injected clock reaches.
-func (h *MCPHarness) AwaitToolsChanged(t *testing.T) {
+// THE CHANNEL CHANGED SIDES. It used to be waited ON: the gated tools appeared
+// when a session opened, the SDK debounced the notification by a few
+// milliseconds, and a test asserting on tools/list immediately after connecting
+// would race it. Spec 0022 (option (c)) made the list a constant, so there is
+// nothing to wait for -- and the same channel now proves the stronger claim,
+// that nothing was announced at all, because a client which never re-lists must
+// never need to.
+//
+// The settle is a real timeout rather than the Clock port for the reason the
+// wait was: what it allows for is the SDK's own scheduling, which no injected
+// clock reaches. A false PASS here costs nothing (the constant list is asserted
+// directly elsewhere); a false FAIL would be flaky, so it errs long.
+func (h *MCPHarness) AssertNoToolsChanged(t *testing.T) {
 	t.Helper()
 	select {
 	case <-h.ToolsChanged:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no tools/list_changed notification arrived")
+		t.Error("the server emitted tools/list_changed; the advertised list must be a constant")
+	case <-time.After(250 * time.Millisecond):
 	}
 }

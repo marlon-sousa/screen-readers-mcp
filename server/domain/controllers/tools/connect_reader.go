@@ -47,8 +47,10 @@ func (t *ConnectReader) Name() string { return "connect_reader" }
 func (t *ConnectReader) Capability() entities.Capability { return "" }
 
 func (t *ConnectReader) Description() string {
-	return "Open a session with one screen reader, then advertise the tools that " +
-		"reader's announced capabilities allow. Tries the reader's endpoints in " +
+	return "Open a session with one screen reader. It does NOT change what tools " +
+		"you can see -- every tool is advertised from startup -- it changes what " +
+		"they can DO: a gated tool refuses until the reader it needs is connected " +
+		"and announced the capability. Tries the reader's endpoints in " +
 		"the order list_readers shows and reports which one answered. " +
 		"Errors if a session is already live -- disconnect_reader first. " +
 		"You must say WHO YOU ARE STANDING IN FOR (persona): it decides what a " +
@@ -66,12 +68,12 @@ func (t *ConnectReader) InputSchema() json.RawMessage {
 	"properties": {
 		"reader": {
 			"type": "string",
-			"description": "Which reader to connect to, as named by list_readers (for example \"nvda\"). Required."
+			"description": "Which reader to connect to, spelled exactly as list_readers names it. Call that first if you do not know; the set is configuration, so it differs between installations. Required."
 		},
 		"mode": {
 			"type": "string",
 			"enum": ["silent", "live"],
-			"description": "How speech is captured for this whole session. \"silent\" captures speech deterministically while the user hears nothing; \"live\" leaves the real synthesizer speaking and captures by observation, so ordering and timing are best-effort. CAPTURE IS COMPLETE EITHER WAY: silent suppresses each utterance only after copying it, so get_speech returns exactly what would have been spoken, and every entry carries its logPosition, so the speech-to-log join works in both modes. The one thing silent costs is the reader's own 'speaking' log record: the reader writes that AFTER the point where the empty sequence is substituted, so those records are absent from a silent session -- and only at the debug and io log levels, which is the only place they exist at all. Every other record the reader writes is identical in both modes. Use \"silent\" for automated testing. Choose \"live\" when a human needs to hear the run as it happens, or in the narrow case where you specifically need the reader's own record of the text it spoke."
+			"description": "How speech is captured for this whole session, fixed once and not changeable without reconnecting. \"silent\" captures speech while the human hears nothing; \"live\" leaves the real synthesizer speaking and captures by observation, so ordering and timing are best-effort. CAPTURE IS COMPLETE EITHER WAY: get_speech returns what would have been spoken, and every entry carries its logPosition, so the speech-to-log join works in both modes. Use \"silent\" for automated testing. Choose \"live\" when a human needs to hear the run as it happens. WHAT SILENT COSTS IS READER-SPECIFIC -- a reader may be unable to record its own account of text it never actually spoke -- and the connected reader's guidance says what it costs there; connect_reader returns that document in full. A reader that cannot honour the mode you ask for refuses the handshake and says so, so an unsupported mode is an error you see immediately rather than a silent downgrade."
 		},
 		"persona": {
 			"type": "string",
@@ -99,7 +101,7 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		},
 		"readerVersion": {
 			"type": "string",
-			"description": "The reader's own version -- NVDA's, not the bridge's."
+			"description": "The reader's own version -- the screen reader's, not the bridge add-on's (that is bridgeVersion)."
 		},
 		"endpoint": {
 			"type": "string",
@@ -108,7 +110,7 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		"capabilities": {
 			"type": "array",
 			"items": {"type": "string"},
-			"description": "What this reader announced it can do, from the vocabulary screenreader://tools groups its tools by. The tools those capabilities allow are advertised from this moment on."
+			"description": "What this reader announced it can do, from the vocabulary screenreader://tools groups its tools by. This does not change the tool LIST, which is the same before and after connecting; it decides which of those tools will actually run. A tool gated on a capability absent from this list answers an error naming it."
 		},
 		"mode": {
 			"type": "string",
@@ -126,7 +128,11 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		},
 		"readerGuidance": {
 			"type": "string",
-			"description": "Where THIS reader's own account of your stance can be read (screenreader://reader-guidance). ABSENT when the bridge announced no 'guidance' capability, which is the honest answer that this reader publishes none."
+			"description": "Where THIS reader's own account of your stance can be read (screenreader://reader-guidance), for a re-read later. ABSENT when the bridge announced no 'guidance' capability, which is the honest answer that this reader publishes none."
+		},
+		"readerGuidanceText": {
+			"type": "string",
+			"description": "That account IN FULL, delivered here so you do not have to fetch it: which of THIS reader's own commands your stance may use, and which reach past focus and are therefore outside it. READ IT BEFORE YOU DRIVE -- every tool this server has is advertised from startup, so the tool list does not tell you what this reader can do, and this does. ABSENT when the bridge publishes no guidance, or is an older build that serves it only on request; then read the resource named above."
 		},
 		"synth": {
 			"type": "string",
@@ -182,7 +188,26 @@ type connectResult struct {
 	// persona is chosen BEFORE connecting and can only be instantiated on a
 	// particular reader AFTER, and an agent left to discover that would not.
 	ReaderGuidance string `json:"readerGuidance,omitempty"`
-	Synth          string `json:"synth"`
+	// ReaderGuidanceText is that document IN FULL, when the bridge delivered it
+	// in the handshake (spec 0022 A.5).
+	//
+	// INLINED RATHER THAN POINTED AT, for the reason `stance` above is: connect
+	// is the one moment an agent is guaranteed to be reading, and a URI is an
+	// invitation to a second call that agents demonstrably decline. Two external
+	// runs (specs 0027 and 0030) each held a pointer to a document that would
+	// have told them what they went looking for elsewhere -- one to PowerShell,
+	// one to this server's source.
+	//
+	// It matters more now than it did under spec 0013's gate. Every tool is
+	// advertised from startup, so the advertised list no longer narrows itself
+	// to what this reader can do; THIS is where an agent learns that, and it
+	// arrives without being asked for.
+	//
+	// Absent when the bridge publishes no guidance, or predates the handshake
+	// field -- in which case `readerGuidance` above still names the resource,
+	// and reading it makes the round trip this saved.
+	ReaderGuidanceText string `json:"readerGuidanceText,omitempty"`
+	Synth              string `json:"synth"`
 	// LogPath names the READER-SIDE session transcript, and it is a convenience
 	// rather than a contract to depend on (spec 0021): the artifact is written
 	// for the human at the reader, on the reader's disk, so for a remote bridge
@@ -250,6 +275,16 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 	if connection.Guidance != nil {
 		readerGuidance = readerGuidanceURI
 	}
+	// And the document ITSELF when the handshake carried it (spec 0022 A.5).
+	// The URI above stays beside it: an agent re-reading mid-session should not
+	// have to scroll back through its own transcript to find this.
+	readerGuidanceText := ""
+	if connection.GuidanceDocument != nil {
+		readerGuidanceText = connection.GuidanceDocument.Text
+		if readerGuidance == "" {
+			readerGuidance = readerGuidanceURI
+		}
+	}
 	return connectResult{
 		Reader:        session.Reader.Name,
 		ReaderVersion: session.Reader.Version,
@@ -261,12 +296,13 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Mode: session.Mode.String(),
 		// From the session rather than from the request, so this reports what
 		// was actually recorded against the run.
-		Persona:        session.Persona.String(),
-		Stance:         session.Persona.Stance(),
-		ReaderGuidance: readerGuidance,
-		Synth:          session.Synth,
-		LogPath:        session.LogPath,
-		BridgeVersion:  session.BridgeVersion,
+		Persona:            session.Persona.String(),
+		Stance:             session.Persona.Stance(),
+		ReaderGuidance:     readerGuidance,
+		ReaderGuidanceText: readerGuidanceText,
+		Synth:              session.Synth,
+		LogPath:            session.LogPath,
+		BridgeVersion:      session.BridgeVersion,
 	}, nil
 }
 

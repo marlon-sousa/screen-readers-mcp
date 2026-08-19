@@ -3,9 +3,16 @@
 //
 // ROLE: controller. Owns the whole agent-initiated connection lifecycle: List,
 // Connect, Disconnect, loss detection, and the heartbeat.
-// DEPENDS ON (all ports): EndpointSource, EndpointProbe, SessionDialer,
-// ToolPublisher, Clock, Log -- plus the ToolCatalog entity, which decides which
-// names to publish.
+// DEPENDS ON (all ports): EndpointSource, EndpointProbe, SessionDialer, Clock,
+// Log.
+//
+// IT NO LONGER PUBLISHES ANYTHING (spec 0022, option (c), agreed 2026-08-19).
+// Connecting used to compute the allowed tool names and hand them to a
+// ToolPublisher, and every teardown path retracted them again. Every tool is now
+// advertised from startup, so both went, and the port went with them: the
+// lifecycle stopped being the thing that decides what an agent can SEE. What a
+// session still decides is what a call can DO, and that was never here -- it is
+// ToolContext, per call.
 // BUILT BY: wiring/wiring.go. USED BY: the four ungated tool controllers,
 // through the narrow ConnectionControl interface they declare.
 //
@@ -46,8 +53,6 @@ type Connection struct {
 	endpoints ports.EndpointSource
 	probe     ports.EndpointProbe
 	dialer    ports.SessionDialer
-	publisher ports.ToolPublisher
-	catalog   entities.ToolCatalog
 	clock     ports.Clock
 	log       ports.Log
 
@@ -56,7 +61,6 @@ type Connection struct {
 	mu         sync.Mutex
 	status     entities.ConnectionStatus
 	connection *ports.ReaderConnection
-	published  []string
 }
 
 // NewConnection builds the controller, disconnected and having dialed nothing.
@@ -64,8 +68,6 @@ func NewConnection(
 	endpoints ports.EndpointSource,
 	probe ports.EndpointProbe,
 	dialer ports.SessionDialer,
-	publisher ports.ToolPublisher,
-	catalog entities.ToolCatalog,
 	clock ports.Clock,
 	log ports.Log,
 ) *Connection {
@@ -73,8 +75,6 @@ func NewConnection(
 		endpoints: endpoints,
 		probe:     probe,
 		dialer:    dialer,
-		publisher: publisher,
-		catalog:   catalog,
 		clock:     clock,
 		log:       log,
 		status:    entities.ConnectionStatus{State: entities.Disconnected},
@@ -122,19 +122,14 @@ func (c *Connection) Connect(readerName string, opts ports.SessionOptions) (*por
 		return nil, err
 	}
 
-	// The gate. Names come from the catalog, keyed on what `hello` announced
-	// and on nothing else -- no reader name reaches this decision.
-	names := c.catalog.Allowed(connection.Session.Capabilities)
-
 	c.mu.Lock()
 	c.connection = connection
-	c.published = names
 	c.status = entities.ConnectionStatus{State: entities.Connected}
 	c.mu.Unlock()
 
-	c.publisher.Publish(names)
-	c.log.Infof("connected to %q over %s; published %d tool(s)",
-		connection.Session.Reader.Name, connection.Endpoint, len(names))
+	c.log.Infof("connected to %q over %s; the reader announced %d capability(ies)",
+		connection.Session.Reader.Name, connection.Endpoint,
+		len(connection.Session.Capabilities.All()))
 	return connection, nil
 }
 
@@ -309,20 +304,15 @@ func (c *Connection) lose(cause error) {
 	c.log.Infof("connection to %q lost: %v", connection.Session.Reader.Name, cause)
 }
 
-// clear drops the session and retracts whatever was published for it.
+// clear drops the session.
 //
-// The retraction uses the names that were actually PUBLISHED rather than the
-// catalog's full gated list, so a reader that announced half the capabilities
-// does not, on disconnect, cause a retraction of tools that were never there.
+// Nothing is retracted: the tool list is a constant now. What changes for an
+// agent is that the next call through any gated tool answers a CapabilityError
+// naming no reader -- which is the honest report of "nothing is connected", and
+// is the same answer whether the session was ended politely or was lost.
 func (c *Connection) clear(status entities.ConnectionStatus) {
 	c.mu.Lock()
-	names := c.published
 	c.connection = nil
-	c.published = nil
 	c.status = status
 	c.mu.Unlock()
-
-	if len(names) > 0 {
-		c.publisher.Retract(names)
-	}
 }

@@ -1,14 +1,25 @@
 //go:build integration
 
-// screenreader-mcp tests -- the capability gate, over MCP.
+// screenreader-mcp tests -- capability enforcement, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // ROLE: integration scenario, named after the USE CASE. Spec 0013's headless
-// scenarios 1, 2 and 4, and acceptance criteria 5, 6 and 10 -- proved where they
-// actually matter, at the MCP boundary, with everything below the client real
-// except the bridge.
+// scenarios 1, 2 and 4 -- proved where they actually matter, at the MCP
+// boundary, with everything below the client real except the bridge.
 //
-// The gate is keyed on CAPABILITY STRINGS and never on reader names, so every
+// WHAT THIS FILE STOPPED ASSERTING. Under spec 0013 the gate was on the LIST,
+// and these tests read tools/list to prove it. Spec 0022 (option (c), agreed
+// 2026-08-19) moved the gate off the list entirely: every tool is advertised
+// from startup, and a reader that cannot serve one refuses the CALL. So the
+// assertions moved from an absence to an error -- which is the stronger claim
+// anyway, because an absence proved only that this server did not offer the
+// tool, while the error proves it will not run it.
+//
+// The list assertions that remain say the opposite of what they used to: that
+// tools/list is IDENTICAL before connecting, while connected, and after both a
+// disconnect and a lost connection. That constant is what closes entry 11.6.
+//
+// Enforcement is keyed on CAPABILITY STRINGS and never on reader names, so every
 // bridge below is called "nvda" and differs only in what `hello` announced. If
 // any of these passed because of a reader name, that would be the bug.
 package integration_test
@@ -48,26 +59,33 @@ func nvda(capabilities ...wire.Capability) testsupport.BridgeOptions {
 	}
 }
 
-// Scenario 1 in full: connect, the gated tools appear, call one, disconnect,
-// they retract. Acceptance criteria 5 and 6.
-func TestConnectingPublishesTheGatedToolsAndDisconnectingRetractsThem(t *testing.T) {
+// Scenario 1 in full: the whole surface is there from the start, a session opens,
+// a gated call works, the session ends -- and the tool list never moves.
+//
+// THE PROPERTY ENTRY 11.6 TURNS ON, asserted at the MCP boundary where a client
+// actually sees it: a client that listed once, before connecting, and cached the
+// answer forever is holding a correct answer at every point below.
+func TestTheAdvertisedListIsIdenticalBeforeDuringAndAfterASession(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 	})
 
-	if got := advertised(t, h); !slices.Equal(got, ungated) {
-		t.Fatalf("tools/list = %v before connecting, want only the ungated four", got)
+	want := append(append([]string{}, everyGatedTool...), ungated...)
+	slices.Sort(want)
+
+	beforeConnecting := advertised(t, h)
+	if !slices.Equal(beforeConnecting, want) {
+		t.Fatalf("tools/list = %v before connecting, want the whole surface %v",
+			beforeConnecting, want)
 	}
 
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader failed: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
-	want := append(append([]string{}, everyGatedTool...), ungated...)
-	slices.Sort(want)
-	if got := advertised(t, h); !slices.Equal(got, want) {
-		t.Errorf("tools/list = %v, want every tool published %v", got, want)
+	if got := advertised(t, h); !slices.Equal(got, beforeConnecting) {
+		t.Errorf("tools/list = %v after connecting, want it unchanged at %v",
+			got, beforeConnecting)
 	}
 
 	// A real gated call, over the whole stack, answered by the bridge.
@@ -104,43 +122,48 @@ func TestConnectingPublishesTheGatedToolsAndDisconnectingRetractsThem(t *testing
 	if got := h.Call(t, "disconnect_reader", nil); got.IsError {
 		t.Fatalf("disconnect_reader failed: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
-	if got := advertised(t, h); !slices.Equal(got, ungated) {
-		t.Errorf("tools/list = %v, want the gated tools retracted and the ungated "+
-			"four left standing", got)
+	if got := advertised(t, h); !slices.Equal(got, beforeConnecting) {
+		t.Errorf("tools/list = %v after disconnecting, want it unchanged at %v",
+			got, beforeConnecting)
+	}
+	// And nothing was ever announced, because nothing changed. A client with no
+	// notification handling at all is not disadvantaged here -- which is the
+	// whole point, and the half of 11.6 that no client-side remedy could reach.
+	h.AssertNoToolsChanged(t)
+
+	// What the session's end DOES change is what a call can do.
+	refused := h.Call(t, "get_speech", map[string]any{"since_index": 0})
+	if !refused.IsError {
+		t.Error("get_speech succeeded after the session ended")
+	}
+	if !strings.Contains(refused.Text, "connect_reader") {
+		t.Errorf("error = %q, want it to name the tool that fixes this", refused.Text)
 	}
 }
 
-// Scenario 2, and acceptance criterion 10 in both its clauses. The reader is
-// still called nvda: only what it ANNOUNCED differs.
-func TestAReaderWithoutBrailleNeverGetsTheBrailleToolAndSaysSoIfCalled(t *testing.T) {
+// Scenario 2: a reader without braille. The tool is LISTED and the call is
+// REFUSED, which is the shape spec 0022 chose deliberately -- an absence told an
+// agent nothing about why, and could not be told apart from a stale list.
+//
+// The reader is still called nvda: only what it ANNOUNCED differs.
+func TestAReaderWithoutBrailleIsRefusedTheBrailleToolWithAReason(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda(
 		wire.CapabilitySpeech, wire.CapabilityGestures, wire.CapabilityFocus,
 	))
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
-	// First clause: not advertised.
-	if h.Advertises(t, "get_braille") {
-		t.Errorf("tools/list = %v, want no braille tool for a reader that never "+
-			"announced braille", h.ToolNames(t))
-	}
-	// And the ones it did announce are there, so this is a gate and not a
-	// blanket refusal.
-	for _, name := range []string{"get_speech", "press_gesture", "get_focus_info"} {
-		if !h.Advertises(t, name) {
-			t.Errorf("%s is missing, though the reader announced its capability", name)
-		}
-	}
-	if h.Advertises(t, "get_config") {
-		t.Error("get_config was advertised, though the reader announced no config")
+	// Advertised, like everything else: the list does not narrow to the reader.
+	if !h.Advertises(t, "get_braille") {
+		t.Errorf("tools/list = %v, want get_braille advertised even though this "+
+			"reader announced no braille", h.ToolNames(t))
 	}
 
-	// Second clause: calling it anyway -- with a stale tool list, say -- gives
-	// the structured capability error rather than the SDK's `unknown tool`.
+	// And calling it gives the structured capability error rather than the SDK's
+	// `unknown tool` -- naming the capability AND the reader, which is what tells
+	// "this reader cannot" apart from "nothing is connected".
 	result := h.Call(t, "get_braille", map[string]any{"since_index": 0})
 	if !result.IsError {
 		t.Fatal("get_braille succeeded on a reader with no braille")
@@ -155,18 +178,35 @@ func TestAReaderWithoutBrailleNeverGetsTheBrailleToolAndSaysSoIfCalled(t *testin
 		t.Errorf("error = %q, want a capability error rather than the SDK's "+
 			"unknown-tool answer", result.Text)
 	}
+
+	// And this is a per-capability refusal, not a blanket one: what the reader
+	// DID announce runs.
+	h.Bridge.Handle(wire.CommandGetFocusInfo, func(json.RawMessage) (any, error) {
+		return wire.FocusInfoResult{Name: "Edit", Role: "editableText"}, nil
+	})
+	if got := h.Call(t, "get_focus_info", map[string]any{}); got.IsError {
+		t.Errorf("get_focus_info = %q, want it to run for a reader that announced focus",
+			got.Text)
+	}
 }
 
-// A reader announcing nothing at all gets no gated tools, and the empty
-// announcement is not mistaken for "announced everything".
-func TestAReaderAnnouncingNothingGetsNoGatedTools(t *testing.T) {
+// A reader announcing nothing at all can be driven through nothing -- and the
+// empty announcement is not mistaken for "announced everything".
+//
+// The list is untouched by any of that, which is why the proof is a call.
+func TestAReaderAnnouncingNothingCanBeDrivenThroughNothing(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda())
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
 
-	if got := advertised(t, h); !slices.Equal(got, ungated) {
-		t.Errorf("tools/list = %v, want only the ungated four", got)
+	for _, name := range []string{"get_speech", "press_gesture", "get_braille"} {
+		if !h.Advertises(t, name) {
+			t.Errorf("%s left the list; the advertised surface is a constant", name)
+		}
+		if got := h.Call(t, name, map[string]any{"since_index": 0}); !got.IsError {
+			t.Errorf("%s ran for a reader that announced no capabilities at all", name)
+		}
 	}
 }
 
@@ -181,7 +221,6 @@ func TestAnUnknownAnnouncedCapabilityIsIgnoredButStillReported(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("an unknown capability broke the handshake: %s", result.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	var connected struct {
 		Capabilities []string `json:"capabilities"`
@@ -222,14 +261,13 @@ func TestAGenuinelyUnknownToolIsStillAProtocolError(t *testing.T) {
 // Scenario 4: the connection dies mid-session. The in-flight call fails cleanly,
 // the tools retract without anybody restarting anything, and a later
 // connect_reader opens a fresh session.
-func TestAConnectionThatDiesMidSessionRetractsTheToolsAndCanBeReopened(t *testing.T) {
+func TestAConnectionThatDiesMidSessionIsNoticedAndCanBeReopened(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda(testsupport.EveryWireCapability()...))
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 	if !h.Advertises(t, "get_speech") {
-		t.Fatal("the gated tools were never published")
+		t.Fatal("the gated tools are not advertised at all")
 	}
 
 	// The bridge drops the connection while serving a command, which is what
@@ -243,11 +281,12 @@ func TestAConnectionThatDiesMidSessionRetractsTheToolsAndCanBeReopened(t *testin
 	if !result.IsError {
 		t.Fatal("a call over a dead connection reported success")
 	}
-	h.AwaitToolsChanged(t)
 
-	if h.Advertises(t, "get_speech") {
-		t.Errorf("tools/list = %v, want the gated tools retracted once the "+
-			"connection was seen to have gone", h.ToolNames(t))
+	// The list is untouched by a lost connection, exactly as by a clean
+	// disconnect. What says the session ended is `status`, and the next call.
+	if !h.Advertises(t, "get_speech") {
+		t.Errorf("tools/list = %v, want it unchanged by a lost connection",
+			h.ToolNames(t))
 	}
 	var status struct {
 		State  string `json:"state"`
@@ -266,7 +305,6 @@ func TestAConnectionThatDiesMidSessionRetractsTheToolsAndCanBeReopened(t *testin
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("reconnecting after a loss: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 	if !h.Advertises(t, "get_speech") {
 		t.Errorf("tools/list = %v, want the gated tools published again", h.ToolNames(t))
 	}
@@ -280,7 +318,6 @@ func TestReaderVocabularyPassesThroughUntouched(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	var pressed []string
 	h.Bridge.Handle(wire.CommandPressGesture, func(params json.RawMessage) (any, error) {
@@ -326,7 +363,6 @@ func TestARefusedCommandDoesNotEndTheSession(t *testing.T) {
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
-	h.AwaitToolsChanged(t)
 
 	h.Bridge.Handle(wire.CommandPressGesture, func(json.RawMessage) (any, error) {
 		return nil, errUnknownGesture

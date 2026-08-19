@@ -32,12 +32,12 @@ import (
 //
 // SPEC AMENDMENT (rides in 10b): 10a declared this sentinel in adapters/bridge,
 // where it was raised. It belongs here, because the party that must RECOGNISE a
-// loss is the connection controller -- it retracts the gated tools and records
-// why -- and the domain may not import an adapter. bridge.ErrConnectionLost is
+// loss is the connection controller -- it records the loss and why -- and the
+// domain may not import an adapter. bridge.ErrConnectionLost is
 // now an alias of this, so no 10a call site changed.
 //
 // A sentinel rather than a type because the response is the same whatever the
-// cause: retract, record, and let the agent connect again when it chooses.
+// cause: record it, and let the agent connect again when it chooses.
 var ErrConnectionLost = errors.New("bridge connection lost")
 
 // SessionOptions are what the AGENT chose for this session, all of which the
@@ -117,10 +117,24 @@ type ReaderConnection struct {
 	// Guidance is the odd one out and is worth saying so: every other port
 	// here backs a TOOL, and this one backs a RESOURCE
 	// (screenreader://reader-guidance). The gate is the same structural one --
-	// nil unless the reader announced `guidance` -- but nothing in
-	// ToolCatalog changes when it is present, which is why the tool list is
-	// untouched by spec 0029's second half.
+	// nil unless the reader announced `guidance`.
+	//
+	// It is now the FALLBACK route rather than the usual one: a bridge that
+	// speaks spec 0022 A.5 delivers the document in the handshake, and this
+	// port is only reached for one that does not.
 	Guidance GuidanceReader
+
+	// GuidanceDocument is that document, when the handshake carried it.
+	//
+	// Nil means the bridge sent none -- either it publishes no guidance at all,
+	// or it predates the field and must be asked through Guidance above.
+	//
+	// Holding it ON THE CONNECTION is what makes "this session's document"
+	// structural: a reconnect produces a different *ReaderConnection, so the
+	// previous session's text cannot be served to the new one. The controller
+	// used to get that property from a cache keyed on this same pointer; now it
+	// does not need the cache.
+	GuidanceDocument *entities.ReaderGuidanceDocument
 }
 
 // SessionDialer opens a session with one configured reader.

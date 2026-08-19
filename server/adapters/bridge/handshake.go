@@ -212,6 +212,17 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	if capabilities.Has(entities.CapabilityGuidance) {
 		connection.Guidance = client
 	}
+	// The document itself, when the bridge sent it in the handshake (spec 0022
+	// A.5). Absent from an older bridge, which is why the port above stays: the
+	// controller falls back to a getGuidance round trip and nothing breaks.
+	if result.Guidance != nil {
+		connection.GuidanceDocument = &entities.ReaderGuidanceDocument{
+			Reader:     result.Reader.Name,
+			Persona:    entities.Persona(result.Guidance.Persona),
+			Recognised: result.Guidance.Recognised,
+			Text:       result.Guidance.Text,
+		}
+	}
 	return connection, nil
 }
 

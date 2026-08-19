@@ -28,8 +28,10 @@ func (t *DisconnectReader) Name() string { return "disconnect_reader" }
 func (t *DisconnectReader) Capability() entities.Capability { return "" }
 
 func (t *DisconnectReader) Description() string {
-	return "End the current screen reader session and withdraw the capability-gated " +
-		"tools. The reader restores anything it changed for the session -- speech " +
+	return "End the current screen reader session. The tool list is unchanged by " +
+		"this -- nothing is withdrawn -- but every gated tool goes back to " +
+		"refusing, naming the absent session rather than a missing capability. " +
+		"The reader restores anything it changed for the session -- speech " +
 		"and its own log level. Takes no parameters, and is not an error when no " +
 		"session is live. Reconnect with connect_reader; the new session starts " +
 		"fresh, with new logs and speech indices starting over."

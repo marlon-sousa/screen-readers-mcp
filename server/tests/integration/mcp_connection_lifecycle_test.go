@@ -39,12 +39,29 @@ func advertised(t *testing.T, h *testsupport.MCPHarness) []string {
 	return names
 }
 
-// Acceptance criterion 3.
-func TestAFreshServerAdvertisesOnlyTheUngatedToolsAndHasDialedNothing(t *testing.T) {
+// Acceptance criterion 3, as spec 0022 leaves it: a fresh server advertises the
+// WHOLE surface and has still dialed nothing.
+//
+// The two halves were once one claim -- "only the ungated four" proved both that
+// nothing had been dialed and that the gate was shut. They are separate now, and
+// the second is the one that mattered: what acceptance criterion 9 is really
+// about is that no connection happens unasked, and that is asserted directly
+// against the bridge below.
+func TestAFreshServerAdvertisesEveryToolAndHasDialedNothing(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
-	if names := advertised(t, h); !slices.Equal(names, ungated) {
-		t.Errorf("tools/list = %v, want exactly %v", names, ungated)
+	names := advertised(t, h)
+	for _, name := range ungated {
+		if !slices.Contains(names, name) {
+			t.Errorf("tools/list = %v, want the ungated %q present", names, name)
+		}
+	}
+	// And a gated one, with nothing connected: it is listed, and it refuses.
+	if !slices.Contains(names, "get_speech") {
+		t.Errorf("tools/list = %v, want gated tools advertised before connecting", names)
+	}
+	if got := h.Call(t, "get_speech", map[string]any{"since_index": 0}); !got.IsError {
+		t.Error("get_speech ran with nothing connected")
 	}
 
 	// Acceptance criterion 9: nothing was dialed, so the bridge saw nothing.
@@ -197,8 +214,9 @@ func TestConnectingWhileConnectedIsRefused(t *testing.T) {
 
 // Disconnecting is polite -- the bridge sees `bye` -- and the ungated four
 // survive it, since they are how the agent gets back.
-func TestDisconnectingSendsByeAndLeavesTheUngatedToolsStanding(t *testing.T) {
+func TestDisconnectingSendsByeAndLeavesTheToolListStanding(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+	before := advertised(t, h)
 	if got := h.Connect(t); got.IsError {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
@@ -210,8 +228,8 @@ func TestDisconnectingSendsByeAndLeavesTheUngatedToolsStanding(t *testing.T) {
 	if !h.Bridge.SawBye() {
 		t.Error("the bridge never saw bye")
 	}
-	if names := advertised(t, h); !slices.Equal(names, ungated) {
-		t.Errorf("tools/list = %v, want the ungated four to survive", names)
+	if names := advertised(t, h); !slices.Equal(names, before) {
+		t.Errorf("tools/list = %v, want it unchanged at %v", names, before)
 	}
 }
 

@@ -310,6 +310,7 @@ def test_hello_result_serializes_all_fields() -> None:
 		"synth",
 		"logPath",
 		"bridgeVersion",
+		"guidance",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}
@@ -425,3 +426,50 @@ def test_representative_payloads_validate(cls: type[Any], payload: dict[str, Any
 	out = p.to_dict(obj)
 	for k, v in payload.items():
 		assert out[k] == v
+
+
+def test_hello_result_carries_the_guidance_document() -> None:
+	"""Spec 0022 A.5: the reader's own guidance rides back in the handshake.
+
+	The SAME type ``getGuidance`` answers with, so the two routes cannot describe
+	one document differently.
+	"""
+	hr = p.HelloResult(
+		protocolVersion=1,
+		reader=p.ReaderInfo(name="nvda", version="2026.1.0"),
+		capabilities=[p.Capability.GUIDANCE],
+		mode=p.CaptureMode.SILENT,
+		synth="oneCore",
+		logPath=r"C:\x\session.log",
+		guidance=p.GetGuidanceResult(persona="user", recognised=True, text="# how to drive"),
+	)
+
+	back = p.from_dict(p.HelloResult, p.to_dict(hr))
+
+	assert back.guidance is not None
+	assert back.guidance.persona == "user"
+	assert back.guidance.recognised is True
+	assert back.guidance.text == "# how to drive"
+
+
+def test_a_hello_result_without_guidance_still_decodes() -> None:
+	"""An older BRIDGE simply omits the field, and a newer server must cope.
+
+	This is the half that forward compatibility does not give for free: §2's
+	"unknown fields are ignored" covers a newer bridge talking to an older
+	server, and this covers the other direction -- the server falls back to
+	calling ``getGuidance``, which is only possible if the payload decodes.
+	"""
+	back = p.from_dict(
+		p.HelloResult,
+		{
+			"protocolVersion": 1,
+			"reader": {"name": "nvda", "version": "2026.1.0"},
+			"capabilities": ["speech"],
+			"mode": "silent",
+			"synth": "oneCore",
+			"logPath": r"C:\x\session.log",
+		},
+	)
+
+	assert back.guidance is None

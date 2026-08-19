@@ -29,9 +29,10 @@ func (t *GetConfig) Capability() entities.Capability { return entities.Capabilit
 
 func (t *GetConfig) Description() string {
 	return "Read one value from the screen reader's own configuration, addressed by a " +
-		"key path into its config tree. The path and the value are the READER's -- " +
-		"for NVDA, [\"speech\", \"symbolLevel\"] or [\"braille\", \"translationTable\"]. " +
-		"Read screenreader://info to learn which reader you are driving. Use this to " +
+		"key path into its config tree. The path and the value are the READER's own, " +
+		"so they differ between readers and this server never interprets them. " +
+		"Read screenreader://info to learn which reader you are driving, and that " +
+		"reader's own documentation for its setting names. Use this to " +
 		"record a setting before changing it, so you can put it back."
 }
 
@@ -43,7 +44,7 @@ func (t *GetConfig) InputSchema() json.RawMessage {
 			"type": "array",
 			"items": {"type": "string"},
 			"minItems": 1,
-			"description": "The path into the reader's configuration tree, outermost key first. Reader-specific (NVDA example: [\"speech\", \"symbolLevel\"])."
+			"description": "The path into the reader's configuration tree, outermost key first, as that reader spells it. Reader-specific and passed through untouched; this server never interprets it."
 		}
 	},
 	"required": ["key_path"],

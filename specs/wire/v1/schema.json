@@ -482,6 +482,16 @@
         },
         "bridgeVersion": {
           "type": "string"
+        },
+        "guidance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GetGuidanceResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [

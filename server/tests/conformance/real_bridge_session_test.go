@@ -59,8 +59,13 @@ const (
 	typedText = "café — 50%"
 )
 
-// ungatedTools is what a server with no session advertises; gatedTools is what
-// this bridge's announced capabilities must add.
+// ungatedTools and gatedTools together are the WHOLE advertised surface, which
+// spec 0022 (option (c)) made a constant: both lists are expected before
+// connecting, while connected, and after disconnecting.
+//
+// The split between them is still meaningful and still checked -- it is what
+// `screenreader://tools` reports as each tool's gate, and what decides whether a
+// CALL is refused -- but it no longer decides what is LISTED.
 //
 // `announce` joined this list in entry 11a. focus/state/config joined in entry
 // 11.1 (spec 0015), which served the four introspection commands and widened
@@ -139,11 +144,14 @@ func runWholeSession(t *testing.T, transport string) {
 	bridge := startPythonBridge(t, transport)
 	harness := startServer(t, bridge.Endpoint)
 
-	assertAdvertises(t, harness, ungatedTools, nil)
+	// THE WHOLE SURFACE, BEFORE ANYTHING IS CONNECTED (spec 0022, option (c)).
+	// Asserted across the real transport because that is where entry 11.6 was
+	// found: a client's cached list is correct here only if the list never moves.
+	wholeSurface := append(slices.Clone(ungatedTools), gatedTools...)
+	assertAdvertises(t, harness, wholeSurface, unannouncedTools)
 
 	session := connect(t, harness, bridge)
-	harness.AwaitToolsChanged(t)
-	assertAdvertises(t, harness, append(slices.Clone(ungatedTools), gatedTools...), unannouncedTools)
+	assertAdvertises(t, harness, wholeSurface, unannouncedTools)
 
 	exerciseGestures(t, harness)
 	exerciseSpeech(t, harness)
@@ -158,14 +166,15 @@ func runWholeSession(t *testing.T, transport string) {
 	assertInfoDescribesTheSession(t, harness, session)
 
 	disconnect(t, harness)
-	harness.AwaitToolsChanged(t)
-	assertAdvertises(t, harness, ungatedTools, gatedTools)
+	// Unchanged by the session ending, exactly as by its beginning. What a
+	// disconnect changes is what a CALL does, which exerciseGuidance and the
+	// integration tier both assert on.
+	assertAdvertises(t, harness, wholeSurface, unannouncedTools)
 
 	// A second session on the same bridge process: `bye` really did tear the
 	// first one down, and the bridge went back to accepting. A teardown that
 	// only looked clean from this side would fail here.
 	connect(t, harness, bridge)
-	harness.AwaitToolsChanged(t)
 	disconnect(t, harness)
 }
 
@@ -181,10 +190,15 @@ type connectedSession struct {
 	Stance        string   `json:"stance"`
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
+
+	// The reader's own guidance, both as a pointer and in full (spec 0022 A.5).
+	ReaderGuidance     string `json:"readerGuidance"`
+	ReaderGuidanceText string `json:"readerGuidanceText"`
 }
 
 // connect performs the handshake and checks that every field the real bridge
-// sent survived the crossing.
+// sent survived the crossing -- including, since spec 0022 A.5, the reader's own
+// guidance document, which now rides back in `hello` rather than being fetched.
 //
 // This is the single densest assertion in the tier: `hello` carries a nested
 // object, a string enum, a string array and an integer, so a binding that got
@@ -228,6 +242,24 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	}
 	if session.Stance != entities.PersonaUser.Stance() {
 		t.Errorf("stance = %q, want the persona's stance in full", session.Stance)
+	}
+	// THE GUIDANCE DOCUMENT CROSSED IN THE HANDSHAKE (spec 0022 A.5), composed
+	// by the real Python bridge for the persona this very call declared. Proved
+	// here rather than only in the integration tier because this is the seam
+	// where a new optional wire field can silently fail to decode: the fake
+	// bridge is built from the same Go binding the server reads with, so it
+	// cannot disagree about the field, and the Python one can.
+	if session.ReaderGuidanceText == "" {
+		t.Error("readerGuidanceText is empty; the handshake document did not survive " +
+			"the crossing, or the bridge did not send one")
+	}
+	if strings.Contains(session.ReaderGuidanceText, "{{gestures:") {
+		t.Errorf("an unsubstituted gesture marker reached the agent in connect's result:\n%s",
+			session.ReaderGuidanceText)
+	}
+	// The pointer survives beside the payload, for a re-read mid-session.
+	if session.ReaderGuidance == "" {
+		t.Error("readerGuidance is empty; the resource must still be named")
 	}
 
 	// `guidance` joined in entry 11.20 (spec 0029). It is the only member here

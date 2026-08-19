@@ -45,10 +45,37 @@ import (
 func declare(tool tools.Tool) *sdk.Tool {
 	return &sdk.Tool{
 		Name:         tool.Name(),
-		Description:  tool.Description(),
+		Description:  precondition(tool) + tool.Description(),
 		InputSchema:  tool.InputSchema(),
 		OutputSchema: tool.OutputSchema(),
 	}
+}
+
+// precondition is the sentence a gated tool's description opens with.
+//
+// WHAT IT REPLACES. Under spec 0013 a gated tool was simply absent until its
+// capability was announced, and the absence was the message. Spec 0022 (option
+// (c)) advertises everything, so the message has to be said in words -- and
+// saying it here is what the absence had going for it: an agent learns the
+// precondition at the same instant it learns the tool exists, without having to
+// call one to find out.
+//
+// COMPOSED HERE RATHER THAN WRITTEN INTO NINETEEN DESCRIPTIONS. A tool's own
+// Description() says what the tool DOES, which is the tool's business; whether a
+// session is required is the CATALOG's, and it is already recorded there. Adding
+// a gated tool therefore gets this for free, which is the same reason the
+// catalog is derived from the registry rather than hand-maintained beside it --
+// and it is why no reader is named: `tool.Capability()` is a capability string,
+// and spec 0005 principle 2 keeps reader names out of this file by construction.
+func precondition(tool tools.Tool) string {
+	capability := tool.Capability()
+	if capability == "" {
+		return ""
+	}
+	return "REQUIRES A CONNECTED READER that announced the `" + string(capability) +
+		"` capability -- call connect_reader first, and read screenreader://tools " +
+		"or the guidance it returns to see what this reader can do. Calling it " +
+		"without that answers an error naming what is missing, never a wrong result. "
 }
 
 // validateSchema checks a tool's hand-written schemas before anything is
@@ -86,9 +113,11 @@ func validateObjectSchema(tool, which string, declared json.RawMessage) error {
 
 // handlerFor is the one handler every tool is registered with.
 //
-// It closes over the tool NAME rather than the tool, so that both routes into
-// the domain -- an ordinary call and the backstop's retracted-tool path -- go
-// through the same dispatcher and produce the same errors.
+// It closes over the tool NAME rather than the tool, so every call reaches the
+// domain through the same dispatcher. There used to be two routes -- an ordinary
+// call and the capability backstop's retracted-tool path -- and spec 0022 left
+// one: with every tool advertised, no call can arrive for an unpublished tool,
+// so the backstop had nothing left to answer and was deleted.
 func handlerFor(dispatch *tools.Dispatcher, name string) sdk.ToolHandler {
 	return func(_ context.Context, request *sdk.CallToolRequest) (*sdk.CallToolResult, error) {
 		return callResult(dispatch.Execute(name, request.Params.Arguments))

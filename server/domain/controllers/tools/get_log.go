@@ -48,7 +48,7 @@ func (t *GetLog) Description() string {
 		"happened\" when no mark was taken. (3) commandId/windows: the log is also " +
 		"partitioned by command -- each command's span runs from when it was " +
 		"dispatched until the NEXT command was dispatched -- so you can ask for " +
-		"\"what NVDA logged for press_gesture id 7\" and get everything attributed to " +
+		"\"what the reader logged for press_gesture id 7\" and get everything attributed to " +
 		"it, including the work it caused after the call returned. Note that " +
 		"attribution is by most-recent-command, not by causation: think for thirty " +
 		"seconds after a keypress and those thirty seconds land in that keypress's " +
@@ -61,7 +61,7 @@ func (t *GetLog) Description() string {
 		"of these, case-insensitive), fields (which fields to render; default " +
 		"['time','level','module','message'] -- use ['level','message'] for the compact " +
 		"form), maxEntries (default 200). Returns formatted text (like a slice of " +
-		"nvda.log), the entry count, how many matched before the cap, whether the " +
+		"the reader's own log file), the entry count, how many matched before the cap, whether the " +
 		"result was truncated, nextPosition (pass it back as sincePosition to " +
 		"continue the tail with no gap and no repeat), the command id range covered " +
 		"(absent when anchored by position or time, since such a read is " +
@@ -69,7 +69,7 @@ func (t *GetLog) Description() string {
 		"force for the span. truncated:true on a sincePosition read means the " +
 		"records you asked for aged out of the ring before you read them, which is " +
 		"how a poll loop learns it fell behind. IMPORTANT: a log level " +
-		"cannot be raised retroactively. If NVDA's logger was at INFO when a command " +
+		"cannot be raised retroactively. If the reader's logger was at INFO when a command " +
 		"ran, DEBUG records were never created and no filter can recover them. The " +
 		"remedy is set_log_level, re-run the command, then get_log. capturedAtLevel " +
 		"tells you which situation you are in without guesswork."

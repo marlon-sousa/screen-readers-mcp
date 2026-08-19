@@ -6,7 +6,7 @@
 // one gated one -- rather than the production list.
 //
 // Synthetic on purpose: what is under test is the adapter's own behaviour
-// (schema validation, publish and retract, the capability backstop), and a
+// (schema validation, the constant tool list, capability enforcement), and a
 // registry stated in the test makes the gate's before-and-after visible in one
 // screen. The production tools are exercised end to end by the integration tier,
 // which is where they belong.
@@ -19,7 +19,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -144,15 +143,6 @@ func (h *harness) call(t *testing.T, name string) (*sdk.CallToolResult, error) {
 	return h.session.CallTool(context.Background(), &sdk.CallToolParams{Name: name})
 }
 
-func (h *harness) awaitChanged(t *testing.T) {
-	t.Helper()
-	select {
-	case <-h.changed:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no tools/list_changed notification arrived")
-	}
-}
-
 func text(result *sdk.CallToolResult) string {
 	if len(result.Content) == 0 {
 		return ""
@@ -181,44 +171,48 @@ func gatedStub() *stubTool {
 	}
 }
 
-// Binding advertises the ungated tools and nothing else -- the adapter's half of
-// acceptance criterion 3.
-func TestBindingAdvertisesOnlyTheUngatedTools(t *testing.T) {
+// Binding advertises EVERY tool, gated or not (spec 0022, option (c)).
+//
+// A freshly started server with nothing connected offers the whole surface, and
+// what an agent cannot yet DO is answered per call rather than by an absence.
+func TestBindingAdvertisesEveryTool(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
-	if names := h.names(t); !slices.Equal(names, []string{"ungated_tool"}) {
-		t.Errorf("tools/list = %v, want only the ungated tool", names)
-	}
-}
-
-// Publish and retract are the ToolPublisher port, and the SDK emits
-// tools/list_changed for each -- which is what makes the change reach an agent
-// without a restart.
-func TestPublishingAndRetractingChangeWhatIsAdvertised(t *testing.T) {
-	h := newHarness(t, ungatedStub(), gatedStub())
-
-	h.server.Publish([]string{"gated_tool"})
-	h.awaitChanged(t)
 	if names := h.names(t); !slices.Equal(names, []string{"gated_tool", "ungated_tool"}) {
-		t.Errorf("tools/list = %v, want the gated tool published", names)
-	}
-
-	h.server.Retract([]string{"gated_tool"})
-	h.awaitChanged(t)
-	if names := h.names(t); !slices.Equal(names, []string{"ungated_tool"}) {
-		t.Errorf("tools/list = %v, want the gated tool retracted", names)
+		t.Errorf("tools/list = %v, want every tool advertised from startup", names)
 	}
 }
 
-// Retracting something that is not advertised must be harmless: teardown runs on
-// several paths and none of them should have to check first.
-func TestRetractingAnUnadvertisedToolIsHarmless(t *testing.T) {
-	h := newHarness(t, ungatedStub())
+// THE PROPERTY 11.6 TURNS ON: the advertised list is a constant.
+//
+// A session beginning and ending changes nothing about it, so a client that
+// listed once and cached the answer forever is holding a CORRECT answer. That is
+// what closes both failures wearing entry 11.6's symptom -- our own redeploy
+// freezing a client's list, and an external client that never re-listed -- and
+// it is why no `tools/list_changed` is emitted at all any more.
+func TestTheAdvertisedListNeverChanges(t *testing.T) {
+	h := newHarness(t, ungatedStub(), gatedStub())
 
-	h.server.Retract([]string{"gated_tool", "nonsense"})
+	atStartup := h.names(t)
 
-	if names := h.names(t); !slices.Equal(names, []string{"ungated_tool"}) {
-		t.Errorf("tools/list = %v, want it unchanged", names)
+	built := testsupport.NewConnection("nvda", entities.CapabilityBraille)
+	h.control.SetConnection(built.Connection)
+	if names := h.names(t); !slices.Equal(names, atStartup) {
+		t.Errorf("tools/list = %v after connecting, want %v -- unchanged", names, atStartup)
+	}
+
+	h.control.SetConnection(nil)
+	if names := h.names(t); !slices.Equal(names, atStartup) {
+		t.Errorf("tools/list = %v after disconnecting, want %v -- unchanged", names, atStartup)
+	}
+
+	// And nothing was ANNOUNCED either. A client with no notification handling
+	// at all must be no worse off, which is the half of entry 11.6 that no
+	// client-side remedy could reach.
+	select {
+	case <-h.changed:
+		t.Error("the server emitted tools/list_changed; nothing changed, so nothing should be announced")
+	default:
 	}
 }
 
@@ -340,22 +334,27 @@ func TestAToolWithNoArgumentsIsCallable(t *testing.T) {
 	}
 }
 
-// THE BACKSTOP, acceptance criterion 10's second clause. A retracted tool is a
-// tool this server HAS, so a call for it gets the structured capability error
-// rather than the SDK's `unknown tool`.
-func TestCallingARetractedToolGivesTheStructuredCapabilityError(t *testing.T) {
+// ENFORCEMENT, now that advertisement does none of it. The tool is listed; the
+// reader cannot serve it; the call gets the structured capability error.
+//
+// This is the test that shows what the list was never doing. It passed before
+// through the capability backstop, which answered for tools that were HAD but
+// not published -- and it passes now through the ordinary path, unchanged in
+// what it asserts, because the backstop only ever delegated to the same
+// dispatcher and the error always came from the tool's own ToolContext.
+func TestCallingAToolTheReaderCannotServeGivesTheStructuredCapabilityError(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
-	// A reader that announced speech only: the braille-gated tool is not
-	// advertised, and the connection has no BrailleReader to hand over.
+	// A reader that announced speech only: the braille-gated tool is listed,
+	// and the connection has no BrailleReader to hand over.
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	h.control.SetConnection(built.Connection)
 
 	result, err := h.call(t, "gated_tool")
 	if err != nil {
-		t.Fatalf("the backstop let it fall through to a protocol error: %v", err)
+		t.Fatalf("it fell through to a protocol error: %v", err)
 	}
 	if !result.IsError {
-		t.Fatal("a call for an unpublished tool succeeded")
+		t.Fatal("a call the reader could not serve succeeded")
 	}
 	if !strings.Contains(text(result), "braille") {
 		t.Errorf("content = %q, want the missing capability named", text(result))
@@ -376,15 +375,15 @@ func TestCallingAGatedToolWithNoSessionSaysToConnectFirst(t *testing.T) {
 
 	result, err := h.call(t, "gated_tool")
 	if err != nil {
-		t.Fatalf("the backstop let it fall through to a protocol error: %v", err)
+		t.Fatalf("it fell through to a protocol error: %v", err)
 	}
 	if !result.IsError || !strings.Contains(text(result), "connect_reader") {
 		t.Errorf("content = %q, want it to name the tool that fixes this", text(result))
 	}
 }
 
-// A name that was never a tool still gets the SDK's own error: the backstop
-// narrows nothing, it only answers for tools this server actually has.
+// A name that was never a tool still gets the SDK's own error. Advertising
+// everything widens the list to every tool this server HAS, and not one further.
 func TestAGenuinelyUnknownToolStillGetsTheSDKsError(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
@@ -393,21 +392,18 @@ func TestAGenuinelyUnknownToolStillGetsTheSDKsError(t *testing.T) {
 	}
 }
 
-// And once the tool IS published to a reader that has the capability, the
-// backstop steps out of the way entirely.
-func TestAPublishedToolTakesTheOrdinaryPath(t *testing.T) {
+// And a reader that DOES announce the capability runs the tool for real.
+func TestAToolTheReaderCanServeRuns(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 	built := testsupport.NewConnection("nvda", entities.CapabilityBraille)
 	h.control.SetConnection(built.Connection)
-	h.server.Publish([]string{"gated_tool"})
-	h.awaitChanged(t)
 
 	result, err := h.call(t, "gated_tool")
 	if err != nil {
 		t.Fatalf("tools/call: %v", err)
 	}
 	if result.IsError {
-		t.Fatalf("a published tool was refused: %s", text(result))
+		t.Fatalf("a tool the reader announced was refused: %s", text(result))
 	}
 	if !strings.Contains(text(result), "reached") {
 		t.Errorf("content = %q, want the tool's own answer", text(result))

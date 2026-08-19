@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from .... import protocol
 from ...entities.braille_buffer import BrailleBuffer
 from ...entities.log_journal import SETTABLE_LEVELS
+from ...entities.reader_guidance import guidance_for
 from ...entities.speech_buffer import SpeechBuffer
 from .command_handler import CommandError, CommandHandler
 
@@ -97,6 +98,15 @@ class HelloHandler(CommandHandler):
 		synth = ctx.announcer.current_synth()
 		ctx.transcript.session_opened(params.mode, synth, params.persona)
 
+		# The guidance document rides back in the handshake (spec 0022 A.5).
+		# Composed here rather than left for `getGuidance` because a POINTER at
+		# it is a pointer agents do not follow -- two external runs each had one
+		# and each went elsewhere. It costs no round trip: the persona arrived in
+		# these very params, and this reply was already being sent.
+		#
+		# `getGuidance` still answers, unchanged, for a re-read.
+		text, recognised = guidance_for(ctx.persona, ctx.gesture_resolver)
+
 		return protocol.HelloResult(
 			protocolVersion=protocol.PROTOCOL_VERSION,
 			reader=self._reader,
@@ -105,4 +115,9 @@ class HelloHandler(CommandHandler):
 			synth=synth,
 			logPath=ctx.transcript.path,
 			bridgeVersion=self._bridge_version,
+			guidance=protocol.GetGuidanceResult(
+				persona=ctx.persona,
+				recognised=recognised,
+				text=text,
+			),
 		)

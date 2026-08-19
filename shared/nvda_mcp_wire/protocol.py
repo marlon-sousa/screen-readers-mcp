@@ -478,6 +478,26 @@ class HelloResult:
 	#: capability or behaviour mismatch rather than as "you are running an old
 	#: build". ``"unknown"`` when the bridge cannot determine it.
 	bridgeVersion: str = "unknown"
+	#: THE READER'S OWN GUIDANCE for the persona this session declared, delivered
+	#: in the handshake rather than left to be fetched (spec 0022 A.5).
+	#:
+	#: Exactly what ``getGuidance`` would answer -- the same type, so the two
+	#: routes cannot describe the same document differently. ``getGuidance``
+	#: remains, for a re-read and for a bridge that would rather answer on
+	#: demand; a server that receives this field simply never needs to ask.
+	#:
+	#: WHY IN THE HANDSHAKE. The persona already travels in ``HelloParams``, so
+	#: the bridge knows which document is wanted at the moment it answers, and
+	#: the round trip that would otherwise fetch it is one the connection was
+	#: making anyway. That matters because a POINTER at this document is a
+	#: pointer agents demonstrably do not follow: two external runs (specs 0027
+	#: and 0030) each had one and each went elsewhere -- to PowerShell, and to
+	#: reading the server's source.
+	#:
+	#: ``None`` means this bridge publishes no guidance of its own, which is a
+	#: supported configuration and not a failure: the agent falls back on the
+	#: server's own documents, which carry the rule without the instances.
+	guidance: GetGuidanceResult | None = None
 
 
 @dataclass

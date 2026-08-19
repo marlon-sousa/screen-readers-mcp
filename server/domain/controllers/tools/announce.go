@@ -49,8 +49,10 @@ func (t *Announce) Description() string {
 		"So announce a statement (\"I am partway through the form; carry on watching\") " +
 		"and use ask_user for anything you need an answer or an action for -- it hands " +
 		"speech back to them, tells them which key answers you, and reports what they " +
-		"did. If you truly cannot proceed at all, say so and name " +
-		"NVDA+control+shift+b, which stops the bridge and returns their machine."
+		"did. If you truly cannot proceed at all, say so and tell them to use their " +
+		"reader's panic gesture, which stops the bridge and returns their machine; " +
+		"screenreader://reader-guidance names it, and connect_reader hands you that " +
+		"document in full."
 }
 
 func (t *Announce) InputSchema() json.RawMessage {

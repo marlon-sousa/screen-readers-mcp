@@ -189,12 +189,15 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-19**:
-11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
-**nine entries** (11.22-11.24 opened by the second external run,
+11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
+**eight entries** (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
-taken ahead of the lane head; see the reprioritisation note below. It answers
-0030 ask 1b and deliberately leaves 11.6 open — the two share a symptom and are
-different failures. **11.21 is Done** in the same PR
+taken ahead of the lane head; see the reprioritisation note below. It answered
+0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
+different failures. **11.6 is now Done too** (2026-08-19), and 11.22 is why it
+could be: publishing the surface as a document removed the scarcity three of
+11.6's four options existed to answer. **11.24 is reduced to (b)**, its (a) half
+having closed with 11.6 as an instance of a rule rather than a spelling. **11.21 is Done** in the same PR
 that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
@@ -206,7 +209,8 @@ what that stance means on the reader in front of it.
 Their order is **not** simply the numbering. **11.3 is on hold as of
 2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
 four times, and the fifth pass was made a decision rather than another silence.
-The lane head is now **11.6** (server lane); lane 1's head is **11.10**.
+The lane head is now **11.10** (lane 1); **11.6 closed on 2026-08-19**, taking
+11.24(a) with it, so the server lane's head is **11.13**.
 
 **11.22 is taken before 11.6, deliberately, on 2026-08-18** — the
 reprioritisation this section requires to be made explicitly, the way 11.4 was
@@ -487,7 +491,23 @@ rather than before it.
     discovery never re-runs. The failure is silent and points at the wrong
     component either way, since `connect_reader` returns success with a full
     capability list. Its own entry, below.
-11.6. **E, a connected session an agent cannot use** (server lane). Found live on
+11.6. **Done (2026-08-19)** — E, a connected session an agent cannot use
+    (both lanes; the wire gained one optional field). Shipped **option (c),
+    advertise everything always**, plus the reader's guidance document in the
+    handshake and the rule that no reader's syntax appears in the text an agent
+    reads. **11.24(a) folded in and is Done with it**; 11.24 is now (b) alone.
+    What decided it was not new argument but the capability backstop: an
+    unadvertised call already ran through the same dispatcher and produced the
+    same error from the same wording site, so gating the LIST never made an
+    unusable call fail. With everything advertised the backstop became
+    unreachable and was deleted, along with the `ToolPublisher` port and the
+    connection controller's publish/retract -- the change removes code rather
+    than adding it. The surface test (A.7) then found **eleven reader names and
+    six key combinations** where the entry had reported one, which is the
+    argument for a test rather than a correction, made before it was agreed.
+    Original entry, kept because the diagnosis it records is still the reason
+    half of this failure existed:
+    Found live on
     2026-08-01 while running 11.5's checklist; **diagnosed 2026-08-02, and the
     diagnosis reversed the premise.** Every capability-gated tool reaches the
     agent through one `tools/list_changed` notification emitted when
@@ -540,7 +560,15 @@ rather than before it.
     See also **11.22**, which publishes the same information as a document and
     therefore does not depend on any client honouring anything. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
-    (premise corrected 2026-08-02, not agreed).
+    (premise corrected 2026-08-02; **agreed 2026-08-19 — option (c), advertise
+    everything always**). The decision turned on a fact the 2026-08-02 draft did
+    not use: the capability backstop already runs an unadvertised call through
+    the same dispatcher and words the same error, so gating the LIST was never
+    what made an unusable call fail — it bought a shorter list and cost this
+    entry. 0031 shipping removed the scarcity the other three options answered.
+    **11.24(a) folds in**: under option (c) `press_gesture`'s description is read
+    before any reader is chosen, which makes its NVDA example wrong rather than
+    merely stale, and the spec adds the rule and the test that stop it recurring.
 11.7. **Done (PR #49, 2026-08-01)** — E, drive it like a user (server lane).
     Also found during 11.5's live run.
     `pressGesture` and `typeText` return `{ ok: true }`, which means the
@@ -1122,7 +1150,12 @@ rather than before it.
     *made*, never that it was *heard*, and an agent that narrates then acts at
     once is acting ahead of its own narration. Whether the remedy is a field or a
     way to wait for the listener to catch up is the thing to settle rather than
-    assume. Spec: none yet.
+    assume.
+    **(a) folded into 11.6 on 2026-08-19** and is no longer part of this entry:
+    spec 0022 A.6 makes it an instance of a rule — the server names no reader's
+    syntax in the text an agent reads — rather than a spelling to correct, and
+    A.7 adds the test that enforces it. **What remains of 11.24 is (b) alone.**
+    Spec: none yet for (b).
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

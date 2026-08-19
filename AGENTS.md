@@ -746,35 +746,42 @@ bump.
   - Touched `server/`? **`poe dev` handles it** — its first step is
     `redeploy --if-stale`, which rebuilds the binary when any `server/*.go` is
     newer than it and does nothing at all otherwise. You no longer run dev,
-    fail the doctor, redeploy and run dev again. What you DO still have to do is
-    **ask the maintainer to reconnect** — see the rule immediately below; a
-    rebuild alone leaves you talking to the old code, and worse.
+    fail the doctor, redeploy and run dev again.
   - A bare `poe doctor`, `poe bridge` or `poe live` still **fails** on a stale
     binary rather than repairing it, on purpose: those are the runs where an
     agent is about to drive the MCP tools without having rebuilt. `uv run poe
     redeploy` is the fix, and **the maintainer has standing approval for it.**
-  - **A redeploy severs the gated tools. Ask for a reconnect, every time.**
-    `redeploy` kills every `screenreader-mcp.exe`, the client's included. The
-    client will silently spawn a fresh one to serve your next call, but it does
-    **not** re-run capability discovery — so its tool list stays frozen at the
-    ungated four, and `connect_reader` then succeeds *with a full capability
-    list* while every gated tool answers "No such tool available". Nothing in
-    that failure points at the redeploy; it cost one session an entire live
-    checklist and a wrongly-blamed spec (see
-    [spec 0022](specs/0022-tool-discovery-an-agent-can-rely-on.md)). The cure is
-    one command, and **only the maintainer can run it** — `/mcp` is client UI,
-    unreachable from the Skill tool, the `claude mcp` CLI and the config file
-    alike. So ask, in these words:
+  - **A redeploy no longer severs the tools, and you no longer ask for a
+    reconnect after one.** This rule used to be the loudest in the file, and
+    spec 0022 (option (c), 2026-08-19) retired it: every tool is advertised from
+    startup, nothing is retracted when a session ends, and no
+    `tools/list_changed` is emitted because nothing changes. `redeploy` still
+    kills every `screenreader-mcp.exe` and the client still silently respawns
+    one without re-running capability discovery — but **the list it kept is
+    correct**, so there is nothing to repair.
+
+    It is worth knowing what it cost while it stood, because that is the
+    argument for never letting a surface depend on a notification again: the
+    tool list froze at the ungated four while `connect_reader` went on
+    succeeding *with a full capability list*, so every gated tool answered "No
+    such tool available" and nothing in the failure pointed at the redeploy. It
+    cost one session an entire live checklist and a wrongly-blamed spec, and a
+    second, external agent hit the same wall with no redeploy anywhere. See
+    [spec 0022](specs/0022-tool-discovery-an-agent-can-rely-on.md).
+
+    **The one case that still needs a reconnect** is a build in which you ADDED
+    or REMOVED a tool. Then the cached list really is out of date — not because
+    a session began, but because the server's own set of tools changed. Only the
+    maintainer can run it (`/mcp` is client UI, unreachable from the Skill tool,
+    the `claude mcp` CLI and the config file alike), so ask, in these words:
 
     ```text
     /mcp reconnect screen-reader-testing
     ```
 
     Name the server: the bare `/mcp reconnect` fails with "MCP controls aren't
-    available right now". Then `connect_reader` again — the gated tools come
-    back with it. `scripts/live_test.py` needs none of this: it brings its own
-    MCP client and its own server process, so it is immune, and it is the right
-    tool when you would otherwise be asking for reconnects in a loop.
+    available right now". `scripts/live_test.py` needs none of this: it brings
+    its own MCP client and its own server process.
   - `poe live` is NOT part of the gate and never runs unattended: it drives the
     maintainer's real screen reader. Ask first, every time.
 - **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep
