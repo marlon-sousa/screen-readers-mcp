@@ -191,7 +191,8 @@ real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-18**:
 11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.22, 11.23, 11.24 —
 **ten entries** (11.22-11.24 opened by the second external run,
-[0030](specs/0030-the-second-external-run.md)). **11.21 is Done** in the same PR
+[0030](specs/0030-the-second-external-run.md)). **11.22 is in flight** as of
+2026-08-18, taken ahead of the lane head; see the reprioritisation note below. **11.21 is Done** in the same PR
 that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
@@ -203,8 +204,20 @@ what that stance means on the reader in front of it.
 Their order is **not** simply the numbering. **11.3 is on hold as of
 2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
 four times, and the fifth pass was made a decision rather than another silence.
-The lane head is now **11.6** (server lane); lane 1's head is **11.10**. Three
-pairings matter more than the numbers:
+The lane head is now **11.6** (server lane); lane 1's head is **11.10**.
+
+**11.22 is taken before 11.6, deliberately, on 2026-08-18** — the
+reprioritisation this section requires to be made explicitly, the way 11.4 was
+taken before 11.3. Three reasons, all recorded in
+[0031](specs/0031-the-tools-describe-themselves.md) Part 1. 11.6 is by its own
+entry "smaller and no longer urgent" and needs a spec conversation that reopens a
+decision spec 0013 made deliberately, with four options still on the table. 11.22
+is independent of that conversation and of every client's behaviour, so it can
+ship without prejudging any of the four. And 11.6's own 2026-08-18 corroboration
+is a failure it cannot explain — an agent that connected cleanly, without a
+redeploy, and still saw nothing — which is precisely the half 11.22 answers.
+
+Three pairings matter more than the numbers:
 
 - **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
 - **11.11 and 11.17** are one gesture, from two sessions, with complementary
@@ -230,8 +243,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.22** and the next free spec number is
-**0030**.
+The next free board number is **11.25** and the next free spec number is
+**0032**. (11.22–11.24 and spec 0030 were taken by the second external run on
+2026-08-18; spec 0031 by 11.22's own spec. This line is the one the paragraph
+above tells people to trust, so it is updated by whichever PR consumes a
+number.)
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -1043,7 +1059,15 @@ rather than before it.
     drift — a hand-written cheat-sheet that disagrees with the registry is worse
     than none — so it should be composed from `tools.BuildRegistry()` the way
     `screenreader://guidance` composes persona profiles from the domain, and
-    guarded by the same kind of test. Spec: none yet.
+    guarded by the same kind of test. **Taken before 11.6 on 2026-08-18** — see
+    the reprioritisation note under Convergence. Spec:
+    [0031-the-tools-describe-themselves.md](specs/0031-the-tools-describe-themselves.md)
+    (proposed 2026-08-18, not agreed). The spec's one real design decision is
+    that *"what it returns"* cannot be composed from anything that exists: the
+    `Tool` interface describes its input and says nothing about its result, so
+    the schemas are hand-written behind a new `OutputSchema()` the compiler
+    forces every tool to answer — and the same method feeds the SDK declaration,
+    so the document and the client's tool list cannot disagree.
 11.23. **E, a session dies while the agent is thinking, and nothing says so**
     (both lanes). From the second external run, ask 2. The ~120s inactivity
     watchdog dropped a live silent session while the agent was reasoning between
