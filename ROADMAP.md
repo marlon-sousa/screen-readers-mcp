@@ -540,7 +540,15 @@ rather than before it.
     See also **11.22**, which publishes the same information as a document and
     therefore does not depend on any client honouring anything. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
-    (premise corrected 2026-08-02, not agreed).
+    (premise corrected 2026-08-02; **agreed 2026-08-19 — option (c), advertise
+    everything always**). The decision turned on a fact the 2026-08-02 draft did
+    not use: the capability backstop already runs an unadvertised call through
+    the same dispatcher and words the same error, so gating the LIST was never
+    what made an unusable call fail — it bought a shorter list and cost this
+    entry. 0031 shipping removed the scarcity the other three options answered.
+    **11.24(a) folds in**: under option (c) `press_gesture`'s description is read
+    before any reader is chosen, which makes its NVDA example wrong rather than
+    merely stale, and the spec adds the rule and the test that stop it recurring.
 11.7. **Done (PR #49, 2026-08-01)** — E, drive it like a user (server lane).
     Also found during 11.5's live run.
     `pressGesture` and `typeText` return `{ ok: true }`, which means the
@@ -1122,7 +1130,12 @@ rather than before it.
     *made*, never that it was *heard*, and an agent that narrates then acts at
     once is acting ahead of its own narration. Whether the remedy is a field or a
     way to wait for the listener to catch up is the thing to settle rather than
-    assume. Spec: none yet.
+    assume.
+    **(a) folded into 11.6 on 2026-08-19** and is no longer part of this entry:
+    spec 0022 A.6 makes it an instance of a rule — the server names no reader's
+    syntax in the text an agent reads — rather than a spelling to correct, and
+    A.7 adds the test that enforces it. **What remains of 11.24 is (b) alone.**
+    Spec: none yet for (b).
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
