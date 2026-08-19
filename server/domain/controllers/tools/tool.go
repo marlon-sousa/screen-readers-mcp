@@ -49,6 +49,24 @@ type Tool interface {
 	// `"type": "object"`. Passed to the SDK verbatim.
 	InputSchema() json.RawMessage
 
+	// OutputSchema is a hand-written JSON Schema object describing a
+	// SUCCESSFUL result, always of `"type": "object"`.
+	//
+	// Hand-written for InputSchema's reason and one more (spec 0031, 3.2).
+	// Execute returns `any`, so there is no type to reflect over until a call
+	// has already happened -- which is exactly the call an agent should not
+	// have to make in order to find out what it gets back. And a reflected
+	// schema carries no prose: it would say `position: integer` where what an
+	// agent needs is "the position this speech was captured at, to pass back".
+	//
+	// It describes SUCCESS. A failure is a result with isError set and a
+	// human-readable message, and has no structure to declare.
+	//
+	// The SDK does NOT police results against it on the registration path this
+	// server uses (spec 0031, 3.4), so conformance is ours: output_schema_test.go
+	// is what makes hand-writing safe.
+	OutputSchema() json.RawMessage
+
 	// Execute runs the use case and returns the value to be marshalled as the
 	// call's result, or an error to fail the call with.
 	//

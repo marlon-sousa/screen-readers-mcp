@@ -59,3 +59,32 @@ func TestAllIsSortedAndDeduplicated(t *testing.T) {
 		t.Errorf("All() (-want +got):\n%s", diff)
 	}
 }
+
+// -- the contract's own gloss (spec 0031, 2.5) --------------------------------
+
+// A capability cannot be added without saying what it IS. Persona's texts are
+// guarded the same way and for the same reason: the vocabulary is the wire
+// contract's, so a member with nothing to say is a hole in the contract rather
+// than a document's omission.
+//
+// CapabilityGuidance is covered by this like any other, even though it gates a
+// resource and heads no group in screenreader://tools -- what is being asserted
+// is that the vocabulary is complete, not that one document has a place to print
+// every member.
+func TestEveryDeclaredCapabilityHasAMeaning(t *testing.T) {
+	for _, capability := range entities.AllCapabilities() {
+		if capability.Meaning() == "" {
+			t.Errorf("%q has no meaning; a capability an agent is shown and cannot "+
+				"interpret is the gap the meanings exist to close", capability)
+		}
+	}
+}
+
+// The gloss is for what THIS SERVER declares. A bridge may announce anything and
+// NewSet keeps it, so an unknown string reaching Meaning must answer honestly
+// rather than inventing a description of a group nobody here knows.
+func TestAnUndeclaredCapabilityHasNoMeaning(t *testing.T) {
+	if meaning := entities.Capability("teleportation").Meaning(); meaning != "" {
+		t.Errorf("an undeclared capability was glossed as %q", meaning)
+	}
+}

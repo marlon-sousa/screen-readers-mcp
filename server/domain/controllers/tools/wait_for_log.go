@@ -76,6 +76,24 @@ func (t *WaitForLog) InputSchema() json.RawMessage {
 	}`)
 }
 
+func (t *WaitForLog) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"found": {
+				"type": "boolean",
+				"description": "Whether a matching record was logged before the timeout. FALSE IS AN ANSWER, not an error: it is how you assert that nothing went wrong during an interval."
+			},
+			"position": {
+				"type": "integer",
+				"description": "One past the match, so it feeds straight into get_log as sincePosition and reads what happened AFTER the trigger without repeating the trigger itself. On a miss, the journal's current position -- still a usable \"from here\" mark."
+			},
+			"text": {"type": "string", "description": "The matching record, formatted. Empty when nothing matched."}
+		},
+		"required": ["found", "position", "text"]
+	}`)
+}
+
 type waitForLogRequest struct {
 	MinLevel *string  `json:"min_level"`
 	Contains []string `json:"contains"`

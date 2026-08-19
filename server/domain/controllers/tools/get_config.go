@@ -51,6 +51,18 @@ func (t *GetConfig) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *GetConfig) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"value": {
+			"description": "The value the reader holds at that key path, unchanged -- any JSON, and deliberately of no declared type: the reader owns the shape of its own settings. Record it before you change it, so you can put it back."
+		}
+	},
+	"required": ["value"]
+}`)
+}
+
 type configParams struct {
 	KeyPath []string        `json:"key_path"`
 	Value   json.RawMessage `json:"value"`

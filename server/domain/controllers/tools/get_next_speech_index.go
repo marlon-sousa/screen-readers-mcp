@@ -40,6 +40,19 @@ func (t *GetNextSpeechIndex) InputSchema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`)
 }
 
+func (t *GetNextSpeechIndex) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"index": {
+			"type": "integer",
+			"description": "The index the NEXT captured utterance will take -- a bookmark for \"now\". Pass it to get_speech as since_index, or to wait_for_speech as after_index, to read only what happened after this moment."
+		}
+	},
+	"required": ["index"]
+}`)
+}
+
 type nextIndexResult struct {
 	Index int `json:"index"`
 }

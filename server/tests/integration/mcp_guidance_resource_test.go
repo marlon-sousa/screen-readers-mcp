@@ -81,6 +81,23 @@ func TestTheGuidanceStatesTheRuleAndTheSettleStep(t *testing.T) {
 	}
 }
 
+// Spec 0031, 2.6: the method document is where an agent is told to start -- it
+// is the one that says READ THIS BEFORE CONNECTING -- so it is where the concrete
+// list has to be pointed at. An agent that finds screenreader://tools only after
+// deciding to read Go source has been failed in exactly the way 0030 describes,
+// and this is the assertion that stops the pointer being tidied away.
+//
+// The URI is checked, not the sentence around it: what must not break is that an
+// agent reading this document learns the other one exists.
+func TestTheGuidancePointsAtTheToolsDocument(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+
+	if !strings.Contains(h.ReadGuidance(t), "screenreader://tools") {
+		t.Error("the guidance never mentions screenreader://tools, so an agent reading " +
+			"the method document is not told the reference document exists")
+	}
+}
+
 // Spec 0005 principle 2, applied to prose: the server hands the agent a METHOD
 // and never one reader's key map. The agent knows NVDA's and JAWS's already, and
 // screenreader://info tells it which one is connected -- so a key combo appearing

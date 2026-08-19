@@ -35,6 +35,7 @@ func (s *scriptedTool) Name() string                    { return "scripted" }
 func (s *scriptedTool) Capability() entities.Capability { return entities.CapabilityGestures }
 func (s *scriptedTool) Description() string             { return "a tool that fails on demand" }
 func (s *scriptedTool) InputSchema() json.RawMessage    { return json.RawMessage(`{"type":"object"}`) }
+func (s *scriptedTool) OutputSchema() json.RawMessage   { return json.RawMessage(`{"type":"object"}`) }
 
 func (s *scriptedTool) Execute(tools.ToolContext, json.RawMessage) (any, error) {
 	if s.err != nil {

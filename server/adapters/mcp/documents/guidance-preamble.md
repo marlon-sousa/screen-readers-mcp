@@ -22,6 +22,11 @@ You send input to the reader and read back what it said. You do not inspect the
 application, and this server has no view of it: everything you learn, you learn
 the way the user learns it.
 
+`screenreader://tools` is the complete list of what you can call: every tool,
+the capability that gates it, its parameters and the shape of what it returns.
+Read it rather than guessing, or waiting to find out which tools your client
+shows you -- it is readable now, before you connect, and it never changes.
+
 Read `screenreader://info` to learn which reader you are driving, then use
 that reader's own commands, in the notation its user guide prints. This document
 names no keystrokes anywhere, deliberately -- it cannot know whether you are

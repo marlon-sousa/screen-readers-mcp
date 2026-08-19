@@ -32,29 +32,54 @@ import (
 )
 
 // declare turns a domain Tool into the SDK's description of it.
+//
+// BOTH schemas come from the tool itself, which is what stops the client's tool
+// list and screenreader://tools disagreeing about a result shape (spec 0031,
+// 3.3): they are composed from the same two methods, so there is still no second
+// place a tool is described.
+//
+// Declaring an output schema does NOT make the SDK police results against it on
+// this registration path -- that validation lives on the generic path this
+// server deliberately does not use (spec 0031, 3.4). Conformance stays ours, and
+// is tested in the domain, against the result structs themselves.
 func declare(tool tools.Tool) *sdk.Tool {
 	return &sdk.Tool{
-		Name:        tool.Name(),
-		Description: tool.Description(),
-		InputSchema: tool.InputSchema(),
+		Name:         tool.Name(),
+		Description:  tool.Description(),
+		InputSchema:  tool.InputSchema(),
+		OutputSchema: tool.OutputSchema(),
 	}
 }
 
-// validateSchema checks a tool's hand-written schema before anything is
+// validateSchema checks a tool's hand-written schemas before anything is
 // registered.
 //
 // The SDK PANICS on a schema that is not a JSON object schema, at the moment the
 // tool is added -- which for a gated tool is mid-session, on a successful
 // handshake, in a goroutine serving an agent. Checking every tool once at
 // startup turns that into a startup error naming the tool.
+//
+// BOTH schemas, since spec 0031: AddTool applies the same "type": "object" check
+// to the output schema and panics in the same place, so leaving that one
+// unchecked would reintroduce exactly the crash this function exists to prevent.
 func validateSchema(tool tools.Tool) error {
+	if err := validateObjectSchema(tool.Name(), "input", tool.InputSchema()); err != nil {
+		return err
+	}
+	return validateObjectSchema(tool.Name(), "output", tool.OutputSchema())
+}
+
+// validateObjectSchema is that check, for one of them. `which` names the schema
+// in the error, because "tool %q: its schema is not valid JSON" would send
+// somebody looking in the wrong half of the file.
+func validateObjectSchema(tool, which string, declared json.RawMessage) error {
 	var schema map[string]any
-	if err := json.Unmarshal(tool.InputSchema(), &schema); err != nil {
-		return fmt.Errorf("tool %q: its input schema is not valid JSON: %w", tool.Name(), err)
+	if err := json.Unmarshal(declared, &schema); err != nil {
+		return fmt.Errorf("tool %q: its %s schema is not valid JSON: %w", tool, which, err)
 	}
 	if schema["type"] != "object" {
-		return fmt.Errorf(`tool %q: its input schema must have "type": "object", got %v`,
-			tool.Name(), schema["type"])
+		return fmt.Errorf(`tool %q: its %s schema must have "type": "object", got %v`,
+			tool, which, schema["type"])
 	}
 	return nil
 }

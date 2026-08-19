@@ -61,6 +61,23 @@ func (t *WaitForSpeech) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *WaitForSpeech) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"found": {
+			"type": "boolean",
+			"description": "Whether matching speech appeared before the timeout. FALSE IS AN ANSWER, not an error: this is how you assert that something was never announced."
+		},
+		"index": {"type": "integer", "description": "The matching utterance's index. On a miss, the ring's current index -- still usable as a \"from here\" mark."},
+		"text": {"type": "string", "description": "The matching utterance in full, not just the substring you waited for. Empty on a miss."},
+		"logPosition": {"type": "integer", "description": "Where the match sits on the reader's log journal. On a miss, the journal's current position, which is still a usable \"from here\" mark for get_log."},
+		"emittedAt": {"type": "string", "description": "When the match was emitted. Absent on a miss: nothing was emitted, and reporting an instant would read as a match that happened."}
+	},
+	"required": ["found", "index", "text", "logPosition"]
+}`)
+}
+
 type waitForSpeechParams struct {
 	Text string `json:"text"`
 

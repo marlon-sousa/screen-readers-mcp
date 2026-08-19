@@ -47,6 +47,82 @@ const (
 	CapabilityGuidance Capability = "guidance"
 )
 
+// AllCapabilities is every capability the wire contract declares, in the order
+// an agent meets them: the observation groups first, then the ones that act on
+// the reader, then the ones that reach past it.
+//
+// Everything that enumerates the vocabulary goes through this -- today the
+// completeness test that keeps Meaning honest, tomorrow whatever else needs the
+// list -- so adding a capability is one edit to this file, exactly as adding a
+// persona is one edit to persona.go.
+//
+// A Set may still hold strings that are NOT here: a bridge may announce anything
+// and NewSet retains what it does not know. This is what THIS SERVER declares,
+// not what a reader may say.
+func AllCapabilities() []Capability {
+	return []Capability{
+		CapabilitySpeech,
+		CapabilityBraille,
+		CapabilityFocus,
+		CapabilityState,
+		CapabilityGestures,
+		CapabilityTyping,
+		CapabilityInteract,
+		CapabilityConfig,
+		CapabilityLog,
+		CapabilityGuidance,
+	}
+}
+
+// Meaning is the contract's own one-line gloss: what this capability IS, as
+// opposed to which tools happen to sit behind it.
+//
+// It lives on the entity rather than in the resource that renders it (spec 0031,
+// 2.5) for Stance()'s reason: these strings are wire-contract vocabulary
+// (protocol.md section 4) -- the same ones a bridge announces in `hello` and
+// screenreader://info reports verbatim -- so what `speech` MEANS is a fact about
+// the contract, not about how one document chooses to present it.
+//
+// Empty for a string this server does not declare, which is the honest answer:
+// an unknown capability is a reader saying something we have no gloss for, and
+// inventing one would be this server describing a group it knows nothing about.
+func (c Capability) Meaning() string {
+	switch c {
+	case CapabilitySpeech:
+		return "What the reader SAYS -- its utterances, captured as they are produced, " +
+			"readable by index and waitable on."
+	case CapabilityBraille:
+		return "What the reader sends to a BRAILLE DISPLAY, which is abbreviated " +
+			"differently from what it speaks and carries its own indices."
+	case CapabilityFocus:
+		return "What the reader currently has FOCUS on, described in the reader's own " +
+			"vocabulary -- introspection, for asserting rather than for orienting."
+	case CapabilityState:
+		return "The reader's own MODE STATE -- browse or focus mode, speech mode, sleep, " +
+			"input help -- which is how you observe the actions it signals with a beep " +
+			"rather than with words."
+	case CapabilityGestures:
+		return "Pressing the reader's own COMMANDS, in the notation its user guide " +
+			"prints, wherever the system focus happens to be."
+	case CapabilityTyping:
+		return "Inserting literal TEXT at the focused control, independently of the " +
+			"keyboard layout -- content, not commands."
+	case CapabilityInteract:
+		return "Reaching the HUMAN sitting at the reader: speaking to them aloud, and " +
+			"asking them something you need an answer to."
+	case CapabilityConfig:
+		return "Reading and writing the reader's own CONFIGURATION, addressed by a key " +
+			"path into its settings tree."
+	case CapabilityLog:
+		return "The reader's own DIAGNOSTIC LOG -- marking it, reading a filtered slice " +
+			"of it, and blocking until a record you named appears."
+	case CapabilityGuidance:
+		return "The reader's own written GUIDANCE for the persona this session declared. " +
+			"It gates a resource rather than a tool: screenreader://reader-guidance."
+	}
+	return ""
+}
+
 // Set is an immutable set of announced capabilities.
 //
 // A zero Set is a valid empty set -- a reader that announced nothing supports

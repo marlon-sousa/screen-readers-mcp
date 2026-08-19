@@ -99,6 +99,19 @@ func TestEveryToolIsCompleteEnoughToBind(t *testing.T) {
 			if schema["type"] != "object" {
 				t.Errorf(`input schema type = %v, want "object"`, schema["type"])
 			}
+
+			// And the output schema, on exactly the same terms (spec 0031,
+			// 3.4): the SDK checks it for "type": "object" at registration
+			// and panics on anything else, so a malformed one is a startup
+			// crash rather than a bad document. What the schema SAYS is
+			// checked against the result struct in output_schema_test.go.
+			var output map[string]any
+			if err := json.Unmarshal(tool.OutputSchema(), &output); err != nil {
+				t.Fatalf("output schema is not valid JSON: %v", err)
+			}
+			if output["type"] != "object" {
+				t.Errorf(`output schema type = %v, want "object"`, output["type"])
+			}
 		})
 	}
 }

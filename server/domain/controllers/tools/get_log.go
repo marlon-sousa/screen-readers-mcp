@@ -128,6 +128,38 @@ func (t *GetLog) InputSchema() json.RawMessage {
 	}`)
 }
 
+func (t *GetLog) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"text": {
+				"type": "string",
+				"description": "The matching records, formatted and joined -- a slice of the reader's log as it would read on disk, rendered with whichever fields were asked for."
+			},
+			"entries": {"type": "integer", "description": "How many records this slice actually carries."},
+			"matched": {"type": "integer", "description": "How many matched the filter BEFORE maxEntries capped it. Larger than entries means there is more where this came from."},
+			"truncated": {
+				"type": "boolean",
+				"description": "Whether records were dropped. On a sincePosition read this means the records you asked for AGED OUT of the ring before you read them -- which is how a poll loop learns it fell behind, rather than silently missing them."
+			},
+			"nextPosition": {
+				"type": "integer",
+				"description": "The journal's position after this read. Pass it back as sincePosition to continue the tail with no gap and no repeat."
+			},
+			"fromCommandId": {
+				"type": "integer",
+				"description": "The first command span this slice covers. ABSENT when the read was anchored by position or time: such a read spans whatever commands fall in it and is attributable to none."
+			},
+			"toCommandId": {"type": "integer", "description": "The last command span it covers, on the same terms."},
+			"capturedAtLevel": {
+				"type": "string",
+				"description": "The logging floor in force for the span. THIS IS THE FIELD THAT TELLS YOU WHICH SITUATION YOU ARE IN: an empty slice with capturedAtLevel above the minLevel you asked for means those records were never emitted at all, not that nothing happened -- and no filter can recover them. Raise the level with set_log_level, re-run the command, then read again. Exact for a command anchor; approximate for a position or time anchor, which may straddle a change."
+			}
+		},
+		"required": ["text", "entries", "matched", "truncated", "nextPosition", "capturedAtLevel"]
+	}`)
+}
+
 type getLogRequest struct {
 	// Pointers, so "not asked for" is distinguishable from position 0 or zero
 	// seconds -- the anchors are mutually exclusive, and a zero value that read

@@ -76,6 +76,46 @@ func (t *TypeText) InputSchema() json.RawMessage {
 }`)
 }
 
+func (t *TypeText) OutputSchema() json.RawMessage {
+	return json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"typed": {
+			"type": "integer",
+			"description": "The LENGTH of what was sent, counted by the reader that injected it. The text itself is never echoed back, because this is exactly how a secret would be entered."
+		},
+		"speech": {
+			"type": "array",
+			"description": "What the reader said inside this call's grace window, oldest first. Empty means nothing had arrived by that instant -- NOT that nothing happened. Never null.",
+			"items": {
+				"type": "object",
+				"properties": {
+					"text": {"type": "string", "description": "What the reader spoke."},
+					"index": {"type": "integer", "description": "This utterance's place in the speech ring."},
+					"logPosition": {"type": "integer", "description": "Where it sits on the reader's log journal; hand it to get_log as sincePosition."},
+					"emittedAt": {"type": "string", "description": "When the reader emitted it. Absent if the reader supplied none."}
+				},
+				"required": ["text", "index", "logPosition"]
+			}
+		},
+		"speechFrom": {"type": "integer", "description": "The first speech index this call covered."},
+		"speechTo": {"type": "integer", "description": "One past the last: the window is [speechFrom, speechTo), so speechTo is exactly what to read from next. Slow effects legitimately arrive after it -- read again from here rather than pressing anything twice."},
+		"state": {
+			"type": "object",
+			"description": "The modes you cannot hear, sampled when the last grace window closed. ABSENT when the reader serves no state capability: absent and \"all four fields zero\" are different answers. Deliberately not focus information.",
+			"properties": {
+				"browseMode": {"type": "string", "enum": ["browse", "focus", "none"], "description": "\"none\" when there is no browsable document -- the absence IS one of the three answers."},
+				"speechMode": {"type": "string", "description": "The reader's speech mode, in its own vocabulary."},
+				"sleepMode": {"type": "boolean", "description": "Whether the reader is asleep for the focused application."},
+				"inputHelp": {"type": "boolean", "description": "Whether input help is on -- if it is, keys are described rather than acted on."}
+			},
+			"required": ["browseMode", "speechMode", "sleepMode", "inputHelp"]
+		}
+	},
+	"required": ["typed", "speech", "speechFrom", "speechTo"]
+}`)
+}
+
 type typeTextParams struct {
 	Text     string `json:"text"`
 	GraceMs  *int   `json:"grace_ms"`
