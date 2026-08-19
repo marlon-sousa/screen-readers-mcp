@@ -25,13 +25,22 @@ func (t *WaitForSpeechToFinish) Capability() entities.Capability { return entiti
 func (t *WaitForSpeechToFinish) Description() string {
 	return "Wait until the screen reader has stopped speaking, or until the timeout " +
 		"elapses. Returns finished=true if speech settled and false if it was still " +
-		"going -- neither is an error. This is the SETTLE STEP after any action, not " +
-		"only a long one: press_gesture and type_text return once the reader has " +
-		"accepted the input, and the reader does the work afterwards on its own " +
-		"thread, so this is what stands between acting and reading back what " +
-		"happened. Use it instead of sleeping -- a sleep is either too short and " +
-		"flaky or too long and slow, and it is never evidence. Then call get_speech. " +
-		"See screenreader://guidance."
+		"going -- neither is an error. THIS IS NOT THE STEP AFTER EVERY ACTION: " +
+		"press_gesture and type_text already wait a grace window and return the " +
+		"speech they caused, so calling this after them costs a whole round trip and " +
+		"observes nothing. It asks \"has speech STOPPED?\", which cannot be answered " +
+		"the moment you ask it -- silence before speech starts and silence after it " +
+		"ends are the same thing to look at. Use it where that really is the " +
+		"question: a long deliberate announcement, or a continuous read of a whole " +
+		"document, where you want to know whether it is still going. WHAT IT " +
+		"MEASURES: speech ARRIVING, not audio playing, and finished=true means " +
+		"nothing more has arrived -- the reader may still be speaking aloud what it " +
+		"already produced. Where the reader can tell the server a continuous read is " +
+		"part-way through, that counts as still going even while no speech arrives, " +
+		"because a read of that kind pauses between chunks; where it cannot, a long " +
+		"enough pause by any other producer will read as finished. To learn what a " +
+		"key said, read the result of the call that pressed it; to wait for something " +
+		"specific, name it with wait_for_speech. See screenreader://guidance."
 }
 
 func (t *WaitForSpeechToFinish) InputSchema() json.RawMessage {

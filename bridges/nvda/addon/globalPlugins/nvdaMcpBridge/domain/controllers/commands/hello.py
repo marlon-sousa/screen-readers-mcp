@@ -78,8 +78,14 @@ class HelloHandler(CommandHandler):
 
 		# No exact-finish signal: silent mode suppresses at the speak() filter, so
 		# there is no synth "done speaking" to key off; both modes use the buffer's
-		# elapsed-time heuristic.
-		speech = SpeechBuffer(ctx.clock, exact_finish=False)
+		# elapsed-time heuristic -- corrected by the reader's own account of
+		# whether a continuous read is still going (entry 11.21), which is the one
+		# case where the heuristic is not merely imprecise but wrong.
+		speech = SpeechBuffer(
+			ctx.clock,
+			exact_finish=False,
+			continuous_read=adapters.continuous_read,
+		)
 		braille = BrailleBuffer(ctx.clock)
 		speech.set_observer(ctx.transcript.speech)
 		ctx.speech = speech

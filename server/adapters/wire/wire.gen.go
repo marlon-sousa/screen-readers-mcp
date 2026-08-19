@@ -188,6 +188,22 @@ type FocusInfoResult struct {
 	AppModule *string  `json:"appModule"`
 }
 
+// GesturePress is the wire shape of the same name.
+type GesturePress struct {
+	Gesture    string `json:"gesture"`
+	SpeechFrom int    `json:"speechFrom"`
+	SpeechTo   int    `json:"speechTo"`
+}
+
+// GestureResult is the wire shape of the same name.
+type GestureResult struct {
+	Pressed    []GesturePress `json:"pressed"`
+	Speech     []SpeechEntry  `json:"speech"`
+	SpeechFrom int            `json:"speechFrom"`
+	SpeechTo   int            `json:"speechTo"`
+	State      *StateResult   `json:"state,omitempty"`
+}
+
 // GetBrailleParams is the wire shape of the same name.
 type GetBrailleParams struct {
 	SinceIndex int `json:"sinceIndex"`
@@ -282,6 +298,8 @@ type NextIndexResult struct {
 // PressGestureParams is the wire shape of the same name.
 type PressGestureParams struct {
 	Gestures []string `json:"gestures"`
+	GraceMs  *int     `json:"graceMs,omitempty"`
+	Announce *string  `json:"announce,omitempty"`
 }
 
 // ReaderInfo is the wire shape of the same name.
@@ -340,7 +358,18 @@ type StateResult struct {
 
 // TypeParams is the wire shape of the same name.
 type TypeParams struct {
-	Text string `json:"text"`
+	Text     string  `json:"text"`
+	GraceMs  *int    `json:"graceMs,omitempty"`
+	Announce *string `json:"announce,omitempty"`
+}
+
+// TypeResult is the wire shape of the same name.
+type TypeResult struct {
+	Typed      int           `json:"typed"`
+	Speech     []SpeechEntry `json:"speech"`
+	SpeechFrom int           `json:"speechFrom"`
+	SpeechTo   int           `json:"speechTo"`
+	State      *StateResult  `json:"state,omitempty"`
 }
 
 // WaitForLogParams is the wire shape of the same name.

@@ -188,17 +188,23 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-17**:
-11.3, 11.6, 11.9, 11.10, 11.11, 11.12, 11.13, 11.16, 11.17, 11.18 — **ten
-entries**. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
+below. **Open as of 2026-08-18**:
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.22, 11.23, 11.24 —
+**ten entries** (11.22-11.24 opened by the second external run,
+[0030](specs/0030-the-second-external-run.md)). **11.21 is Done** in the same PR
+that opened it. 11.3 was
+taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
+11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
+what 11.9 existed to have built, so the pair closes together. Of the external run's four, 11.14 and 11.15 are settled. **Spec 0029
 is complete**: 11.19 (PR #61) made the persona exist and travel, and 11.20
 gave the reader its own document, so an agent now declares a stance and is told
 what that stance means on the reader in front of it.
 
-Their order is **not** simply the numbering. Read as a strict lane order both
-lanes point at **11.3**, which has been drafted-but-unagreed since 2026-07-29 and
-has now been passed over four times; that deserves a decision rather than a fifth
-silent deferral. Three pairings matter more than the numbers:
+Their order is **not** simply the numbering. **11.3 is on hold as of
+2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
+four times, and the fifth pass was made a decision rather than another silence.
+The lane head is now **11.6** (server lane); lane 1's head is **11.10**. Three
+pairings matter more than the numbers:
 
 - **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
 - **11.11 and 11.17** are one gesture, from two sessions, with complementary
@@ -224,7 +230,7 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.21** and the next free spec number is
+The next free board number is **11.22** and the next free spec number is
 **0030**.
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
@@ -400,7 +406,14 @@ rather than before it.
     run also produced the evidence for the timeout analysis — sessions were
     silently torn down by the 120 s inactivity watchdog while a tester worked in
     NVDA's dialogs, discarding overrides mid-test.
-11.3. **E, enforced observe-only** (both lanes). A session where the bridge
+11.3. **E, enforced observe-only** (both lanes). **On hold as of 2026-08-18** —
+    taken out of the queue by decision, to be revisited later. It is not a lane
+    blocker: nothing open depends on it, and spec 0029 (Part 3.2, 2026-08-17)
+    has since decided the neighbouring question the other way — *deliver the
+    right information per persona; if violations turn out to be common, gate* —
+    so whether 0017's `control` field survives as written, or observe-only
+    becomes the strictest persona the bridge enforces, is exactly what the later
+    conversation has to settle. A session where the bridge
     *rejects* `pressGesture` and `setConfig`, so the tester drives and the agent
     can only watch. Orthogonal to capture mode — capture mode is about audio,
     this is about input — so it is a `control` field on `hello`, not a third
@@ -495,7 +508,19 @@ rather than before it.
     entirely and retire `redeploy.py`'s kill-by-image-path; it is the only route
     to an autonomous rebuild-and-test loop, and it is boardable separately
     rather than required here. Still needs a spec conversation: it revisits a
-    decision spec 0013 made deliberately. Spec:
+    decision spec 0013 made deliberately.
+    **Corroborated from outside, 2026-08-18** ([0030](specs/0030-the-second-external-run.md),
+    ask 1a): a second external run, driven by a non-Claude model in a different
+    client, hit the same *"I can call it but I cannot see it listed"* gap — and
+    hit it **without a redeploy**. That widens the entry: the diagnosis above
+    explains this project's dev loop severing the surface, but it does not
+    explain an agent that connected cleanly and still had no schemas in front of
+    it. It also sharpens the cost, because the documented consequence was the
+    agent reading our Go source to find out what it could call. Option (c) or
+    (d) — a tool list that never changes — answers both readings at once, which
+    is a point in their favour that the redeploy analysis alone did not surface.
+    See also **11.22**, which publishes the same information as a document and
+    therefore does not depend on any client honouring anything. Spec:
     [0022-tool-discovery-an-agent-can-rely-on.md](specs/0022-tool-discovery-an-agent-can-rely-on.md)
     (premise corrected 2026-08-02, not agreed).
 11.7. **Done (PR #49, 2026-08-01)** — E, drive it like a user (server lane).
@@ -579,7 +604,12 @@ rather than before it.
     are now realistic (no trailing spaces) and were verified to fail against the
     old join with the live string. Spec: none needed — a defect fix with its
     guard corrected.
-11.9. **E, the round trip is the cost — the settle is a no-op** (lane 2, server).
+11.9. **Done (PR #64, 2026-08-18)** — E, the round trip is the cost — the settle
+    is a no-op (lane 2, server). This entry was the ANALYSIS; 11.12 built both
+    routes it named, in the same PR, so it closes with them. Its measurements
+    are the whole argument for spec 0025 and are kept here in full rather than
+    summarised away — the numbers are what make the design defensible, and the
+    next person to doubt the grace window should be able to read them.
     **Measured 2026-08-03; the measurement reversed the premise, twice.** The
     session was slow, and the diagnosis started at `SPEECH_FINISHED_SECONDS`:
     both modes settle by an elapsed-time heuristic (spec 0008 removed the spy
@@ -654,7 +684,8 @@ rather than before it.
     (drafted 2026-08-03, not agreed). **Paired with 11.17** — see that entry for
     why the two remedies for this gesture are complementary and should be
     decided together.
-11.12. **E, one round trip per intention** (lane 2, server + bridge). Implements
+11.12. **Done (PR #64, 2026-08-18)** — E, one round trip per intention (lane 2,
+    server + bridge). Implements
     the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
     (~7.9 s) to carry ~124 ms of reader work, and 11.9 measured that one of the
     three observes nothing at all. The maintainer's reframing is the substance:
@@ -674,9 +705,21 @@ rather than before it.
     query again" leaves the slow case at today's two trips rather than making
     every call ambiguous. Honest risk: 2.6 s was measured, 5–12 s was observed
     hours later, and the gap is unbracketed — the benefit is proportional to a
-    number nobody has measured.
+    number nobody has measured. **That gap was explained when the spec was
+    agreed**: it is the client model's own turn time between tool calls, which
+    grows with the conversation's context. Nothing is faulty, and it strengthens
+    the case — if per-call model turns dominate, call *count* is the right lever.
+    **Shipped as ONE PR** covering both lanes, though it was scoped as two. The
+    halves are separately reviewable, but the wire change is not separately
+    *testable*: `poe conformance` is the only tier where a Go server asking for a
+    window meets a Python bridge actually waiting one out, and a live NVDA
+    session is the only place the collapse can be judged at all. Splitting it
+    would have bought a shorter diff at the price of two live sessions, and the
+    second half is what the checklist actually exercises.
     Spec: [0025-one-round-trip-per-intention.md](specs/0025-one-round-trip-per-intention.md)
-    (drafted 2026-08-03, not agreed).
+    (drafted 2026-08-03, **agreed 2026-08-16** — all five open questions settled
+    there). The board read "not agreed" until 2026-08-18 while the spec said
+    agreed: one more instance of 11.18's drift, found by reading both.
 11.13. **E, where am I, and what is on the page** (lane 1, bridge + server). Two
     questions the repo has been treating as one. **"Where am I" is already
     solved and this builds nothing for it** — it is `NVDA+Tab`, a gesture whose
@@ -693,9 +736,32 @@ rather than before it.
     rediscovered in it. The 0023 tension resolves on the same test as 11.11:
     browse mode **is** a flat text rendering the user arrows through, so a
     snapshot changes the channel, not the substance. Say-all capture was the more
-    faithful design and is deferred, not on principle but because **nobody has
+    faithful design and was deferred, not on principle but because **nobody had
     tested whether say-all advances when no synth runs** — a cheap experiment
-    that should happen before this is agreed.
+    that should happen before this is agreed. **Run 2026-08-18, and then run
+    again.** The first run, during 11.12's live checklist, said it does not: in a
+    silent session `NVDA+downArrow` emitted two chunks and stopped. The
+    observation was real; the cause named for it was wrong, and the conclusion
+    drawn — that say-all capture is dead — is **retracted**. The stall was ours.
+    NVDA clocks say-all on a `CallbackCommand` it inserts at position 0 of every
+    chunk (`speech/sayAll.py`), whose callback moves the caret and asks for the
+    next chunk; silent mode returned an empty sequence from
+    `filter_speechSequence`, deleting that callback along with the words, and
+    `speech.speak()` then returns early on an empty sequence — so the speech
+    manager, which is what turns callbacks into indexes, never saw it and
+    `lineReached` could not fire. The two chunks were say-all's own
+    `MAX_BUFFERED_LINES` fallback, the one path that advances without the
+    callback. Fixed in PR #64 by running the non-audible callbacks ourselves,
+    queued onto NVDA's event loop rather than passing them to the synth: an
+    audit of every driver on the maintainer's machine found that only sapi5
+    reports an index for a text-free utterance, while espeak, oneCore, RHVoice
+    and ibmeci all clock indexes off audio, and NVDA's own `silence` driver
+    notifies nobody at all — so pass-through would have made correctness depend
+    on the tester's voice. **Re-run 2026-08-18 after the fix: say-all reads the
+    whole document and carries the caret with it** — a heading, 30 paragraphs
+    and a closing line captured complete in 328 ms, under `ibmeci`. So say-all
+    capture *is* a route to reading a document in a silent session, and this
+    entry still has two candidate designs to weigh rather than one.
     Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
     (drafted 2026-08-03, not agreed).
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
@@ -903,6 +969,117 @@ rather than before it.
     `gate-binding`, which cannot cry wolf because both sides are machine-readable.
     That is a next-phase conversation. Do not build the gate above without
     revisiting this first. Spec: none yet.
+11.21. **Done (PR #64, 2026-08-18)** — E, the settle answers about emission, not
+    about audio (lane 1, bridge; small). Found live on 2026-08-18 running 11.12's
+    checklist. Spec 0025 narrowed
+    `waitForSpeechToFinish` to "a long deliberate announcement or a say-all, where
+    *is it still going?* is genuinely the question" — and the live run found that
+    it cannot answer that either. In LIVE mode NVDA queues a say-all in bursts:
+    the whole first chunk was captured by 11:10:40.611 and nothing more was
+    emitted, while the synthesizer was still reading it aloud for several seconds.
+    The buffer's heuristic measures the gap since the last CAPTURE, and capture
+    happens at `pre_speechQueued`, so the tool reported `finished: true` while
+    the user could plainly hear speech continuing.
+    **Not a regression, and not caused by 11.12** — it is the "emitted is not
+    heard" caveat (protocol.md §7.1) reaching the one tool whose entire job is to
+    answer a question about audio. What 11.12 changed is that the caveat now
+    matters more: with the settle no longer the universal second step, its
+    remaining use case is precisely the one it is worst at.
+    **Shipped (a) and (c) together**, through a new `ContinuousRead` port named
+    for the general property rather than for NVDA's command: **nothing above the
+    bridge learns that say all exists.**
+    (c) took two attempts, and the first is worth recording because it passed
+    every automated tier. `SayAllHandler.isRunning()` is the obvious call and is
+    the wrong one: it is `bool(self._getActiveSayAll())`, a **weakref to the
+    reader object**, assigned when a read starts and never reset — so it answers
+    "has the reader been garbage-collected yet?", and `_Reader` inherits
+    `garbageHandler.TrackedObject`, which is expressly about objects reclaimed by
+    the *cyclic* collector rather than by refcounting. Live, that settle went on
+    answering "not finished" after the document ended and after a keypress that
+    stopped the read: **a settle that never settles, which is worse than the
+    imprecision it replaced.** The unit tests all passed, because the fake
+    answered honestly and the flaw was in what the real signal MEANS — so the
+    adapter now has tests of its own, against a stubbed `speech.sayAll`, holding
+    the state that broke it: a reader object present but stopped.
+    What it reads instead is the reader's own guard field — `_TextReader.reader`,
+    `_ObjectsReader.walker`, each nulled by its own `stop()` and checked by it on
+    entry — set on both routes out, normal completion and interruption. Private
+    attributes, but they fail closed: a rename returns None and the settle falls
+    back to the pre-11.21 heuristic. A rename cannot produce the hang.
+    The buffer also caps how long a claimed read may hold the settle open with
+    nothing arriving (`CONTINUOUS_READ_STALE_SECONDS`, 6 s), because we have now
+    shipped one wrong version of a port that speaks for a reader we do not
+    control: a wrong answer that expires is an imprecision, one that does not is
+    a hang. No tool, no parameter, nothing on the wire names it — an agent
+    still starts one by pressing the reader's own key, and only the ANSWER to a
+    question the wire already asked gets better. A bridge whose reader has no
+    such notion returns False and keeps today's behaviour exactly.
+    Two further traps, both silent, both now covered: `SayAllHandler` is a module
+    attribute REBOUND by `initialize()`, so importing the name by value captures
+    `None` for the life of the process; and it is `None` before initialize runs.
+    **Measured live, and it makes the original bug bigger than this entry first
+    recorded**: chunks arrive **1.8–2.0 s apart, for every one of thirty lines**
+    under ibmeci. So the 1 s rule did not misfire once at the start of a say all
+    — it misfired on every gap in it, and a whole document could be reported
+    finished at line 1.
+    (a) shipped alongside, because (c) fixes continuous reads and nothing else:
+    the description now says the tool measures speech ARRIVING rather than audio
+    playing, and that any other bursty producer will still read as finished. (b)
+    stays rejected — spec 0008 gave up the spy synth deliberately, and this
+    closes the gap without it. Spec: none needed.
+11.22. **E, an agent cannot see the tools it is allowed to call** (server lane,
+    docs + resource). From the **second external run**, 2026-08-18 — see
+    [0030](specs/0030-the-second-external-run.md), ask 1b. The gated tools exist
+    after `connect_reader` and can be called, but the agent has no authoritative
+    list of their names, parameters and return shapes in front of it. The
+    reporter's account of what that costs is the entry's whole justification:
+    **it read the Go source**, and says so plainly — *"fix that and I won't"*.
+    Proposes a single `screenreader://tools` resource: every tool, the capability
+    that gates it, its parameters and what it returns, reader-agnostic, served
+    for reading. Distinct from 11.6, which is about the CLIENT's tool list going
+    stale; this is about the SERVER publishing the same information as a document,
+    which works no matter what any client does with `tools/list_changed`. That
+    independence is the argument for doing this one first. The obvious hazard is
+    drift — a hand-written cheat-sheet that disagrees with the registry is worse
+    than none — so it should be composed from `tools.BuildRegistry()` the way
+    `screenreader://guidance` composes persona profiles from the domain, and
+    guarded by the same kind of test. Spec: none yet.
+11.23. **E, a session dies while the agent is thinking, and nothing says so**
+    (both lanes). From the second external run, ask 2. The ~120s inactivity
+    watchdog dropped a live silent session while the agent was reasoning between
+    tool calls; it learned only when the next call failed with "needs a connected
+    reader", and the recovery cost a reconnect and a hand-off to the human.
+    **The reporter explicitly agrees the policy is right** — `ping` proving
+    liveness without resetting the watchdog is what protects a human from being
+    left mute by a wedged agent (the reason the watchdog exists at all). So this
+    is about VISIBILITY, not about relaxing the timeout: an agent's idle time
+    between calls is exactly when it reasons, and the clock runs invisibly
+    through it. Three candidates offered, not yet weighed: `status` reports
+    seconds remaining; the bridge warns once before dropping; or an explicit
+    `keepalive` whose absence is cheap to notice. Note the tension to resolve
+    before choosing — a `keepalive` an agent may send at will is a watchdog it
+    can defeat, which is the thing the current policy deliberately prevents.
+    Spec: none yet.
+11.24. **E, two small promises the caller cannot check** (both lanes, small).
+    From the second external run, ask 3. Two unrelated defects, kept together
+    because both are about a caller being able to trust what it was told.
+    (a) `press_gesture`'s description spells a gesture `"NVDA+f7"` while
+    `screenreader://reader-guidance` correctly gives the literal form as
+    lower-cased and sorted (`"nvda+tab"`). The lower-cased form works; the two
+    documents simply disagree, and the one an agent is likelier to copy is the
+    wrong one. A documentation defect of exactly the class an outside reader
+    finds and an inside one cannot. (b) `announce` on `press_gesture`/`type_text`
+    returns nothing acknowledging that the announcement was made, so an agent
+    narrating to a human it cannot hear is assuming rather than confirming —
+    which matters most in the silent sessions where narration is the human's
+    only channel. An `announced` field in the result would close it.
+    **What such an ack must not overclaim**, measured 2026-08-18 and recorded in
+    protocol.md §7.1: emission runs **two to three utterances, about five
+    seconds, ahead of audio**. So an ack can honestly say the announcement was
+    *made*, never that it was *heard*, and an agent that narrates then acts at
+    once is acting ahead of its own narration. Whether the remedy is a field or a
+    way to wait for the listener to catch up is the thing to settle rather than
+    assume. Spec: none yet.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

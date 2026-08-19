@@ -1,18 +1,23 @@
 
-## A successful result means delivery, not consequence
+## A successful result means delivery, plus whatever arrived in time
 
 `press_gesture` and `type_text` return once the reader has **accepted** the
-input. The reader then does the work afterwards, on its own thread. At the
-instant your result is written, the dialog has not opened, focus has not moved,
-and nothing has been spoken.
+input and a short grace window has elapsed. Whatever the reader said inside that
+window is in your result; whatever it does afterwards, on its own thread, is not.
 
-So a successful result never tells you that the thing you wanted happened. It
-tells you the keystroke arrived. Confirm the rest.
+So the result is evidence of two different strengths, and they are worth keeping
+apart:
+
+- **The speech it carries really was said.** That is an observation, and it is
+  usually enough — a window that opens announces its title.
+- **An empty list is not evidence of anything happening or not happening.** It
+  says only that nothing had arrived by that instant.
 
 Two corollaries worth stating:
 
-- `type_text`'s `typed` count is the length of what was **sent**, counted on
-  this side. It says nothing about what arrived anywhere.
+- `type_text`'s `typed` count is the length of what was **sent** — the reader's
+  own count of what it received. It says nothing about what arrived in the
+  control, only about what reached the reader.
 - Do not re-press a gesture because the result "seemed" not to work. It very
   likely did work, and you are about to do it twice.
 
@@ -54,8 +59,8 @@ keys they use for it, so do not assume a facility exists just because another
 reader has one. If you cannot establish where you are by the loop below, say so
 with `ask_user` rather than guessing at a command that may not exist.
 
-Then settle and listen for the window title, exactly as in the loop below — that
-is your confirmation that you arrived, and the reader volunteers it without being
+The window title comes back in the same call that pressed the key, exactly as in
+the loop below — that is your confirmation that you arrived, and the reader volunteers it without being
 asked. **Confirm by listening rather than by counting presses**, and do not
 assume how a switcher is ordered. An agent that assumes it is in the right window
 types into whatever was already focused, and that surfaces later as an unrelated
@@ -66,29 +71,49 @@ If the application is not running at all, start it with whatever tooling you hav
 outside this server. That is setup rather than testing, and it is the one part of
 driving a screen reader this server deliberately leaves alone.
 
-## The loop: act, settle, listen, orient, escalate
+## The loop: act and read, orient, escalate
 
-**1. Act.** `press_gesture` or `type_text`.
+**1. Act, and read what it said — in one call.** `press_gesture` or `type_text`
+waits a short grace after each key and returns the speech that arrived, so
+acting and listening are the *same* call. Speech is the one thing a reader
+produces for everything it does, which is why it is the channel you key on.
 
-**2. Settle.** `wait_for_speech_to_finish`. This is the one wait that applies
-after **any** action, because speech is the one thing a reader produces for
-everything it does. Never sleep instead: a sleep is either too short and flaky
-or too long and slow, and it is never evidence.
+A window that opens announces its title -- that is your confirmation that you
+are where you meant to be, and the reader volunteers it without being asked. If
+you hear the wrong title, you are somewhere else: the gesture may be remapped on
+this machine, or the application may have opened something you did not expect.
 
-**3. Listen.** `get_speech` (or `get_last_speech`). A window that opens
-announces its title -- that is your confirmation that you are where you meant to
-be, and the reader volunteers it without being asked. If you hear the wrong
-title, you are somewhere else: the gesture may be remapped on this machine, or
-the application may have opened something you did not expect.
+In a batch, each key reports its own `speechFrom`/`speechTo`, so you can see
+*which* key spoke. An empty span for a key is a real answer: that key said
+nothing.
 
-**4. Orient**, if what you heard was not enough. Press the reader's own
+**2. If the result was quiet, read again — do not re-press.** An empty `speech`
+list means **nothing had arrived by that instant**. It does not mean nothing
+happened. Slow effects — a browser window opening, a page loading, a dialog
+appearing — take longer than any grace worth paying, and they are exactly the
+cases where re-pressing does damage: the key lands twice. Read on from
+`speechTo` with `get_speech`, or name what you expect with `wait_for_speech`.
+
+**Never sleep instead.** The distinction is not the waiting, it is what you do
+with it: *a blind wait you treat as evidence is forbidden; a bounded wait
+followed by an honest observation is the mechanism.* The grace window is the
+second kind — it waits, then reports exactly what it saw and claims nothing
+beyond it. A sleep followed by an assumption is the first.
+
+`wait_for_speech_to_finish` is **not** the step after every action. It asks "has
+speech *stopped*?", which cannot be answered at the moment it is asked: silence
+before speech starts and silence after it ends are the same observable. Keep it
+for a long deliberate announcement or a say-all, where "is it still going?" is
+genuinely the question.
+
+**3. Orient**, if what you heard was not enough. Press the reader's own
 "report the focused object" command and listen to the answer. Its report-title
 and read-whole-window commands are there for the same reason. This is ordinary
 screen reader operating knowledge -- asking the reader where you are is a
-*command you send*, and its answer arrives on the same channel as everything
-else. Then settle and listen again.
+*command you send*, and its answer comes back in that same call, like any other
+key's.
 
-**5. Escalate.** Try what a user would try next -- Tab, Escape -- and notice
+**4. Escalate.** Try what a user would try next -- Tab, Escape -- and notice
 when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
@@ -115,8 +140,9 @@ Read back what the reader says about the line before committing to it.
 
 Some actions are silent, and some answer with a sound rather than words -- a
 mode toggle may signal with an earcon that no speech assertion will ever match.
-Then settling finishes on silence, and you cannot separate "nothing happened"
-from "something happened quietly".
+Then your window closes on silence, and you cannot separate "nothing happened"
+from "something happened quietly" -- which is exactly why `state` rides on the
+result: a browse/focus toggle shows up there even when nothing was said.
 
 That is the moment to introspect: `get_state` answers questions about modes
 that are signalled by sound, and `get_focus_info` answers when the ear has
@@ -145,7 +171,7 @@ configuration and its log are legitimate first resorts.
 
 ## In short
 
-Act, wait for speech to settle, read what was said. If that does not tell you
+Act and read what was said, in one call. If that does not tell you
 where you are, ask the reader with its own command and listen again. If that
 still does not, ask the human. Introspect on purpose, not by reflex, and never
 sleep.

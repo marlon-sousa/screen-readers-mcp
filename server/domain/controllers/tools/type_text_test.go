@@ -15,6 +15,7 @@ import (
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -72,6 +73,11 @@ func TestTypeTextResultNeverEchoesTheText(t *testing.T) {
 
 // A multi-byte character is one TYPED character, not however many UTF-8 bytes
 // it took -- the count is meant to read like a length a human would recognise.
+//
+// Since spec 0025 the count is the READER's answer, passed through rather than
+// recomputed here: the side that injected the characters is the one authority on
+// how many there were, and two independent counts of one string is exactly how
+// they come to disagree.
 func TestTypeTextCountsRunesNotBytes(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
@@ -88,6 +94,72 @@ func TestTypeTextCountsRunesNotBytes(t *testing.T) {
 	want := len([]rune("café — 50%"))
 	if typed.Typed != want {
 		t.Errorf("typed count = %d, want %d runes", typed.Typed, want)
+	}
+}
+
+// Spec 0025: typing defaults to NO grace, unlike press_gesture. With "speak
+// typed characters" on, typing emits one utterance per character and none of
+// them is worth a round trip's wait -- but the agent can still ask for one when
+// it expects the field itself to announce something.
+func TestTypeTextDefaultsToNoGraceAndCarriesOneWhenAsked(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
+	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
+
+	if _, err := call.Run(`{"text":"ola"}`); err != nil {
+		t.Fatalf("type_text: %v", err)
+	}
+	if _, err := call.Run(`{"text":"ola","grace_ms":300,"announce":"typing the address"}`); err != nil {
+		t.Fatalf("type_text: %v", err)
+	}
+
+	if graces := built.Text.Graces(); len(graces) != 2 || graces[0] != tools.DefaultTypeGraceMs || graces[1] != 300 {
+		t.Errorf("graces = %v, want [%d 300]", graces, tools.DefaultTypeGraceMs)
+	}
+	if said := built.Text.Announcements(); len(said) != 2 || said[0] != "" || said[1] != "typing the address" {
+		t.Errorf("announcements = %q, want nothing then the hint", said)
+	}
+}
+
+// The same observation shape press_gesture reports, for the same reason: an
+// agent should not have to learn two ways to read one answer.
+func TestTypeTextReportsTheWindowItObserved(t *testing.T) {
+	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
+	built.Text.AnswerWith(ports.TypeOutcome{
+		Typed: 3,
+		Observation: ports.Observation{
+			Speech:    []ports.SpeechEntry{{Text: "ola", Index: 4}},
+			FromIndex: 4,
+			ToIndex:   5,
+			State:     &ports.ReaderState{BrowseMode: "focus", SpeechMode: "talk"},
+		},
+	})
+	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
+
+	result, err := call.Run(`{"text":"ola","grace_ms":200}`)
+	if err != nil {
+		t.Fatalf("type_text: %v", err)
+	}
+	var got struct {
+		Typed      int `json:"typed"`
+		SpeechFrom int `json:"speechFrom"`
+		SpeechTo   int `json:"speechTo"`
+		Speech     []struct {
+			Text string `json:"text"`
+		} `json:"speech"`
+		State *struct {
+			BrowseMode string `json:"browseMode"`
+		} `json:"state"`
+	}
+	decode(t, result, &got)
+
+	if got.Typed != 3 || got.SpeechFrom != 4 || got.SpeechTo != 5 {
+		t.Errorf("typed %d over window [%d,%d), want 3 over [4,5)", got.Typed, got.SpeechFrom, got.SpeechTo)
+	}
+	if len(got.Speech) != 1 || got.Speech[0].Text != "ola" {
+		t.Errorf("speech = %v, want what the field said back", got.Speech)
+	}
+	if got.State == nil || got.State.BrowseMode != "focus" {
+		t.Errorf("state = %v, want the modes the agent cannot hear", got.State)
 	}
 }
 

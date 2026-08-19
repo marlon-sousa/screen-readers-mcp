@@ -67,6 +67,9 @@ class StubLog:
 	def info(self, message: str) -> None:
 		self.messages.append(message)
 
+	def exception(self, message: str) -> None:
+		self.messages.append(message)
+
 
 class StubExtensionPoint:
 	"""Stands in for an NVDA Action/Filter: holds handlers, fires on demand."""
@@ -82,12 +85,128 @@ class StubExtensionPoint:
 			self.handlers.remove(handler)
 
 
+class StubEventQueue:
+	"""Stands in for queueHandler.eventQueue plus its pump.
+
+	The silent speech source queues the callbacks it would otherwise have eaten
+	rather than calling them inline, because a say-all callback speaks again and
+	inline would recurse. A stub that RAN them on submit would therefore test the
+	one shape the adapter must not have, so this one holds them until a test
+	pumps -- which is what makes the deferral itself observable.
+	"""
+
+	def __init__(self) -> None:
+		self.queued: list[tuple[Any, tuple[Any, ...]]] = []
+
+	def pump(self) -> None:
+		"""Run everything queued so far, in order, as NVDA's event loop would."""
+		while self.queued:
+			func, args = self.queued.pop(0)
+			func(*args)
+
+
+class StubSpeechCommand:
+	"""speech.commands.SpeechCommand, reduced to being a distinct base type."""
+
+
+class StubBaseCallbackCommand(StubSpeechCommand):
+	"""The class the adapter tests isinstance against; run() is the contract."""
+
+	def run(self) -> None:
+		raise NotImplementedError
+
+
+class StubCallbackCommand(StubBaseCallbackCommand):
+	"""NVDA's generic callback -- the one say all clocks its next chunk with."""
+
+	def __init__(self, callback: Any, name: str | None = None) -> None:
+		self._callback = callback
+		self._name = name or repr(callback)
+
+	def run(self) -> None:
+		self._callback()
+
+
+class StubBeepCommand(StubBaseCallbackCommand):
+	"""A callback whose whole job is to make a sound, so silent mode drops it."""
+
+	def __init__(self, hz: int = 440, length: int = 10) -> None:
+		self.hz = hz
+		self.length = length
+		self.beeped = False
+
+	def run(self) -> None:
+		self.beeped = True
+
+
+class StubWaveFileCommand(StubBaseCallbackCommand):
+	"""The other audible callback; dropped for the same reason as the beep."""
+
+	def __init__(self, fileName: str = "sound.wav") -> None:
+		self.fileName = fileName
+		self.played = False
+
+	def run(self) -> None:
+		self.played = True
+
+
+class StubSayAllHandler:
+	"""NVDA's _SayAllHandler, reduced to the one thing the adapter reads.
+
+	`_getActiveSayAll` is a WEAKREF in the real thing, which is the whole trap:
+	it keeps returning the reader object long after the read stopped. The stub
+	models the object and the stopped-ness SEPARATELY, so a test can hold the
+	exact state a real reader passes through and a real clock cannot be made to
+	hold still -- present, but done.
+	"""
+
+	def __init__(self, reader: Any = None) -> None:
+		self.reader = reader
+
+	def _getActiveSayAll(self) -> Any:
+		return self.reader
+
+
+class StubTextReader:
+	"""_TextReader: nulls `reader` in stop(), which is what stop() guards on."""
+
+	def __init__(self, *, stopped: bool = False) -> None:
+		self.reader = None if stopped else object()
+
+
+class StubObjectsReader:
+	"""_ObjectsReader: the same, through `walker` instead."""
+
+	def __init__(self, *, stopped: bool = False) -> None:
+		self.walker = None if stopped else object()
+
+
 #: The one instance of each, shared by every test module that installs them --
 #: which is what makes the install idempotent and order-independent.
 log = StubLog()
+eventQueue = StubEventQueue()
+#: Module object for `speech.sayAll`; tests set `.SayAllHandler` on it, exactly
+#: as NVDA's own sayAll.initialize() rebinds that module attribute at startup.
+sayAll = types.ModuleType("speech.sayAll")
+sayAll.SayAllHandler = None  # type: ignore[attr-defined]
 filter_speechSequence = StubExtensionPoint()
 pre_speechQueued = StubExtensionPoint()
 pre_writeCells = StubExtensionPoint()
+
+
+def set_say_all_handler(handler: Any) -> None:
+	"""Rebind `speech.sayAll.SayAllHandler`, as NVDA's initialize() does.
+
+	A function rather than a bare assignment in each test, because a module
+	attribute is untyped and every assignment would otherwise need its own
+	pyright suppression.
+	"""
+	sayAll.SayAllHandler = handler  # type: ignore[attr-defined]
+
+
+def _queueFunction(queue: StubEventQueue, func: Any, *args: Any, **kwargs: Any) -> None:
+	"""queueHandler.queueFunction: put it on the queue, do NOT run it here."""
+	queue.queued.append((func, args))
 
 
 def install() -> None:
@@ -107,6 +226,30 @@ def install() -> None:
 		sys.modules["speech"] = speech
 		sys.modules["speech.extensions"] = extensions
 
+	if "speech.commands" not in sys.modules:
+		commands = types.ModuleType("speech.commands")
+		commands.SpeechCommand = StubSpeechCommand  # type: ignore[attr-defined]
+		commands.BaseCallbackCommand = StubBaseCallbackCommand  # type: ignore[attr-defined]
+		commands.CallbackCommand = StubCallbackCommand  # type: ignore[attr-defined]
+		commands.BeepCommand = StubBeepCommand  # type: ignore[attr-defined]
+		commands.WaveFileCommand = StubWaveFileCommand  # type: ignore[attr-defined]
+		speech = sys.modules.get("speech") or types.ModuleType("speech")
+		speech.commands = commands  # type: ignore[attr-defined]
+		sys.modules["speech"] = speech
+		sys.modules["speech.commands"] = commands
+
+	if "speech.sayAll" not in sys.modules:
+		speech = sys.modules.get("speech") or types.ModuleType("speech")
+		speech.sayAll = sayAll  # type: ignore[attr-defined]
+		sys.modules["speech"] = speech
+		sys.modules["speech.sayAll"] = sayAll
+
+	if "queueHandler" not in sys.modules:
+		queue_handler = types.ModuleType("queueHandler")
+		queue_handler.eventQueue = eventQueue  # type: ignore[attr-defined]
+		queue_handler.queueFunction = _queueFunction  # type: ignore[attr-defined]
+		sys.modules["queueHandler"] = queue_handler
+
 	if "braille" not in sys.modules:
 		braille = types.ModuleType("braille")
 		braille.pre_writeCells = pre_writeCells  # type: ignore[attr-defined]
@@ -116,5 +259,7 @@ def install() -> None:
 def reset() -> None:
 	"""Forget every registration and message; the stubs outlive any one test."""
 	log.messages.clear()
+	eventQueue.queued.clear()
+	sayAll.SayAllHandler = None  # type: ignore[attr-defined]
 	for point in (filter_speechSequence, pre_speechQueued, pre_writeCells):
 		point.handlers.clear()

@@ -181,6 +181,66 @@
       ],
       "additionalProperties": true
     },
+    "GesturePress": {
+      "type": "object",
+      "properties": {
+        "gesture": {
+          "type": "string"
+        },
+        "speechFrom": {
+          "type": "integer"
+        },
+        "speechTo": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gesture",
+        "speechFrom",
+        "speechTo"
+      ],
+      "additionalProperties": true
+    },
+    "GestureResult": {
+      "type": "object",
+      "properties": {
+        "pressed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GesturePress"
+          }
+        },
+        "speech": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SpeechEntry"
+          }
+        },
+        "speechFrom": {
+          "type": "integer"
+        },
+        "speechTo": {
+          "type": "integer"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "pressed",
+        "speech",
+        "speechFrom",
+        "speechTo"
+      ],
+      "additionalProperties": true
+    },
     "GetBrailleParams": {
       "type": "object",
       "properties": {
@@ -584,6 +644,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "graceMs": {
+          "type": "integer"
+        },
+        "announce": {
+          "type": "string"
         }
       },
       "required": [
@@ -767,10 +833,53 @@
       "properties": {
         "text": {
           "type": "string"
+        },
+        "graceMs": {
+          "type": "integer"
+        },
+        "announce": {
+          "type": "string"
         }
       },
       "required": [
         "text"
+      ],
+      "additionalProperties": true
+    },
+    "TypeResult": {
+      "type": "object",
+      "properties": {
+        "typed": {
+          "type": "integer"
+        },
+        "speech": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SpeechEntry"
+          }
+        },
+        "speechFrom": {
+          "type": "integer"
+        },
+        "speechTo": {
+          "type": "integer"
+        },
+        "state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StateResult"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "typed",
+        "speech",
+        "speechFrom",
+        "speechTo"
       ],
       "additionalProperties": true
     },
@@ -972,7 +1081,7 @@
         "$ref": "#/$defs/PressGestureParams"
       },
       "result": {
-        "$ref": "#/$defs/AckResult"
+        "$ref": "#/$defs/GestureResult"
       }
     },
     "typeText": {
@@ -980,7 +1089,7 @@
         "$ref": "#/$defs/TypeParams"
       },
       "result": {
-        "$ref": "#/$defs/AckResult"
+        "$ref": "#/$defs/TypeResult"
       }
     },
     "getSpeech": {

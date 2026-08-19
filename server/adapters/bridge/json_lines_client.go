@@ -178,6 +178,40 @@ func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
 	return mapped
 }
 
+// observation maps the half of a mutating result that pressGesture and typeText
+// answer identically (spec 0025). One mapping, because the two shapes agreeing
+// is the point: an agent reads the same window and the same resume coordinate
+// from both tools.
+func observation(entries []wire.SpeechEntry, from, to int, state *wire.StateResult) ports.Observation {
+	observed := ports.Observation{
+		Speech:    speechEntries(entries),
+		FromIndex: from,
+		ToIndex:   to,
+	}
+	// Absent stays absent: a reader serving no `state` capability reports no
+	// snapshot, which is a different answer from "browse mode is empty string".
+	if state != nil {
+		observed.State = &ports.ReaderState{
+			BrowseMode: string(state.BrowseMode),
+			SpeechMode: state.SpeechMode,
+			SleepMode:  state.SleepMode,
+			InputHelp:  state.InputHelp,
+		}
+	}
+	return observed
+}
+
+// callTimeoutFor stretches the standard call timeout by the grace the BRIDGE is
+// about to spend, once per gesture in the batch. Without this a 20-key batch at
+// the default 100 ms would spend 2 s inside a window the caller asked for and
+// then be reported as a timed-out bridge.
+func callTimeoutFor(graceMs int, presses int) time.Duration {
+	if graceMs <= 0 || presses <= 0 {
+		return DefaultCallTimeout
+	}
+	return DefaultCallTimeout + time.Duration(graceMs*presses)*time.Millisecond
+}
+
 // brailleEntries is speechEntries for braille updates.
 func brailleEntries(entries []wire.BrailleEntry) []ports.BrailleEntry {
 	mapped := make([]ports.BrailleEntry, 0, len(entries))
@@ -307,16 +341,43 @@ func (c *JSONLinesClient) BrailleSince(sinceIndex int) (ports.BrailleRange, erro
 	}, nil
 }
 
-func (c *JSONLinesClient) PressGestures(ids []string) error {
+func (c *JSONLinesClient) PressGestures(ids []string, graceMs int, announce string) (ports.GestureOutcome, error) {
 	// The ids pass through untouched: gesture syntax is the reader's, and the
 	// server routes it without interpreting it.
-	return c.call(wire.CommandPressGesture, wire.PressGestureParams{Gestures: ids}, nil, DefaultCallTimeout)
+	var result wire.GestureResult
+	params := wire.PressGestureParams{Gestures: ids, GraceMs: &graceMs, Announce: &announce}
+	// The grace is spent INSIDE the bridge, so the reply cannot arrive before it
+	// elapses: a call timeout that ignored it would turn a long deliberate
+	// window into a transport failure.
+	if err := c.call(wire.CommandPressGesture, params, &result, callTimeoutFor(graceMs, len(ids))); err != nil {
+		return ports.GestureOutcome{}, err
+	}
+	pressed := make([]ports.GesturePress, 0, len(result.Pressed))
+	for _, p := range result.Pressed {
+		pressed = append(pressed, ports.GesturePress{
+			Gesture:    p.Gesture,
+			SpeechFrom: p.SpeechFrom,
+			SpeechTo:   p.SpeechTo,
+		})
+	}
+	return ports.GestureOutcome{
+		Observation: observation(result.Speech, result.SpeechFrom, result.SpeechTo, result.State),
+		Pressed:     pressed,
+	}, nil
 }
 
-func (c *JSONLinesClient) TypeText(text string) error {
+func (c *JSONLinesClient) TypeText(text string, graceMs int, announce string) (ports.TypeOutcome, error) {
 	// The text passes through untouched: it is opaque content, routed exactly
 	// as a gesture id is.
-	return c.call(wire.CommandTypeText, wire.TypeParams{Text: text}, nil, DefaultCallTimeout)
+	var result wire.TypeResult
+	params := wire.TypeParams{Text: text, GraceMs: &graceMs, Announce: &announce}
+	if err := c.call(wire.CommandTypeText, params, &result, callTimeoutFor(graceMs, 1)); err != nil {
+		return ports.TypeOutcome{}, err
+	}
+	return ports.TypeOutcome{
+		Observation: observation(result.Speech, result.SpeechFrom, result.SpeechTo, result.State),
+		Typed:       result.Typed,
+	}, nil
 }
 
 func (c *JSONLinesClient) Announce(text string) error {

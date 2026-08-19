@@ -16,5 +16,9 @@ type TextTyper interface {
 	// server does not interpret it, exactly as a gesture id passes through
 	// untouched. Newlines, Enter and any other control character are the
 	// caller's job via PressGestures, not this method's.
-	TypeText(text string) error
+	//
+	// graceMs and announce behave exactly as on PressGestures, except that the
+	// grace DEFAULTS to nothing here: typing with "speak typed characters" on
+	// emits one utterance per character and none of them is worth a wait.
+	TypeText(text string, graceMs int, announce string) (TypeOutcome, error)
 }

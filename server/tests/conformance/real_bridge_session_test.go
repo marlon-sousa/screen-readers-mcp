@@ -482,19 +482,65 @@ func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 }
 
 // exerciseGestures is the `gestures` capability group: opaque reader ids over
-// the wire and back.
+// the wire, and the speech they caused back in the SAME result (spec 0025).
+//
+// This tier is the only one where both implementations of the grace window are
+// real -- a Go server asking for a window and a Python bridge actually waiting
+// it out -- so it is the only place where the two could disagree about what
+// arrives inside one. A test that only checked the ids would have been blind to
+// exactly the thing this entry adds.
 func exerciseGestures(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
 	var pressed struct {
-		Pressed []string `json:"pressed"`
+		Pressed []struct {
+			Gesture    string `json:"gesture"`
+			SpeechFrom int    `json:"speechFrom"`
+			SpeechTo   int    `json:"speechTo"`
+		} `json:"pressed"`
+		Speech []struct {
+			Text  string `json:"text"`
+			Index int    `json:"index"`
+		} `json:"speech"`
+		SpeechFrom int `json:"speechFrom"`
+		SpeechTo   int `json:"speechTo"`
+		State      *struct {
+			SpeechMode string `json:"speechMode"`
+		} `json:"state"`
 	}
 	harness.Call(t, "press_gesture", map[string]any{
 		"gestures": []string{scriptedKey},
+		"grace_ms": 500,
 	}).Decode(t, &pressed)
 
-	if !slices.Equal(pressed.Pressed, []string{scriptedKey}) {
-		t.Errorf("pressed = %v, want the id passed through untouched", pressed.Pressed)
+	ids := make([]string, 0, len(pressed.Pressed))
+	for _, press := range pressed.Pressed {
+		ids = append(ids, press.Gesture)
+	}
+	if !slices.Equal(ids, []string{scriptedKey}) {
+		t.Errorf("pressed = %v, want the id passed through untouched", ids)
+	}
+	// The bridge scripts this key to speak, so the window must have caught it --
+	// which is the whole collapse, proved across the language boundary.
+	if len(pressed.Speech) == 0 {
+		t.Fatalf("press_gesture returned no speech for %q; the grace window caught nothing", scriptedKey)
+	}
+	if pressed.SpeechTo <= pressed.SpeechFrom {
+		t.Errorf("window = [%d,%d), want a non-empty range around what was said",
+			pressed.SpeechFrom, pressed.SpeechTo)
+	}
+	// Per-key spans and the aggregate window are the same coordinate space, in
+	// both implementations, or a batch's attribution means nothing.
+	if pressed.Pressed[0].SpeechFrom != pressed.SpeechFrom || pressed.Pressed[0].SpeechTo != pressed.SpeechTo {
+		t.Errorf("the single key's span [%d,%d) does not match the call's window [%d,%d)",
+			pressed.Pressed[0].SpeechFrom, pressed.Pressed[0].SpeechTo, pressed.SpeechFrom, pressed.SpeechTo)
+	}
+	if pressed.Speech[0].Index != pressed.SpeechFrom {
+		t.Errorf("first entry sits at index %d, outside the window it was reported in (%d)",
+			pressed.Speech[0].Index, pressed.SpeechFrom)
+	}
+	if pressed.State == nil || pressed.State.SpeechMode == "" {
+		t.Errorf("state = %+v, want the reader's modes sampled at the window's close", pressed.State)
 	}
 }
 

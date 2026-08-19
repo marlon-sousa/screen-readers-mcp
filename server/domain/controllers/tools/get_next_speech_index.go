@@ -27,9 +27,13 @@ func (t *GetNextSpeechIndex) Capability() entities.Capability { return entities.
 
 func (t *GetNextSpeechIndex) Description() string {
 	return "Get the index the NEXT captured utterance will take -- a bookmark for " +
-		"\"now\". Call this before pressing a gesture, then pass the value as " +
-		"get_speech's since_index (or wait_for_speech's after_index) to read only " +
-		"what your action caused, with nothing from before it. Takes no parameters."
+		"\"now\". You no longer need this when YOU are the one acting: press_gesture " +
+		"and type_text take their own bookmarks and hand back the window they " +
+		"covered. What it is still for is marking a moment when the agent is NOT " +
+		"acting -- a human at the keyboard driving while you watch, or a bug you have " +
+		"been told is about to appear. Bookmark now, let them act, then pass the " +
+		"value as get_speech's since_index (or wait_for_speech's after_index) to read " +
+		"only what happened after your mark. Takes no parameters."
 }
 
 func (t *GetNextSpeechIndex) InputSchema() json.RawMessage {
