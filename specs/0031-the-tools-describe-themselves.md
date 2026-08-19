@@ -333,6 +333,20 @@ boundary.
 - **`server/tests/integration/mcp_guidance_resource_test.go`** *(modified)* — the
   guidance document points at `screenreader://tools` (2.6).
 
+### 5.4 Amended while implementing, 2026-08-19
+
+Two departures from the layout above, both rendered in the implementing PR.
+
+- **`capability.go` also gains `AllCapabilities()`.** 5.1 named only `Meaning()`,
+  and the completeness test 2.5 requires cannot be written without an
+  enumeration to walk — the same shape `AllPersonas()` already has, for the same
+  reason.
+- **`tool_binding_test.go` is NEW, not modified.** 5.3 listed it as an edit; the
+  file did not exist, because everything `tool_binding.go` did was observed
+  through `sdk_server_test.go`'s client. The output schema is the first thing it
+  carries that a client can read without calling anything, which is worth
+  asserting where it is produced.
+
 ---
 
 ## Part 6 — one PR, and why the short-PR rule yields here
