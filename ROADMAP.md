@@ -188,11 +188,13 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-18**:
-11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.22, 11.23, 11.24 —
-**ten entries** (11.22-11.24 opened by the second external run,
-[0030](specs/0030-the-second-external-run.md)). **11.22 is in flight** as of
-2026-08-18, taken ahead of the lane head; see the reprioritisation note below. **11.21 is Done** in the same PR
+below. **Open as of 2026-08-19**:
+11.6, 11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
+**nine entries** (11.22-11.24 opened by the second external run,
+[0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
+taken ahead of the lane head; see the reprioritisation note below. It answers
+0030 ask 1b and deliberately leaves 11.6 open — the two share a symptom and are
+different failures. **11.21 is Done** in the same PR
 that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
@@ -1043,8 +1045,9 @@ rather than before it.
     playing, and that any other bursty producer will still read as finished. (b)
     stays rejected — spec 0008 gave up the spy synth deliberately, and this
     closes the gap without it. Spec: none needed.
-11.22. **E, an agent cannot see the tools it is allowed to call** (server lane,
-    docs + resource). From the **second external run**, 2026-08-18 — see
+11.22. **Done (PR #65, 2026-08-19)** — E, an agent cannot see the tools it is
+    allowed to call (server lane, docs + resource). From the **second external
+    run**, 2026-08-18 — see
     [0030](specs/0030-the-second-external-run.md), ask 1b. The gated tools exist
     after `connect_reader` and can be called, but the agent has no authoritative
     list of their names, parameters and return shapes in front of it. The
@@ -1071,6 +1074,19 @@ rather than before it.
     the two the spec first proposed: the ask is one ask, the second half would
     rewrite the first, and the bulk is compiler-forced and mechanical (0031
     Part 6). Headless throughout — no add-on rebuild, so no live-NVDA checklist.
+    **Shipped as specified.** `screenreader://tools` is composed at read time
+    from the registry the server is actually running, with the gate read from
+    `Catalog()` — so the hazard the entry named is answered by construction, and
+    three tests hold it there: the frame names no tool, every tool appears
+    exactly once with the capability the catalog gives it, and both schemas in
+    the document equal the tool's own. `Capability.Meaning()` puts the
+    capability's one-line gloss on the entity, and `output_schema_test.go` walks
+    every declared output schema against the result struct it describes. **It
+    does not close 11.6**, which remains open with all four options untouched:
+    this publishes the information as a document, and what a client does with its
+    own tool list is still that entry's question. Spec amended in the same PR
+    (5.4): two small layout departures, `AllCapabilities()` and a new rather than
+    modified `tool_binding_test.go`.
 11.23. **E, a session dies while the agent is thinking, and nothing says so**
     (both lanes). From the second external run, ask 2. The ~120s inactivity
     watchdog dropped a live silent session while the agent was reasoning between
