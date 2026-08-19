@@ -47,8 +47,10 @@ func (t *ConnectReader) Name() string { return "connect_reader" }
 func (t *ConnectReader) Capability() entities.Capability { return "" }
 
 func (t *ConnectReader) Description() string {
-	return "Open a session with one screen reader, then advertise the tools that " +
-		"reader's announced capabilities allow. Tries the reader's endpoints in " +
+	return "Open a session with one screen reader. It does NOT change what tools " +
+		"you can see -- every tool is advertised from startup -- it changes what " +
+		"they can DO: a gated tool refuses until the reader it needs is connected " +
+		"and announced the capability. Tries the reader's endpoints in " +
 		"the order list_readers shows and reports which one answered. " +
 		"Errors if a session is already live -- disconnect_reader first. " +
 		"You must say WHO YOU ARE STANDING IN FOR (persona): it decides what a " +
@@ -108,7 +110,7 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		"capabilities": {
 			"type": "array",
 			"items": {"type": "string"},
-			"description": "What this reader announced it can do, from the vocabulary screenreader://tools groups its tools by. The tools those capabilities allow are advertised from this moment on."
+			"description": "What this reader announced it can do, from the vocabulary screenreader://tools groups its tools by. This does not change the tool LIST, which is the same before and after connecting; it decides which of those tools will actually run. A tool gated on a capability absent from this list answers an error naming it."
 		},
 		"mode": {
 			"type": "string",
