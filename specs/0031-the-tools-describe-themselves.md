@@ -1,6 +1,14 @@
 # 0031 — the tools describe themselves
 
-Status: **proposed 2026-08-18, not agreed.** Board entry **11.22**. Server lane.
+Status: **agreed 2026-08-18.** Board entry **11.22**. Server lane.
+
+Agreed as proposed, with one change and three open questions settled in the same
+conversation:
+
+- **One PR, not two.** The staged split in Part 6 was withdrawn — see that part.
+- **Capabilities get a one-line meaning, in the domain** (2.5).
+- **Round-trip cost stays out** of this document; it is method (Part 7).
+- **`screenreader://guidance` points here** (2.6).
 
 The ask is [0030](0030-the-second-external-run.md) ask 1b, in the reporter's own
 words: *"a single `screenreader://tools` resource that is a reader-agnostic
@@ -123,6 +131,44 @@ triggering them.
 This is cheap, and it is exactly the class of thing an outsider has to infer and
 an insider never notices is missing.
 
+### 2.5 Each capability gets a one-line meaning, and it lives in the domain
+
+The tools are grouped under the capability that gates them, and each group is
+introduced by one sentence saying what that capability *is*. Without it the
+document tells an agent that `press_gesture` is gated on `gestures` and leaves it
+to infer the rest — the same piece-it-together-from-prose the document exists to
+end, in miniature.
+
+**The sentence lives on the entity, as `Capability.Meaning() string`**, not in the
+embedded markdown. These are wire-contract vocabulary (protocol.md §4), the same
+strings a bridge announces in `hello` and `screenreader://info` reports verbatim;
+what `speech` means is a fact about the contract, not about how one resource
+chooses to present it. A test asserts every declared constant has a non-empty
+meaning, so a capability cannot be added without one.
+
+The counter-argument was weighed and is worth recording, because it is 0029's own
+amendment: the degraded reader-guidance documents were moved *out* of the domain
+precisely because no domain caller rendered their text, and here too only this
+resource would render the meanings. What decides it the other way is that
+`Persona.Stance()` is the closer precedent — vocabulary the contract defines,
+which the domain therefore owns, whoever happens to render it today.
+
+`CapabilityGuidance` is included, and is the one that gates a **resource** rather
+than any tool. It therefore introduces no group in this document, and the
+completeness test covers it anyway: a constant with no meaning is a gap whether or
+not this particular document has a place to print it.
+
+### 2.6 `screenreader://guidance` points here
+
+One sentence in `guidance-preamble.md`. The method document is where an agent is
+told to start — it is the one that says *read this BEFORE connecting* — so it is
+the natural place to learn that the concrete list exists at all. An agent that
+finds this document only after deciding to read Go source has been failed in
+exactly the way 0030 describes.
+
+The pointer is asserted by a test, alongside the existing check that every
+`screenreader://` URI a tool description names is published.
+
 ---
 
 ## Part 3 — the missing half: what a tool returns
@@ -241,6 +287,10 @@ is the guard that survives someone deciding, reasonably, to hand-tune one entry.
   implements `OutputSchema()`, beside its existing `InputSchema()`. No other
   change; the private result structs stay private and stay the source the schema
   is written from.
+- **`server/domain/entities/capability.go`** *(modified)* — entity. Gains
+  `Capability.Meaning() string`, the contract's own one-line gloss for each
+  declared capability (2.5). Read by the tools resource; owned here because the
+  vocabulary is the contract's, not the resource's.
 
 ### 5.2 Adapter — the resource
 
@@ -257,6 +307,8 @@ is the guard that survives someone deciding, reasonably, to hand-tune one entry.
   `OutputSchema`; `validateSchema()` checks it is an object schema.
 - **`server/adapters/mcp/sdk_server.go`** *(modified)* — one `addToolsResource()`
   call in `Bind`.
+- **`server/adapters/mcp/documents/guidance-preamble.md`** *(modified)* — one
+  sentence pointing at `screenreader://tools` (2.6).
 
 No new port. The adapter reads a domain value it is already given, which is what
 `guidance_resource.go` does with `entities.AllPersonas()`; a port would exist only
@@ -270,37 +322,71 @@ boundary.
 - **`server/domain/controllers/tools/registry_test.go`** *(modified)* — every
   tool's output schema parses and is `"type": "object"`, matching the existing
   input-schema assertions.
+- **`server/domain/entities/capability_test.go`** *(modified)* — every declared
+  capability has a non-empty `Meaning()`, `CapabilityGuidance` included (2.5).
 - **`server/domain/controllers/tools/output_schema_test.go`** *(new)* — each
   tool's declared output schema names exactly the fields its result struct
   marshals. This is the test that makes hand-writing safe.
 - **`server/tests/integration/mcp_tools_resource_test.go`** *(new)* — the resource
   is published; it is readable with no reader connected; it lists every tool with
-  the right gate; the frame names no tool; the schemas round-trip.
+  the right gate and its meaning; the frame names no tool; the schemas round-trip.
+- **`server/tests/integration/mcp_guidance_resource_test.go`** *(modified)* — the
+  guidance document points at `screenreader://tools` (2.6).
 
 ---
 
-## Part 6 — staging
+## Part 6 — one PR, and why the short-PR rule yields here
 
-Two PRs, in this order, one lane, one open at a time.
+**Decided in the spec conversation, 2026-08-18: this ships as a single PR.** The
+spec first proposed two — the document, then the result schemas — and that split
+was withdrawn.
 
-**PR A — the document, from what the registry already knows.** Parts 2 and 4, and
-the resource half of Part 5. Name, gate, description and input schema for every
-tool. This is short, touches four files, and on its own closes most of ask 1b: an
-agent gets an authoritative list of names, gates and parameters with no source to
-read.
+AGENTS.md asks for short PRs (one component, its ports, its tests), and 0029 is
+the standing precedent for halves that each stand up alone. Both still hold in
+general. Three things make this the exception rather than a relaxation of them:
 
-**PR B — what it returns.** Part 3: the interface method, 23 schemas, the SDK
-declaration, the tests. Larger and mechanical, and it upgrades both the document
-PR A published and the client's tool list.
+- **The ask is one ask.** 0030 asks for names, gates *and* returns in one
+  sentence. A document that ships without returns is a cheat-sheet that stops
+  exactly where the agent's question was, which invites the source-reading it was
+  written to prevent — so the first PR would be answering the finding only
+  partly, while looking like it had answered it.
+- **The second half would rewrite the first.** `OutputSchema()` changes what the
+  composing function emits and what the integration test asserts. Splitting means
+  writing that composition and that test twice, and reviewing a document nobody
+  intends to keep in the form it was reviewed.
+- **The bulk is compiler-forced and mechanical.** 23 tools gain one method each
+  because the interface will not compile otherwise. That is a long diff, not a
+  wide one — there is no second design in it to review separately, which is what
+  the short-PR rule exists to protect.
 
-Splitting this way follows AGENTS.md's short-PR rule and 0029's precedent of
-halves that each stand up alone. It also puts the part with real design content
-second, where the spec conversation has already settled it — and if PR B is
-deferred, PR A is still a shipped answer rather than a stub.
+0029's split was different in kind: its halves were **mechanism** and **document**,
+and the split *was* the design. Here the split would be halfway through one
+document.
 
-**Recommendation: both, in this order, in one session.** The ask is one ask, and a
-cheat-sheet that stops short of results invites exactly the source-reading it was
-written to prevent.
+Suggested commit order within the PR, so the diff reads in the order the spec
+argues: the entity's `Meaning()`; the `Tool` interface plus the 23 schemas; the
+binding and startup validation; the resource and its frame; the guidance pointer;
+the tests last only where they are not written first.
+
+---
+
+## Part 7 — the questions settled in the spec conversation
+
+Three were open when the spec was proposed. All were settled on 2026-08-18, as
+recommended. Recorded here rather than deleted, because the reasoning is what a
+later reader will want when one of them is reopened.
+
+1. **Capability meanings: yes, and in the domain.** Decided as 2.5, with the
+   counter-argument (0029's amendment) recorded there rather than dropped.
+2. **Round-trip cost per tool: no, not here.** 11.9 measured that a poll is a full
+   round trip and 11.12 shipped the routes that avoid one, so an agent choosing
+   between `get_state` and an `observation` piggyback is making a cost decision
+   with no cost in front of it. That is a real gap and it is **method** — it says
+   *how to drive*, not *what exists* — so it belongs in
+   `screenreader://guidance`, whose entire subject is method. Putting it here
+   would make the reference document argue for a technique, which is the boundary
+   between the two documents that Part 2 depends on.
+3. **A pointer from `screenreader://guidance`: yes.** Decided as 2.6.
 
 ---
 
@@ -336,31 +422,6 @@ written to prevent.
 - **This does not make the tool list appear.** The agent that filed this still
   sees four tools in its client's list until 11.6 is decided. It just no longer
   has to read Go to know what the other nineteen are.
-
----
-
-## Open questions
-
-1. **Does each capability get a one-line meaning in the document, and where does
-   that prose live?** The capability constants carry no human-readable gloss
-   anywhere in the server; `screenreader://info` emits the bare strings. Grouping
-   the tools under `gestures` without saying what `gestures` means makes the agent
-   piece it together again, in miniature. *Recommendation: yes, as
-   `Capability.Meaning()` on the entity — it is wire-contract vocabulary (§4), not
-   presentation — with a test that every declared constant has one.* The
-   counter-argument is 0029's amendment, which moved degraded document text out of
-   the domain because no domain caller rendered it; here too, only the resource
-   would.
-2. **Does the document state each tool's round-trip cost?** 11.9 measured that a
-   poll is a full round trip, and 11.12 shipped the one-round-trip routes to avoid
-   them. An agent choosing between `get_state` and an `observation` piggyback is
-   making a cost decision with no cost information in front of it.
-   *Recommendation: not in this spec* — it is a real gap, but it is method, and
-   method belongs in `screenreader://guidance`.
-3. **Should `screenreader://guidance` point at this document?** It is the natural
-   entry point, and the existing integration test already checks that every
-   `screenreader://` URI a tool description names is published. *Recommendation:
-   yes, one sentence in `guidance-preamble.md`.*
 
 ---
 

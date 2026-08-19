@@ -1062,12 +1062,15 @@ rather than before it.
     guarded by the same kind of test. **Taken before 11.6 on 2026-08-18** — see
     the reprioritisation note under Convergence. Spec:
     [0031-the-tools-describe-themselves.md](specs/0031-the-tools-describe-themselves.md)
-    (proposed 2026-08-18, not agreed). The spec's one real design decision is
-    that *"what it returns"* cannot be composed from anything that exists: the
-    `Tool` interface describes its input and says nothing about its result, so
-    the schemas are hand-written behind a new `OutputSchema()` the compiler
-    forces every tool to answer — and the same method feeds the SDK declaration,
-    so the document and the client's tool list cannot disagree.
+    (**agreed 2026-08-18**). The spec's one real design decision is that
+    *"what it returns"* cannot be composed from anything that exists: the `Tool`
+    interface describes its input and says nothing about its result, so the
+    schemas are hand-written behind a new `OutputSchema()` the compiler forces
+    every tool to answer — and the same method feeds the SDK declaration, so the
+    document and the client's tool list cannot disagree. **Ships as one PR**, not
+    the two the spec first proposed: the ask is one ask, the second half would
+    rewrite the first, and the bulk is compiler-forced and mechanical (0031
+    Part 6). Headless throughout — no add-on rebuild, so no live-NVDA checklist.
 11.23. **E, a session dies while the agent is thinking, and nothing says so**
     (both lanes). From the second external run, ask 2. The ~120s inactivity
     watchdog dropped a live silent session while the agent was reasoning between
