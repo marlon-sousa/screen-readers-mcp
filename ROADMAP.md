@@ -713,7 +713,7 @@ rather than before it.
     a persona and not on the wire: the agent declares the persona, so a persona
     that decided this would hand the session its own ceiling. Spec:
     [0032-a-bound-on-the-silence.md](specs/0032-a-bound-on-the-silence.md)
-    (proposed 2026-08-19, awaiting agreement).
+    (agreed 2026-08-19).
 11.11. **E, a session the agent can hear** (lane 1, bridge). Found live on
     2026-08-03. The agent pressed `NVDA+space` meaning to return to browse mode,
     but the page reload had already restored browse mode, so the toggle entered

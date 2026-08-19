@@ -1,6 +1,12 @@
 # 0032 — a bound on the silence
 
-Status: **proposed 2026-08-19, not yet agreed.** Board entry **11.10**.
+Status: **agreed 2026-08-19.** Board entry **11.10**. Implementation follows on
+the same branch, per AGENTS.md.
+
+Two things were deliberately left for the implementing session to settle, both
+requiring an ear rather than an argument: the **tone pitch** for the warning
+(distinct from announce's 660 Hz and askUser's 440 Hz, unchosen here) and
+whether **45/90** are the right numbers once heard from the chair.
 
 The gap is not a missing feature. It is a **missing measurement**: the bridge has
 two watchdogs and neither of them measures the thing that hurts.
