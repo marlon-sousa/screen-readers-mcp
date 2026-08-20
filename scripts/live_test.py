@@ -61,6 +61,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import subprocess
 import sys
 import threading
@@ -105,6 +106,9 @@ guided, interactive experience):
   logsilent   spec 0021 items 8-9: exactly one suppression marker pair in NVDA's
               own log, and a suppressed utterance still carries a journal
               coordinate. Always silent, whatever the flag says.
+  silence     board entry 11.25: the silence cap counts only what the human
+              HEARS. Narration carried on pressGesture/typeText/setLogLevel
+              restarts its clock; nothing else does. Always silent; ~6 minutes.
   run         ADVANCED: one command per line from stdin. For ad-hoc probing.
 
 --auto skips setup pauses and marks audible checks EAR (the default off a
@@ -935,7 +939,7 @@ def _type_externally(text: str) -> None:
 	class _Input(ctypes.Structure):
 		class _Union(ctypes.Union):
 			# ctypes requires a real list here; ClassVar would not be one.
-			_fields_ = [("ki", _KeyInput)]  # noqa: RUF012
+			_fields_ = [("ki", _KeyInput)]
 
 		_anonymous_ = ("u",)
 		_fields_ = [("type", wintypes.DWORD), ("u", _Union)]
@@ -1253,6 +1257,190 @@ def scenario_guidance(server, console, checks, mode):
 	)
 
 
+# -- board entry 11.25: what the silence cap can and cannot hear ---------------
+
+#: The three cue pitches, from adapters/nvda_announcer.py and nvda_cue.py. They
+#: are what makes this scenario judgeable WITHOUT an ear: NVDA logs every tone it
+#: plays with its pitch, and the cap speaks on its own 880 Hz, so "the cap said
+#: something" is a fact in the log rather than a question for the tester.
+CAP_CUE_HZ = 880
+
+#: Two beeps closer together than this are one notice, not two.
+_CUE_PAIR_S = 0.6
+
+_BEEP_LINE = re.compile(r"tones\.beep \((\d\d):(\d\d):(\d\d\.\d+)\)[^\n]*\n\s*Beep at pitch (\d+)")
+
+
+def _cue_seconds(log_slice: str, hz: int) -> list[float]:
+	"""When each cue at *hz* sounded, as seconds since midnight, one per NOTICE.
+
+	Every notice is a PAIR of tones, so the second beep of a pair is dropped --
+	otherwise "the cap spoke twice" and "the cap spoke once" look the same.
+	"""
+	times = [
+		int(h) * 3600 + int(m) * 60 + float(sec)
+		for h, m, sec, pitch in _BEEP_LINE.findall(log_slice)
+		if int(pitch) == hz
+	]
+	notices: list[float] = []
+	for moment in times:
+		if not notices or moment - notices[-1] > _CUE_PAIR_S:
+			notices.append(moment)
+	return notices
+
+
+def _hold(server, seconds: float, ping_every: float = 15.0) -> None:
+	"""Keep the SESSION alive for *seconds* without telling the human anything.
+
+	`status` makes a real ping round trip, which refreshes the 30 s heartbeat --
+	a client that goes quiet for longer than that is torn down before the cap has
+	anything to say, which is exactly what happened the first time this was driven
+	by hand. It deliberately does NOT reset the cap: a ping proves the agent is
+	alive, which is the reading spec 0032 says is not the human's.
+	"""
+	deadline = time.monotonic() + seconds
+	while True:
+		remaining = deadline - time.monotonic()
+		if remaining <= 0:
+			return
+		time.sleep(min(ping_every, remaining))
+		server.tool("status")
+
+
+def scenario_silence(server, console, checks, mode):
+	"""Board entry 11.25: the cap's clock is restarted by everything the human hears.
+
+	Forced silent, like `logsilent`: in live mode nothing is suppressed, so there
+	is no silence to bound and the clock never starts.
+
+	Phase 1 narrates every 30 s against a 45 s warning, cycling through the THREE
+	commands that speak to the human while acting -- and any one of them failing to
+	restart the clock opens a 60 s gap, which is over the threshold, so a single
+	broken kind still shows up as a warning here. Phase 2 then says nothing at all
+	and proves the cap still fires, so a green phase 1 cannot be a cap that has
+	simply stopped working.
+	"""
+	del mode  # a live session suppresses nothing; there is no silence to bound
+	nvda_log = _nvda_log_path()
+
+	console.pause("focus a BLANK Notepad tab -- phase 1 types one character into whatever has focus")
+	# Marked BEFORE the connect, not after: the session's FIRST suppression marker
+	# is written by the handshake itself, so a slice taken any later counts one
+	# restore more than it counts suppressions and reads a balanced session as a leak.
+	session_from = len(_read_text(nvda_log))
+	_connect(server, console, "silent")
+
+	# -- phase 1: narration carried on the commands that act ------------------
+	narrations = (
+		(
+			"pressGesture",
+			lambda n: server.tool(
+				"press_gesture",
+				{"gestures": ["nvda+t"], "announce": f"Narration {n} of 6, carried on a gesture."},
+			),
+		),
+		(
+			"typeText",
+			lambda n: server.tool(
+				"type_text",
+				{"text": "x", "announce": f"Narration {n} of 6, carried on typing one character."},
+			),
+		),
+		("setLogLevel", lambda n: server.tool("set_log_level", {"level": "io" if n % 4 else "debug"})),
+	)
+	server.tool(
+		"announce",
+		{
+			"text": (
+				"Silence cap check. For the next three minutes I will narrate every thirty "
+				"seconds through the command I am running, and you should never hear the "
+				"cap warn you. Then I will deliberately go quiet, and you should."
+			)
+		},
+	)
+	console.step("phase 1: narrating every 30 s through a command's own announcement (180 s)")
+	phase1_from = len(_read_text(nvda_log))
+	for n in range(6):
+		kind, narrate = narrations[n % len(narrations)]
+		console.note(f"  narration {n + 1}/6 via {kind}")
+		narrate(n + 1)
+		_hold(server, 30.0)
+	phase1 = _read_text(nvda_log)[phase1_from:]
+	heard = _cue_seconds(phase1, CAP_CUE_HZ)
+	for kind in ("pressGesture", "typeText", "setLogLevel"):
+		checks.check(
+			f"phase 1: narrating through {kind} never lets the cap speak",
+			not heard,
+			detail=(
+				f"{len(heard)} cap notice(s) in a 180 s run narrated every 30 s; any one "
+				"of the three failing to reset would have opened a 60 s gap and warned"
+			),
+		)
+
+	# -- phase 2: no narration at all, which must still be capped -------------
+	console.step("phase 2: saying nothing for 100 s -- the warning and the lift are due (45/90)")
+	server.tool(
+		"announce",
+		{
+			"text": (
+				"Now I go quiet on purpose. Expect a warning in forty five seconds and your "
+				"speech back thirty seconds after that."
+			)
+		},
+	)
+	phase2_from = len(_read_text(nvda_log))
+	quiet_started = time.time()
+	_hold(server, 100.0)
+	quiet = _cue_seconds(_read_text(nvda_log)[phase2_from:], CAP_CUE_HZ)
+	elapsed = [round(moment - _seconds_since_midnight(quiet_started), 1) for moment in quiet]
+	checks.check(
+		"phase 2: silence still warns and then lifts -- the fix did not simply disable the cap",
+		len(quiet) == 2,
+		detail=f"cap notices at +{elapsed}s (expected two, near +45 and +90)",
+	)
+
+	console.step("phase 2: one announcement carried on a gesture must re-arm the suppression")
+	rearm_from = len(_read_text(nvda_log))
+	rearmed_at = time.time()
+	server.tool(
+		"press_gesture",
+		{"gestures": ["nvda+t"], "announce": "Back to work. Speech goes quiet again now."},
+	)
+	_hold(server, 55.0)
+	after = _read_text(nvda_log)[rearm_from:]
+	rearm = _cue_seconds(after, CAP_CUE_HZ)
+	elapsed = [round(moment - _seconds_since_midnight(rearmed_at), 1) for moment in rearm]
+	checks.check(
+		"phase 2: the re-arm is audible and the fresh window warns 45 s later",
+		len(rearm) == 2,
+		detail=f"cap notices at +{elapsed}s (expected the re-arm at ~0 and a warning near +45)",
+	)
+	checks.check(
+		"phase 2: the re-arm re-registers the suppression in NVDA's own log",
+		after.count(SUPPRESSED_MARKER) == 1,
+		detail=f"{after.count(SUPPRESSED_MARKER)} suppression marker(s) after the announcement",
+	)
+
+	_disconnect(server, console)
+	time.sleep(1.0)
+	whole = _read_text(nvda_log)[session_from:]
+	suppressed = whole.count(SUPPRESSED_MARKER)
+	restored = whole.count(RESTORED_MARKER)
+	console.note(f"markers over the whole session: {suppressed} suppressed, {restored} restored")
+	checks.check(
+		"every suppression ended: the markers balance across the lift and the re-arm",
+		suppressed == restored == 2,
+		detail=f"{suppressed} suppressed, {restored} restored (expected 2 and 2)",
+	)
+	checks.ear("you heard your machine again at the lift, and it went quiet after the re-arm", None)
+
+
+def _seconds_since_midnight(stamp: float) -> float:
+	"""Wall clock as NVDA's log writes it, for subtracting from a cue time."""
+	local = time.localtime(stamp)
+	return local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec + (stamp % 1)
+
+
 SCENARIOS = {
 	"smoke": scenario_smoke,
 	"persona": scenario_persona,
@@ -1265,6 +1453,7 @@ SCENARIOS = {
 	"logerror": scenario_logerror,
 	"logwatch": scenario_logwatch,
 	"logsilent": scenario_logsilent,
+	"silence": scenario_silence,
 }
 
 
