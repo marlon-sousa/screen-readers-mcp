@@ -28,6 +28,30 @@
 # an interaction window. resume(): re-register it. Both are idempotent.
 # Fails safe: a resume() that never happens leaves speech on, not silence.
 #
+# THREE STATES, not two (spec 0032, board entry 11.10). The silence cap bounds how
+# long a human may be unable to hear their own machine, and its remedy is to stop
+# SUPPRESSING without stopping CAPTURING -- which suspend() cannot do, because the
+# filter it unregisters is where capture happens. So this adapter carries a second
+# flag beside _registered:
+#
+#   registered  suppressing  words to the synth  words to the buffer
+#   yes         yes          no                  YES   (silent mode as shipped)
+#   no          --           yes                 no    (an askUser window)
+#   yes         NO           YES                 YES   (passing through, new)
+#
+# Two consequences fall out of that third row, and both are invisible at the call
+# site, which is why each is stated where it is enforced:
+#
+#   * _advance_callbacks must NOT run while passing through. It exists because an
+#     EMPTIED sequence would eat NVDA's CallbackCommands; a sequence returned
+#     intact still carries them, NVDA clocks them itself, and running them again
+#     would double-advance say all -- re-inflicting the 11.13 wound from the other
+#     side.
+#   * resume() must not re-mute a lifted session. It re-registers the filter, and
+#     that is correct in BOTH registered states: what the filter then DOES is
+#     decided by _suppressing, which resume() does not touch. So the trap is
+#     closed structurally rather than by a check somebody has to remember.
+#
 # THE CALLBACK PROBLEM (found live 2026-08-18, board entry 11.13). Emptying the
 # sequence suppresses the words, but a speech sequence is not only words: NVDA
 # puts BaseCallbackCommands in it, and some of NVDA's own machinery is CLOCKED by
@@ -86,6 +110,13 @@ if TYPE_CHECKING:
 SUPPRESSED_MARKER = "nvdaMcpBridge: speech suppressed for this session"
 RESTORED_MARKER = "nvdaMcpBridge: speech restored for this session"
 
+#: Why a suppression ended, or began again, when the silence cap was the cause
+#: (spec 0032). Written BEFORE the balanced pair above, so a human reading their
+#: own nvda.log afterwards finds the reason next to the fact -- and still finds
+#: every "suppressed" line answered by a "restored" one, on every path.
+CAP_LIFTED_MARKER = "nvdaMcpBridge: silence cap reached -- speech is passing through, capture continues"
+CAP_RESUPPRESSED_MARKER = "nvdaMcpBridge: speech suppression re-armed after the silence cap lifted it"
+
 
 class NvdaSilentSpeechSource(SpeechSource):
 	"""Captures NVDA speech and suppresses it, leaving the real synth loaded."""
@@ -103,22 +134,24 @@ class NvdaSilentSpeechSource(SpeechSource):
 		#: fact ended. That unexplained state is the exact thing the markers exist
 		#: to prevent, so the pair must balance on every path.
 		self._marked = False
+		#: Whether the filter EMPTIES what it captures. Separate from _registered
+		#: because the silence cap's lift leaves the filter in place and only stops
+		#: the muting -- see the table in this file's header.
+		self._suppressing = True
 
 	def start(self, buffer: SpeechBuffer, log_position: Callable[[], int]) -> None:
 		self._buffer = buffer
 		self._log_position = log_position
 		filter_speechSequence.register(self._capture_and_suppress)
 		self._registered = True
-		log.info(SUPPRESSED_MARKER)
-		self._marked = True
+		self._suppressing = True
+		self._mark_suppressed()
 
 	def stop(self) -> None:
 		if self._registered:
 			filter_speechSequence.unregister(self._capture_and_suppress)
 			self._registered = False
-		if self._marked:
-			log.info(RESTORED_MARKER)
-			self._marked = False
+		self._mark_restored()
 		self._buffer = None
 
 	def suspend(self) -> None:
@@ -128,10 +161,55 @@ class NvdaSilentSpeechSource(SpeechSource):
 			self._registered = False
 
 	def resume(self) -> None:
-		"""Re-register the filter; idempotent, safe to call at teardown."""
+		"""Re-register the filter; idempotent, safe to call at teardown.
+
+		Deliberately does NOT touch _suppressing, which is what stops it re-muting a
+		session the silence cap has lifted (spec 0032 Part 3): it restores whichever
+		registered state was in force, never suppression unasked.
+		"""
 		if not self._registered:
 			filter_speechSequence.register(self._capture_and_suppress)
 			self._registered = True
+
+	def stop_suppressing(self) -> None:
+		"""Pass words through to the synth, still capturing them. Idempotent."""
+		if not self._suppressing:
+			return
+		self._suppressing = False
+		log.info(CAP_LIFTED_MARKER)
+		self._mark_restored()
+
+	def resume_suppressing(self) -> None:
+		"""Go quiet again after a lift. Idempotent."""
+		if self._suppressing:
+			return
+		self._suppressing = True
+		log.info(CAP_RESUPPRESSED_MARKER)
+		self._mark_suppressed()
+
+	def is_suppressing(self) -> bool:
+		"""Whether words are being withheld from the human right now.
+
+		Both flags matter: a suspended filter is withholding nothing either, even
+		though this session still intends to.
+		"""
+		return self._registered and self._suppressing
+
+	# -- the balanced log pair ----------------------------------------------
+
+	def _mark_suppressed(self) -> None:
+		"""Write the SUPPRESSED marker, at most one unanswered at a time."""
+		if self._marked:
+			return
+		log.info(SUPPRESSED_MARKER)
+		self._marked = True
+
+	def _mark_restored(self) -> None:
+		"""Answer an outstanding SUPPRESSED marker. Safe to call on any path."""
+		if not self._marked:
+			return
+		log.info(RESTORED_MARKER)
+		self._marked = False
 
 	def _capture_and_suppress(self, speechSequence: Any) -> Any:
 		# Runs on NVDA's main thread (inside speak()). Capture the words, keep
@@ -140,6 +218,11 @@ class NvdaSilentSpeechSource(SpeechSource):
 		buffer = self._buffer
 		if buffer is not None and speechSequence:
 			buffer.append(speechSequence, self._log_position())
+		if not self._suppressing:
+			# Passing through (spec 0032): the sequence goes on to the synth with its
+			# callbacks intact and NVDA clocks them itself. Running them here as well
+			# would double-advance say all.
+			return speechSequence
 		self._advance_callbacks(speechSequence)
 		return []
 

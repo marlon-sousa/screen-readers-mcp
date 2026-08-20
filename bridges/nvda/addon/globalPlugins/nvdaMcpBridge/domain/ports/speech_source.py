@@ -54,4 +54,50 @@ class SpeechSource(ABC):
 		Idempotent, so a teardown that calls it on a source that was never
 		suspended is safe. Fails in the safe direction: a ``resume`` that never
 		happens leaves the tester with speech, not silence.
+
+		**It must not re-mute a session the silence cap has lifted** (spec 0032
+		Part 3). This is invisible at the call site -- ``waitForUserReply`` calls
+		``resume`` when a prompt is answered, and if a lift happened before or
+		during that prompt, a naive re-register silently re-mutes the human the cap
+		had just rescued: the exact harm, reintroduced by the recovery path. What
+		``resume`` restores is therefore whichever of the two REGISTERED states was
+		in force, suppressing or passing through -- never suppression unasked.
+		"""
+
+	@abstractmethod
+	def stop_suppressing(self) -> None:
+		"""Let words through to the synth while still capturing them (spec 0032).
+
+		The third state of a speech source, and the whole shape of the silence
+		cap's remedy. ``suspend`` is the wrong tool here: it UNREGISTERS the
+		filter, and that filter is where capture happens, so suspending would give
+		the human their sound back by taking the agent's evidence away. Nothing
+		about the human's problem requires that trade.
+
+		Here the filter stays registered, the buffer keeps filling, and the
+		sequence is returned INTACT instead of emptied -- so ``getSpeech`` answers
+		with the same entries, the same indices and the same timestamps as before,
+		and the words also reach the speakers.
+
+		Idempotent, and a no-op in live mode (nothing was ever suppressed).
+		"""
+
+	@abstractmethod
+	def resume_suppressing(self) -> None:
+		"""Go quiet again after :meth:`stop_suppressing`, and mark it (spec 0032).
+
+		A lifted session may re-arm: the agent narrates, the ordinary flow resumes,
+		and a fresh bounded window starts from zero. Idempotent, and a no-op in
+		live mode.
+		"""
+
+	@abstractmethod
+	def is_suppressing(self) -> bool:
+		"""Whether words are being withheld from the human RIGHT NOW.
+
+		False in live mode, false while a prompt window has the filter suspended,
+		and false after the silence cap has lifted -- so this is the honest answer
+		to "can the person at this machine hear it?", not "was this session opened
+		silent". ``status`` reports it, which is how a lift is discoverable by
+		asking (spec 0032 Part 5).
 		"""

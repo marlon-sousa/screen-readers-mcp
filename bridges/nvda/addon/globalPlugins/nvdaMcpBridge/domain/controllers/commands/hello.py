@@ -68,6 +68,9 @@ class HelloHandler(CommandHandler):
 		# would produce evidence nobody could attribute. Not validated here -- see
 		# SessionContext.persona for why an unrecognised value must not error.
 		ctx.persona = params.persona
+		# The Session reads this to decide whether a silence cap applies at all: in
+		# live mode nothing is suppressed, so there is no silence to bound.
+		ctx.mode = params.mode
 		ctx.transcript.open()
 		# Capture is always on (spec 0009); logLevel, if set, additionally bumps
 		# NVDA's own verbosity for the session -- restored at teardown.
@@ -107,6 +110,27 @@ class HelloHandler(CommandHandler):
 		# `getGuidance` still answers, unchanged, for a re-read.
 		text, recognised = guidance_for(ctx.persona, ctx.gesture_resolver)
 
+		# Whether THIS MACHINE bounds how long a silent session may keep its human
+		# mute, and with what thresholds (spec 0032 Part 5). Information and never a
+		# control: the agent reads it and cannot write it, because an agent that
+		# could raise its own ceiling does not have one. It earns the space because
+		# it changes what a well-behaved agent does -- narrate before going quiet on
+		# a capped machine, and do not spend round trips narrating to an empty room
+		# on an uncapped one. Today an agent cannot tell those apart at all.
+		#
+		# A machine fact, so it is reported whatever mode was asked for; it simply
+		# has nothing to bite on in a live session.
+		policy = ctx.silence_cap_policy
+		silence_cap = (
+			None
+			if policy is None
+			else protocol.SilenceCapInfo(
+				enabled=policy.enabled,
+				warnAfterSeconds=policy.warn_after,
+				liftAfterSeconds=policy.lift_after,
+			)
+		)
+
 		return protocol.HelloResult(
 			protocolVersion=protocol.PROTOCOL_VERSION,
 			reader=self._reader,
@@ -120,4 +144,5 @@ class HelloHandler(CommandHandler):
 				recognised=recognised,
 				text=text,
 			),
+			silenceCap=silence_cap,
 		)

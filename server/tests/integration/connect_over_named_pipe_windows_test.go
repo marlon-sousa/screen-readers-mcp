@@ -67,7 +67,7 @@ func TestASessionIsEstablishedOverARealNamedPipe(t *testing.T) {
 	}
 	t.Cleanup(func() { connection.Lifecycle.Close() })
 
-	if err := connection.Lifecycle.Ping(); err != nil {
+	if _, err := connection.Lifecycle.Ping(); err != nil {
 		t.Errorf("Ping over a real pipe: %v", err)
 	}
 }

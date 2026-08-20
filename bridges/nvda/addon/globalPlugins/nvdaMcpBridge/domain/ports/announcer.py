@@ -18,7 +18,24 @@
 
 from __future__ import annotations
 
+import enum
 from abc import ABC, abstractmethod
+
+
+class SilenceNotice(enum.Enum):
+	"""What the silence cap has to tell the human (spec 0032).
+
+	A closed set rather than a string, because the WORDS are the adapter's
+	business: the domain knows what happened, and the reader's own locale decides
+	how to say it. This port's own signalling type, so it lives in this file.
+	"""
+
+	#: The cap's warning: nothing has been said to you for a while.
+	WARNING = "warning"
+	#: Suppression has ended. The session is still running and still capturing.
+	LIFTED = "lifted"
+	#: A lifted session has gone quiet again, on a fresh bounded window.
+	RESUPPRESSED = "resuppressed"
 
 
 class Announcer(ABC):
@@ -34,4 +51,18 @@ class Announcer(ABC):
 
 		Bypasses silent-mode suppression (which lives in NVDA's ``speak()``, not
 		in the synth), so a hint is heard even while captured speech is muted.
+		"""
+
+	@abstractmethod
+	def silence_notice(self, notice: SilenceNotice) -> None:
+		"""Tell the human what the SILENCE CAP just did (spec 0032).
+
+		Separate from :meth:`announce` because it must not sound like one. An
+		announce is the agent talking; this is the bridge talking ABOUT the agent's
+		silence, and the human has to be able to tell them apart before any word
+		arrives -- which is the same reasoning that gave announce and askUser
+		different cue pitches in the first place.
+
+		Takes an enum and not a string: what happened is the domain's to know, and
+		how to say it is the adapter's, in the reader's own language.
 		"""

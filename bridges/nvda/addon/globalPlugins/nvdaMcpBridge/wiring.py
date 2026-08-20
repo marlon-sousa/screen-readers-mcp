@@ -21,6 +21,7 @@ from .adapters.json_lines_channel import JsonLinesChannel
 from .adapters.real_clock import RealClock
 from .domain.controllers.commands.registry import build_command_registry
 from .domain.controllers.session import Session, SessionConfig
+from .domain.entities.silence_cap import ATTENDED_DEFAULT, SilenceCapPolicy
 
 if TYPE_CHECKING:
 	import os
@@ -48,6 +49,7 @@ def build_session(
 	bridge_version: str = "unknown",
 	heartbeat_timeout: float = 30.0,
 	inactivity_timeout: float = 120.0,
+	silence_cap: SilenceCapPolicy | None = None,
 ) -> Session:
 	"""Assemble a Session for one connection over ``transport``.
 
@@ -59,7 +61,8 @@ def build_session(
 	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
 	``user_prompter`` (presents prompts to the human during silent mode).
 	``gesture_resolver`` (reports which gestures the reader has bound right now,
-	for the persona guidance document).
+	for the persona guidance document), and ``silence_cap`` (whether this machine
+	bounds how long a silent session may keep its human unable to hear).
 	``log_capture``/``user_prompter``/``gesture_resolver`` are NVDA-facing like
 	``signals``/``announcer``,
 	so they are parameters built at the edge (plugin.py), not constructed here --
@@ -73,6 +76,11 @@ def build_session(
 		nvda_version=nvda_version,
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
+		# The MACHINE's silence-cap setting (spec 0032), read off config.ini by
+		# plugin.py because only the edge knows where that file is. Omitted means
+		# capped on the shipped thresholds, which is the safe direction: a machine
+		# nobody has configured is not one we may assume is empty.
+		silence_cap=silence_cap if silence_cap is not None else ATTENDED_DEFAULT,
 	)
 	return Session(
 		channel,

@@ -44,7 +44,9 @@ from nvdaMcpBridge.domain.controllers.session import (
 	SessionConfig,
 	TeardownReason,
 )
+from nvdaMcpBridge.domain.entities.silence_cap import ATTENDED_DEFAULT, SilenceCapPolicy
 from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
+from nvdaMcpBridge.domain.ports.announcer import SilenceNotice
 
 # -- message builders --------------------------------------------------------
 
@@ -78,6 +80,7 @@ class Run:
 	clock: FakeClock
 	signals: FakeSessionSignals
 	log_capture: FakeLogCapture
+	announcer: FakeAnnouncer
 
 	def responses(self) -> list[dict[str, Any]]:
 		return self.channel.responses()
@@ -102,6 +105,7 @@ def run_session(
 	nvda_version: str = "2026.1.0",
 	heartbeat_timeout: float = 30.0,
 	inactivity_timeout: float = 120.0,
+	silence_cap: SilenceCapPolicy | None = None,
 	start: bool = True,
 ) -> Run:
 	clock = clock or FakeClock()
@@ -118,6 +122,7 @@ def run_session(
 		nvda_version=nvda_version,
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
+		silence_cap=silence_cap if silence_cap is not None else ATTENDED_DEFAULT,
 	)
 	session = Session(
 		channel,
@@ -141,6 +146,7 @@ def run_session(
 		clock=clock,
 		signals=signals,
 		log_capture=log_capture,
+		announcer=announcer,
 	)
 
 
@@ -211,7 +217,7 @@ def test_a_failing_start_cue_leaves_the_session_established() -> None:
 
 	assert signals.personas == ["user"]
 	# The ping was answered, so the session survived the cue that raised.
-	assert _result(run.responses()[1]) == {"ok": True}
+	assert _result(run.responses()[1]) == {"ok": True, "suppressing": True}
 
 
 def test_live_hello_establishes() -> None:
@@ -772,7 +778,7 @@ def test_gesture_error_becomes_an_error_and_the_session_survives() -> None:
 		factory=factory,
 	)
 	assert "bad" in _error(run.responses()[1])
-	assert _result(run.responses()[2]) == {"ok": True}
+	assert _result(run.responses()[2]) == {"ok": True, "suppressing": True}
 
 
 # -- external teardown -------------------------------------------------------
@@ -939,3 +945,169 @@ def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
 		f"teardown took {elapsed:.1f}s with a window open; on the panic path that is "
 		"time NVDA spends silent, waiting for a poll nobody can answer"
 	)
+
+
+# -- the silence cap: the watchdog that measures the HUMAN (spec 0032) -------
+#
+# The other two watchdogs fire on ABSENCE, and on 2026-08-03 both stayed
+# correctly quiet while a blind developer sat unable to hear their own machine
+# and reached for the panic gesture. Twice. These tests drive the case that
+# produced it: an agent that is present and busy, and silent.
+#
+# Every one of them keeps the two OLD watchdogs wide open, because the point is
+# what happens when neither of them has anything to say.
+
+#: Small enough to read: warn at 10 s, restore speech at 20 s.
+TIGHT_CAP = SilenceCapPolicy(enabled=True, warn_after=10.0, lift_after=20.0)
+
+
+def quiet_session(
+	*,
+	silence_cap: SilenceCapPolicy | None = TIGHT_CAP,
+	mode: str = "silent",
+	seconds: float = 40.0,
+	step: float = 5.0,
+	interject: dict[float, Any] | None = None,
+	factory: FakeAdapterFactory | None = None,
+) -> Run:
+	"""A session that establishes and then says nothing for *seconds*.
+
+	``interject`` schedules a command at an elapsed time, which is how a test
+	makes the agent narrate mid-silence. Both old watchdogs are set far out of
+	reach so that anything that happens here is the silence cap and nothing else.
+	"""
+	events: list[Any] = [hello(mode)]
+	interject = interject or {}
+	elapsed = 0.0
+	while elapsed < seconds:
+		events.append(TIMEOUT_EVENT)
+		elapsed += step
+		if elapsed in interject:
+			events.append(interject[elapsed])
+	return run_session(
+		events,
+		on_empty="closed",
+		timeout_advance=step,
+		heartbeat_timeout=10_000.0,
+		inactivity_timeout=10_000.0,
+		silence_cap=silence_cap,
+		factory=factory,
+	)
+
+
+def test_a_silent_session_that_says_nothing_is_warned_and_then_un_muted() -> None:
+	run = quiet_session()
+	assert run.announcer.notices == [SilenceNotice.WARNING, SilenceNotice.LIFTED]
+
+
+def test_the_lift_stops_suppressing_without_stopping_capture() -> None:
+	# The whole shape of the remedy: the human gets sound back, the agent keeps
+	# its evidence. `suspend` would have traded one for the other.
+	factory = FakeAdapterFactory()
+	quiet_session(factory=factory)
+	source = factory.speech_source
+	assert source.stopped_suppressing == 1
+	assert source.suspended == 0, "the lift unregistered the filter; capture was the price"
+	assert source.stopped == 1, "capture stopped for some reason other than teardown"
+
+
+def test_each_notice_is_spoken_once_however_long_the_silence_runs() -> None:
+	run = quiet_session(seconds=300.0)
+	assert run.announcer.notices == [SilenceNotice.WARNING, SilenceNotice.LIFTED]
+
+
+def test_an_agent_that_narrates_never_hears_the_cap() -> None:
+	# `announce` every 5 s against a 10 s warning. This is the behaviour the whole
+	# entry exists to make structural rather than a rule an agent must remember.
+	run = quiet_session(
+		seconds=60.0,
+		interject={
+			t: command("announce", 200 + int(t), text=f"still working, {t:g}s")
+			for t in (5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0)
+		},
+	)
+	assert run.announcer.notices == []
+	assert len(run.announcer.announced) == 11
+
+
+def test_gestures_and_reads_reset_nothing() -> None:
+	# Four hundred keys in ninety seconds have told the human NOTHING, and the
+	# clock is right to say so. `ping` is the same: it proves liveness, not that
+	# anyone was spoken to.
+	run = quiet_session(
+		interject={
+			5.0: command("pressGesture", 201, gestures=["downArrow"]),
+			10.0: command("getSpeech", 202, sinceIndex=0),
+			15.0: command("ping", 203),
+			25.0: command("getState", 204),
+		}
+	)
+	assert run.announcer.notices == [SilenceNotice.WARNING, SilenceNotice.LIFTED]
+
+
+def test_a_live_session_is_never_capped() -> None:
+	# Nothing is suppressed, so there is no silence to bound.
+	run = quiet_session(mode="live", seconds=300.0)
+	assert run.announcer.notices == []
+
+
+def test_an_unattended_machine_is_never_capped() -> None:
+	# Nobody in the room, so the cap is damage rather than a safeguard: it would
+	# un-mute a session whose whole purpose was to run silently.
+	run = quiet_session(silence_cap=SilenceCapPolicy(enabled=False), seconds=300.0)
+	assert run.announcer.notices == []
+
+
+def test_a_prompt_left_open_does_not_trip_the_cap() -> None:
+	# askUser suspends the suppression for its whole window, so the human is
+	# hearing everything: counting that as silence would fire the cap at the one
+	# moment it is provably not needed.
+	run = quiet_session(
+		seconds=300.0,
+		interject={5.0: command("askUser", 201, prompt="have a look at this")},
+	)
+	assert run.announcer.notices == []
+
+
+def test_re_suppression_is_audible_and_opens_a_fresh_window() -> None:
+	# The lift at 20 s; an announce at 30 s puts the session back under
+	# suppression, audibly; the fresh window warns 10 s after that and lifts 10 s
+	# later again. Exposure stays bounded however many times a session re-arms.
+	factory = FakeAdapterFactory()
+	run = quiet_session(
+		seconds=80.0,
+		interject={30.0: command("announce", 201, text="back to work")},
+		factory=factory,
+	)
+	assert run.announcer.notices == [
+		SilenceNotice.WARNING,
+		SilenceNotice.LIFTED,
+		SilenceNotice.RESUPPRESSED,
+		SilenceNotice.WARNING,
+		SilenceNotice.LIFTED,
+	]
+	assert factory.speech_source.resumed_suppressing == 1
+
+
+def test_the_transcript_records_what_the_cap_did() -> None:
+	run = quiet_session()
+	notes = [event[1] for event in run.transcript.events if event[0] == "note"]
+	assert any("warning spoken" in note for note in notes)
+	assert any("suppression lifted" in note for note in notes)
+
+
+def test_hello_reports_the_machines_cap_to_the_agent() -> None:
+	run = run_session([hello("silent")], silence_cap=TIGHT_CAP)
+	assert _result(run.responses()[0])["silenceCap"] == {
+		"enabled": True,
+		"warnAfterSeconds": 10.0,
+		"liftAfterSeconds": 20.0,
+	}
+
+
+def test_hello_reports_an_unattended_machine_honestly() -> None:
+	# Reported even in live mode and even when disabled: it is a fact about the
+	# MACHINE, and an agent that knows nobody is listening should not spend round
+	# trips narrating to an empty room.
+	run = run_session([hello("live")], silence_cap=SilenceCapPolicy(enabled=False))
+	assert _result(run.responses()[0])["silenceCap"]["enabled"] is False

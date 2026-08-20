@@ -8,18 +8,24 @@
 
 from __future__ import annotations
 
-from nvdaMcpBridge.domain.ports.announcer import Announcer
+from nvdaMcpBridge.domain.ports.announcer import Announcer, SilenceNotice
 
 
 class FakeAnnouncer(Announcer):
-	"""Records announced hints and reports a scripted synth name."""
+	"""Records announced hints and silence notices; reports a scripted synth name."""
 
 	def __init__(self, synth: str = "espeak") -> None:
 		self._synth = synth
 		self.announced: list[str] = []
+		#: Every silence-cap notice, in order -- the only evidence a headless test
+		#: has that the human was told something.
+		self.notices: list[SilenceNotice] = []
 
 	def current_synth(self) -> str:
 		return self._synth
 
 	def announce(self, text: str) -> None:
 		self.announced.append(text)
+
+	def silence_notice(self, notice: SilenceNotice) -> None:
+		self.notices.append(notice)

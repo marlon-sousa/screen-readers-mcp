@@ -66,4 +66,15 @@ type ReaderSession struct {
 	// ProtocolVersion is the wire version the bridge answered with. Recorded
 	// rather than assumed, so a mismatch can be reported naming both sides.
 	ProtocolVersion int
+
+	// SilenceCap is whether the READER'S MACHINE bounds how long a silent
+	// session may keep its human unable to hear (spec 0032), as announced at
+	// `hello`.
+	//
+	// Nil is a third answer and not a default: this bridge did not say, which
+	// is an older build rather than an uncapped machine. Recorded on the
+	// session because it is fixed for the session's lifetime, like Mode -- and
+	// like Mode, it is the BRIDGE's answer rather than anything the agent
+	// asked for. Nothing in this server can change it.
+	SilenceCap *SilenceCap
 }

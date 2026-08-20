@@ -47,7 +47,7 @@ type ConnectionControl interface {
 	// wire says rather than with what this process remembers. Nil error
 	// means the connection is real right now; nil is also the answer when
 	// there is no session to verify.
-	Verify() error
+	Verify() (ports.PingReport, error)
 }
 
 // ToolContext is everything one tool call may touch.

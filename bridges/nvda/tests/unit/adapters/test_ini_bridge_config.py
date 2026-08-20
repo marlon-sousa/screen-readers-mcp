@@ -7,6 +7,7 @@ from fakes.config_file import FakeConfigFile
 from fakes.log import FakeLog
 from nvdaMcpBridge.adapters.ini_bridge_config import IniBridgeConfig
 from nvdaMcpBridge.domain.entities.connection_mode import DEFAULT, ConnectionMode
+from nvdaMcpBridge.domain.entities.silence_cap import DEFAULT_LIFT_AFTER, DEFAULT_WARN_AFTER
 
 # -- helpers ------------------------------------------------------------------
 
@@ -88,4 +89,82 @@ def test_round_trip_auto_start() -> None:
 	f = FakeConfigFile(None)
 	cfg = IniBridgeConfig(f, FakeLog())
 	cfg.set_auto_start(True)
+	assert cfg.get_auto_start() is True
+
+
+# -- the silence cap (spec 0032) ----------------------------------------------
+#
+# Every read here has to fall to the SAFE side, and "safe" is asymmetric: a cap
+# on a machine nobody is sitting at speaks to an empty room, while a missing cap
+# on an occupied one leaves a blind person unable to hear their own computer with
+# nothing to stop it. So absent, unreadable and nonsensical all mean "assume
+# somebody is there, on the shipped thresholds".
+
+
+def _cap_ini(body: str) -> str:
+	return f"[nvdaMcpBridge]\n{body}\n"
+
+
+def test_a_machine_nobody_has_configured_is_attended() -> None:
+	cfg = IniBridgeConfig(FakeConfigFile(None), FakeLog())
+	assert cfg.get_unattended() is False
+	assert cfg.get_silence_warn_seconds() == DEFAULT_WARN_AFTER
+	assert cfg.get_silence_lift_seconds() == DEFAULT_LIFT_AFTER
+
+
+def test_reads_the_three_keys() -> None:
+	cfg = IniBridgeConfig(
+		FakeConfigFile(_cap_ini("unattended = true\nsilenceWarnSeconds = 20\nsilenceLiftSeconds = 40")),
+		FakeLog(),
+	)
+	assert cfg.get_unattended() is True
+	assert cfg.get_silence_warn_seconds() == 20.0
+	assert cfg.get_silence_lift_seconds() == 40.0
+
+
+def test_an_unreadable_unattended_value_means_attended_and_says_so() -> None:
+	log = FakeLog()
+	cfg = IniBridgeConfig(FakeConfigFile(_cap_ini("unattended = perhaps")), log)
+	assert cfg.get_unattended() is False
+	# Worth a line in the log: whoever typed it believes they turned the cap off.
+	assert any("unattended" in message for message in log.warnings)
+
+
+def test_an_unusable_threshold_falls_back_to_the_shipped_one() -> None:
+	log = FakeLog()
+	cfg = IniBridgeConfig(
+		FakeConfigFile(_cap_ini("silenceWarnSeconds = soon\nsilenceLiftSeconds = -3")),
+		log,
+	)
+	assert cfg.get_silence_warn_seconds() == DEFAULT_WARN_AFTER
+	assert cfg.get_silence_lift_seconds() == DEFAULT_LIFT_AFTER
+	assert len(log.warnings) == 2
+
+
+def test_a_corrupt_file_leaves_the_cap_in_force() -> None:
+	cfg = IniBridgeConfig(FakeConfigFile("this is not valid ini {{{"), FakeLog())
+	assert cfg.get_unattended() is False
+	assert cfg.get_silence_warn_seconds() == DEFAULT_WARN_AFTER
+	assert cfg.get_silence_lift_seconds() == DEFAULT_LIFT_AFTER
+
+
+def test_round_trip_the_cap_settings() -> None:
+	cfg = IniBridgeConfig(FakeConfigFile(None), FakeLog())
+	cfg.set_unattended(True)
+	cfg.set_silence_warn_seconds(30.0)
+	cfg.set_silence_lift_seconds(75.0)
+	assert cfg.get_unattended() is True
+	assert cfg.get_silence_warn_seconds() == 30.0
+	assert cfg.get_silence_lift_seconds() == 75.0
+
+
+def test_writing_one_setting_leaves_the_others_alone() -> None:
+	# Every setter goes through the same read-modify-write, so a checkbox toggled
+	# in the dialog must not drop the connection mode beside it.
+	f = FakeConfigFile(None)
+	cfg = IniBridgeConfig(f, FakeLog())
+	cfg.set_connection_mode(ConnectionMode.LOOPBACK_TCP)
+	cfg.set_auto_start(True)
+	cfg.set_unattended(True)
+	assert cfg.get_connection_mode() is ConnectionMode.LOOPBACK_TCP
 	assert cfg.get_auto_start() is True

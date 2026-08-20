@@ -188,9 +188,9 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-19**:
-11.10, 11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
-**eight entries** (11.22-11.24 opened by the second external run,
+below. **Open as of 2026-08-20**:
+11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
+**seven entries** (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -209,8 +209,9 @@ what that stance means on the reader in front of it.
 Their order is **not** simply the numbering. **11.3 is on hold as of
 2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
 four times, and the fifth pass was made a decision rather than another silence.
-The lane head is now **11.10** (lane 1); **11.6 closed on 2026-08-19**, taking
-11.24(a) with it, so the server lane's head is **11.13**.
+**11.10 closed on 2026-08-20** (PR #67), so the lane head is now **11.11**
+(lane 1); **11.6 closed on 2026-08-19**, taking 11.24(a) with it, so the server
+lane's head is **11.13**.
 
 **11.22 is taken before 11.6, deliberately, on 2026-08-18** — the
 reprioritisation this section requires to be made explicitly, the way 11.4 was
@@ -250,10 +251,10 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.25** and the next free spec number is
-**0032**. (11.22–11.24 and spec 0030 were taken by the second external run on
-2026-08-18; spec 0031 by 11.22's own spec. This line is the one the paragraph
-above tells people to trust, so it is updated by whichever PR consumes a
-number.)
+**0033**. (11.22–11.24 and spec 0030 were taken by the second external run on
+2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19.
+This line is the one the paragraph above tells people to trust, so it is updated
+by whichever PR consumes a number.)
 
 10. **Done (PRs #29, #30, #31, #32, #33, #34, #35, #36, #37, #38,
     2026-07-23)** — D, MCP server — **in Go**, a statically linked binary
@@ -687,7 +688,8 @@ rather than before it.
     round trips and the mask goes with them. Same shape as 0020/0021/0023 — one
     observable covering two situations, cured by letting the caller say which one
     it is in. Needs a spec conversation; touches the wire.
-11.10. **E, how long has the human been mute?** (lane 1, bridge). Found the hard
+11.10. **Done (PR #67, 2026-08-20)** — E, how long has the human been mute?
+    (lane 1, bridge). Found the hard
     way on 2026-08-03: an agent held a **silent** session open while doing
     several minutes of out-of-band shell work, and the user — who cannot hear
     their computer during suppression — sat mute until they hit the panic
@@ -704,8 +706,33 @@ rather than before it.
     the agent faster shortens every exposure, but does not bound it. Agent-side
     discipline (never hold a silent session across work that does not drive the
     reader) is the immediate mitigation and costs nothing, but it is discipline,
-    not a guarantee, and the person it fails is blind and mute at the time. Needs
-    a spec conversation.
+    not a guarantee, and the person it fails is blind and mute at the time.
+    **Spec conversation held 2026-08-19**, and it added a constraint the entry
+    did not have: an unattended run -- accessibility validation on a CI box with
+    nobody in the room -- has no human to protect, so a cap there is damage
+    rather than a safeguard. The switch is a property of the MACHINE
+    (`config.ini` + the bridge dialog, defaulting to attended), deliberately not
+    a persona and not on the wire: the agent declares the persona, so a persona
+    that decided this would hand the session its own ceiling. Spec:
+    [0032-a-bound-on-the-silence.md](specs/0032-a-bound-on-the-silence.md)
+    (agreed 2026-08-19). **Shipped**: a `SilenceCap` entity measuring one thing --
+    time since the human last heard their machine -- reset only by the sounds that
+    reach them past the suppression (the start cue, `announce`, `askUser`) and by
+    nothing else, however many gestures go by. Warns at 45 s over a **880 Hz** cue
+    (the third pitch, above announce's 660 and askUser's 440, so it is tellable
+    before any word arrives), and at 90 s **stops suppressing while capture
+    continues** -- the speech source gains a third state in which the sequence is
+    returned intact instead of emptied, so `getSpeech` answers with the same
+    entries, indices and timestamps and the words also reach the speakers. The lift
+    costs the agent its silence, not its evidence. Re-suppression is allowed,
+    audibly marked and opens a fresh bounded window, so no run of bounded pieces
+    adds up to an unbounded one. `unattended` in `config.ini` and the bridge dialog
+    turns it off per machine, defaulting to attended. `HelloResult.silenceCap`
+    carries it outward, `connect_reader` states it in one sentence, and `status`
+    reports live suppression off the `ping` it already makes -- so a lift is
+    discoverable by asking, with nothing pushed (0021 stands). The two traps Part 3
+    named are both tested: callbacks are not double-run while passing through, and
+    `resume()` after a prompt does not re-mute a lifted session.
 11.11. **E, a session the agent can hear** (lane 1, bridge). Found live on
     2026-08-03. The agent pressed `NVDA+space` meaning to return to browse mode,
     but the page reload had already restored browse mode, so the toggle entered

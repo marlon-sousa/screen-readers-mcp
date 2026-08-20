@@ -69,12 +69,14 @@ __all__ = [
 	"LogLevelResult",
 	"LogSliceResult",
 	"NextIndexResult",
+	"PingResult",
 	"PressGestureParams",
 	"ReaderInfo",
 	"Request",
 	"Response",
 	"SetConfigParams",
 	"SetLogLevelParams",
+	"SilenceCapInfo",
 	"SpeechResult",
 	"StateResult",
 	"TypeParams",
@@ -453,6 +455,36 @@ class ReaderInfo:
 	version: str
 
 
+@dataclass(frozen=True)
+class SilenceCapInfo:
+	"""Whether this reader bounds how long a silent session may keep the human mute.
+
+	A property of the READER'S MACHINE, reported so an agent can behave well on it,
+	and settable only there -- there is no command that changes it. That is
+	deliberate: an agent that could raise its own ceiling does not have one.
+
+	It changes what a well-behaved agent does. On a capped machine, narrate before
+	any stretch of work that does not drive the reader; on an uncapped one, do not
+	spend round trips on narration nobody is there to hear. Without this an agent
+	cannot tell the two apart and must either narrate uselessly forever or guess.
+
+	Only a ``silent`` session can be capped, because only a silent session
+	suppresses anything.
+	"""
+
+	#: Whether the cap is in force on this machine. False on one whose owner
+	#: declared it unattended -- an accessibility run on a CI box at 3am has no
+	#: human to protect, and un-muting it would be damage rather than a safeguard.
+	enabled: bool
+	#: Seconds of no audible event after which the reader WARNS its human.
+	warnAfterSeconds: float
+	#: Seconds after which the reader STOPS SUPPRESSING. Capture is unaffected:
+	#: the same entries, the same indices and the same timestamps still reach
+	#: ``getSpeech`` -- what changes is only that the words also reach the
+	#: speakers.
+	liftAfterSeconds: float
+
+
 @dataclass
 class HelloResult:
 	protocolVersion: int
@@ -498,6 +530,15 @@ class HelloResult:
 	#: supported configuration and not a failure: the agent falls back on the
 	#: server's own documents, which carry the rule without the instances.
 	guidance: GetGuidanceResult | None = None
+	#: Whether this MACHINE bounds how long a silent session may keep its human
+	#: unable to hear (spec 0032). ``None`` means this bridge does not say, which a
+	#: server reports as unknown rather than as either answer -- an older bridge is
+	#: not a protocol error.
+	#:
+	#: It rides in the handshake for the reason the guidance document does: a fact
+	#: an agent must fetch is a fact it does not have, and this reply was already
+	#: being sent.
+	silenceCap: SilenceCapInfo | None = None
 
 
 @dataclass
@@ -872,6 +913,28 @@ class AckResult:
 
 
 @dataclass
+class PingResult:
+	"""``ping``'s reply: the peer is alive, plus what it is doing to speech.
+
+	``ok`` is the acknowledgement ``ping`` has always carried. ``suppressing``
+	rides along because ``status`` -- the one ungated tool that answers with proof
+	rather than memory -- makes its round trip with this command, so a silence-cap
+	lift becomes discoverable by asking without costing a trip of its own.
+
+	Its own type rather than :class:`AckResult`, which ``bye`` also uses: a
+	session-specific fact does not belong on the generic acknowledgement.
+	"""
+
+	ok: bool = True
+	#: Whether words are being withheld from the human RIGHT NOW. ``False`` in
+	#: ``live`` mode, ``False`` while an ``askUser`` window is open, and ``False``
+	#: after the silence cap has lifted -- so this answers "can the person at that
+	#: machine hear it?", not "was this session opened silent". ``None`` from a
+	#: bridge that does not say.
+	suppressing: bool | None = None
+
+
+@dataclass
 class AskUserParams:
 	"""Present a prompt to the human and suspend speech suppression.
 
@@ -1102,7 +1165,7 @@ class CommandShape:
 #: about which commands exist.
 COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.HELLO: CommandShape(HelloParams, HelloResult),
-	Command.PING: CommandShape(None, AckResult),
+	Command.PING: CommandShape(None, PingResult),
 	Command.ECHO: CommandShape(EchoParams, EchoResult),
 	Command.PRESS_GESTURE: CommandShape(PressGestureParams, GestureResult),
 	Command.TYPE_TEXT: CommandShape(TypeParams, TypeResult),

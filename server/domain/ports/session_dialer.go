@@ -65,12 +65,33 @@ type SessionOptions struct {
 // SessionLifecycle is what a live session can be asked beyond its capabilities:
 // the lifecycle and diagnostic commands, which belong to no capability group and
 // are always available once the handshake has completed (protocol.md §4).
+// PingReport is what a ping answered BEYOND "it answered".
+//
+// SPEC AMENDMENT (rides in 11.10, per the workflow rule): spec 0032 Part 8 says
+// `status` reports whether suppression is currently in force, and a lift happens
+// on the READER, asynchronously, with nothing pushed (spec 0021 stands). So the
+// only honest way to answer is to ask -- and `status` already makes a real `ping`
+// round trip precisely so its answer is proof rather than memory. The fact rides
+// on the probe that was being sent anyway; the alternatives were a second round
+// trip, or a cached value that could be wrong at exactly the moment it mattered.
+//
+// Its own struct rather than a second return value, so "and what else did the
+// probe learn" stays a field rather than a signature change at six call sites.
+type PingReport struct {
+	// Suppressing is whether the reader is withholding speech from its human
+	// right now. Nil from a bridge that does not say -- which is an older
+	// build, not an answer.
+	Suppressing *bool
+}
+
 type SessionLifecycle interface {
 	// Ping proves the connection is real right now. It resets the bridge's
 	// heartbeat watchdog but deliberately NOT its command-inactivity
 	// watchdog, so a keepalive cannot mask an abandoned session -- which is
 	// why an idle agent still loses its session, by design.
-	Ping() error
+	//
+	// Its report is meaningful only when the error is nil.
+	Ping() (PingReport, error)
 
 	// Bye asks the bridge to end the session cleanly. Sent by
 	// disconnect_reader; the bridge restores speech on this path as on every

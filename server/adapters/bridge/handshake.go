@@ -173,6 +173,15 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		BridgeVersion:   derefOr(result.BridgeVersion, ""),
 		ProtocolVersion: result.ProtocolVersion,
 	}
+	// Spec 0032. Left nil for a bridge that did not send the field, which is a
+	// different fact from a bridge that said "not capped" -- see the entity.
+	if result.SilenceCap != nil {
+		session.SilenceCap = &entities.SilenceCap{
+			Enabled:   result.SilenceCap.Enabled,
+			WarnAfter: result.SilenceCap.WarnAfterSeconds,
+			LiftAfter: result.SilenceCap.LiftAfterSeconds,
+		}
+	}
 
 	connection := &ports.ReaderConnection{
 		Session:   session,

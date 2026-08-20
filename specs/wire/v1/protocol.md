@@ -139,6 +139,11 @@ Fault handling, all of which keep the session alive once established (§3):
      Omitted means this bridge publishes no guidance of its own — a supported
      configuration, not a failure. A bridge that does not announce the `guidance`
      capability (§4) MUST omit it.
+   - `silenceCap` (object, optional) — whether the reader's **machine** bounds
+     how long a `silent` session may leave its human unable to hear, and with
+     what thresholds: `{ enabled, warnAfterSeconds, liftAfterSeconds }`. See
+     §6.1. Omitted from a build predating the field, which a server MUST report
+     as *unknown* rather than as either answer.
 4. After a successful handshake the session is **tolerant**: a failing command
    yields an error response and the session keeps running. Only the conditions in
    §6 (teardown) end it.
@@ -450,6 +455,62 @@ single most important invariant, and a bridge should arrange its interception so
 that losing the bridge *itself* lifts it. (The NVDA bridge gets this from NVDA
 holding extension-point handlers weakly: if the add-on dies, the filter drops
 with it.)
+
+### 6.1 The silence cap — a bound on how long the human cannot hear
+
+The two watchdogs above both fire on **absence**, and neither answers the
+question the person sitting at the reader is actually asking. A `silent` session
+suppresses everything the reader would have said, so for as long as it holds,
+that person **cannot hear their own computer**. A bridge MAY therefore run a
+third watchdog measuring one quantity:
+
+> Time since the human last heard their own machine.
+
+**What resets it is only sound the human actually hears** — for the NVDA bridge,
+the session start cue, `announce` and `askUser`, which is exactly the set of
+things that reach the synthesizer past the suppression. `pressGesture`,
+`typeText`, `getSpeech`, `getState`, `waitForSpeech` and `ping` reset **nothing**,
+however many of them there are and however fast: an agent that has pressed four
+hundred keys in ninety seconds has told the human nothing.
+
+At `warnAfterSeconds` the reader speaks a warning to its human. At
+`liftAfterSeconds` it **stops suppressing** — and this is not the same as ending
+capture:
+
+| state | words reach the human | words reach the agent |
+|---|---|---|
+| suppressing | no | **yes** |
+| passing through (after a lift) | **yes** | **yes** |
+
+`getSpeech` returns the same entries, with the same indices and the same
+timestamps, across the transition. The lift costs the agent its silence, not its
+evidence. The session is **not** torn down: that remains the human's own decision,
+through whatever panic gesture the reader binds.
+
+Four rules bind a bridge that implements this:
+
+1. **The thresholds are readable but never settable over the wire.** There is no
+   command that changes them, and there must not be: an agent that could raise
+   its own ceiling does not have one.
+2. **Whether the cap runs at all is a property of the MACHINE**, configured on the
+   reader's side. A machine declared *unattended* — an accessibility run on a CI
+   box with nobody in the room — reports `enabled: false`, and the cap never
+   fires there, because un-muting a session nobody is listening to is damage
+   rather than a safeguard. A bridge MUST default to *attended*: a machine nobody
+   has configured is not one that may be assumed empty.
+3. **Nothing is pushed.** A lift arrives as no error, no exception and no field on
+   an unrelated result. An agent that never looks carries on working correctly and
+   simply does not know the room got loud; the mechanism exists for the human, and
+   the human is served either way. An agent that *does* want to know reads
+   `PingResult.suppressing`, which reports whether words are being withheld right
+   now.
+4. **A lifted session may go quiet again**, on a fresh window of the same length,
+   and each re-suppression is audibly marked. So exposure stays bounded no matter
+   how many times a session re-arms.
+
+A bridge that omits `silenceCap` from `HelloResult` makes no claim either way, and
+a server MUST NOT report that as "no cap": the honest reading is that this bridge
+does not say, which for a well-behaved agent means narrating anyway.
 
 ## 7. Index semantics
 

@@ -49,6 +49,16 @@ type BridgeOptions struct {
 	Synth   string
 	LogPath string
 
+	// SilenceCap is what `hello` announces about this MACHINE's bound on
+	// silence (spec 0032). Nil announces no field at all, the way a bridge
+	// built before the field does -- which the server must report as "did not
+	// say" rather than as "uncapped".
+	SilenceCap *wire.SilenceCapInfo
+
+	// Suppressing is what `ping` reports about speech right now. Nil says
+	// nothing, again like an older bridge.
+	Suppressing *bool
+
 	// OmitHandshakeGuidance makes `hello` answer WITHOUT the guidance
 	// document, the way a bridge built before spec 0022 A.5 does.
 	//
@@ -207,7 +217,10 @@ func (b *FakeBridge) serve(conn net.Conn) {
 		case command == wire.CommandHello:
 			b.recordPersona(request.Params)
 			result = b.helloResult()
-		case command == wire.CommandPing, command == wire.CommandBye:
+		case command == wire.CommandPing:
+			ok := true
+			result = wire.PingResult{OK: &ok, Suppressing: b.opts.Suppressing}
+		case command == wire.CommandBye:
 			ok := true
 			result = wire.AckResult{OK: &ok}
 		case command == wire.CommandGetGuidance && !hasHandler:
@@ -273,6 +286,7 @@ func (b *FakeBridge) helloResult() wire.HelloResult {
 		Mode:            wire.CaptureModeSilent,
 		Synth:           b.opts.Synth,
 		LogPath:         b.opts.LogPath,
+		SilenceCap:      b.opts.SilenceCap,
 	}
 	// The guidance document rides back in the handshake (spec 0022 A.5), as
 	// the real bridge does -- and only when this bridge announced `guidance`,

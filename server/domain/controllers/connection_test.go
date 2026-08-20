@@ -312,7 +312,7 @@ func TestAnObservedLossEndsTheSessionAndSaysWhy(t *testing.T) {
 	}
 	built.Lifecycle.FailPingWith(ports.ErrConnectionLost)
 
-	if err := h.controller.Verify(); !errors.Is(err, ports.ErrConnectionLost) {
+	if _, err := h.controller.Verify(); !errors.Is(err, ports.ErrConnectionLost) {
 		t.Fatalf("Verify = %v, want the loss reported", err)
 	}
 
@@ -338,7 +338,7 @@ func TestARefusedPingLeavesTheSessionStanding(t *testing.T) {
 	}
 	built.Lifecycle.FailPingWith(errors.New("bridge refused ping: busy"))
 
-	if err := h.controller.Verify(); err == nil {
+	if _, err := h.controller.Verify(); err == nil {
 		t.Fatal("the refusal was not reported")
 	}
 
@@ -351,7 +351,7 @@ func TestARefusedPingLeavesTheSessionStanding(t *testing.T) {
 func TestVerifyingWithNoSessionIsNotAFailure(t *testing.T) {
 	h := newHarness(t)
 
-	if err := h.controller.Verify(); err != nil {
+	if _, err := h.controller.Verify(); err != nil {
 		t.Errorf("Verify with no session = %v, want nil", err)
 	}
 }
@@ -366,7 +366,7 @@ func TestReconnectingAfterALossOpensAFreshSession(t *testing.T) {
 		t.Fatalf("Connect: %v", err)
 	}
 	built.Lifecycle.FailPingWith(ports.ErrConnectionLost)
-	_ = h.controller.Verify()
+	_, _ = h.controller.Verify()
 
 	// A fresh session, as the bridge would serve after being restarted.
 	h.connected("nvda", entities.CapabilitySpeech, entities.CapabilityBraille)

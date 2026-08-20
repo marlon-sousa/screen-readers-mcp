@@ -53,6 +53,9 @@ func (t *ConnectReader) Description() string {
 		"and announced the capability. Tries the reader's endpoints in " +
 		"the order list_readers shows and reports which one answered. " +
 		"Errors if a session is already live -- disconnect_reader first. " +
+		"It also tells you whether a HUMAN IS EXPECTED at that machine and what " +
+		"the reader does about long silences -- read silenceCap before you go " +
+		"quiet. " +
 		"You must say WHO YOU ARE STANDING IN FOR (persona): it decides what a " +
 		"finding from this session means, and it is returned with the stance it " +
 		"puts you under -- together with screenreader://reader-guidance, where " +
@@ -145,9 +148,13 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		"bridgeVersion": {
 			"type": "string",
 			"description": "The bridge build that answered, distinct from the reader version. Absent when the bridge did not say."
+		},
+		"silenceCap": {
+			"type": "string",
+			"description": "WHETHER A HUMAN IS EXPECTED AT THIS MACHINE, and what the reader does about long silences. In a silent session the person at the reader hears nothing except what you deliberately say to them with the announce tool, so a reader may bound how long that can go on: warn them, then restore speech. Read this and act on it -- announce before any stretch of work that does not drive the reader, and you will never meet the cap. You cannot change it: it is set on that machine, deliberately out of your reach."
 		}
 	},
-	"required": ["reader", "readerVersion", "endpoint", "capabilities", "mode", "persona", "stance", "synth", "logPath"]
+	"required": ["reader", "readerVersion", "endpoint", "capabilities", "mode", "persona", "stance", "synth", "logPath", "silenceCap"]
 }`)
 }
 
@@ -220,6 +227,17 @@ type connectResult struct {
 	// live run talks to whatever add-on build is installed, so an agent that
 	// sees odd behaviour can check this before blaming the code.
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
+	// SilenceCap is what this MACHINE does about a silence, in one sentence
+	// (spec 0032).
+	//
+	// Here for the reason `stance` and `readerGuidanceText` are here: connect is
+	// the one moment an agent is guaranteed to be reading, and this is the
+	// earliest instant the fact exists -- it is a property of the machine that
+	// just answered, so nothing before the handshake could have told anyone.
+	//
+	// It is prose rather than a struct because there is exactly one thing to do
+	// with it, and a number an agent has to interpret is a number it will not.
+	SilenceCap string `json:"silenceCap"`
 }
 
 func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -303,6 +321,10 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Synth:              session.Synth,
 		LogPath:            session.LogPath,
 		BridgeVersion:      session.BridgeVersion,
+		// Nil-safe by design: the entity renders "this reader did not say" for a
+		// bridge that predates the field, which is a different answer from
+		// "uncapped" and must not be reported as one.
+		SilenceCap: session.SilenceCap.Sentence(),
 	}, nil
 }
 

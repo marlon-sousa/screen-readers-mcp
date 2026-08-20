@@ -48,8 +48,12 @@ why they are stated here rather than resolved:
 - `home`, `end`, `pageUp`, `pageDown` -- move within a list or a document.
 - Typing, through `type_text`. Literal text into whatever holds focus; it does
   not press Enter and does not submit anything.
-- First-letter navigation -- typing a letter in a list or menu jumps to the next
-  item beginning with it. This is the operating system's behaviour, not NVDA's.
+- First-letter navigation -- in a list, a tree or a combo box, typing a letter
+  jumps to the next item beginning with it. **A menu is different**: there the
+  letter selects the item's *accelerator*, which is often not the first letter of
+  its label. NVDA speaks the accelerator at the end of each menu item, so use
+  what you heard rather than the label's first letter. This is the operating
+  system's behaviour, not NVDA's.
 
 ## Browse mode and focus mode
 
