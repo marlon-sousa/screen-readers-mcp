@@ -2,7 +2,8 @@
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 # ROLE: driving actor (view). A wx.Dialog that shows bridge status, lets the user
-#       pick a connection mode, start/stop the server, and toggle auto-start.
+#       pick a connection mode, start/stop the server, toggle auto-start, and
+#       declare whether anybody is sitting at this machine (spec 0032).
 #       Receives a BridgeConfig port and a BridgeServer via constructor injection.
 # DEPENDS ON: wx, NVDA's gui, BridgeServer (adapter), BridgeConfig (domain port),
 #             ConnectionMode (domain entity), and the Listener seam for build_listener.
@@ -31,6 +32,18 @@ if TYPE_CHECKING:
 	# Only for the annotations below: importing plugin.py at runtime would pull
 	# NVDA's globalPluginHandler in, and this module is imported by it.
 	from ..plugin import GlobalPlugin
+
+# -- silence-cap bounds ----------------------------------------------------------
+
+#: What the threshold spin controls will accept. The floor is not cosmetic: below
+#: roughly ten seconds the cap would fire on the gap between an `announce` being
+#: EMITTED and being HEARD -- protocol.md section 7.1 measured emission running
+#: some five seconds ahead of audio -- so a narrating agent would be interrupted
+#: for a silence that was not one. The ceiling is a quarter of an hour, past which
+#: a "cap" is not bounding anything a human would sit through.
+_MIN_SECONDS = 10
+_MAX_SECONDS = 900
+
 
 # -- combo helpers ---------------------------------------------------------------
 
@@ -132,7 +145,41 @@ class BridgeDialog(wx.Dialog):
 		)
 		self._auto_start_cb.Bind(wx.EVT_CHECKBOX, self._on_auto_start_changed)
 
-		# 3. Button row (Start, Stop, Close)
+		# 3. The silence cap (spec 0032). This is where the machine says whether
+		#    anybody is in the room. Ticked, no session on this machine is capped:
+		#    an accessibility run on a CI box at 3am has no human to protect, and
+		#    un-muting it would be damage rather than a safeguard. It is here, and
+		#    not on the wire, because the agent must not be able to raise its own
+		#    ceiling.
+		# Translators: Checkbox in the bridge dialog declaring that nobody is sitting
+		# at this machine, so a silent session is never interrupted to restore speech.
+		self._unattended_cb = main_helper.addItem(
+			wx.CheckBox(self, label=_("This machine is &unattended (no speech time limit)"))
+		)
+		self._unattended_cb.Bind(wx.EVT_CHECKBOX, self._on_unattended_changed)
+
+		# The two thresholds, disabled while the box above is ticked -- there is
+		# nothing to configure about a cap that does not run.
+		# Translators: Label for the spin control setting how many seconds of silence
+		# pass before the reader warns the person at the keyboard.
+		self._warn_spin = main_helper.addLabeledControl(
+			_("&Warn after (seconds):"),
+			wx.SpinCtrl,
+			min=_MIN_SECONDS,
+			max=_MAX_SECONDS,
+		)
+		self._warn_spin.Bind(wx.EVT_SPINCTRL, self._on_thresholds_changed)
+		# Translators: Label for the spin control setting how many seconds of silence
+		# pass before the reader stops suppressing speech.
+		self._lift_spin = main_helper.addLabeledControl(
+			_("&Restore speech after (seconds):"),
+			wx.SpinCtrl,
+			min=_MIN_SECONDS,
+			max=_MAX_SECONDS,
+		)
+		self._lift_spin.Bind(wx.EVT_SPINCTRL, self._on_thresholds_changed)
+
+		# 4. Button row (Start, Stop, Close)
 		button_helper = guiHelper.ButtonHelper(wx.HORIZONTAL)
 
 		# Translators: Button in the bridge dialog to start the server.
@@ -149,7 +196,7 @@ class BridgeDialog(wx.Dialog):
 
 		main_helper.addItem(button_helper)
 
-		# 4. Status bar — NVDA+End reads this.
+		# 5. Status bar — NVDA+End reads this.
 		self._status_bar = wx.StatusBar(self)
 		main_helper.addItem(self._status_bar, flag=wx.EXPAND)
 
@@ -168,6 +215,11 @@ class BridgeDialog(wx.Dialog):
 		"""
 		mode = self._config.get_connection_mode()
 		self._mode_combo.SetSelection(_mode_to_combo_index(mode))
+		# The thresholds are read once, for the same reason the combo is: while the
+		# dialog is open they belong to the user, and _refresh must not overwrite a
+		# number they are in the middle of typing.
+		self._warn_spin.SetValue(int(self._config.get_silence_warn_seconds()))
+		self._lift_spin.SetValue(int(self._config.get_silence_lift_seconds()))
 
 	# -- refresh ----------------------------------------------------------------
 
@@ -213,6 +265,14 @@ class BridgeDialog(wx.Dialog):
 
 		# Auto-start: read from config (it may have been toggled elsewhere).
 		self._auto_start_cb.SetValue(self._config.get_auto_start())
+
+		# The silence cap is machine-wide, so it stays editable whatever the server
+		# is doing -- unlike the connection mode, which is fixed once listening. A
+		# change takes effect on the NEXT session (plugin.py re-reads per connection).
+		unattended = self._config.get_unattended()
+		self._unattended_cb.SetValue(unattended)
+		self._warn_spin.Enable(not unattended)
+		self._lift_spin.Enable(not unattended)
 
 	# -- announce ----------------------------------------------------------------
 
@@ -267,6 +327,37 @@ class BridgeDialog(wx.Dialog):
 
 	def _on_auto_start_changed(self, evt: wx.CommandEvent) -> None:
 		self._config.set_auto_start(self._auto_start_cb.GetValue())
+
+	def _on_unattended_changed(self, evt: wx.CommandEvent) -> None:
+		unattended = self._unattended_cb.GetValue()
+		self._config.set_unattended(unattended)
+		self._warn_spin.Enable(not unattended)
+		self._lift_spin.Enable(not unattended)
+
+	def _on_thresholds_changed(self, evt: wx.SpinEvent) -> None:
+		"""Persist both thresholds, keeping the warning strictly before the lift.
+
+		The pair is nudged here rather than refused, because a spin control walked
+		one step at a time passes through every crossed-over value on its way to a
+		sane one -- refusing would make the control unusable. The domain still
+		validates: SilenceCapPolicy falls back on the shipped defaults for a pair
+		that reaches it unordered anyway.
+		"""
+		warn = self._warn_spin.GetValue()
+		lift = self._lift_spin.GetValue()
+		if lift <= warn:
+			if evt.GetEventObject() is self._warn_spin:
+				lift = min(warn + 1, _MAX_SECONDS)
+				warn = min(warn, lift - 1)
+				self._lift_spin.SetValue(lift)
+				self._warn_spin.SetValue(warn)
+			else:
+				warn = max(lift - 1, _MIN_SECONDS)
+				lift = max(lift, warn + 1)
+				self._warn_spin.SetValue(warn)
+				self._lift_spin.SetValue(lift)
+		self._config.set_silence_warn_seconds(float(warn))
+		self._config.set_silence_lift_seconds(float(lift))
 
 	def _on_start(self, evt: wx.CommandEvent) -> None:
 		new_mode = _combo_index_to_mode(self._mode_combo.GetSelection())

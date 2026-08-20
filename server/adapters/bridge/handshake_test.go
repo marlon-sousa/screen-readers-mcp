@@ -213,3 +213,47 @@ func TestDialRetainsUnknownCapabilities(t *testing.T) {
 		t.Errorf("capabilities (-want +got):\n%s", diff)
 	}
 }
+
+// -- the silence cap (spec 0032) ---------------------------------------------
+
+func TestTheHandshakeCarriesTheSilenceCap(t *testing.T) {
+	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+		SilenceCap: &wire.SilenceCapInfo{
+			Enabled: true, WarnAfterSeconds: 45, LiftAfterSeconds: 90,
+		},
+	})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	got := connection.Session.SilenceCap
+	if got == nil {
+		t.Fatal("the cap did not survive the handshake")
+	}
+	want := &entities.SilenceCap{Enabled: true, WarnAfter: 45, LiftAfter: 90}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("silence cap (-want +got):\n%s", diff)
+	}
+}
+
+func TestABridgeThatSendsNoCapLeavesItNil(t *testing.T) {
+	// Nil is the third answer -- "this bridge did not say" -- and the server
+	// must not turn it into "uncapped", which would read as permission to go
+	// quiet on a machine that has no bound at all.
+	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+	})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	if connection.Session.SilenceCap != nil {
+		t.Errorf("silence cap = %+v, want nil for a bridge that did not say",
+			*connection.Session.SilenceCap)
+	}
+}

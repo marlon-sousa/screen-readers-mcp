@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING
 
+from nvdaMcpBridge import protocol as _p
 from nvdaMcpBridge.domain.ports.adapter_factory import AdapterFactory, AdapterSet
 
 from .braille_source import FakeBrailleSource
@@ -55,6 +56,9 @@ class FakeAdapterFactory(AdapterFactory):
 
 	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
 		self.built_mode = mode
+		# As production does: only a silent session suppresses anything, so only a
+		# silent one can have that suppression lifted (spec 0032).
+		self.speech_source.suppressing = mode is _p.CaptureMode.SILENT
 		return AdapterSet(
 			speech_source=self.speech_source,
 			braille_source=self.braille_source,

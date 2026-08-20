@@ -567,8 +567,14 @@ func (c *JSONLinesClient) Guidance() (ports.ReaderGuidance, error) {
 
 // --- the lifecycle port -------------------------------------------------------
 
-func (c *JSONLinesClient) Ping() error {
-	return c.call(wire.CommandPing, nil, nil, DefaultCallTimeout)
+func (c *JSONLinesClient) Ping() (ports.PingReport, error) {
+	var result wire.PingResult
+	if err := c.call(wire.CommandPing, nil, &result, DefaultCallTimeout); err != nil {
+		return ports.PingReport{}, err
+	}
+	// Carried as a POINTER, so "this bridge does not say" survives as itself
+	// rather than collapsing into false (spec 0032).
+	return ports.PingReport{Suppressing: result.Suppressing}, nil
 }
 
 // Bye asks the bridge to end the session and waits for its acknowledgement.

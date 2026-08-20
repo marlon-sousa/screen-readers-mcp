@@ -311,6 +311,7 @@ def test_hello_result_serializes_all_fields() -> None:
 		"logPath",
 		"bridgeVersion",
 		"guidance",
+		"silenceCap",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}
@@ -473,3 +474,45 @@ def test_a_hello_result_without_guidance_still_decodes() -> None:
 	)
 
 	assert back.guidance is None
+
+
+# -- the silence cap (spec 0032) ----------------------------------------------
+
+
+def test_silence_cap_rides_in_the_handshake() -> None:
+	hr = p.HelloResult(
+		protocolVersion=1,
+		reader=p.ReaderInfo(name="nvda", version="2026.1.0"),
+		capabilities=[],
+		mode=p.CaptureMode.SILENT,
+		synth="oneCore",
+		logPath="/tmp/session.log",
+		silenceCap=p.SilenceCapInfo(enabled=True, warnAfterSeconds=45.0, liftAfterSeconds=90.0),
+	)
+	d = p.to_dict(hr)
+	assert d["silenceCap"] == {
+		"enabled": True,
+		"warnAfterSeconds": 45.0,
+		"liftAfterSeconds": 90.0,
+	}
+	assert p.from_dict(p.HelloResult, d).silenceCap == hr.silenceCap
+
+
+def test_a_bridge_that_does_not_say_is_not_a_protocol_error() -> None:
+	# An older bridge sends no silenceCap at all. None means "this bridge does not
+	# say", which a server reports as unknown rather than as either answer.
+	d: dict[str, Any] = {
+		"protocolVersion": 1,
+		"reader": {"name": "nvda", "version": "2026.1.0"},
+		"capabilities": [],
+		"mode": "silent",
+		"synth": "oneCore",
+		"logPath": "/tmp/session.log",
+	}
+	assert p.from_dict(p.HelloResult, d).silenceCap is None
+
+
+def test_ping_answers_with_its_own_result_carrying_the_suppression_state() -> None:
+	assert p.COMMAND_SHAPES[p.Command.PING].result is p.PingResult
+	assert p.to_dict(p.PingResult()) == {"ok": True, "suppressing": None}
+	assert p.to_dict(p.PingResult(suppressing=False)) == {"ok": True, "suppressing": False}

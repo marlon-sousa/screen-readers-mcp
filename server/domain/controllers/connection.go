@@ -182,28 +182,28 @@ func (c *Connection) Current() *ports.ReaderConnection {
 // This is the method that makes `status` proof rather than memory, and it is
 // also what a tool call falls back on when it discovers the connection has gone.
 // Nil when there is nothing to verify: "no session" is not a failed check.
-func (c *Connection) Verify() error {
+func (c *Connection) Verify() (ports.PingReport, error) {
 	c.mu.Lock()
 	connection := c.connection
 	c.mu.Unlock()
 
 	if connection == nil {
-		return nil
+		return ports.PingReport{}, nil
 	}
 
-	err := connection.Lifecycle.Ping()
+	report, err := connection.Lifecycle.Ping()
 	if err == nil {
-		return nil
+		return report, nil
 	}
 	if errors.Is(err, ports.ErrConnectionLost) {
 		c.lose(err)
-		return err
+		return ports.PingReport{}, err
 	}
 	// A bridge that ANSWERED, with a refusal, is still there: protocol.md §3
 	// says an established session survives a failing command, so this must
 	// not tear anything down.
 	c.log.Debugf("ping was refused but the connection is alive: %v", err)
-	return err
+	return ports.PingReport{}, err
 }
 
 // RunHeartbeat proves the connection real on a schedule, until stop is closed.
@@ -232,7 +232,7 @@ func (c *Connection) RunHeartbeat(stop <-chan struct{}) {
 		// Verify is a no-op with no session, so the loop needs no state of
 		// its own and cannot disagree with the controller about whether one
 		// is live.
-		_ = c.Verify()
+		_, _ = c.Verify()
 	}
 }
 

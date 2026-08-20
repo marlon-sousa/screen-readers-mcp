@@ -43,6 +43,7 @@ from .adapters.nvda_user_prompter import ACK_GESTURE, NvdaUserPrompter
 from .adapters.simple_event_bus import SimpleEventBus
 from .adapters.text_config_file import TextConfigFile
 from .domain.entities.connection_mode import ConnectionMode
+from .domain.entities.silence_cap import SilenceCapPolicy
 from .views.bridge_dialog import BridgeDialog
 from .wiring import build_session
 
@@ -110,6 +111,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._event_bus = SimpleEventBus()
 
 		def make_session(transport):
+			# Re-read on every connection rather than once at load, so a change in
+			# the control dialog takes effect on the NEXT session instead of at the
+			# next NVDA restart. It is three ini reads against a session that is
+			# about to do real work.
+			silence_cap = SilenceCapPolicy.from_settings(
+				unattended=self._config.get_unattended(),
+				warn_after=self._config.get_silence_warn_seconds(),
+				lift_after=self._config.get_silence_lift_seconds(),
+			)
 			return build_session(
 				transport,
 				factory,
@@ -121,6 +131,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				user_prompter,
 				gesture_resolver,
 				bridge_version=bridge_version,
+				silence_cap=silence_cap,
 			)
 
 		self._server = BridgeServer(listener, make_session, event_bus=self._event_bus)

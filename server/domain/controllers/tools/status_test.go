@@ -20,11 +20,12 @@ import (
 )
 
 type statusAnswer struct {
-	State     string `json:"state"`
-	Reason    string `json:"reason"`
-	Live      *bool  `json:"live"`
-	LiveError string `json:"liveError"`
-	Session   *struct {
+	State       string `json:"state"`
+	Reason      string `json:"reason"`
+	Live        *bool  `json:"live"`
+	LiveError   string `json:"liveError"`
+	Suppressing *bool  `json:"suppressing"`
+	Session     *struct {
 		Reader       string   `json:"reader"`
 		Endpoint     string   `json:"endpoint"`
 		Capabilities []string `json:"capabilities"`
@@ -186,5 +187,80 @@ func TestARefusedPingStillLeavesTheSessionDescribed(t *testing.T) {
 	}
 	if answer.Live == nil || *answer.Live {
 		t.Errorf("live = %v, want false -- the round trip did not succeed", answer.Live)
+	}
+}
+
+// -- the silence cap (spec 0032) ---------------------------------------------
+//
+// A LIFT happens on the reader, asynchronously, and nothing is pushed. So the
+// only honest way for an agent to learn the room got loud is to ask -- and this
+// is where it asks. The answer must come off the SAME round trip that proves the
+// session live, or it is exactly the cached guess `status` exists not to be.
+
+func TestStatusReportsSuppressionOffTheRoundTrip(t *testing.T) {
+	call := testsupport.NewToolCall(&tools.Status{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	call.WithConnection(built.Connection)
+	call.Control.SetStatus(entities.ConnectionStatus{State: entities.Connected})
+	call.Control.ReportSuppressing(true)
+
+	answer := runStatus(t, call)
+
+	if answer.Suppressing == nil || !*answer.Suppressing {
+		t.Errorf("suppressing = %v, want true for a silent session", answer.Suppressing)
+	}
+}
+
+func TestStatusIsHowALiftIsDiscovered(t *testing.T) {
+	call := testsupport.NewToolCall(&tools.Status{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	call.WithConnection(built.Connection)
+	call.Control.SetStatus(entities.ConnectionStatus{State: entities.Connected})
+	// The cap has restored speech: the session is still live and still
+	// capturing, and the human can hear their machine again.
+	call.Control.ReportSuppressing(false)
+
+	answer := runStatus(t, call)
+
+	if answer.Live == nil || !*answer.Live {
+		t.Fatalf("live = %v, want a session that is still up", answer.Live)
+	}
+	if answer.Suppressing == nil || *answer.Suppressing {
+		t.Errorf("suppressing = %v, want false after a lift", answer.Suppressing)
+	}
+}
+
+func TestABridgeThatDoesNotSaySuppressesNothingIntoTheAnswer(t *testing.T) {
+	// Absent, not false: an older bridge has said nothing, and reporting that as
+	// "not suppressing" would tell an agent the human can hear when nobody knows.
+	call := testsupport.NewToolCall(&tools.Status{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	call.WithConnection(built.Connection)
+	call.Control.SetStatus(entities.ConnectionStatus{State: entities.Connected})
+
+	answer := runStatus(t, call)
+
+	if answer.Suppressing != nil {
+		t.Errorf("suppressing = %v, want absent when the bridge did not say", *answer.Suppressing)
+	}
+}
+
+func TestAFailedRoundTripReportsNoSuppressionState(t *testing.T) {
+	// A probe that did not answer describes nothing. Reporting the report anyway
+	// would be guessing, in the one tool built not to.
+	call := testsupport.NewToolCall(&tools.Status{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	call.WithConnection(built.Connection)
+	call.Control.SetStatus(entities.ConnectionStatus{State: entities.Connected})
+	call.Control.ReportSuppressing(true)
+	call.Control.FailVerifyWith(errors.New("bridge refused ping: busy"))
+
+	answer := runStatus(t, call)
+
+	if answer.Suppressing != nil {
+		t.Errorf("suppressing = %v, want absent when the probe failed", *answer.Suppressing)
+	}
+	if answer.LiveError == "" {
+		t.Error("the failure was not reported")
 	}
 }

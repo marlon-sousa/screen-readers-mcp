@@ -177,7 +177,7 @@ func TestAPeerThatClosesIsReportedAsConnectionLost(t *testing.T) {
 	client, transport := newClient(t, nil)
 	transport.QueueEOF()
 
-	err := client.Ping()
+	_, err := client.Ping()
 
 	if !errors.Is(err, bridge.ErrConnectionLost) {
 		t.Fatalf("Ping error = %v, want ErrConnectionLost", err)
@@ -197,7 +197,7 @@ func TestAResetIsTreatedAsAnAbruptEOF(t *testing.T) {
 	reset.QueueError(errors.New("wsarecv: An existing connection was forcibly closed"))
 	client := bridge.NewJSONLinesClient(reset, clock, fakes.NewFakeLog())
 
-	if err := client.Ping(); !errors.Is(err, bridge.ErrConnectionLost) {
+	if _, err := client.Ping(); !errors.Is(err, bridge.ErrConnectionLost) {
 		t.Fatalf("Ping error = %v, want ErrConnectionLost", err)
 	}
 }
@@ -208,7 +208,7 @@ func TestAResetIsTreatedAsAnAbruptEOF(t *testing.T) {
 func TestACommandThatIsNeverAnsweredTimesOut(t *testing.T) {
 	client, _ := newClient(t, nil)
 
-	err := client.Ping()
+	_, err := client.Ping()
 
 	var timeout *bridge.TimeoutError
 	if !errors.As(err, &timeout) {
@@ -403,7 +403,7 @@ func TestAnUnreadableLineEndsTheConnection(t *testing.T) {
 	client := bridge.NewJSONLinesClient(transport, clock, fakes.NewFakeLog())
 	transport.QueueLine(`this is not JSON`)
 
-	if err := client.Ping(); err == nil {
+	if _, err := client.Ping(); err == nil {
 		t.Fatal("an unreadable line was accepted")
 	}
 	if !transport.Closed() {
@@ -437,7 +437,7 @@ func TestConfigValuesRideThroughAsOpaqueJSON(t *testing.T) {
 func TestByeOnAConnectionThatIsAlreadyGoneSucceeds(t *testing.T) {
 	client, transport := newClient(t, nil)
 	transport.QueueEOF()
-	if err := client.Ping(); !errors.Is(err, bridge.ErrConnectionLost) {
+	if _, err := client.Ping(); !errors.Is(err, bridge.ErrConnectionLost) {
 		t.Fatalf("setup: Ping error = %v", err)
 	}
 

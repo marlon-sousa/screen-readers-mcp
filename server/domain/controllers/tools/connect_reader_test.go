@@ -260,3 +260,54 @@ func TestAFailedConnectIsReportedToTheAgent(t *testing.T) {
 			len(call.Control.Connects()))
 	}
 }
+
+// -- the silence cap (spec 0032) ---------------------------------------------
+//
+// Connect is the one moment an agent is guaranteed to be reading, and it is the
+// earliest instant this fact exists -- it describes the machine that just
+// answered. An agent that never learns a human is expected there is an agent
+// that goes quiet on them.
+
+func connectAnswer(t *testing.T, call *testsupport.ToolCall) map[string]any {
+	t.Helper()
+	result, err := call.Run(`{"reader":"nvda","mode":"silent","persona":"user"}`)
+	if err != nil {
+		t.Fatalf("connect_reader: %v", err)
+	}
+	encoded, _ := json.Marshal(result)
+	var answer map[string]any
+	if err := json.Unmarshal(encoded, &answer); err != nil {
+		t.Fatalf("decoding the result: %v", err)
+	}
+	return answer
+}
+
+func TestConnectStatesTheMachinesSilenceCap(t *testing.T) {
+	call := testsupport.NewToolCall(&tools.ConnectReader{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	built.Connection.Session.SilenceCap = &entities.SilenceCap{
+		Enabled: true, WarnAfter: 45, LiftAfter: 90,
+	}
+	call.Control.SetConnection(built.Connection)
+
+	sentence, _ := connectAnswer(t, call)["silenceCap"].(string)
+
+	if !strings.Contains(sentence, "45s") || !strings.Contains(sentence, "90s") {
+		t.Errorf("silenceCap does not name the thresholds: %q", sentence)
+	}
+}
+
+func TestConnectAlwaysSaysSomethingAboutSilence(t *testing.T) {
+	// Including for a bridge that sent no field at all. An absent answer would
+	// read as "nothing to worry about", which is the one thing it does not mean.
+	call := connectCall(t)
+
+	sentence, ok := connectAnswer(t, call)["silenceCap"].(string)
+
+	if !ok || sentence == "" {
+		t.Fatal("silenceCap is absent; an agent has nothing to act on")
+	}
+	if !strings.Contains(sentence, "did not say") {
+		t.Errorf("a bridge that said nothing was reported as something: %q", sentence)
+	}
+}

@@ -38,7 +38,8 @@ func (t *Status) Description() string {
 		"state, and the current session if there is one. When a session is live " +
 		"this makes a real round trip to the reader, so the answer is proof rather " +
 		"than a cached guess -- an idle session can be dropped by the reader's own " +
-		"inactivity watchdog. Takes no parameters."
+		"inactivity watchdog, and a silent session can have had its speech restored " +
+		"by the reader's silence cap. Takes no parameters."
 }
 
 func (t *Status) InputSchema() json.RawMessage {
@@ -65,6 +66,10 @@ func (t *Status) OutputSchema() json.RawMessage {
 		"liveError": {
 			"type": "string",
 			"description": "Why the round trip failed, when it did."
+		},
+		"suppressing": {
+			"type": "boolean",
+			"description": "Whether the reader is withholding speech from the person at that machine RIGHT NOW -- read from the same round trip as the live field above, so it is current rather than remembered. A silent session normally answers true. It answers FALSE once the reader's silence cap has restored speech (see connect_reader's silenceCap): that costs you nothing, since capture is unaffected and get_speech still returns everything, but the human can hear their machine again. Absent when there was no session to ask, and when the bridge does not report it."
 		},
 		"session": {
 			"type": "object",
@@ -120,6 +125,20 @@ type statusResult struct {
 	// LiveError is why the round trip failed, when it did.
 	LiveError string `json:"liveError,omitempty"`
 
+	// Suppressing is whether the reader is withholding speech from its human
+	// right now, off the same round trip as Live above.
+	//
+	// This is how a silence-cap LIFT is discoverable by asking (spec 0032
+	// Part 5). Nothing is pushed -- a lift arrives as no error, no exception
+	// and no field on an unrelated result -- so an agent that never looks
+	// carries on working correctly and simply does not know the room got
+	// loud. That is an acceptable outcome: the mechanism exists for the
+	// human, and the human is served either way. This is for the agent that
+	// does want to know.
+	//
+	// A pointer, because "the bridge did not say" is a third answer.
+	Suppressing *bool `json:"suppressing,omitempty"`
+
 	Session *statusSession `json:"session,omitempty"`
 }
 
@@ -130,24 +149,31 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 	// "the connection is gone" is the answer status was asked for, not a
 	// failure of the tool.
 	var (
-		live      *bool
-		liveError string
+		live        *bool
+		liveError   string
+		suppressing *bool
 	)
 	if ctx.Connection != nil {
-		err := ctx.Control.Verify()
+		report, err := ctx.Control.Verify()
 		answered := err == nil
 		live = &answered
 		if err != nil {
 			liveError = err.Error()
+		} else {
+			// Only from a round trip that actually answered: a report from a
+			// failed ping describes nothing, and reporting it would be
+			// guessing in the one tool built not to.
+			suppressing = report.Suppressing
 		}
 	}
 
 	recorded := ctx.Control.Status()
 	result := statusResult{
-		State:     recorded.State.String(),
-		Reason:    recorded.Reason,
-		Live:      live,
-		LiveError: liveError,
+		State:       recorded.State.String(),
+		Reason:      recorded.Reason,
+		Live:        live,
+		LiveError:   liveError,
+		Suppressing: suppressing,
 	}
 
 	// Re-read the connection AFTER Verify: if the round trip discovered a

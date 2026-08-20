@@ -92,7 +92,7 @@ func (d *Dispatcher) Execute(name string, params json.RawMessage) (any, error) {
 		// Verify pings, fails the same way, and RECORDS the loss: the tools
 		// retract and the state says why. Its own error is not this call's
 		// answer -- the caller asked about the tool, not about the ping.
-		_ = d.control.Verify()
+		_, _ = d.control.Verify()
 	}
 	return result, err
 }

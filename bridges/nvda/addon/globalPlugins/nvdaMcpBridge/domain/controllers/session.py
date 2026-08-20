@@ -2,8 +2,9 @@
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 # ROLE: controller. Owns the session LIFECYCLE and nothing command-specific:
-# one dispatch loop guarded by two watchdogs (heartbeat, command-inactivity), and
-# a teardown that restores the user's synth on every exit path. Per-command logic
+# one dispatch loop guarded by THREE watchdogs (heartbeat, command-inactivity, and
+# the silence cap), and a teardown that restores the user's synth on every exit
+# path. Per-command logic
 # lives in commands/ handlers; the Session only reads a message, looks the command
 # up in the injected registry, calls handler.execute(ctx, request), and wraps the
 # result (or the error) into a Response.
@@ -27,6 +28,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ... import protocol
+from ..entities.silence_cap import (
+	ATTENDED_DEFAULT,
+	SilenceCap,
+	SilenceCapAction,
+	SilenceCapPolicy,
+)
+from ..ports.announcer import SilenceNotice
 from ..ports.config_accessor import ConfigError
 from ..ports.gesture_sender import GestureError
 from ..ports.message_channel import ChannelClosed, Timeout
@@ -60,11 +68,23 @@ class SessionConfig:
 	harness PROCESS is alive (any message resets it), while command inactivity
 	proves the AGENT is still testing (only a real command -- not a ping --
 	resets it). See RFC 0001's session-lifecycle section.
+
+	The silence cap is the third, and it is the only one that measures the HUMAN
+	rather than the agent (spec 0032): the two above both fire on ABSENCE, and both
+	stayed correctly quiet on 2026-08-03 while a blind developer sat unable to hear
+	their own machine. It is a property of the MACHINE, read from config.ini by
+	plugin.py, and it is deliberately not on the wire -- an agent that could raise
+	its own ceiling does not have one.
+
+	It defaults to ENABLED, which is the safe direction: a cap on an empty room
+	speaks to nobody, and a missing cap on an occupied one leaves a blind person
+	unable to hear their computer with nothing to stop it.
 	"""
 
 	nvda_version: str
 	heartbeat_timeout: float = 30.0
 	inactivity_timeout: float = 120.0
+	silence_cap: SilenceCapPolicy = ATTENDED_DEFAULT
 
 
 class _State(enum.Enum):
@@ -107,12 +127,16 @@ class Session:
 			user_prompter,
 			gesture_resolver,
 			self._teardown_was_requested,
+			config.silence_cap,
 		)
 		self._state = _State.PRE_HELLO
 
 		# Watchdog bookkeeping (monotonic seconds); seeded in run().
 		self._last_message_time: float = 0.0
 		self._last_command_time: float = 0.0
+		#: The silence cap, built only once hello reveals a SILENT session on a
+		#: capped machine. None otherwise, and the loop simply skips the check.
+		self._cap: SilenceCap | None = None
 
 		# Cross-thread teardown request; the loop honours it at the next wakeup.
 		self._external_lock = threading.Lock()
@@ -188,9 +212,11 @@ class Session:
 			except protocol.ValidationError as exc:
 				self._on_unreadable(exc)
 				self._check_deadline()
+				self._check_silence()
 				continue
 			if isinstance(raw, Timeout):
 				self._check_deadline()
+				self._check_silence()
 				continue
 			self._touch_heartbeat()
 			self._dispatch(raw)
@@ -201,6 +227,7 @@ class Session:
 			# was our doing, not evidence it died.  (spec 0016 heartbeat fix)
 			self._touch_heartbeat()
 			self._check_deadline()
+			self._check_silence()
 
 	def _absorb_external(self) -> None:
 		with self._external_lock:
@@ -235,6 +262,66 @@ class Session:
 			and now - self._last_command_time >= self._config.inactivity_timeout
 		):
 			self._reason = TeardownReason.INACTIVITY_TIMEOUT
+
+	# -- the silence cap (spec 0032) -----------------------------------------
+
+	def _arm_silence_cap(self) -> None:
+		"""Start the human's clock, if this session can make them deaf at all.
+
+		Only a SILENT session suppresses anything, so only a silent one has a
+		silence to bound; and a machine whose owner declared it unattended has no
+		human in the room to protect. Either way the cap stays None and every
+		check below is a single comparison.
+
+		Seeded at the instant the session establishes, which is honest: the start
+		cue the next line plays is itself one of the three sounds that reach the
+		human past the suppression.
+		"""
+		policy = self._config.silence_cap
+		if not policy.enabled or self._ctx.mode is not protocol.CaptureMode.SILENT:
+			return
+		cap = SilenceCap(policy, self._clock.monotonic())
+		self._cap = cap
+		# The context holds the SAME cap: the commands that produce sound the human
+		# hears reset it through ctx.note_audible(), and an askUser window stops its
+		# clock through ctx.suspend_speech().
+		self._ctx.silence_cap = cap
+
+	def _check_silence(self) -> None:
+		"""Act on how long the human has been unable to hear their own machine.
+
+		Called wherever ``_check_deadline`` is, and for the same reason: the loop
+		must reach this even when nothing arrives, which is exactly the case this
+		exists for -- an agent that is busy but slow is not absent, so no watchdog
+		keyed on absence will ever fire for it.
+
+		Every step is guarded. A courtesy that raises must not cost the session,
+		and the LIFT is done before either of the two things that merely SAY it
+		was: the human getting their machine back is the guarantee, and speaking
+		about it is not.
+		"""
+		cap = self._cap
+		if cap is None or self._reason is not None:
+			return
+		action = cap.check(self._clock.monotonic())
+		if action is SilenceCapAction.NONE:
+			return
+		if action is SilenceCapAction.LIFT:
+			self._guard(self._ctx.stop_suppressing)
+			self._guard(
+				lambda: self._transcript.note(
+					f"silence cap: nothing audible for {cap.policy.lift_after:g} s; "
+					f"suppression lifted, capture continues"
+				)
+			)
+			self._guard(lambda: self._ctx.announcer.silence_notice(SilenceNotice.LIFTED))
+			return
+		self._guard(
+			lambda: self._transcript.note(
+				f"silence cap: nothing audible for {cap.policy.warn_after:g} s; warning spoken"
+			)
+		)
+		self._guard(lambda: self._ctx.announcer.silence_notice(SilenceNotice.WARNING))
 
 	# -- dispatch ------------------------------------------------------------
 
@@ -290,6 +377,7 @@ class Session:
 		self._reply(request.id, result)
 		if pre_hello:
 			self._state = _State.ESTABLISHED
+			self._arm_silence_cap()
 			# Two ascending tones, then the persona the session declared (spec
 			# 0029): the tones say control was taken, the words say what it was
 			# taken as. Read from the context, which hello has just populated.

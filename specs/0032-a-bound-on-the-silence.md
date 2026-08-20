@@ -8,6 +8,15 @@ requiring an ear rather than an argument: the **tone pitch** for the warning
 (distinct from announce's 660 Hz and askUser's 440 Hz, unchosen here) and
 whether **45/90** are the right numbers once heard from the chair.
 
+**Both were settled by the maintainer on 2026-08-19.** The pitch is **880 Hz** —
+an octave above askUser's 440 and a fourth above announce's 660, so it is the
+highest of the three and reads as *attention* rather than as a hint or a
+question. The thresholds stay at **45/90**: they are configurable per machine, so
+a number that turns out to feel wrong from the chair is an edit rather than a
+rebuild, and Part 10's first check is the run that tells him.
+
+Part 11 lists the layout amendments made while building it, per AGENTS.md.
+
 The gap is not a missing feature. It is a **missing measurement**: the bridge has
 two watchdogs and neither of them measures the thing that hurts.
 
@@ -422,3 +431,62 @@ The claims that cannot be proven headless:
 6. Re-suppression after a lift is audible, and warns again 45 s later.
 7. With `unattended` ticked, a silent session stays silent well past 90 s.
 8. `nvda.log` shows balanced suppression markers on every path above.
+
+## Part 11 — amendments made while implementing
+
+Per AGENTS.md, the layout in Part 6 is the review gate, and a change to it rides
+in the implementing PR with a one-line why. Nine, in the order they arose.
+
+1. **`SpeechSource` gains a third method, `is_suppressing()`,** beside the two
+   Part 6 named. Part 5 promises that `status` reports the session's *current*
+   suppression state, and only the adapter knows it: a session may be suppressing,
+   suspended for a prompt, or passing through after a lift, and the domain
+   re-deriving that would be a second copy of the adapter's own state machine.
+
+2. **The wire gains a `PingResult`,** where Part 7 named only `SilenceCapInfo`.
+   Same reason: a lift happens on the reader with nothing pushed, so the only
+   honest way for `status` to answer is to ask — and it already makes a real
+   `ping` round trip so its answer is proof rather than memory. `ping` answered
+   with `AckResult` before, which `bye` also uses, so a session-specific fact
+   could not go on it. `{ ok, suppressing }`, both optional; the wire is
+   pre-release (protocol.md §8) and both halves ship from this repo.
+
+3. **Go: `SessionLifecycle.Ping` and `Connection.Verify` return a
+   `ports.PingReport`** rather than only an error, which is how (2) reaches
+   `status`. Six call sites, all of which discard it.
+
+4. **`Announcer` gains `silence_notice(SilenceNotice)`,** where Part 6 implied the
+   Session would speak text through the announcer. The bridge domain has no
+   `_()` — NVDA installs it, and the domain is unit-tested headlessly — so a
+   translatable sentence cannot live there. The domain says *what happened*; the
+   adapter says it in the reader's own language, exactly as `SessionSignals` does.
+
+5. **`SessionContext` gains `mode` and `silence_cap_policy`** beside the methods
+   Part 6 listed. The Session must know the capture mode to decide whether a cap
+   applies at all (it is created only for a `silent` session), and `hello` must
+   report the machine's policy whatever mode was asked for — Part 5 calls it a
+   fact about the machine. Both are set the way `persona` already is.
+
+6. **`SilenceCapPolicy` gains a `from_settings` named constructor.** Part 6 says
+   the entity validates the ordering, and the plain constructor raises — right for
+   a programming error, wrong for a config file a human typed, where two settings
+   read independently can each look sane and still cross over. `from_settings`
+   falls back on the shipped defaults, so the decision stays in the tested domain
+   instead of in `plugin.py`, which is the untested edge.
+
+7. **`BridgeConfig` gains setters for the two thresholds,** not only the getters
+   Part 6 named: the dialog's spin controls have to persist what the human types.
+
+8. **The guidance paragraph goes in the server's own
+   `adapters/mcp/documents/guidance-method.md`,** not in
+   `domain/controllers/reader_guidance.go` as Part 8 said. That controller serves
+   the *bridge's* document, which it carries opaque and never composes — the rule
+   about agent behaviour is the server's own to state, and `guidance-method.md` is
+   where such rules already live.
+
+9. **The markers pair through two helpers** in the silent speech source rather
+   than a second marker pair. Part 6 asks that a human reading `nvda.log` never
+   find a suppression that never ended; a lift *is* the end of one, so it writes
+   the existing `RESTORED` marker (after a line naming the cap as the cause) and a
+   re-arm writes `SUPPRESSED` again. One balanced pair on every path, rather than
+   two pairs that could interleave.

@@ -257,6 +257,7 @@ type HelloResult struct {
 	LogPath         string             `json:"logPath"`
 	BridgeVersion   *string            `json:"bridgeVersion,omitempty"`
 	Guidance        *GetGuidanceResult `json:"guidance,omitempty"`
+	SilenceCap      *SilenceCapInfo    `json:"silenceCap,omitempty"`
 }
 
 // LastSpeechResult is the wire shape of the same name.
@@ -296,6 +297,12 @@ type NextIndexResult struct {
 	Index int `json:"index"`
 }
 
+// PingResult is the wire shape of the same name.
+type PingResult struct {
+	OK          *bool `json:"ok,omitempty"`
+	Suppressing *bool `json:"suppressing,omitempty"`
+}
+
 // PressGestureParams is the wire shape of the same name.
 type PressGestureParams struct {
 	Gestures []string `json:"gestures"`
@@ -332,6 +339,13 @@ type SetConfigParams struct {
 // SetLogLevelParams is the wire shape of the same name.
 type SetLogLevelParams struct {
 	Level LogLevel `json:"level"`
+}
+
+// SilenceCapInfo is the wire shape of the same name.
+type SilenceCapInfo struct {
+	Enabled          bool    `json:"enabled"`
+	WarnAfterSeconds float64 `json:"warnAfterSeconds"`
+	LiftAfterSeconds float64 `json:"liftAfterSeconds"`
 }
 
 // SpeechEntry is the wire shape of the same name.

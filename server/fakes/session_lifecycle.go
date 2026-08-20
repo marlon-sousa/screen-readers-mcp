@@ -25,6 +25,9 @@ type FakeSessionLifecycle struct {
 	closes  int
 	pingErr error
 	byeErr  error
+	// suppressing is what a ping REPORTS, beyond answering (spec 0032). Nil is
+	// the default and it is a real answer: a bridge that does not say.
+	suppressing *bool
 }
 
 var _ ports.SessionLifecycle = (*FakeSessionLifecycle)(nil)
@@ -39,6 +42,15 @@ func (f *FakeSessionLifecycle) FailPingWith(err error) {
 	f.pingErr = err
 }
 
+// ReportSuppressing makes every ping report whether the reader is withholding
+// speech, which is what `status` surfaces so a silence-cap lift is discoverable
+// by asking.
+func (f *FakeSessionLifecycle) ReportSuppressing(suppressing bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.suppressing = &suppressing
+}
+
 // FailByeWith makes Bye report err.
 func (f *FakeSessionLifecycle) FailByeWith(err error) {
 	f.mu.Lock()
@@ -51,11 +63,16 @@ func (f *FakeSessionLifecycle) Pings() int  { return f.count(&f.pings) }
 func (f *FakeSessionLifecycle) Byes() int   { return f.count(&f.byes) }
 func (f *FakeSessionLifecycle) Closes() int { return f.count(&f.closes) }
 
-func (f *FakeSessionLifecycle) Ping() error {
+func (f *FakeSessionLifecycle) Ping() (ports.PingReport, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pings++
-	return f.pingErr
+	if f.pingErr != nil {
+		// A failed probe describes nothing, and the real client returns an
+		// empty report on that path too.
+		return ports.PingReport{}, f.pingErr
+	}
+	return ports.PingReport{Suppressing: f.suppressing}, nil
 }
 
 func (f *FakeSessionLifecycle) Bye() error {

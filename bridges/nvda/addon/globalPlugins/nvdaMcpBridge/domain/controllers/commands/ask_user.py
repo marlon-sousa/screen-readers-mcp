@@ -35,6 +35,10 @@ class AskUserHandler(CommandHandler):
 
 		ctx.suspend_speech()
 		ctx.user_prompter.present(params.prompt, prompt.ticket)
+		# A question is one of the three sounds that reach the human past the
+		# suppression, so it resets the silence cap exactly as `announce` does --
+		# after the prompt is presented, not before (spec 0032).
+		ctx.note_audible()
 
 		ctx.transcript.note(f"askUser: prompt presented (ticket {prompt.ticket})")
 		return protocol.AskUserResult(ticket=prompt.ticket)

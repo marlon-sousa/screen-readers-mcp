@@ -54,6 +54,16 @@ class NvdaLiveSpeechSource(SpeechSource):
 	def resume(self) -> None:
 		"""No-op in live mode: nothing was ever suppressed."""
 
+	def stop_suppressing(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
+
+	def resume_suppressing(self) -> None:
+		"""No-op in live mode: nothing was ever suppressed."""
+
+	def is_suppressing(self) -> bool:
+		"""Always False: the human hears their machine throughout a live session."""
+		return False
+
 	def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:
 		buffer = self._buffer
 		if buffer is not None and speechSequence:

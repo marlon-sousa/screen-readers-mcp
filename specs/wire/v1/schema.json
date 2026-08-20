@@ -492,6 +492,16 @@
               "type": "null"
             }
           ]
+        },
+        "silenceCap": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SilenceCapInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -646,6 +656,25 @@
       ],
       "additionalProperties": true
     },
+    "PingResult": {
+      "type": "object",
+      "properties": {
+        "ok": {
+          "type": "boolean"
+        },
+        "suppressing": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
     "PressGestureParams": {
       "type": "object",
       "properties": {
@@ -760,6 +789,26 @@
       },
       "required": [
         "level"
+      ],
+      "additionalProperties": true
+    },
+    "SilenceCapInfo": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "warnAfterSeconds": {
+          "type": "number"
+        },
+        "liftAfterSeconds": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "enabled",
+        "warnAfterSeconds",
+        "liftAfterSeconds"
       ],
       "additionalProperties": true
     },
@@ -1075,7 +1124,7 @@
     "ping": {
       "params": null,
       "result": {
-        "$ref": "#/$defs/AckResult"
+        "$ref": "#/$defs/PingResult"
       }
     },
     "echo": {

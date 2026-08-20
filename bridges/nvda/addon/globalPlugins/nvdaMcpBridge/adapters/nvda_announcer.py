@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import synthDriverHandler
 
-from ..domain.ports.announcer import Announcer
+from ..domain.ports.announcer import Announcer, SilenceNotice
 from .nvda_cue import cue_and_speak
 from .nvda_main_thread import run_on_main
 
@@ -31,6 +31,14 @@ _CUE_MS = 100
 #: Spacing between the two cue beeps (and before the speech), so both beeps are
 #: clearly heard before the hint is spoken.
 _CUE_GAP_MS = 160
+
+#: The silence cap's own pitch (spec 0032, chosen by the maintainer at the
+#: keyboard on 2026-08-19). An octave above askUser's 440 Hz and a fourth above
+#: announce's 660 Hz -- the highest of the three, so it reads as "attention"
+#: rather than as a hint or a question, and it is tellable from both BEFORE any
+#: word arrives. That is the whole point: this notice is the bridge speaking about
+#: the agent's silence, and it must not sound like the agent.
+_CAP_CUE_HZ = 880
 
 
 class NvdaAnnouncer(Announcer):
@@ -42,7 +50,34 @@ class NvdaAnnouncer(Announcer):
 	def announce(self, text: str) -> None:
 		run_on_main(lambda: cue_and_speak([text], hz=_CUE_HZ, ms=_CUE_MS, gap_ms=_CUE_GAP_MS))
 
+	def silence_notice(self, notice: SilenceNotice) -> None:
+		text = _SILENCE_NOTICES[notice]()
+		run_on_main(lambda: cue_and_speak([text], hz=_CAP_CUE_HZ, ms=_CUE_MS, gap_ms=_CUE_GAP_MS))
+
 	@staticmethod
 	def _read_name() -> str:
 		synth = synthDriverHandler.getSynth()
 		return synth.name if synth is not None else ""
+
+
+#: What each silence-cap notice SAYS, in the reader's own language. Callables
+#: rather than strings so translation happens when the notice is spoken, not when
+#: this module is imported -- NVDA installs `_` before add-ons load, but a language
+#: change mid-session would otherwise be frozen out.
+#:
+#: The wording names no number. The thresholds are configurable per machine, and a
+#: sentence promising "45 seconds" on a box configured otherwise would be worse
+#: than one that promises nothing.
+_SILENCE_NOTICES = {
+	# Translators: Spoken when a silent MCP session has told the human nothing for
+	# a while; speech will be restored shortly if that continues.
+	SilenceNotice.WARNING: lambda: _(
+		"The agent has not spoken to you for a while. Speech will be restored shortly."
+	),
+	# Translators: Spoken when the silence cap has ended speech suppression. The
+	# session itself continues.
+	SilenceNotice.LIFTED: lambda: _("Speech restored. The MCP session is still running."),
+	# Translators: Spoken when a session that the silence cap had un-muted goes
+	# quiet again.
+	SilenceNotice.RESUPPRESSED: lambda: _("Speech suppressed again."),
+}

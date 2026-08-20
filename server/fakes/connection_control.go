@@ -38,6 +38,9 @@ type FakeConnectionControl struct {
 	connectErr error
 	disconnErr error
 	verifyErr  error
+	// suppressing is what a successful Verify reports (spec 0032); nil means
+	// the bridge did not say, which is a third answer and not a default.
+	suppressing *bool
 
 	connects    []ConnectRequest
 	disconnects int
@@ -88,6 +91,14 @@ func (f *FakeConnectionControl) FailDisconnectWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.disconnErr = err
+}
+
+// ReportSuppressing makes a successful Verify report whether the reader is
+// withholding speech from its human right now (spec 0032).
+func (f *FakeConnectionControl) ReportSuppressing(suppressing bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.suppressing = &suppressing
 }
 
 // FailVerifyWith makes Verify report err -- the round trip finding a dead
@@ -172,16 +183,16 @@ func (f *FakeConnectionControl) Current() *ports.ReaderConnection {
 // other failure leaves the session standing, because a bridge that answered with
 // a refusal is still there (protocol.md §3). A fake that dropped the session on
 // every error would let a tool get away with treating a refusal as a death.
-func (f *FakeConnectionControl) Verify() error {
+func (f *FakeConnectionControl) Verify() (ports.PingReport, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.verifies++
 	if f.verifyErr == nil {
-		return nil
+		return ports.PingReport{Suppressing: f.suppressing}, nil
 	}
 	if errors.Is(f.verifyErr, ports.ErrConnectionLost) {
 		f.connection = nil
 		f.status = entities.ConnectionStatus{State: entities.Disconnected, Reason: f.verifyErr.Error()}
 	}
-	return f.verifyErr
+	return ports.PingReport{}, f.verifyErr
 }

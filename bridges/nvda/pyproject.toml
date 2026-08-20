@@ -124,6 +124,8 @@ ignore = [
 # And again: the silent source imports speech.commands and queueHandler at module
 # level, so both have to be in sys.modules before the import line runs.
 "tests/unit/adapters/test_silent_mode_keeps_speech_callbacks_alive.py" = ["E402"]
+# Its mirror module, same source and therefore the same stubbing.
+"tests/unit/adapters/test_nvda_silent_speech_source.py" = ["E402"]
 # And the continuous-read adapter, whose `speech.sayAll` stub must be in
 # sys.modules before it is imported.
 "tests/unit/adapters/test_continuous_read.py" = ["E402"]

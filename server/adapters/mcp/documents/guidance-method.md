@@ -118,6 +118,35 @@ when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
 
+## Say something to the human, or the room stays silent
+
+In a **silent** session the person at the reader hears nothing at all except what
+you deliberately say to them with `announce`. Not the words the reader would have
+spoken, not the window that just opened, not the key you pressed — nothing. From
+their chair, a stretch of you working is indistinguishable from their computer
+having died, and if they are blind they cannot look at the screen to check.
+
+So `connect_reader` tells you whether a human is expected at that machine, in its
+`silenceCap` field. **Read it, and act on it:**
+
+- **Where a human is expected**, `announce` before any stretch of work that does
+  not drive the reader — before a long analysis, before you go away to think,
+  before anything that will take more than a few seconds without a keypress. One
+  short sentence saying what you are doing is enough. It costs almost nothing, and
+  it is the only thing standing between that person and sitting in silence
+  wondering.
+- **Where the machine is unattended**, do not spend round trips narrating to an
+  empty room.
+
+A reader may enforce this rather than trusting you to remember: `silenceCap` says
+whether it does, and after how long. If you meet it, the reader warns its human and
+then restores their speech — you lose nothing, because your capture is unaffected
+and `get_speech` still returns everything, but you have stopped being the only
+thing they can hear. An agent that narrates never meets it at all.
+
+`status` reports `suppressing`, which is whether the reader is withholding speech
+right now, if you want to know where you stand.
+
 ## Not every action moves focus
 
 Most reader commands do not: report title, read the current line, read the whole

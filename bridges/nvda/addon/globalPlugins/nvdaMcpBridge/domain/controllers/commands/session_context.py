@@ -21,9 +21,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
+from ...ports.announcer import SilenceNotice
+
 if TYPE_CHECKING:
 	from .... import protocol
 	from ...entities.braille_buffer import BrailleBuffer
+	from ...entities.silence_cap import SilenceCap, SilenceCapPolicy
 	from ...entities.speech_buffer import SpeechBuffer
 	from ...entities.user_prompt import UserPrompt
 	from ...ports.adapter_factory import AdapterSet
@@ -49,6 +52,7 @@ class SessionContext:
 		user_prompter: UserPrompter,
 		gesture_resolver: GestureResolver,
 		teardown_requested: Callable[[], bool] | None = None,
+		silence_cap_policy: SilenceCapPolicy | None = None,
 	) -> None:
 		self.clock = clock
 		self.transcript = transcript
@@ -71,6 +75,15 @@ class SessionContext:
 		#: describes the reader rather than the session, so it never depends on
 		#: hello.
 		self.gesture_resolver = gesture_resolver
+		#: This machine's silence-cap setting (spec 0032), handed over by the
+		#: Session at construction because it is a property of the MACHINE rather
+		#: than of the session: hello reports it whatever mode was asked for, and
+		#: no command can change it.
+		self.silence_cap_policy: SilenceCapPolicy | None = silence_cap_policy
+		#: THIS session's live cap, installed by the Session when a silent session
+		#: establishes on a capped machine, and None otherwise -- in live mode
+		#: nothing is suppressed, so there is no silence to bound.
+		self.silence_cap: SilenceCap | None = None
 		# Installed by the hello handler; None before it runs.
 		self.speech: SpeechBuffer | None = None
 		self.braille: BrailleBuffer | None = None
@@ -82,6 +95,11 @@ class SessionContext:
 		#: (protocol.md §4). Empty until hello runs, and empty afterwards if the
 		#: server declared none.
 		self.persona: str = ""
+		#: The capture mode this session was established in, as hello received it.
+		#: Recorded because the Session must know it to decide whether a silence cap
+		#: applies at all (spec 0032): only a silent session suppresses anything.
+		#: None until hello runs.
+		self.mode: protocol.CaptureMode | None = None
 		#: At most one outstanding ask at a time.
 		self._outstanding_prompt: UserPrompt | None = None
 		#: The last 50 command windows: each is (command_id, start_pos,
@@ -196,11 +214,67 @@ class SessionContext:
 	# -- speech suppression helpers ------------------------------------------
 
 	def suspend_speech(self) -> None:
-		"""Suspend speech suppression (for the interaction window)."""
+		"""Suspend speech suppression (for the interaction window).
+
+		Also STOPS the silence cap's clock: the window suspends suppression for its
+		whole duration, so the human is hearing everything, and counting silence
+		through a stretch with no silence in it would fire the cap at the one
+		moment it is provably not needed (spec 0032 Part 2).
+		"""
 		if self.adapters is not None:
 			self.adapters.speech_source.suspend()
+		if self.silence_cap is not None:
+			self.silence_cap.paused(self.clock.monotonic())
 
 	def resume_speech(self) -> None:
-		"""Resume speech suppression after the window closes."""
+		"""Resume speech suppression after the window closes.
+
+		The speech source restores whichever REGISTERED state was in force, which
+		for a session the cap has already lifted is passing through rather than
+		suppression -- see the port. Getting that wrong would silently re-mute a
+		human the cap had just rescued, from the recovery path itself.
+		"""
 		if self.adapters is not None:
 			self.adapters.speech_source.resume()
+		if self.silence_cap is not None:
+			self.silence_cap.resumed(self.clock.monotonic())
+
+	def stop_suppressing(self) -> None:
+		"""Let speech through to the human while capture continues (the cap's lift)."""
+		if self.adapters is not None:
+			self.adapters.speech_source.stop_suppressing()
+
+	def resume_suppressing(self) -> None:
+		"""Go quiet again after a lift, on a fresh window."""
+		if self.adapters is not None:
+			self.adapters.speech_source.resume_suppressing()
+
+	def note_audible(self) -> None:
+		"""The human just heard their own machine: restart the silence cap's window.
+
+		Called by the two commands that produce sound the human hears through the
+		suppression -- ``announce`` and ``askUser`` -- AFTER the sound is emitted,
+		so the clock resets when the human was actually told rather than when the
+		bridge decided to tell them.
+
+		Nothing else may call this. Four hundred gestures in ninety seconds have
+		told the human nothing, and the clock is right to say so.
+
+		On a session the cap has already LIFTED, this is also the moment
+		suppression re-arms: the agent has narrated, the ordinary flow resumes, and
+		a fresh bounded window starts from zero, audibly marked. That is what keeps
+		exposure bounded across any number of re-arms. Not while a prompt window is
+		open, though -- re-registering the filter there would mute a human who has
+		been asked a question and is standing at the keyboard answering it.
+		"""
+		cap = self.silence_cap
+		if cap is None:
+			return
+		now = self.clock.monotonic()
+		if cap.lifted and not cap.is_paused:
+			self.resume_suppressing()
+			cap.resuppressed(now)
+			self.transcript.note("silence cap: suppression re-armed after an announcement")
+			self.announcer.silence_notice(SilenceNotice.RESUPPRESSED)
+			return
+		cap.heard(now)

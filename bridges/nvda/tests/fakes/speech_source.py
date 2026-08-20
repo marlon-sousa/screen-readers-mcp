@@ -23,13 +23,19 @@ if TYPE_CHECKING:
 class FakeSpeechSource(SpeechSource):
 	"""Records start/stop/suspend/resume and lets a test inject arbitrary speech."""
 
-	def __init__(self) -> None:
+	def __init__(self, *, suppressing: bool = True) -> None:
 		self.buffer: SpeechBuffer | None = None
 		self.log_position: Callable[[], int] = lambda: 0
 		self.started = 0
 		self.stopped = 0
 		self.suspended = 0
 		self.resumed = 0
+		#: The silence cap's third state (spec 0032). Defaults to True because the
+		#: fake stands in for a SILENT session unless a test says otherwise; the
+		#: factory sets it from the mode it was asked to build, as production does.
+		self.suppressing = suppressing
+		self.stopped_suppressing = 0
+		self.resumed_suppressing = 0
 		#: Set by a test to prove teardown's guard runs restore even when an
 		#: earlier teardown step (a source stop) raises.
 		self.fail_stop = False
@@ -49,6 +55,17 @@ class FakeSpeechSource(SpeechSource):
 
 	def resume(self) -> None:
 		self.resumed += 1
+
+	def stop_suppressing(self) -> None:
+		self.stopped_suppressing += 1
+		self.suppressing = False
+
+	def resume_suppressing(self) -> None:
+		self.resumed_suppressing += 1
+		self.suppressing = True
+
+	def is_suppressing(self) -> bool:
+		return self.suppressing
 
 	def emit(self, text: str, *, finished: bool = True) -> None:
 		"""Inject a spoken line (as a one-string speech sequence)."""

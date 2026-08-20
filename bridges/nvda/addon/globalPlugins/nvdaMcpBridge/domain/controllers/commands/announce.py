@@ -21,4 +21,8 @@ class AnnounceHandler(CommandHandler):
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		params = protocol.from_dict(protocol.AnnounceParams, request.params)
 		ctx.announcer.announce(params.text)
+		# AFTER the sound, never before: the silence cap measures how long the human
+		# has been unable to hear their machine, so its clock resets when they were
+		# actually told rather than when we decided to tell them (spec 0032).
+		ctx.note_audible()
 		return protocol.AckResult()
