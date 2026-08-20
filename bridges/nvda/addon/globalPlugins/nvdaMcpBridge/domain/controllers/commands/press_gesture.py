@@ -43,7 +43,7 @@ class PressGestureHandler(CommandHandler):
 		# about to happen to their machine rather than what just did (spec 0025
 		# Part 3.4). Whitespace is not an announcement.
 		if params.announce.strip():
-			ctx.announcer.announce(params.announce)
+			ctx.announce_to_human(params.announce)
 
 		start_index = buffer.next_index()
 		presses: list[protocol.GesturePress] = []

@@ -1030,6 +1030,41 @@ def test_an_agent_that_narrates_never_hears_the_cap() -> None:
 	assert len(run.announcer.announced) == 11
 
 
+def test_an_announcement_carried_on_a_command_resets_the_clock_too() -> None:
+	# spec 0025 gave pressGesture and typeText an announcement of their own, spoken
+	# through the same synth line as `announce` -- so the human HEARS it, and the
+	# clock has to say so. It did not: on 2026-08-20 a session narrating every few
+	# seconds through this field was warned at 45 s and un-muted at 90 s anyway,
+	# with nvda.log showing the 660 Hz cue pairs the cap had ignored.
+	run = quiet_session(
+		seconds=60.0,
+		interject={
+			t: command(
+				"pressGesture",
+				200 + int(t),
+				gestures=["downArrow"],
+				announce=f"pressing down arrow, {t:g}s",
+			)
+			for t in (5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0)
+		},
+	)
+	assert run.announcer.notices == []
+	assert len(run.announcer.announced) == 11
+
+
+def test_an_announcement_carried_on_typed_text_resets_the_clock_too() -> None:
+	# The same field on the other mutating command, which shares nothing with
+	# pressGesture but the port it speaks through.
+	run = quiet_session(
+		seconds=60.0,
+		interject={
+			t: command("typeText", 300 + int(t), text="x", announce=f"typing, {t:g}s")
+			for t in (5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0)
+		},
+	)
+	assert run.announcer.notices == []
+
+
 def test_gestures_and_reads_reset_nothing() -> None:
 	# Four hundred keys in ninety seconds have told the human NOTHING, and the
 	# clock is right to say so. `ping` is the same: it proves liveness, not that

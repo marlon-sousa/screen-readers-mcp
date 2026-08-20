@@ -42,5 +42,5 @@ class SetLogLevelHandler(CommandHandler):
 		previous = ctx.log_capture.current_level
 		ctx.log_capture.set_level(params.level)
 		# Say it aloud: the tester is the one whose machine just slowed down.
-		ctx.announcer.announce(f"Log level {params.level.value}")
+		ctx.announce_to_human(f"Log level {params.level.value}")
 		return protocol.LogLevelResult(level=params.level, previous=previous)
