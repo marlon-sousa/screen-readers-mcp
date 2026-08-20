@@ -1183,8 +1183,8 @@ rather than before it.
     syntax in the text an agent reads — rather than a spelling to correct, and
     A.7 adds the test that enforces it. **What remains of 11.24 is (b) alone.**
     Spec: none yet for (b).
-11.25. **E, the silence cap did not hear the announcements it was built to
-    notice** (lane 1, bridge; small). Found live on 2026-08-20, the day after
+11.25. **Done (PR #68, 2026-08-20)** — E, the silence cap did not hear the
+    announcements it was built to notice (lane 1, bridge; small). Found live on 2026-08-20, the day after
     11.10 merged, in a silent session driving acter. The session narrated
     constantly and was warned at 45 s and un-muted at 90 s anyway.
     `nvda.log` dates every cue tone, so the run is unambiguous: announce's 660 Hz
