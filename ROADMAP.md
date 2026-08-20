@@ -1183,6 +1183,36 @@ rather than before it.
     syntax in the text an agent reads — rather than a spelling to correct, and
     A.7 adds the test that enforces it. **What remains of 11.24 is (b) alone.**
     Spec: none yet for (b).
+11.25. **E, the silence cap did not hear the announcements it was built to
+    notice** (lane 1, bridge; small). Found live on 2026-08-20, the day after
+    11.10 merged, in a silent session driving acter. The session narrated
+    constantly and was warned at 45 s and un-muted at 90 s anyway.
+    `nvda.log` dates every cue tone, so the run is unambiguous: announce's 660 Hz
+    pairs at 09:56:19, :27, :37, :42, :59 and 09:57:07, the cap's 880 Hz pair at
+    09:56:34 and again at 09:57:19. The clock had been reset exactly once, by a
+    standalone `announce` at 09:55:49, and the warning landed 45.0 s after it to
+    the tenth of a second.
+    **A gap between two specs rather than a fault inside either.** Spec 0032
+    Part 2 defines the resetting set as "exactly the set of things that get past
+    the suppression" and names three: the start cue, `announce`, `askUser`. By
+    then 0025 had added a fourth — the announcement carried on the command that
+    acts — and `setLogLevel` a fifth. All of them reach the synth through
+    `Announcer.announce`, so the human hears them; none of them told the cap. The
+    definition was right and only two of its five members were wired up.
+    **The harm is worse than a bound that fails to bind.** An agent that narrates
+    the way the guidance tells it to — say what you are about to do, on the
+    command that does it — was the one the cap fired on, while the notice it
+    heard ("speech will be restored shortly") contradicted the narration it was
+    hearing at the same time. A safeguard that misfires on good behaviour teaches
+    the human to distrust it.
+    **Remedy: make the definition mechanical rather than remembered.**
+    `SessionContext.announce_to_human` speaks and notes the reset in ONE call,
+    and every announcement site goes through it. Behavioural tests cannot see the
+    difference — a handler that spoke past the funnel would pass all of them — so
+    an AST check over the commands package fails the build if one ever does
+    again, in the shape of `test_buffer_purity.py`.
+    Spec: none — 0032 Part 2 already decided this; the code did not implement what
+    it decided.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

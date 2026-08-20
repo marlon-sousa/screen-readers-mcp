@@ -40,7 +40,7 @@ class TypeTextHandler(CommandHandler):
 		buffer = ctx.speech_buffer
 
 		if params.announce.strip():
-			ctx.announcer.announce(params.announce)
+			ctx.announce_to_human(params.announce)
 
 		start_index = buffer.next_index()
 		# Logged BEFORE injection, mirroring PressGestureHandler: the length is

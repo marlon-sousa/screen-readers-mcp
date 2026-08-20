@@ -249,6 +249,33 @@ class SessionContext:
 		if self.adapters is not None:
 			self.adapters.speech_source.resume_suppressing()
 
+	def announce_to_human(self, text: str) -> None:
+		"""Speak *text* to the human through the synth line, and note that they heard it.
+
+		THE ONE WAY a command may make sound. It exists because the two halves were
+		once separate and drifted apart: spec 0032 defined the set of things that
+		reset the silence cap as "exactly the set of things that get past the
+		suppression", and then only ``announce`` and ``askUser`` reset it -- while
+		spec 0025's inline announcement on ``pressGesture``/``typeText``, and
+		``setLogLevel``'s confirmation, went out through the same synth and told the
+		clock nothing. On 2026-08-20 a session that narrated every few seconds was
+		warned at 45 s and un-muted at 90 s anyway, which is the exact failure the
+		cap exists to prevent, produced by the cap itself.
+
+		So the definition is mechanical here rather than a rule each handler must
+		remember: speaking and noting are one call, and a handler that reaches past
+		it for ``self.announcer`` is the thing to catch in review.
+
+		``Announcer.silence_notice`` is deliberately NOT routed through this. The
+		cap's own warning is sound the human hears, but it must not restart the
+		window it is warning about -- the lift 45 s later is the guarantee, and a
+		warning that reset the clock would postpone it forever.
+		"""
+		self.announcer.announce(text)
+		# AFTER the sound, never before: the clock resets when the human was
+		# actually told, not when the bridge decided to tell them.
+		self.note_audible()
+
 	def note_audible(self) -> None:
 		"""The human just heard their own machine: restart the silence cap's window.
 
