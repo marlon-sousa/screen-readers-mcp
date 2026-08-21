@@ -196,6 +196,11 @@ type connectedSession struct {
 	// The reader's own guidance, both as a pointer and in full (spec 0022 A.5).
 	ReaderGuidance     string `json:"readerGuidance"`
 	ReaderGuidanceText string `json:"readerGuidanceText"`
+
+	// What this machine does about a silence, and who is at it (specs 0032,
+	// 0035) -- one sentence composed from two facts the real Python bridge
+	// declared independently.
+	SilenceCap string `json:"silenceCap"`
 }
 
 // connect performs the handshake and checks that every field the real bridge
@@ -262,6 +267,23 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	// The pointer survives beside the payload, for a re-read mid-session.
 	if session.ReaderGuidance == "" {
 		t.Error("readerGuidance is empty; the resource must still be named")
+	}
+
+	// ATTENDANCE CROSSED AS ITSELF (spec 0035). The harness declares the one
+	// pair that tells the two implementations apart: a human IS at that machine
+	// and the machine bounds NOTHING. A server that reconstructed attendance by
+	// inverting `silenceCap.enabled` -- which is what this repo did before entry
+	// 11.27, and what any bridge-agnostic client might still be tempted to do --
+	// would announce this session as an empty room and tell a well-behaved agent
+	// to stop narrating. This is the only tier that can catch it: the fake bridge
+	// encodes with the very binding the server decodes with, so it cannot
+	// disagree about an optional boolean, and the real Python one can.
+	if strings.Contains(session.SilenceCap, "UNATTENDED") {
+		t.Errorf("the real bridge declared a human and the server reported an empty room:\n%s",
+			session.SilenceCap)
+	}
+	if !strings.Contains(session.SilenceCap, "HUMAN IS EXPECTED") {
+		t.Errorf("declared attendance did not survive the crossing:\n%s", session.SilenceCap)
 	}
 
 	// `guidance` joined in entry 11.20 (spec 0029). It is the only member here

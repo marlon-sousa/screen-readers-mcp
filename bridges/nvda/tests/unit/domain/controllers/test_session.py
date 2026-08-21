@@ -106,6 +106,7 @@ def run_session(
 	heartbeat_timeout: float = 30.0,
 	inactivity_timeout: float = 120.0,
 	silence_cap: SilenceCapPolicy | None = None,
+	attended: bool = True,
 	start: bool = True,
 ) -> Run:
 	clock = clock or FakeClock()
@@ -123,6 +124,7 @@ def run_session(
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
 		silence_cap=silence_cap if silence_cap is not None else ATTENDED_DEFAULT,
+		attended=attended,
 	)
 	session = Session(
 		channel,
@@ -1146,3 +1148,30 @@ def test_hello_reports_an_unattended_machine_honestly() -> None:
 	# trips narrating to an empty room.
 	run = run_session([hello("live")], silence_cap=SilenceCapPolicy(enabled=False))
 	assert _result(run.responses()[0])["silenceCap"]["enabled"] is False
+
+
+def test_hello_declares_whether_a_human_is_at_this_machine() -> None:
+	# Spec 0035. Sent as its OWN field, so a server never has to reconstruct it
+	# by inverting the cap. A machine fact, so it goes out in live mode too.
+	run = run_session([hello("live")], attended=True)
+	assert _result(run.responses()[0])["attended"] is True
+
+
+def test_hello_declares_an_empty_room_as_itself() -> None:
+	run = run_session([hello("silent")], attended=False)
+	assert _result(run.responses()[0])["attended"] is False
+
+
+def test_attendance_and_the_cap_are_two_facts_and_may_disagree() -> None:
+	# The pair the old wire could not carry, and the entire reason 11.27 exists:
+	# somebody IS at this machine and it bounds nothing. Under a wire that only
+	# carried `enabled`, this person's session would be announced to the agent as
+	# an empty room and a well-behaved agent would stop narrating to them.
+	run = run_session(
+		[hello("silent")],
+		silence_cap=SilenceCapPolicy(enabled=False),
+		attended=True,
+	)
+	result = _result(run.responses()[0])
+	assert result["attended"] is True
+	assert result["silenceCap"]["enabled"] is False

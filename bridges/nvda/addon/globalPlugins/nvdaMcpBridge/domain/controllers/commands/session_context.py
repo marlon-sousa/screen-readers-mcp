@@ -53,6 +53,7 @@ class SessionContext:
 		gesture_resolver: GestureResolver,
 		teardown_requested: Callable[[], bool] | None = None,
 		silence_cap_policy: SilenceCapPolicy | None = None,
+		attended: bool = True,
 	) -> None:
 		self.clock = clock
 		self.transcript = transcript
@@ -80,6 +81,14 @@ class SessionContext:
 		#: than of the session: hello reports it whatever mode was asked for, and
 		#: no command can change it.
 		self.silence_cap_policy: SilenceCapPolicy | None = silence_cap_policy
+		#: Whether a human is expected at this machine (spec 0035), handed over by
+		#: the Session for the same reason the policy above is: a property of the
+		#: MACHINE, reported by hello whatever mode was asked for, and changed by
+		#: no command. Kept BESIDE the policy and never inside it -- the cap is
+		#: derived from this fact on the NVDA bridge, and the point of the entry is
+		#: that the far end must not reconstruct the fact by inverting the
+		#: derivation.
+		self.attended: bool = attended
 		#: THIS session's live cap, installed by the Session when a silent session
 		#: establishes on a capped machine, and None otherwise -- in live mode
 		#: nothing is suppressed, so there is no silence to bound.

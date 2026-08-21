@@ -513,6 +513,16 @@
             }
           ]
         },
+        "attended": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "normalized": {
           "type": "array",
           "items": {

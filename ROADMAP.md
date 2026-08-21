@@ -189,9 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23, 11.27 —
-**five entries** (11.26 and 11.27 were opened by the 11.11/11.17 live run, and
-11.26 is Done with this PR) (11.22-11.24 opened by the second external run,
+11.13, 11.16, 11.18, 11.23 —
+**four entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+and both are now Done: 11.26 in PR #71 and **11.27 with this PR**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -263,10 +263,10 @@ reading 11.25, so the next session was told a number that was already spent, and
 11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, taken
 on a branch before it merged — which is precisely the case the paragraph above
 says to check for; it merged in PR #70. 11.26–11.27 and specs 0034–0035 were
-taken on 2026-08-21 by the two findings of that PR's live run. **11.27 and spec
-0035 are taken on the branch `11.27-attendance-is-declared` and are NOT on
-main** — which is that same case again, so do not read 0035's absence from
-`specs/` as the number being free.
+taken on 2026-08-21 by the two findings of that PR's live run. 11.27 and spec 0035 spent a day
+in exactly that state — drafted on a branch, absent from `specs/` on main — and
+**both land with this PR**, so the warning stands as a worked example rather than
+as a live hazard.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 

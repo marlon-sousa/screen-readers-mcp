@@ -600,6 +600,32 @@ class HelloResult:
 	#: an agent must fetch is a fact it does not have, and this reply was already
 	#: being sent.
 	silenceCap: SilenceCapInfo | None = None
+	#: Whether A HUMAN IS EXPECTED AT THE READER'S MACHINE (spec 0035). The fact
+	#: the machine's owner DECLARED, carried as itself rather than reconstructed
+	#: at the far end from a policy derived from it.
+	#:
+	#: ``None`` is a third answer and not a default: this bridge does not say,
+	#: which is an older build rather than a claim either way. A consumer that
+	#: receives it may fall back on inferring attendance from ``silenceCap``, and
+	#: a consumer that receives the field MUST NOT -- see protocol.md section 3.
+	#:
+	#: DELIBERATELY NOT A MEMBER OF ``SilenceCapInfo``, which is one line and the
+	#: wrong shape. ``silenceCap`` answers *does this machine bound the silence,
+	#: and with what thresholds*; attendance is the machine fact today's policy
+	#: happens to be derived FROM, and the two must be able to disagree -- a
+	#: bridge with no cap machinery at all still knows whether someone is sitting
+	#: there. Nesting the cause inside the effect would teach the next reader they
+	#: are one thing.
+	#:
+	#: The asymmetry that earns it the space: wrong towards attended costs an
+	#: agent round trips narrating to an empty room; wrong towards unattended
+	#: tells a well-behaved agent to stop narrating to a blind person who is
+	#: there, which is the harm spec 0032 exists to prevent.
+	#:
+	#: READ-ONLY, for 0032's reason: there is no command that sets it. An agent
+	#: that could declare the room empty could switch off its own obligation to
+	#: narrate.
+	attended: bool | None = None
 	#: Every setting this session moved between output channels, and why (spec
 	#: 0024 Part 3.2). EMPTY means the session is driving the user's own
 	#: configuration untouched, which is the answer an agent needs before it

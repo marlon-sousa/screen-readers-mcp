@@ -168,6 +168,18 @@ class HelloHandler(CommandHandler):
 				text=text,
 			),
 			silenceCap=silence_cap,
+			# The machine's OTHER fact, sent as itself (spec 0035). It is where the
+			# policy above comes from, so a server could invert `enabled` back and
+			# get today's answer -- which is exactly what this field stops it
+			# needing to do. The inversion is only correct while `unattended` is the
+			# sole input to `enabled`, and getting it wrong has a direction: wrong
+			# towards unattended tells a well-behaved agent to stop narrating to a
+			# blind person who is sitting right there.
+			#
+			# Always sent by this bridge, which always knows its own setting;
+			# ABSENT is for a bridge that does not, and is the server's cue to fall
+			# back on the inference.
+			attended=ctx.attended,
 			normalized=normalized,
 		)
 

@@ -155,11 +155,36 @@ Fault handling, all of which keep the session alive once established (§3):
      Omitted means this bridge publishes no guidance of its own — a supported
      configuration, not a failure. A bridge that does not announce the `guidance`
      capability (§4) MUST omit it.
+   - `attended` (boolean, optional) — whether **a human is expected at the
+     reader's machine**. The fact the machine's owner declared, carried as
+     itself. `true` means someone is there and an agent should narrate; `false`
+     means nobody is expected and round trips spent narrating are wasted;
+     **omitted is a third answer** — this bridge does not say, which is an older
+     build rather than a claim either way.
+
+     A sibling of `silenceCap` and deliberately **not a member of it**:
+     `silenceCap` answers whether the machine bounds the silence, and attendance
+     is the fact that answer is derived from on the reader that has a cap at all.
+     The two must be able to disagree — a bridge with no cap machinery still
+     knows whether someone is sitting there, and today it must choose between
+     claiming a cap it does not run and telling every session the room is empty.
+
+     **A server that receives this field MUST NOT infer attendance from
+     `silenceCap` instead.** One that does not receive it MAY infer it —
+     `enabled: false` reading as unattended — which is how a bridge predating
+     this field keeps working, and is a **compatibility path rather than the
+     truth**. See §6.1.
+
+     Read-only, like `silenceCap`: no command sets it, for the reason in §6.1.
    - `silenceCap` (object, optional) — whether the reader's **machine** bounds
      how long a `silent` session may leave its human unable to hear, and with
      what thresholds: `{ enabled, warnAfterSeconds, liftAfterSeconds }`. See
      §6.1. Omitted from a build predating the field, which a server MUST report
      as *unknown* rather than as either answer.
+
+     A bridge that sends both MUST derive them from one source rather than one
+     from the other; the NVDA bridge computes each from its `unattended` setting
+     at the same point.
    - `normalized` (array, optional) — every setting this session actually moved
      between output channels, as `{ keyPath: [string], previous, current, why }`.
      **Empty or omitted means the session is driving the reader's own
@@ -561,6 +586,24 @@ Four rules bind a bridge that implements this:
 A bridge that omits `silenceCap` from `HelloResult` makes no claim either way, and
 a server MUST NOT report that as "no cap": the honest reading is that this bridge
 does not say, which for a well-behaved agent means narrating anyway.
+
+### 6.2 Attendance is declared, not derived
+
+`enabled: false` means **this machine does not bound its silences**. It does not
+mean the room is empty, and a server MUST NOT read it as if it did when
+`attended` (§3) is present.
+
+The two coincide on the NVDA bridge today, where one setting feeds both. They
+come apart on any reader whose cap can be off for a reason of its own: a user who
+finds the lift disruptive and turns the cap off while sitting right there, or a
+bridge with no cap machinery at all. **The direction of the error is why this is
+specified rather than left to inference.** Reading an attended machine as
+unattended tells a well-behaved agent to stop narrating to a person who cannot
+see the screen — the same harm §6.1 exists to prevent, reached from the other
+end. Reading it the other way costs round trips.
+
+Attendance is **read-only for the same reason the cap is**: an agent that could
+declare the room empty could switch off its own obligation to narrate.
 
 ## 7. Index semantics
 

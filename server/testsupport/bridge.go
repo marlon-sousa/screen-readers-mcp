@@ -55,6 +55,13 @@ type BridgeOptions struct {
 	// say" rather than as "uncapped".
 	SilenceCap *wire.SilenceCapInfo
 
+	// Attended is what `hello` DECLARES about whether a human is at this
+	// machine (spec 0035). Nil declares no field at all, the way a bridge built
+	// before the field does -- which is the server's cue to fall back on
+	// inferring attendance from SilenceCap above, and the only way to exercise
+	// that compatibility path.
+	Attended *bool
+
 	// Suppressing is what `ping` reports about speech right now. Nil says
 	// nothing, again like an older bridge.
 	Suppressing *bool
@@ -287,6 +294,7 @@ func (b *FakeBridge) helloResult() wire.HelloResult {
 		Synth:           b.opts.Synth,
 		LogPath:         b.opts.LogPath,
 		SilenceCap:      b.opts.SilenceCap,
+		Attended:        b.opts.Attended,
 	}
 	// The guidance document rides back in the handshake (spec 0022 A.5), as
 	// the real bridge does -- and only when this bridge announced `guidance`,
