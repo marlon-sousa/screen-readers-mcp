@@ -260,6 +260,7 @@ type HelloResult struct {
 	BridgeVersion   *string             `json:"bridgeVersion,omitempty"`
 	Guidance        *GetGuidanceResult  `json:"guidance,omitempty"`
 	SilenceCap      *SilenceCapInfo     `json:"silenceCap,omitempty"`
+	Attended        *bool               `json:"attended,omitempty"`
 	Normalized      []NormalizedSetting `json:"normalized,omitempty"`
 }
 

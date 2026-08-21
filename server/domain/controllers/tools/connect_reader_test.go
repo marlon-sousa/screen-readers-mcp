@@ -297,6 +297,31 @@ func TestConnectStatesTheMachinesSilenceCap(t *testing.T) {
 	}
 }
 
+// Spec 0035, end to end through the tool: the session's DECLARED attendance is
+// what reaches the agent, not an inference from the cap. The case chosen is the
+// one the old wire could not express -- a human at a machine that bounds
+// nothing -- because it is the only one where the two routes disagree, and so
+// the only one that proves which route ran.
+func TestConnectReportsDeclaredAttendanceRatherThanInferringIt(t *testing.T) {
+	call := testsupport.NewToolCall(&tools.ConnectReader{})
+	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
+	built.Connection.Session.SilenceCap = &entities.SilenceCap{
+		Enabled: false, WarnAfter: 45, LiftAfter: 90,
+	}
+	present := true
+	built.Connection.Session.Attended = &present
+	call.Control.SetConnection(built.Connection)
+
+	sentence, _ := connectAnswer(t, call)["silenceCap"].(string)
+
+	if strings.Contains(sentence, "UNATTENDED") {
+		t.Errorf("the cap was inverted back into an empty room: %q", sentence)
+	}
+	if !strings.Contains(sentence, "HUMAN IS EXPECTED") {
+		t.Errorf("a declared human never reached the agent: %q", sentence)
+	}
+}
+
 func TestConnectAlwaysSaysSomethingAboutSilence(t *testing.T) {
 	// Including for a bridge that sent no field at all. An absent answer would
 	// read as "nothing to worry about", which is the one thing it does not mean.

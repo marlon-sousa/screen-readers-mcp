@@ -239,6 +239,62 @@ func TestTheHandshakeCarriesTheSilenceCap(t *testing.T) {
 	}
 }
 
+// -- attendance (spec 0035) --------------------------------------------------
+
+// The declared fact survives the wire AS ITSELF. The cap says the machine bounds
+// nothing while the bridge says somebody is there -- a pair the old wire could
+// not carry, so a session that shows both proves the field travelled rather than
+// being reconstructed from its neighbour.
+func TestTheHandshakeCarriesDeclaredAttendance(t *testing.T) {
+	present := true
+	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+		SilenceCap: &wire.SilenceCapInfo{
+			Enabled: false, WarnAfterSeconds: 45, LiftAfterSeconds: 90,
+		},
+		Attended: &present,
+	})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	got := connection.Session.Attended
+	if got == nil {
+		t.Fatal("attendance did not survive the handshake")
+	}
+	if !*got {
+		t.Error("a declared human arrived as an empty room")
+	}
+	if connection.Session.SilenceCap.Enabled {
+		t.Error("the cap was rewritten to agree with attendance; they are two facts")
+	}
+}
+
+func TestABridgeThatDeclaresNoAttendanceLeavesItNil(t *testing.T) {
+	// Nil is the third answer here too, and it is the ONLY thing that lets the
+	// server tell an older bridge (infer from the cap) from a current one that
+	// says the room is empty. Defaulting it either way would silently discard
+	// that distinction.
+	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
+		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+		SilenceCap: &wire.SilenceCapInfo{
+			Enabled: true, WarnAfterSeconds: 45, LiftAfterSeconds: 90,
+		},
+	})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+
+	if connection.Session.Attended != nil {
+		t.Errorf("attended = %v, want nil for a bridge that did not declare",
+			*connection.Session.Attended)
+	}
+}
+
 func TestABridgeThatSendsNoCapLeavesItNil(t *testing.T) {
 	// Nil is the third answer -- "this bridge did not say" -- and the server
 	// must not turn it into "uncapped", which would read as permission to go

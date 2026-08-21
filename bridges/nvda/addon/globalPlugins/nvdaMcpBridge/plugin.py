@@ -115,8 +115,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			# the control dialog takes effect on the NEXT session instead of at the
 			# next NVDA restart. It is three ini reads against a session that is
 			# about to do real work.
+			# Read ONCE and used twice, side by side. Whether a human is at this
+			# machine and whether the machine caps its silences are two facts, and
+			# spec 0035 is about them travelling as two: the cap policy derives
+			# from this setting today, and `attended` must not be reconstructed at
+			# the far end by inverting the derivation back. Both come off the same
+			# local, so nothing downstream can drift them apart.
+			unattended = self._config.get_unattended()
 			silence_cap = SilenceCapPolicy.from_settings(
-				unattended=self._config.get_unattended(),
+				unattended=unattended,
 				warn_after=self._config.get_silence_warn_seconds(),
 				lift_after=self._config.get_silence_lift_seconds(),
 			)
@@ -132,6 +139,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				gesture_resolver,
 				bridge_version=bridge_version,
 				silence_cap=silence_cap,
+				attended=not unattended,
 			)
 
 		self._server = BridgeServer(listener, make_session, event_bus=self._event_bus)

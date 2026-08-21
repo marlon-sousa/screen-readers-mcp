@@ -86,6 +86,13 @@ class SessionConfig:
 	heartbeat_timeout: float = 30.0
 	inactivity_timeout: float = 120.0
 	silence_cap: SilenceCapPolicy = ATTENDED_DEFAULT
+	#: Whether a HUMAN IS EXPECTED at this machine (spec 0035). A machine fact like
+	#: the cap above and read from the same setting at the same moment, but its own
+	#: field rather than something read back out of the policy: the cap answers
+	#: whether silences are bounded, and a reader can bound them for reasons of its
+	#: own or not bound them at all while somebody is sitting right there. Defaults
+	#: ATTENDED, the same safe direction the cap defaults in.
+	attended: bool = True
 
 
 class _State(enum.Enum):
@@ -129,6 +136,7 @@ class Session:
 			gesture_resolver,
 			self._teardown_was_requested,
 			config.silence_cap,
+			config.attended,
 		)
 		self._state = _State.PRE_HELLO
 

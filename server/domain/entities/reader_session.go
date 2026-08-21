@@ -80,6 +80,28 @@ type ReaderSession struct {
 	// asked for. Nothing in this server can change it.
 	SilenceCap *SilenceCap
 
+	// Attended is whether A HUMAN IS EXPECTED AT THE READER'S MACHINE (spec
+	// 0035), as declared at `hello`.
+	//
+	// A POINTER, because absent is a third answer: this bridge does not say,
+	// which is an older build rather than a claim either way. A session that
+	// carries nil falls back on inferring attendance from SilenceCap, which is
+	// a compatibility path rather than the truth -- see SilenceCap.Sentence.
+	//
+	// SEPARATE FROM SilenceCap AND NOT INSIDE IT, which is the whole of the
+	// entry. The cap answers whether this machine bounds its silences; this
+	// answers whether anyone is there to be kept from hearing. They coincide on
+	// today's NVDA bridge, where one setting feeds both, and they come apart on
+	// any reader whose cap can be off for a reason of its own -- a user who
+	// finds the lift disruptive and switches it off while sitting right there,
+	// or a bridge with no cap machinery at all, which today must either claim a
+	// cap it does not run or have every session told the room is empty.
+	//
+	// Fixed for the session's lifetime, like Mode and SilenceCap, and read-only
+	// for SilenceCap's reason: an agent that could declare the room empty could
+	// switch off its own obligation to narrate.
+	Attended *bool
+
 	// Normalized is every reader setting this SESSION moved from one output
 	// channel to another at `hello` (spec 0024) -- on NVDA, turning the
 	// browse/focus earcon into spoken words so a capture that reads only

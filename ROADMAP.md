@@ -189,9 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23, 11.27 —
-**five entries** (11.26 and 11.27 were opened by the 11.11/11.17 live run, and
-11.26 is Done with this PR) (11.22-11.24 opened by the second external run,
+11.13, 11.16, 11.18, 11.23 —
+**four entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+and both are now Done: 11.26 in PR #71 and **11.27 with this PR**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -263,10 +263,10 @@ reading 11.25, so the next session was told a number that was already spent, and
 11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, taken
 on a branch before it merged — which is precisely the case the paragraph above
 says to check for; it merged in PR #70. 11.26–11.27 and specs 0034–0035 were
-taken on 2026-08-21 by the two findings of that PR's live run. **11.27 and spec
-0035 are taken on the branch `11.27-attendance-is-declared` and are NOT on
-main** — which is that same case again, so do not read 0035's absence from
-`specs/` as the number being free.
+taken on 2026-08-21 by the two findings of that PR's live run. 11.27 and spec 0035 spent a day
+in exactly that state — drafted on a branch, absent from `specs/` on main — and
+**both land with this PR**, so the warning stands as a worked example rather than
+as a live hazard.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1355,7 +1355,7 @@ rather than before it.
     Spec: [0034-the-schema-the-client-holds.md](specs/0034-the-schema-the-client-holds.md)
     (agreed 2026-08-21, amended in place on agreement — the amendments are marked
     and every one of them makes the spec smaller).
-11.27. **E, attendance is declared, not derived** (both lanes; small). From a
+11.27. **Done (PR #72, 2026-08-21)** — E, attendance is declared, not derived (both lanes; small). From a
     question asked during the same run — *is the agent warned whether the machine
     is unattended?* — whose answer is **yes, already** (spec 0032 ships it at
     connect in a required field, in all three states). Finding out WHY produced
@@ -1380,12 +1380,39 @@ rather than before it.
     older bridge. Not inside `SilenceCapInfo`: nesting the cause in the effect is
     the belief being corrected. Read-only, for 0032's reason, and no new
     capability, following 0033's precedent.
-    Spec: **0035, drafted 2026-08-21, not agreed, and NOT ON MAIN.** It lives on
-    the branch `11.27-attendance-is-declared`, because AGENTS.md says a spec
-    merges with the PR that implements it rather than landing on main separately
-    — and 11.26 was implemented first, so the branch the two were drafted on
-    became 11.26's. The entry stays on the board because the board is where an
-    open finding belongs; only the spec file waits.
+    Spec: [0035-attendance-is-declared-not-derived.md](specs/0035-attendance-is-declared-not-derived.md)
+    (drafted 2026-08-21, **agreed the same day**, and landing with this PR — it
+    had spent a day on a branch, because AGENTS.md says a spec merges with the PR
+    that implements it and 11.26 was implemented first, so the branch the two were
+    drafted on became 11.26's).
+    All three of its open questions closed on agreement: **`attended`** on the wire
+    rather than `unattended` (a positive assertion makes a forgotten field arrive
+    as *absent* rather than as an accidental empty room); **connect only**, since
+    attendance is fixed for the session like mode and persona; and the cap's
+    `enabled` **stays derived** from the one setting, because splitting it is a
+    second checkbox in the control dialog and that is a config decision for the
+    human at the reader.
+    Two amendments rode the implementation, both in the spec's own layout table.
+    The negation moved to **`plugin.py`** rather than being carried out of the cap
+    entity — reading `unattended` once into a local and using it twice, side by
+    side, instead of putting a fact inside a structure named for something else,
+    which is the shape the entry exists to reject. And the value has to cross four
+    hops, not two, so `wiring.py`, `session.py` and `session_context.py` joined the
+    table.
+    `SilenceCap.Sentence` now **takes attendance as an argument**, so a caller
+    cannot render the sentence without having considered the fact; the compiler
+    found every call site. The five-row table is pinned in unit tests, including
+    the row that could not be expressed before — **attended but uncapped**.
+    The conformance tier declares the one pair that discriminates (a human present
+    at a machine that bounds nothing) and was **verified non-vacuous**: flipping
+    the harness's declaration fails it. An agreeing pair would have passed under
+    either implementation.
+    **What the live run added, and it is the half no automated tier reaches**:
+    `attended = not unattended` lives in `plugin.py`, which imports NVDA and so is
+    exercised by nothing headless. Checked against NVDA 2026.1.1 through the
+    control dialog's own checkbox, in both directions, and the compatibility path
+    was checked against a **genuinely older bridge** — the pre-0035 build still
+    installed at the start of the run, whose `HelloResult` has no such field.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

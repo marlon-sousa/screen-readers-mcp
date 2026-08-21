@@ -76,7 +76,17 @@ from nvdaMcpBridge.adapters.ports.listener import Listener  # noqa: E402
 from nvdaMcpBridge.adapters.ports.transport import Transport  # noqa: E402
 from nvdaMcpBridge.adapters.tcp_listener import TcpListener  # noqa: E402
 from nvdaMcpBridge.domain.controllers.session import Session  # noqa: E402
+from nvdaMcpBridge.domain.entities.silence_cap import SilenceCapPolicy  # noqa: E402
 from nvdaMcpBridge.wiring import build_session  # noqa: E402
+
+#: This harness declares a machine WITH SOMEBODY AT IT that bounds NOTHING (spec
+#: 0035). The pair is deliberate and it is the point of exercising the field
+#: here: it is the one combination the two facts cannot both be recovered from,
+#: so a server that reconstructed attendance by inverting ``enabled`` would
+#: report this session as an empty room and the scenario beside this file would
+#: catch it. An agreeing pair would pass under either implementation and prove
+#: nothing.
+CONFORMANCE_CAP = SilenceCapPolicy(enabled=False)
 
 #: The reader version this harness announces. Not a real NVDA version, and
 #: deliberately recognisable: an assertion that matched it by accident against a
@@ -140,6 +150,8 @@ def _session_factory(logs_dir: Path) -> SessionFactory:
 			FakeLogCapture(),
 			FakeUserPrompter(),
 			FakeGestureResolver(),
+			silence_cap=CONFORMANCE_CAP,
+			attended=True,
 		)
 
 	return build

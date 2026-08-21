@@ -250,7 +250,13 @@ type connectResult struct {
 	// sees odd behaviour can check this before blaming the code.
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
 	// SilenceCap is what this MACHINE does about a silence, in one sentence
-	// (spec 0032).
+	// (spec 0032) -- including whether anyone is at it to be kept from hearing,
+	// which the bridge declares in its own right (spec 0035).
+	//
+	// ONE SENTENCE AND NOT TWO FIELDS, even though it is now composed from two
+	// facts. The agent's job did not change and neither should its reading:
+	// what changed is that the sentence is true for reasons that will still hold
+	// when a second bridge exists.
 	//
 	// Here for the reason `stance` and `readerGuidanceText` are here: connect is
 	// the one moment an agent is guaranteed to be reading, and this is the
@@ -356,10 +362,12 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Synth:              session.Synth,
 		LogPath:            session.LogPath,
 		BridgeVersion:      session.BridgeVersion,
-		// Nil-safe by design: the entity renders "this reader did not say" for a
-		// bridge that predates the field, which is a different answer from
-		// "uncapped" and must not be reported as one.
-		SilenceCap: session.SilenceCap.Sentence(),
+		// Both facts, both nil-safe by design, and both nils meaning "this bridge
+		// did not say" rather than either answer. Attendance is passed rather
+		// than left to be inferred (spec 0035): the entity infers it from the cap
+		// only when it arrives nil, and that path is a compatibility route for an
+		// older bridge instead of how the sentence is normally reached.
+		SilenceCap: session.SilenceCap.Sentence(session.Attended),
 		Normalized: normalizedFrom(session.Normalized),
 	}, nil
 }

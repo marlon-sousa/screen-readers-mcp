@@ -313,6 +313,7 @@ def test_hello_result_serializes_all_fields() -> None:
 		"bridgeVersion",
 		"guidance",
 		"silenceCap",
+		"attended",
 		"normalized",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.

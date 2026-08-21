@@ -50,6 +50,7 @@ def build_session(
 	heartbeat_timeout: float = 30.0,
 	inactivity_timeout: float = 120.0,
 	silence_cap: SilenceCapPolicy | None = None,
+	attended: bool = True,
 ) -> Session:
 	"""Assemble a Session for one connection over ``transport``.
 
@@ -61,8 +62,10 @@ def build_session(
 	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
 	``user_prompter`` (presents prompts to the human during silent mode).
 	``gesture_resolver`` (reports which gestures the reader has bound right now,
-	for the persona guidance document), and ``silence_cap`` (whether this machine
-	bounds how long a silent session may keep its human unable to hear).
+	for the persona guidance document), ``silence_cap`` (whether this machine
+	bounds how long a silent session may keep its human unable to hear) and
+	``attended`` (whether a human is expected at it at all -- spec 0035, read from
+	the same setting at the same moment, so the two cannot drift).
 	``log_capture``/``user_prompter``/``gesture_resolver`` are NVDA-facing like
 	``signals``/``announcer``,
 	so they are parameters built at the edge (plugin.py), not constructed here --
@@ -81,6 +84,12 @@ def build_session(
 		# capped on the shipped thresholds, which is the safe direction: a machine
 		# nobody has configured is not one we may assume is empty.
 		silence_cap=silence_cap if silence_cap is not None else ATTENDED_DEFAULT,
+		# The MACHINE's other fact (spec 0035), and a separate parameter for the
+		# reason the whole entry exists: it is what the cap policy above is derived
+		# FROM, not something to be read back out of it. Defaults ATTENDED, the
+		# same safe direction ATTENDED_DEFAULT takes -- a machine nobody has
+		# configured is not one we may assume is empty.
+		attended=attended,
 	)
 	return Session(
 		channel,

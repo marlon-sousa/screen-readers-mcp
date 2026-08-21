@@ -191,6 +191,14 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		}
 	}
 
+	// Spec 0035. Copied rather than dereferenced, so the session owns its own
+	// value; nil is PRESERVED, because "this bridge does not say" is a third
+	// answer and the sentence renderer has a compatibility path for exactly it.
+	if result.Attended != nil {
+		attended := *result.Attended
+		session.Attended = &attended
+	}
+
 	// Spec 0024. Carried through verbatim: the key paths and values are the
 	// reader's own vocabulary and the reason is its own sentence, so there is
 	// nothing here for this server to interpret.
