@@ -277,6 +277,7 @@ def test_command_set_matches_plan_v1() -> None:
 		"getBraille",
 		"getFocusInfo",
 		"getState",
+		"setState",
 		"getConfig",
 		"setConfig",
 		"announce",
@@ -312,6 +313,7 @@ def test_hello_result_serializes_all_fields() -> None:
 		"bridgeVersion",
 		"guidance",
 		"silenceCap",
+		"normalized",
 	}
 	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}

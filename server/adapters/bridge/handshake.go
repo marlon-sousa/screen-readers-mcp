@@ -205,6 +205,10 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	}
 	if capabilities.Has(entities.CapabilityState) {
 		connection.State = client
+		// Both halves ride the ONE capability, exactly as get_config and
+		// set_config both ride `config` (spec 0033). The reader's own limits on
+		// what may be SET are per-field and are enforced at the bridge.
+		connection.StateWrite = client
 	}
 	if capabilities.Has(entities.CapabilityConfig) {
 		connection.Config = client

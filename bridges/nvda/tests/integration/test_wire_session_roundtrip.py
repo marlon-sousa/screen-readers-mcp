@@ -149,7 +149,7 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		assert state_reply is not None, "no reply for getState"
 		assert state_reply.get("error") is None, f"getState error: {state_reply.get('error')}"
 		state = state_reply["result"]
-		assert state["browseMode"] == "none"
+		assert state["browseMode"] == "browse"
 		assert state["speechMode"] == "talk"
 		assert state["sleepMode"] is False
 

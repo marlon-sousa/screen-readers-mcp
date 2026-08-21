@@ -28,6 +28,7 @@ from .focus_inspector import FakeFocusInspector
 from .gesture_sender import FakeGestureSender
 from .speech_source import FakeSpeechSource
 from .state_inspector import FakeStateInspector
+from .state_setter import FakeStateSetter
 from .text_typer import FakeTextTyper
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ class FakeAdapterFactory(AdapterFactory):
 		self.text_typer = FakeTextTyper(fail_on=type_fail_on)
 		self.focus_inspector = FakeFocusInspector()
 		self.state_inspector = FakeStateInspector()
+		self.state_setter = FakeStateSetter(inspector=self.state_inspector)
 		self.config_accessor = FakeConfigAccessor()
 		self.continuous_read = FakeContinuousRead()
 		self.built_mode: protocol.CaptureMode | None = None
@@ -66,6 +68,7 @@ class FakeAdapterFactory(AdapterFactory):
 			text_typer=self.text_typer,
 			focus_inspector=self.focus_inspector,
 			state_inspector=self.state_inspector,
+			state_setter=self.state_setter,
 			config_accessor=self.config_accessor,
 			continuous_read=self.continuous_read,
 		)

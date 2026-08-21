@@ -1,6 +1,8 @@
 # 0033 — a toggle with no setter
 
-Status: **drafted 2026-08-20, not agreed.** Board entry **11.17**. Comes out of
+Status: **drafted 2026-08-20, AGREED 2026-08-20** — in one conversation with
+[0024](0024-a-session-the-agent-can-hear.md), which is what this entry has asked
+for since it was opened. Board entry **11.17**. Comes out of
 [0027](0027-the-first-external-run.md) ask 2 — the first external run, reported
 by someone who had never read this repo's specs.
 
@@ -193,11 +195,11 @@ Per AGENTS.md, a spec names every file before the code exists.
 
 | File | Role | Collaborators |
 |---|---|---|
-| `bridges/.../domain/ports/state_setter.py` (new) | **port** — write the mode-state the reader offers its user a command for. Separate from `state_inspector.py` rather than added to it: a port called *inspector* that mutates is a mislabelled role, and the two are separately implementable — a bridge may well read a mode it cannot set. | Implemented by the NVDA adapter; held by the `AdapterSet`. |
-| `bridges/.../adapters/nvda/nvda_state_setter.py` (new) | **adapter** — NVDA's own browse/focus path (`treeInterceptor.passThrough`), never a synthetic gesture injection. **Owns the compare-and-set**: it reads and writes in one step on NVDA's main thread and answers whether it changed anything, so no window exists between the two (Part 3.2). It is also where "the focused object is not a browsable document" is detected, because that is a fact only NVDA holds. | Wraps NVDA; built by `AdapterFactory`. |
-| `bridges/.../domain/controllers/commands/set_state.py` (new) | **controller** — the `setState` handler. `mutates_reader = True`, so an observe-only session (0017) refuses it exactly as it refuses a keypress. Validates the request against the **set-domain** (Part 3.1a) before touching anything, asks the setter for each field present, and assembles `state` + `changed`. It does NOT compare — that would be the race, one layer down. | `SessionContext`, `state_inspector` (for the answer), `state_setter`. |
-| `bridges/.../domain/controllers/commands/registry.py` | registry (existing) | One handler entry; one capability added to `NVDA_CAPABILITIES`. |
-| `bridges/.../protocol.py` + `specs/wire/v1/protocol.md` | wire (existing) | `SetStateParams` (every field optional), `SetStateResult { state, changed }`, the command name, and a **new capability row**. `PROTOCOL_VERSION` 1 is pre-release (AGENTS.md) and both halves ship from this repo, so this costs a rebuild rather than a migration. |
+| `bridges/nvda/addon/.../domain/ports/state_setter.py` (new) | **port** — write the mode-state the reader offers its user a command for. Separate from `state_inspector.py` rather than added to it: a port called *inspector* that mutates is a mislabelled role, and the two are separately implementable — a bridge may well read a mode it cannot set. | Implemented by the NVDA adapter; held by the `AdapterSet`. |
+| `bridges/nvda/addon/.../adapters/nvda_state_setter.py` (new) | **adapter** — NVDA's own browse/focus path (`treeInterceptor.passThrough`), never a synthetic gesture injection. **Owns the compare-and-set**: it reads and writes in one step on NVDA's main thread and answers whether it changed anything, so no window exists between the two (Part 3.2). It is also where "the focused object is not a browsable document" is detected, because that is a fact only NVDA holds. | Wraps NVDA; built by `AdapterFactory`. |
+| `bridges/nvda/addon/.../domain/controllers/commands/set_state.py` (new) | **controller** — the `setState` handler. `mutates_reader = True`, so an observe-only session (0017) refuses it exactly as it refuses a keypress. Validates the request against the **set-domain** (Part 3.1a) before touching anything, asks the setter for each field present, and assembles `state` + `changed`. It does NOT compare — that would be the race, one layer down. | `SessionContext`, `state_inspector` (for the answer), `state_setter`. |
+| `bridges/nvda/addon/.../domain/controllers/commands/registry.py` | registry (existing) | One handler entry. **No capability is added** -- see the capability question below. |
+| `shared/nvda_mcp_wire/protocol.py` + `specs/wire/v1/protocol.md` | wire (existing) | `SetStateParams` (every field optional), `SetStateResult { state, changed }`, and the command name. **No new capability row**: `setState` joins `state` in the table, as `setConfig` sits with `getConfig`. `PROTOCOL_VERSION` 1 is pre-release (AGENTS.md) and both halves ship from this repo, so this costs a rebuild rather than a migration. |
 | `server/domain/ports/state_writer.go` (new) | **port** — the server's mirror of the same. | Implemented by `adapters/bridge/json_lines_client.go`. |
 | `server/domain/controllers/tools/set_state.go` (new) | **controller**, one per tool, gated on the new capability. Reuses `stateResult`, the struct `get_state` and the observation half already publish, so an agent reads one shape wherever it arrives from. | `ToolContext`. |
 | `server/adapters/mcp/documents/guidance-method.md` | document (existing) | Part 3.3 — arrive with `setState`, test the toggle with the gesture. |
@@ -205,23 +207,47 @@ Per AGENTS.md, a spec names every file before the code exists.
 | `server/domain/controllers/tools/set_state_test.go` (new) | unit | The gate, the pass-through, the result shape. |
 | `server/tests/conformance/...` (existing) | conformance | The real binary against the real bridge, as every command has. |
 
-### The capability question — the one thing to settle before code
+### The capability question — settled 2026-08-20, against this spec's own first recommendation
 
-`getState` is gated on `state`. Three options:
+`getState` is gated on `state`. Three options were on the table:
 
-1. **`setState` joins `state`.** Simplest, and wrong for a reader that can read a
-   mode and not set it: it would have to decline the whole group and lose
-   `getState` with it, which is the outcome 0005's capability-as-unit exists to
-   avoid.
-2. **A new capability — `stateControl`.** One row in §4, one entry in the
-   registry, and since 0022 the tool list is static, so nothing about discovery
-   changes. A reader that reads but cannot write announces `state` alone.
+1. **`setState` joins `state`.**
+2. **A new capability — `stateControl`.**
 3. Per-field advertisement. **Rejected**: the per-toggle catalog 0027's ask was
    already turned down for, one layer further in.
 
-**Recommendation: (2).** The cost is a capability string. What it buys is that
-"reads modes" and "sets modes" stop being one claim, which across readers they
-demonstrably are not.
+This spec first recommended (2). **The decision is (1)**, and the argument that
+turned it is one that was sitting in the tree the whole time: **`getConfig` and
+`setConfig` both gate on `config`.** That is the exactly analogous pair — a getter
+and a setter over the same subject — and it ships as one capability today.
+Splitting `state` while `config` stays joined would leave an agent to remember
+which pairs split and which do not, for no gain either of them can point at.
+
+The deeper problem with (2) is that **the split does not carry the information the
+asymmetry actually has.** The asymmetry here is real and it is PER FIELD, on the
+one reader that exists: `getState` reports four modes, `setState` accepts one in
+this cut and at most three ever, `inputHelp` is excluded on purpose, and
+`browseMode: "none"` is readable and not settable. A `stateControl` string says
+only "can set *some* modes", which the tool's existence already says, while the
+per-field truth is carried by the set-domain rejection in Part 3.1a — which this
+spec builds either way.
+
+The case for (2) rested on a reader that reads modes it cannot set. No such
+bridge exists; 0005's capability-as-unit is about differences that DO exist, and
+its own examples (JAWS lacking braille, TalkBack lacking config) are whole groups
+a reader does not serve, not halves of one. The wire is pre-release, so if such a
+bridge ever arrives, adding the capability then costs a rebuild — which AGENTS.md
+already accepts — whereas shipping one now that never differs from `state` is a
+permanent extra concept in every handshake.
+
+One smaller thing the reversal disposes of: `stateControl` would have been the
+first camelCase string in a set of ten single lowercase words.
+
+**What this means for the code**: `set_state` is gated on `CapabilityState`, the
+`StateWriter` port is handed out on the same announcement as `StateInspector`,
+and the port stays SEPARATE from the inspector even so — a port called *inspector*
+that mutates is a mislabelled role, and one capability may hand out two ports
+just as `config` does.
 
 ### A documentation defect found while drafting this
 
@@ -235,6 +261,19 @@ why it is named here rather than fixed silently. **It rides in this spec's PR**,
 which is already editing that section to add a capability row.
 
 ---
+
+### One thing the draft did not anticipate: an ignored field is a lie
+
+`from_dict` **ignores** a field the params type does not declare. So a client
+asking `setState {speechMode: "off"}` against a `SetStateParams` that declares
+only `browseMode` would get `changed: []` back — the exact reading of "it was
+already so". One observable, two situations, inside the one field built to
+separate two situations.
+
+So the handler refuses `speechMode`, `sleepMode` and `inputHelp` **by name, with
+the reason each is withheld**, before parsing. That is not extra machinery for a
+hypothetical: it is the same argument as Part 3.1a's "none", applied to the
+fields the get-domain reports and the set-domain does not take.
 
 ## Its relationship to 0023 — not a contradiction
 
@@ -295,20 +334,38 @@ would sound the tone Part 3.2 says must not sound.
   nothing. Something else may have changed it a moment earlier, and the mode may
   differ again by the next call.
 
-## Open questions
+## Open questions — all settled 2026-08-20
 
-- **Does `changed` name fields, or carry before/after pairs?** Names are enough
-  for the two situations Part 3.1 separates, and the "after" is already in
-  `state`. A pair would let an agent log the transition without holding its own
-  prior read — cheap, possibly unnecessary.
-- **Should `setState` be refused in `live` mode without an opt-in**, the way
-  0024's normalisation is? The arguments differ: 0024 changes what the human
-  hears for a whole session, while this changes a mode the human could have
-  changed themselves and will hear change. Probably no opt-in — but it is the
-  same *class* of question, and answering both at once is why these two are being
-  decided together.
-- **Is `stateControl` the right name?** It should read as a group of commands,
-  the way `config` and `interact` do, rather than as a feature.
+- ~~**Does `changed` name fields, or carry before/after pairs?**~~ **Names.**
+  Three reasons, ascending: the "after" is already in `state` on the same result,
+  so a pair republishes half of it — which is the two-publishers-of-one-fact
+  defect [0024](0024-a-session-the-agent-can-hear.md) Part 3.3 was withdrawn for,
+  in the very conversation that agreed both specs. If more than names were wanted
+  the honest shape would be `{keyPath, from}`, since "before" is the only thing
+  not otherwise present. And for this cut `from` carries **no information at
+  all**: the settable domain of `browseMode` is two values, so "it changed and it
+  is now browse" already says what it was. The question reopens honestly the day
+  a field with more than two settable values is admitted — `speechMode` would be
+  one — and not before.
+- ~~**Should `setState` be refused in `live` mode without an opt-in**, the way
+  0024's normalisation is?~~ **No opt-in**, and the reason is sharper than "the
+  human will hear it": **`setState` is strictly less invasive than a gesture the
+  agent can already send.** `NVDA+space` is available in live mode today under
+  `interact`, ungated by anything but that, and it reaches the same states with
+  the added risk of flipping the wrong way. Gating the safe path while the unsafe
+  one stays open would push agents back towards the toggle, which is the bug this
+  entry exists to remove. The discriminator against 0024 is 0024's own test:
+  normalisation changes a **configuration**, a persistent preference the user
+  chose, for a whole session; this changes a **transient mode** the user's own
+  keystroke changes many times a minute and hears change.
+  **Recorded per FIELD, not per tool.** It holds because the first cut is
+  `browseMode`. Admitting `speechMode` or `sleepMode` reopens it, because those
+  can leave a human unable to hear their own machine — which is the same reason
+  they are held back from the cut at all, and which gives the membership rule its
+  second clause: *a mode that can leave the human unable to hear is not admitted
+  on the strength of the rule alone.*
+- ~~**Is `stateControl` the right name?**~~ **Moot**: there is no new capability.
+  See the capability question above.
 
 ## Not in scope
 

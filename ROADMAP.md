@@ -189,8 +189,8 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-20**:
-11.11, 11.13, 11.16, 11.17, 11.18, 11.23 —
-**six entries** (11.22-11.24 opened by the second external run,
+11.13, 11.16, 11.18, 11.23 —
+**four entries** (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -210,9 +210,10 @@ what that stance means on the reader in front of it.
 Their order is **not** simply the numbering. **11.3 is on hold as of
 2026-08-18** — it had been drafted-but-unagreed since 2026-07-29 and passed over
 four times, and the fifth pass was made a decision rather than another silence.
-**11.10 closed on 2026-08-20** (PR #67), so the lane head is now **11.11**
-(lane 1); **11.6 closed on 2026-08-19**, taking 11.24(a) with it, so the server
-lane's head is **11.13**.
+**11.11 and 11.17 closed together on 2026-08-20** (PR #70) — the pair the board
+required to be decided in one conversation, and they were — so lane 1 has no open
+entry at all. **11.6 closed on 2026-08-19**, taking 11.24(a) with it, so the
+server lane's head is **11.13**.
 
 **11.22 is taken before 11.6, deliberately, on 2026-08-18** — the
 reprioritisation this section requires to be made explicitly, the way 11.4 was
@@ -229,7 +230,8 @@ Three pairings matter more than the numbers:
 
 - **11.9 and 11.12** are one topic — 11.9 is the analysis, 11.12 the remedy.
 - **11.11 and 11.17** are one gesture, from two sessions, with complementary
-  remedies. See either entry.
+  remedies. **Both Done (PR #70, 2026-08-20)**, decided in one conversation and
+  shipped in one PR, which is what the pairing was for. See either entry.
 - **11.19 and 11.20** are two halves of personas, sharing **one spec**,
   [0029](specs/0029-connecting-as-somebody.md), because the split between them
   *is* the design. **Re-scoped 2026-08-17**: the halves are no longer *server*
@@ -257,9 +259,9 @@ The next free board number is **11.26** and the next free spec number is
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
 reading 11.25, so the next session was told a number that was already spent, and
-11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, on an
-unmerged branch — which is precisely the case the paragraph above says to check
-for.
+11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, taken
+on a branch before it merged — which is precisely the case the paragraph above
+says to check for, and it is now in PR #70.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -740,7 +742,8 @@ rather than before it.
     discoverable by asking, with nothing pushed (0021 stands). The two traps Part 3
     named are both tested: callbacks are not double-run while passing through, and
     `resume()` after a prompt does not re-mute a lifted session.
-11.11. **E, a session the agent can hear** (lane 1, bridge). Found live on
+11.11. **Done (PR #70, 2026-08-20)** — E, a session the agent can hear (lane 1,
+    bridge). Found live on
     2026-08-03. The agent pressed `NVDA+space` meaning to return to browse mode,
     but the page reload had already restored browse mode, so the toggle entered
     **focus** mode — and the next six `h` presses were typed into a search field
@@ -780,10 +783,20 @@ rather than before it.
     2026-08-16 and the marking was withdrawn the same day, on reading the spec in
     full; the discipline that produced that withdrawal is why this entry states
     what shrank and what did not, rather than closing.
+    Shipped: `normalize` on `hello` (unset means the mode's default — silent
+    normalises, live does not), `normalized` on the result disclosing every key
+    actually moved, and the admitted set as an entity holding **one** key.
+    Written through the existing `ConfigAccessor`, so it is a session-scoped
+    override teardown drops and nothing reaches the reader's disk. Two spellings
+    changed against the draft and are recorded in the spec rather than applied
+    quietly: the disclosure carries `previous`/`current` because `from` is a
+    Python keyword and `protocol.py` is the contract's source; and a reader that
+    REJECTS the admitted key fails the handshake naming `normalize: false`,
+    because a rejection means the spec's own premise is false for that session.
     Spec: [0024-a-session-the-agent-can-hear.md](specs/0024-a-session-the-agent-can-hear.md)
-    (drafted 2026-08-03, re-cut 2026-08-20, not agreed). **Paired with 11.17** —
-    see that entry for why the two remedies for this gesture are complementary
-    and should be decided together.
+    (drafted 2026-08-03, re-cut 2026-08-20, **agreed 2026-08-20** — both open
+    questions settled there). **Decided with 11.17 in one conversation**, which
+    is what the pairing asked for; shipped in the same PR, see that entry.
 11.12. **Done (PR #64, 2026-08-18)** — E, one round trip per intention (lane 2,
     server + bridge). Implements
     the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
@@ -994,7 +1007,8 @@ rather than before it.
       withholds it; no capability of its own.
     Also retires the report's smallest ask, `type_text replace: true` — select
     all, delete, type is a sequence. Spec: none yet.
-11.17. **E, a toggle with no setter** (both lanes). **Paired with 11.11** — same
+11.17. **Done (PR #70, 2026-08-20)** — E, a toggle with no setter (both lanes).
+    **Paired with 11.11** — same
     gesture, same confusion, two different sessions, and the remedies are
     complementary rather than competing: 11.11 gives the agent the *tone* it
     cannot hear, so it learns which mode it landed in; this gives it a way not to
@@ -1035,20 +1049,35 @@ rather than before it.
     Classified `mutates_reader` for 11.3. Amends published wire v1. Needs live
     NVDA.
     Spec: [0033-a-toggle-with-no-setter.md](specs/0033-a-toggle-with-no-setter.md)
-    (drafted 2026-08-20, not agreed) — written alongside 0024's re-cut so the pair
-    can be decided in one conversation, which is what this entry has asked for
-    since it was opened. It carries a membership rule of its own (*a mode may be
-    set only where the reader already gives its user a command for it —
-    idempotence, never capability*), `browseMode` alone in the first cut with
-    `speechMode`/`sleepMode` held back because those two can leave a human unable
-    to hear their own machine, a result carrying the state AFTER plus `changed`,
-    and setting-what-is-already-set doing literally nothing so a precondition
-    costs the human no tone. This entry's set-domain asymmetry and its
-    compare-inside-NVDA requirement are carried through verbatim. **One thing is
-    left for the conversation to settle**: whether `setState` joins the `state`
-    capability or takes its own — the spec recommends its own, since a reader may
-    read a mode it cannot set and should not have to decline `getState` to say
-    so.
+    (drafted 2026-08-20, **agreed 2026-08-20** — all three open questions settled
+    there) — written alongside 0024's re-cut so the pair could be decided in one
+    conversation, which is what this entry asked for from the day it opened. It
+    carries a membership rule of its own (*a mode may be set only where the reader
+    already gives its user a command for it — idempotence, never capability*),
+    `browseMode` alone in the first cut with `speechMode`/`sleepMode` held back
+    because those two can leave a human unable to hear their own machine, a result
+    carrying the state AFTER plus `changed`, and setting-what-is-already-set doing
+    literally nothing so a precondition costs the human no tone. This entry's
+    set-domain asymmetry and its compare-inside-NVDA requirement are carried
+    through verbatim.
+    **The one question left for the conversation went the other way from the
+    spec's own recommendation.** `setState` joins the `state` capability rather
+    than taking its own, because the repo had already answered it: `getConfig` and
+    `setConfig` both gate on `config`, and splitting the analogous pair would make
+    an agent learn which pairs split. The asymmetry that is real here is PER FIELD
+    — four modes reported, one settable, `"none"` readable and not settable — which
+    a capability string cannot express and the set-domain rejection already does.
+    A separate `StateWriter` port is still handed out, on that one announcement: a
+    port called *inspector* that mutates is a mislabelled role.
+    **One thing the spec did not anticipate, found while building:** `from_dict`
+    IGNORES an undeclared field, so `setState {speechMode: "off"}` would have come
+    back `changed: []` — indistinguishable from "it was already so". The three
+    withheld modes are now refused BY NAME with the reason each is withheld.
+    **Shipped as ONE PR with 11.11**, deliberately and for the reason the pairing
+    exists: the two remedies are complementary, the live-mode question was settled
+    once across both, and the second half of each is only judgeable at a real
+    NVDA — two PRs would have bought shorter diffs at the price of two live
+    sessions.
 11.18. **E, the board is not self-enforcing** (neither lane; CI). Five
     consecutive entries merged without the Done mark their own PR was supposed to
     apply: 11.4 (#46) read "Next.", 11.5 (#48) "Implemented", 11.7 (#49) carried

@@ -24,10 +24,13 @@ def _hello(
 	*,
 	log_level: p.LogLevel | None = None,
 	persona: str | None = None,
+	normalize: bool | None = None,
 ) -> p.Request:
 	params: dict[str, object] = {"mode": mode, "protocolVersion": version}
 	if log_level is not None:
 		params["logLevel"] = log_level.value
+	if normalize is not None:
+		params["normalize"] = normalize
 	if persona is not None:
 		params["persona"] = persona
 	return p.Request(id=1, cmd="hello", params=params)
@@ -221,3 +224,79 @@ def test_an_unrecognised_persona_still_gets_a_document_marked_unrecognised(
 	assert result.guidance.persona == "archaeologist"
 	assert result.guidance.recognised is False
 	assert result.guidance.text.strip() != ""
+
+
+# -- channel normalisation (spec 0024) ----------------------------------------
+
+#: The one key the membership test admits today.
+_TONE_KEY = ["virtualBuffers", "passThroughAudioIndication"]
+
+
+def test_silent_normalises_by_default_and_discloses_it(clock: FakeClock) -> None:
+	# Silent is the case where the split is total: the human hears no speech
+	# anyway, so moving the mode-change signal into the speech channel takes
+	# nothing from them and the agent gains the words.
+	factory = FakeAdapterFactory()
+	ctx = make_context(clock)
+	result = _handler(factory).execute(ctx, _hello("silent"))
+
+	assert factory.config_accessor.store[tuple(_TONE_KEY)] is False
+	assert len(result.normalized) == 1
+	disclosed = result.normalized[0]
+	assert disclosed.keyPath == _TONE_KEY
+	assert disclosed.previous is True and disclosed.current is False
+	# The reason is fixed data, not runtime prose: it is read by humans who will
+	# not have the spec open.
+	assert disclosed.why == "browse/focus mode changes are a wave file by default"
+
+
+def test_live_does_not_normalise_unless_asked(clock: FakeClock) -> None:
+	# In live mode the change is AUDIBLE -- the human would hear "Focus mode"
+	# spoken instead of the tone they chose -- so it is theirs to decide.
+	factory = FakeAdapterFactory()
+	result = _handler(factory).execute(make_context(clock), _hello("live"))
+
+	assert result.normalized == []
+	assert factory.config_accessor.store[tuple(_TONE_KEY)] is True
+
+
+def test_live_normalises_when_the_session_opts_in(clock: FakeClock) -> None:
+	factory = FakeAdapterFactory()
+	result = _handler(factory).execute(make_context(clock), _hello("live", normalize=True))
+
+	assert [entry.keyPath for entry in result.normalized] == [_TONE_KEY]
+	assert factory.config_accessor.store[tuple(_TONE_KEY)] is False
+
+
+def test_silent_can_opt_out(clock: FakeClock) -> None:
+	# The escape hatch matters: a session debugging the tone behaviour ITSELF
+	# wants the reader exactly as its user left it.
+	factory = FakeAdapterFactory()
+	result = _handler(factory).execute(make_context(clock), _hello("silent", normalize=False))
+
+	assert result.normalized == []
+	assert factory.config_accessor.set_calls == []
+
+
+def test_a_key_already_at_the_wanted_value_is_not_reported(clock: FakeClock) -> None:
+	# "What the session asked for" and "what the session changed" are two facts.
+	# An agent reading an empty list is being told it is on the user's own
+	# configuration -- so a key that needed no write must not appear.
+	factory = FakeAdapterFactory()
+	factory.config_accessor.seed(_TONE_KEY, False)
+	result = _handler(factory).execute(make_context(clock), _hello("silent"))
+
+	assert result.normalized == []
+	assert factory.config_accessor.set_calls == []
+
+
+def test_a_reader_that_rejects_the_key_fails_loudly(clock: FakeClock) -> None:
+	# Not swallowed: a rejection means the session's premise -- that the agent can
+	# hear a mode change at all -- is false, and a session that proceeded quietly
+	# would produce exactly the confident, half-blind evidence 0024 exists to
+	# prevent. The message names the way past it.
+	factory = FakeAdapterFactory()
+	factory.config_accessor.forget(_TONE_KEY)
+	with pytest.raises(CommandError) as caught:
+		_handler(factory).execute(make_context(clock), _hello("silent"))
+	assert "normalize: false" in str(caught.value)

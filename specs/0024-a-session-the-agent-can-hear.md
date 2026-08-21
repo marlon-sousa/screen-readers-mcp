@@ -1,7 +1,10 @@
 # 0024 — a session the agent can hear
 
 Status: **drafted 2026-08-03; re-cut 2026-08-20 against what
-[0025](0025-one-round-trip-per-intention.md) actually shipped; not agreed.**
+[0025](0025-one-round-trip-per-intention.md) actually shipped; AGREED
+2026-08-20**, in one conversation with [0033](0033-a-toggle-with-no-setter.md),
+which is what the pairing asked for. Both open questions below are settled in
+place.
 Board entry **11.11**, to be decided together with **11.17** and
 [0033](0033-a-toggle-with-no-setter.md) — same gesture, complementary remedies,
 and the board is explicit that they should not be built by two people who have
@@ -393,13 +396,41 @@ having shipped:
 
 Still open:
 
-- **Should normalisation be per-key opt-out?** A user debugging the tone
-  behaviour itself would want it off. `normalize: false` covers that bluntly;
-  per-key control may be more than anyone needs. (With a one-key admitted set
-  this is nearly moot, which is one more argument for the one-key cut.)
-- **Is "why" prose on the wire justified?** It costs bytes on every connect to
-  say something a spec already says. Against dropping it: the transcript is read
-  by humans who will not have the spec open.
+- ~~**Should normalisation be per-key opt-out?**~~ **No — settled 2026-08-20.**
+  At one admitted key, `normalize: false` *is* per-key control, and the case it
+  was drawn for (a user debugging the tone behaviour itself) is exactly what the
+  blunt flag serves. Per-key machinery earns its place only when a second key is
+  admitted *and* somebody wants one without the other, which is not a case that
+  exists. The set is data, so adding it later is small; and a boolean at `hello`
+  stays auditable in the transcript at a glance, which a per-key map would not.
+- ~~**Is "why" prose on the wire justified?**~~ **Yes, keep it — settled
+  2026-08-20.** The cost is once per connect, not once per event, and one
+  admitted key is one string. Against that stands this repo's own standard: a
+  finding must be reproducible from the record, and a bare `keyPath` requires the
+  person reading the transcript months later to have both the reader's config
+  schema and this spec open. Two constraints came with the decision, and they are
+  what the implementation follows: the string is **fixed data owned by the
+  admitted set**, never prose composed at runtime, so it cannot drift from this
+  spec; and it is **never translated**, because it describes a wire fact rather
+  than addressing the user.
+
+## What shipped, and one thing the draft did not anticipate
+
+`normalize` on `hello` (unset means the mode's default: silent normalises, live
+does not), `normalized` on `HelloResult`, and the admitted set as an entity
+holding one key. Written through the existing `ConfigAccessor`, so it is a
+session-scoped override that teardown drops and nothing reaches the reader's
+disk.
+
+**Two spellings changed against this document, and both are recorded rather than
+quietly applied.** The disclosure fields are `previous`/`current`, not the
+`from`/`to` drawn in Part 3.2: `from` is a Python keyword, and `protocol.py` is
+the contract's canonical source, so the wire takes the spelling the source can
+express. And a reader that **rejects** the admitted key fails the handshake with
+a message naming `normalize: false`, rather than being skipped — a rejection
+means this spec's own premise is false for that session, and a session that
+proceeded quietly would produce exactly the confident, half-blind evidence the
+spec exists to prevent.
 
 ## Not in scope
 

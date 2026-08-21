@@ -19,9 +19,11 @@ from typing import TYPE_CHECKING, Any
 
 from .... import protocol
 from ...entities.braille_buffer import BrailleBuffer
+from ...entities.channel_normalisation import ADMITTED_SETTINGS
 from ...entities.log_journal import SETTABLE_LEVELS
 from ...entities.reader_guidance import guidance_for
 from ...entities.speech_buffer import SpeechBuffer
+from ...ports.config_accessor import ConfigAccessor, ConfigError
 from .command_handler import CommandError, CommandHandler
 
 if TYPE_CHECKING:
@@ -47,6 +49,21 @@ class HelloHandler(CommandHandler):
 		self._reader = reader
 		self._capabilities = capabilities
 		self._bridge_version = bridge_version
+
+	@staticmethod
+	def _wants_normalisation(params: protocol.HelloParams) -> bool:
+		"""Whether this session normalises, honouring the per-mode default.
+
+		Unset is not "no": the two modes differ and only the caller's silence is
+		ambiguous (spec 0024, "Per mode"). SILENT normalises -- the human hears no
+		speech anyway, so moving a signal into the speech channel takes nothing
+		from them and the agent gains the words. LIVE does not: the human would
+		hear "Focus mode" spoken instead of the tone they chose, and that is
+		theirs to decide, so it is offered rather than done.
+		"""
+		if params.normalize is not None:
+			return params.normalize
+		return params.mode is protocol.CaptureMode.SILENT
 
 	def execute(self, ctx: SessionContext, request: protocol.Request) -> Any:
 		params = protocol.from_dict(protocol.HelloParams, request.params)
@@ -79,6 +96,12 @@ class HelloHandler(CommandHandler):
 		# Installed before starting capture, so teardown can stop the sources even
 		# if a start() below raises.
 		ctx.adapters = adapters
+
+		# Move the reader's inaudible-to-a-session signals into the channel a
+		# session CAN read (spec 0024). After ctx.adapters is set, so a failure
+		# here is still restored by teardown; before capture starts, so nothing
+		# is captured under a configuration the result has not yet disclosed.
+		normalized = _normalise(adapters.config_accessor, self._wants_normalisation(params))
 
 		# No exact-finish signal: silent mode suppresses at the speak() filter, so
 		# there is no synth "done speaking" to key off; both modes use the buffer's
@@ -145,4 +168,47 @@ class HelloHandler(CommandHandler):
 				text=text,
 			),
 			silenceCap=silence_cap,
+			normalized=normalized,
 		)
+
+
+def _normalise(config: ConfigAccessor, wanted: bool) -> list[protocol.NormalizedSetting]:
+	"""Apply the admitted channel shifts; report the ones that actually moved.
+
+	A key ALREADY at the wanted value is applied and not reported: "what the
+	session asked for" and "what the session changed" are two facts, and an agent
+	that reads an empty list knows it is driving the user's own configuration
+	untouched -- which is what it needs before it reports a finding.
+
+	Written through the ConfigAccessor, so it is a session-scoped override that
+	teardown drops. Nothing reaches the user's disk, and a crash loses it too.
+
+	A ConfigError here RAISES rather than being swallowed. The admitted key is
+	the reader's own and long-standing, so a rejection means the session's
+	premise -- that the agent can hear a mode change at all -- is false, and a
+	session that proceeded quietly would produce exactly the confident, half-blind
+	evidence spec 0024 exists to prevent. `normalize: false` is the way past it.
+	"""
+	if not wanted:
+		return []
+	normalized: list[protocol.NormalizedSetting] = []
+	for admitted in ADMITTED_SETTINGS:
+		key_path = list(admitted.key_path)
+		try:
+			current = config.get(key_path)
+			if current == admitted.value:
+				continue
+			prior = config.set(key_path, admitted.value)
+		except ConfigError as exc:
+			raise CommandError(
+				f"cannot normalise {'.'.join(key_path)}: {exc}. Pass normalize: false to connect without it."
+			) from exc
+		normalized.append(
+			protocol.NormalizedSetting(
+				keyPath=key_path,
+				previous=prior,
+				current=admitted.value,
+				why=admitted.why,
+			)
+		)
+	return normalized

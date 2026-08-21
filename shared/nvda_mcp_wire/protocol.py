@@ -33,6 +33,10 @@ def _empty_dict() -> dict[str, Any]:
 	return {}
 
 
+def _empty_str_list() -> list[str]:
+	return []
+
+
 __all__ = [
 	"COMMAND_SHAPES",
 	"DEFAULT_GRACE_MS",
@@ -69,6 +73,7 @@ __all__ = [
 	"LogLevelResult",
 	"LogSliceResult",
 	"NextIndexResult",
+	"NormalizedSetting",
 	"PingResult",
 	"PressGestureParams",
 	"ReaderInfo",
@@ -76,6 +81,8 @@ __all__ = [
 	"Response",
 	"SetConfigParams",
 	"SetLogLevelParams",
+	"SetStateParams",
+	"SetStateResult",
 	"SilenceCapInfo",
 	"SpeechResult",
 	"StateResult",
@@ -209,6 +216,7 @@ class Command(StrEnum):
 	GET_BRAILLE = "getBraille"
 	GET_FOCUS_INFO = "getFocusInfo"
 	GET_STATE = "getState"
+	SET_STATE = "setState"
 	GET_CONFIG = "getConfig"
 	SET_CONFIG = "setConfig"
 	ANNOUNCE = "announce"
@@ -425,6 +433,29 @@ class HelloParams:
 	#: teardown). Unset leaves NVDA's current level alone; capture still happens
 	#: either way (see LogLevel).
 	logLevel: LogLevel | None = None
+	#: Move the reader's signals that a session CANNOT HEAR into the channel it
+	#: can -- today exactly one key, NVDA's ``passThroughAudioIndication``, whose
+	#: browse/focus mode change is a wave file by default and words when it is off
+	#: (spec 0024).
+	#:
+	#: The membership test is narrow on purpose: a session may change a setting
+	#: only if the change MOVES INFORMATION BETWEEN CHANNELS WITHOUT ADDING OR
+	#: REMOVING ANY. Such a change cannot alter what the reader decided to report,
+	#: only where the report is delivered, so a finding made under it is still a
+	#: finding about the user's own configuration. Anything that changes what
+	#: would have been said is refused however convenient.
+	#:
+	#: ``None`` means "whatever this mode's default is", which is the only honest
+	#: default because the two modes differ: SILENT normalises (the human hears no
+	#: speech anyway, so moving a signal into the speech channel takes nothing
+	#: from them and the agent gains the words), LIVE does not (the human would
+	#: hear "Focus mode" spoken instead of the tone they chose, which is theirs to
+	#: decide). ``True``/``False`` overrides that per session.
+	#:
+	#: Every key actually changed comes back in :attr:`HelloResult.normalized`,
+	#: and every one is restored at teardown by the same override map ``setConfig``
+	#: uses -- nothing is written to the reader's disk.
+	normalize: bool | None = None
 	#: What the agent is standing in for this session: ``user``, ``validator`` or
 	#: ``expert`` (spec 0029). Fixed for the session, like ``mode``.
 	#:
@@ -485,6 +516,36 @@ class SilenceCapInfo:
 	liftAfterSeconds: float
 
 
+@dataclass(frozen=True)
+class NormalizedSetting:
+	"""One reader setting this session moved from one output channel to another.
+
+	Disclosure, not decoration (spec 0024 Part 3.2): a finding must be
+	reproducible from the record, and an agent must never be quietly driving a
+	different reader than the user's. An EMPTY list tells the agent it is on the
+	user's own configuration; a non-empty one writes the asterisk down.
+
+	``previous``/``current`` rather than the ``from``/``to`` the spec first drew:
+	``from`` is a Python keyword and this dataclass is the contract's canonical
+	source, so the wire takes the spelling the source can express.
+
+	``why`` is a FIXED string owned by the admitted-set data, never prose
+	composed at runtime and never translated: the transcript is read by humans
+	who will not have the spec open, and a reason that can drift from the spec is
+	worse than none.
+	"""
+
+	keyPath: list[str]
+	previous: Any
+	current: Any
+	why: str
+
+
+def _no_normalized() -> list[NormalizedSetting]:
+	"""An empty disclosure list, typed -- ``list`` alone is partially unknown."""
+	return []
+
+
 @dataclass
 class HelloResult:
 	protocolVersion: int
@@ -539,6 +600,17 @@ class HelloResult:
 	#: an agent must fetch is a fact it does not have, and this reply was already
 	#: being sent.
 	silenceCap: SilenceCapInfo | None = None
+	#: Every setting this session moved between output channels, and why (spec
+	#: 0024 Part 3.2). EMPTY means the session is driving the user's own
+	#: configuration untouched, which is the answer an agent needs before it
+	#: reports a finding; non-empty writes the asterisk down where a human
+	#: reading the transcript will find it.
+	#:
+	#: Reported as data rather than implied by ``normalize``, because what the
+	#: session ASKED FOR and what it actually CHANGED are two different facts: a
+	#: key already at the wanted value is not listed, so an agent can tell a
+	#: reader it reconfigured from one it merely offered to.
+	normalized: list[NormalizedSetting] = field(default_factory=_no_normalized)
 
 
 @dataclass
@@ -798,6 +870,65 @@ class StateResult:
 	speechMode: str
 	sleepMode: bool
 	inputHelp: bool
+
+
+@dataclass
+class SetStateParams:
+	"""Which modes to arrive at. Every field optional: set the ones present.
+
+	MIRRORS :class:`StateResult` rather than taking one command per toggle, so a
+	reader that gains a switch costs a field and not a tool, a gate and a
+	document (spec 0033 Part 2).
+
+	**The set-domain is narrower than the get-domain**, and only ``browseMode``
+	carries the asymmetry.
+
+	``"none"`` is READABLE and NOT SETTABLE: it means the focus has no
+	``treeInterceptor`` at all, which cannot be conjured. It is refused before
+	anything is attempted, so the tri-state is honoured rather than quietly
+	widened.
+
+	Even ``"browse"``/``"focus"`` fails when the focused object is not a browsable
+	document, and that failure says so IN THOSE TERMS -- never a bare error and
+	never a silent no-op, because ``changed: []`` already means "it was already
+	so", and a third meaning inside the one field designed to separate two
+	situations is the defect this contract keeps removing.
+
+	``speechMode``, ``sleepMode`` and ``inputHelp`` are absent DELIBERATELY, so a
+	client sending one is refused by name rather than silently ignored (spec 0033
+	Part 2, "Applying it"): ``inputHelp`` would disarm every gesture sent after
+	it, and ``speechMode``/``sleepMode`` are the two settings that can leave a
+	human unable to hear their own machine -- 0032 caps suppression, and it does
+	not count a speech mode an agent switched off.
+	"""
+
+	browseMode: BrowseMode | None = None
+
+
+@dataclass
+class SetStateResult:
+	"""The state AFTER the write, plus which fields this call actually moved.
+
+	It answers with the state rather than with ``ok: true``: the caller's next
+	question is always "am I there now", and a question answered in the same
+	round trip costs nothing (spec 0025). That also makes the command
+	self-verifying -- a caller that reads the result never needs the re-check
+	that a toggle forces.
+
+	``changed`` NAMES THE FIELDS this call moved, and an empty list means the
+	reader was already in the asked-for state. One observable, two situations is
+	the defect (``capturedAtLevel``, ``ok: true``, ``announced``); "you flipped
+	it" and "it was already so" are the two here.
+
+	Names rather than before/after pairs, decided 2026-08-20: the "after" is
+	already in ``state`` on this very result, so a pair would republish half of
+	it -- and with a two-value settable domain the "before" carries no
+	information a caller cannot derive. The question reopens honestly the day a
+	field with more than two settable values is admitted.
+	"""
+
+	state: StateResult
+	changed: list[str] = field(default_factory=_empty_str_list)
 
 
 @dataclass
@@ -1177,6 +1308,7 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.GET_BRAILLE: CommandShape(GetBrailleParams, BrailleResult),
 	Command.GET_FOCUS_INFO: CommandShape(None, FocusInfoResult),
 	Command.GET_STATE: CommandShape(None, StateResult),
+	Command.SET_STATE: CommandShape(SetStateParams, SetStateResult),
 	Command.GET_CONFIG: CommandShape(GetConfigParams, ConfigResult),
 	Command.SET_CONFIG: CommandShape(SetConfigParams, ConfigResult),
 	Command.ANNOUNCE: CommandShape(AnnounceParams, AckResult),

@@ -66,6 +66,7 @@ var resultOf = map[string]any{
 
 	"get_focus_info": focusResult{},
 	"get_state":      stateResult{},
+	"set_state":      setStateResult{},
 
 	"get_config": configResult{},
 	"set_config": configResult{},

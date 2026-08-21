@@ -26,6 +26,7 @@ from .nvda_gesture_sender import NvdaGestureSender
 from .nvda_live_speech_source import NvdaLiveSpeechSource
 from .nvda_silent_speech_source import NvdaSilentSpeechSource
 from .nvda_state_inspector import NvdaStateInspector
+from .nvda_state_setter import NvdaStateSetter
 from .nvda_text_typer import NvdaTextTyper
 
 
@@ -42,6 +43,7 @@ class NvdaAdapterFactory(AdapterFactory):
 			text_typer=NvdaTextTyper(),
 			focus_inspector=NvdaFocusInspector(),
 			state_inspector=NvdaStateInspector(),
+			state_setter=NvdaStateSetter(),
 			config_accessor=NvdaConfigAccessor(),
 			continuous_read=NvdaContinuousRead(),
 		)

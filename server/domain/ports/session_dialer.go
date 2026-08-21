@@ -125,15 +125,19 @@ type ReaderConnection struct {
 	Lifecycle SessionLifecycle
 
 	// The capability ports. Nil unless announced.
-	Speech    SpeechReader
-	Braille   BrailleReader
-	Gestures  GestureSender
-	Focus     FocusInspector
-	State     StateInspector
-	Config    ConfigAccessor
-	Interact  Interact
-	Text      TextTyper
-	ReaderLog LogReader
+	Speech   SpeechReader
+	Braille  BrailleReader
+	Gestures GestureSender
+	Focus    FocusInspector
+	State    StateInspector
+	// StateWrite is handed out on the SAME capability as State -- `state`
+	// covers reading modes and arriving at them, the way `config` covers
+	// reading and writing config (spec 0033).
+	StateWrite StateWriter
+	Config     ConfigAccessor
+	Interact   Interact
+	Text       TextTyper
+	ReaderLog  LogReader
 
 	// Guidance is the odd one out and is worth saying so: every other port
 	// here backs a TOOL, and this one backs a RESOURCE
