@@ -198,7 +198,7 @@ different failures. **11.6 is now Done too** (2026-08-19), and 11.22 is why it
 could be: publishing the surface as a document removed the scarcity three of
 11.6's four options existed to answer. **11.24 is Done**: its (a) half
 closed with 11.6 as an instance of a rule rather than a spelling, and (b) — the
-ack on a riding announcement — closed on 2026-08-20 (PR #NN). **11.21 is Done** in the same PR
+ack on a riding announcement — closed on 2026-08-20 (PR #69). **11.21 is Done** in the same PR
 that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
@@ -1163,7 +1163,7 @@ rather than before it.
     before choosing — a `keepalive` an agent may send at will is a watchdog it
     can defeat, which is the thing the current policy deliberately prevents.
     Spec: none yet.
-11.24. **Done (PR #NN, 2026-08-20)** — E, two small promises the caller cannot check (both lanes, small).
+11.24. **Done (PR #69, 2026-08-20)** — E, two small promises the caller cannot check (both lanes, small).
     From the second external run, ask 3. Two unrelated defects, kept together
     because both are about a caller being able to trust what it was told.
     (a) `press_gesture`'s description spells a gesture `"NVDA+f7"` while
