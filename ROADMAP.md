@@ -189,15 +189,16 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-20**:
-11.11, 11.13, 11.16, 11.17, 11.18, 11.23, 11.24 —
-**seven entries** (11.22-11.24 opened by the second external run,
+11.11, 11.13, 11.16, 11.17, 11.18, 11.23 —
+**six entries** (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
 different failures. **11.6 is now Done too** (2026-08-19), and 11.22 is why it
 could be: publishing the surface as a document removed the scarcity three of
-11.6's four options existed to answer. **11.24 is reduced to (b)**, its (a) half
-having closed with 11.6 as an instance of a rule rather than a spelling. **11.21 is Done** in the same PR
+11.6's four options existed to answer. **11.24 is Done**: its (a) half
+closed with 11.6 as an instance of a rule rather than a spelling, and (b) — the
+ack on a riding announcement — closed on 2026-08-20 (PR #69). **11.21 is Done** in the same PR
 that opened it. 11.3 was
 taken out of the queue on 2026-08-18 and is on hold; see its entry. **11.12 and
 11.9 are Done** (PR #64): 11.12 implemented both routes 11.9 named, which is
@@ -250,9 +251,13 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.25** and the next free spec number is
+The next free board number is **11.26** and the next free spec number is
 **0033**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19.
+11.25 by the silence-cap fix on 2026-08-20, which is the
+instance that proves the rule below: PR #68 took the number and left this line
+reading 11.25, so the next session was told a number that was already spent, and
+11.18 gained a second kind of evidence.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1158,7 +1163,7 @@ rather than before it.
     before choosing — a `keepalive` an agent may send at will is a watchdog it
     can defeat, which is the thing the current policy deliberately prevents.
     Spec: none yet.
-11.24. **E, two small promises the caller cannot check** (both lanes, small).
+11.24. **Done (PR #69, 2026-08-20)** — E, two small promises the caller cannot check (both lanes, small).
     From the second external run, ask 3. Two unrelated defects, kept together
     because both are about a caller being able to trust what it was told.
     (a) `press_gesture`'s description spells a gesture `"NVDA+f7"` while
@@ -1182,7 +1187,22 @@ rather than before it.
     spec 0022 A.6 makes it an instance of a rule — the server names no reader's
     syntax in the text an agent reads — rather than a spelling to correct, and
     A.7 adds the test that enforces it. **What remains of 11.24 is (b) alone.**
-    Spec: none yet for (b).
+    **(b) Done 2026-08-20.** `announced` echoes the narration back on both
+    mutating results, omitted when none was asked for, so "you did not narrate"
+    stays distinguishable from "your narration vanished". The half nobody had
+    named closed with it: a whitespace-only `announce` was dropped by the
+    bridge's own `strip()` and reported nowhere, so an agent that MEANT to
+    narrate got the exact outcome of one that did not — it is now refused, before
+    dispatch, exactly as the `announce` tool has always refused it. The ack says
+    the announcement was *made* and never that it was *heard*, in those words, in
+    both schemas and in `screenreader://guidance`. The alternative remedy this
+    entry left open — a way to wait for the listener to catch up — is **named and
+    not built**: the bridge captures before the synthesizer, so it has no view of
+    audio at all, and that needs NVDA's synth index callbacks, its own spec and
+    its own measurement.
+    Spec: no new one — [0025](specs/0025-one-round-trip-per-intention.md)
+    Part 3.4 gave the announcement its ride and owed it an answer; the amendment
+    of 2026-08-20 rides in this PR.
 11.25. **Done (PR #68, 2026-08-20)** — E, the silence cap did not hear the
     announcements it was built to notice (lane 1, bridge; small). Found live on 2026-08-20, the day after
     11.10 merged, in a silent session driving acter. The session narrated

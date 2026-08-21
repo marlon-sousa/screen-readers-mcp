@@ -11,7 +11,12 @@
 // first time one of them gained a field.
 package tools
 
-import "github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
+import (
+	"errors"
+	"strings"
+
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
+)
 
 // DefaultGraceMs is the grace window a mutating tool asks for when the agent did
 // not say (protocol.md §7.3, and DEFAULT_GRACE_MS in the wire contract).
@@ -42,16 +47,52 @@ type observation struct {
 	// Omitted entirely when the reader serves no `state` capability: absent and
 	// "all four fields zero" are different answers.
 	State *stateResult `json:"state,omitempty"`
+	// The announcement that was spoken to the human before this call acted,
+	// echoed back (board entry 11.24(b)). OMITTED when none was asked for, so
+	// absent means "you did not narrate" rather than "your narration vanished".
+	//
+	// It says the announcement was MADE, never that it was HEARD. protocol.md
+	// §7.1 measured the gap: emission runs two to three utterances, around five
+	// seconds, ahead of audio, so an agent that narrates and then acts at once
+	// is acting ahead of its own narration. No field here can close that, and
+	// one that implied it had would be worse than none.
+	Announced string `json:"announced,omitempty"`
 }
 
 // observed maps a port outcome into that shape.
-func observed(o ports.Observation) observation {
+//
+// `announced` comes from the REQUEST rather than the outcome: the reader
+// acknowledges the whole call, and this server reached it only because the
+// announcement went out first. That is the same standard the announce tool
+// echoes on, and it is the reason this argument is separate -- the bridge has
+// nothing to report about text it was handed.
+func observed(o ports.Observation, announced string) observation {
 	return observation{
 		Speech:     capturedEntries(o.Speech),
 		SpeechFrom: o.FromIndex,
 		SpeechTo:   o.ToIndex,
 		State:      stateSnapshot(o.State),
+		Announced:  announced,
 	}
+}
+
+// announcement validates the narration a mutating tool was asked to speak, and
+// returns what will be echoed once the call succeeds.
+//
+// Absent and "" are the SAME answer -- say nothing -- because an erased param
+// cannot tell them apart and the wire contract already spells empty as silence.
+// Whitespace-only is neither: it is an agent that meant to narrate, and it is
+// rejected exactly as the announce tool rejects it, rather than being dropped on
+// the bridge's own `strip()` where nothing would report the loss. That silent
+// drop is half of what board entry 11.24(b) is about.
+func announcement(text string) (string, error) {
+	if text == "" {
+		return "", nil
+	}
+	if strings.TrimSpace(text) == "" {
+		return "", errors.New("announce must not be whitespace only: send no announce at all to stay quiet")
+	}
+	return text, nil
 }
 
 // capturedEntries maps utterances to the entry shape get_speech already

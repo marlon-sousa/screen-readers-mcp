@@ -259,6 +259,76 @@ runes itself). The side that injected the characters is the one authority on how
 many there were, and two independent counts of one string is exactly how they
 come to disagree.
 
+### Amendment 2026-08-20 — the announcement is acknowledged (board entry 11.24(b))
+
+Part 3.4 gave `pressGesture`/`typeText` an `announce` that rides along, and gave
+the caller nothing back about it. The second external run found that (ask 3, board
+entry **11.24(b)**): *an agent narrating to a human it cannot hear is assuming
+rather than confirming* — which matters most in exactly the sessions where the
+narration is the human's only channel.
+
+**What ships: `announced`, an echo, on both mutating results.**
+
+| | |
+|---|---|
+| present | the text that was spoken, echoed back |
+| absent | you asked for no announcement |
+
+Four decisions worth recording, because each had a plausible alternative:
+
+**An echo rather than a boolean.** The same argument `announce`'s own result was
+built on: the reader returns an acknowledgement and nothing else, so the useful
+confirmation is that *this exact text* reached it. A `true` would confirm the
+mechanism and not the message.
+
+**Omitted rather than empty when nothing was announced.** "You did not narrate"
+and "your narration vanished" must stay distinguishable, which they are only
+while absence is a real answer — the same rule `state` follows two fields above.
+
+**Whitespace-only is now an error, where it used to be dropped in silence.** The
+bridge guards its announcement with `if params.announce.strip()`, so `"   "`
+produced no sound and no signal — an agent that *meant* to narrate got the exact
+outcome of one that did not. The `announce` tool has always refused it; the two
+mutating tools now refuse it identically, and refuse it **before dispatch**, so a
+narration that cannot be spoken is never discovered after the machine has already
+moved. Empty and absent stay legal and stay silence: that is the wire contract's
+own spelling, and an erased parameter cannot tell the two apart anyway.
+
+**Nothing new crosses the wire.** The bridge already acknowledges the whole call,
+and the server reached that acknowledgement only by sending the announcement
+first; with whitespace refused above it, there is no longer a path where the
+bridge speaks less than it was handed. So `protocol.md` is unchanged and this
+costs no rebuild of the add-on — the ack is assembled where the request still is.
+
+**What it must never claim.** `protocol.md` §7.1 measured the gap and this
+amendment is bounded by it: emission runs **two to three utterances, about five
+seconds, ahead of audio**. `announced` says the announcement was *made*. It does
+not say it was *heard*, and an agent that narrates and acts in the same breath is
+acting ahead of its own narration. Both tool schemas say so in those words, and
+so does `screenreader://guidance`, which is where the instruction to narrate
+lives.
+
+**Deliberately not built: a way to wait for the listener to catch up.** 11.24(b)
+left that open as the alternative remedy. It is not this amendment, and not
+because it is unwanted — because the bridge has no view of audio at all. It
+captures *before* the synthesizer (§7.1), so "the human has heard it" would need
+a new mechanism the bridge does not have today: NVDA's synth index callbacks,
+reaching back through a port that currently only speaks. That is its own spec,
+its own entity, and its own live measurement. Named, not designed — and the field
+here is honest without it, which is why it does not block.
+
+**Layout** (AGENTS.md: a spec names the files before the code exists):
+
+| File | Role | Change |
+|---|---|---|
+| `server/domain/controllers/tools/observation.go` | supporting construct (existing) | Gains the `Announced` field and `announcement()`, the validator both tools share. It is the shared result half by construction, which is the whole reason the ack could not live in either tool. |
+| `server/domain/controllers/tools/press_gesture.go`, `type_text.go` | controllers (existing) | Validate before dispatch, pass the text to `observed`. |
+| `server/adapters/mcp/documents/guidance-method.md` | document (existing) | The narration section gains the ack and the five-second warning — the same document that tells an agent to narrate at all. |
+| `server/domain/controllers/tools/announced_ack_test.go` (new) | unit | Both tools in one file, because the property is that they answer a narration *identically*. |
+
+No bridge change, no port change, no new entity: the announcement was already
+travelling, and what was missing was the answer.
+
 ---
 
 ## What is deliberately not built

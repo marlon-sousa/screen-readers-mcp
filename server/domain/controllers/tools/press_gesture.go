@@ -66,7 +66,8 @@ func (t *PressGesture) Description() string {
 		"(browse/focus, speech mode, sleep, input help), sampled when the last " +
 		"window closed; it is deliberately not focus information. Use `announce` to " +
 		"tell the human at the keyboard what you are about to do -- it is spoken " +
-		"before anything is pressed and costs no extra call. Read " +
+		"before anything is pressed and costs no extra call, and comes back to you " +
+		"as `announced`, which confirms it was SAID and never that it was heard. Read " +
 		"screenreader://guidance for the full loop."
 }
 
@@ -128,6 +129,7 @@ func (t *PressGesture) OutputSchema() json.RawMessage {
 		},
 		"speechFrom": {"type": "integer", "description": "The first speech index this call covered."},
 		"speechTo": {"type": "integer", "description": "One past the last: the window is [speechFrom, speechTo), so speechTo is exactly what to read from next. Slow effects legitimately arrive after it -- read again from here rather than pressing anything twice."},
+		"announced": {"type": "string", "description": "The announcement that was spoken to the human before the first key went out, echoed back. ABSENT when you asked for none. It confirms the announcement was MADE, never that it was HEARD: speech is emitted around five seconds ahead of audio, so if you narrate and act at once you are acting ahead of your own narration."},
 		"state": {
 			"type": "object",
 			"description": "The modes you cannot hear, sampled when the last grace window closed. ABSENT when the reader serves no state capability: absent and \"all four fields zero\" are different answers. Deliberately not focus information.",
@@ -175,6 +177,13 @@ func (t *PressGesture) Execute(ctx ToolContext, params json.RawMessage) (any, er
 	if len(request.Gestures) == 0 {
 		return nil, errors.New("gestures is required, and must name at least one gesture")
 	}
+	// Validated BEFORE the keys are dispatched, like the announce tool validates
+	// before touching its port: a narration that cannot be spoken must not be
+	// discovered after the machine has already moved.
+	announced, err := announcement(request.Announce)
+	if err != nil {
+		return nil, err
+	}
 	// Absent means "use the reader's default", which is NOT the same as 0. An
 	// erased int cannot tell the two apart, so the parameter is a pointer and
 	// the default lives in one place -- the contract -- rather than being
@@ -204,6 +213,6 @@ func (t *PressGesture) Execute(ctx ToolContext, params json.RawMessage) (any, er
 	}
 	return pressGestureResult{
 		Pressed:     pressed,
-		observation: observed(outcome.Observation),
+		observation: observed(outcome.Observation, announced),
 	}, nil
 }
