@@ -1355,7 +1355,7 @@ rather than before it.
     Spec: [0034-the-schema-the-client-holds.md](specs/0034-the-schema-the-client-holds.md)
     (agreed 2026-08-21, amended in place on agreement — the amendments are marked
     and every one of them makes the spec smaller).
-11.27. **Done (PR #PRNUM, 2026-08-21)** — E, attendance is declared, not derived (both lanes; small). From a
+11.27. **Done (PR #72, 2026-08-21)** — E, attendance is declared, not derived (both lanes; small). From a
     question asked during the same run — *is the agent warned whether the machine
     is unattended?* — whose answer is **yes, already** (spec 0032 ships it at
     connect in a required field, in all three states). Finding out WHY produced
