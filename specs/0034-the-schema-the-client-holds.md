@@ -1,8 +1,20 @@
 # 0034 — the schema the client holds
 
-Status: **drafted 2026-08-21, not agreed.** Board entry **11.26**. Comes out of
-the 11.11/11.17 live run (PR #70), where it was not the thing under test: it
-turned up because a checklist item could not be performed.
+Status: **agreed 2026-08-21.** Board entry **11.26**. Comes out of the
+11.11/11.17 live run (PR #70), where it was not the thing under test: it turned
+up because a checklist item could not be performed.
+
+**Amended on agreement, twice, and both amendments make the spec smaller.** The
+draft was written from the board entry rather than from the code, and the code
+had already done some of it. Part 3.3's substantive half **ships already** — spec
+0031's `screenreader://tools` publishes every tool's full input schema, composed
+from the registry, with an integration test asserting it equals the tool's own —
+so what is left there is one paragraph of framing rather than a new mechanism,
+and the `ToolGate` parameter summary the draft proposed is **withdrawn** as a
+second publisher of a fact already published. Part 3.2's scope shrank for a
+mechanical reason: `decodeParams` uses a plain `json.Unmarshal`, so the unknown
+and missing fields it carefully excluded **cannot reach it at all**. Both are
+marked in place below.
 
 ---
 
@@ -120,6 +132,20 @@ current text is not merely incomplete: it tells a developer, in the imperative,
 *not* to do the thing that would have saved the session — and it was written with
 the confidence of a lesson learned.
 
+**Two more sentences in the same message are corrected with it**, because they
+are where the false confidence comes from rather than where it lands: the message
+tells the reader that the stranded cache "is still a correct one" and that this
+is "the whole of board entry 11.6". The first is true of the LIST and false of
+the schemas inside it; the second is what Part 1 corrects. The amended text says
+what a constant list does buy, and then says plainly that a rebuild is the case
+it does not cover.
+
+**And it goes in [`AGENTS.md`](../AGENTS.md) too** (agreed on review). The two
+places are not redundant: the script is read at the moment a developer could act
+on it, and the manual is where a session looks the rule up beforehand — and the
+manual's copy carried the same wrong "only if you added or removed a tool". A
+rule that is wrong in two places is not fixed by correcting one.
+
 ### 2. The decode failure says what it might mean
 
 Today a parameter type error is reported exactly as the JSON decoder phrased it.
@@ -127,12 +153,22 @@ It should keep that (it is precise, and precision is what a developer needs) and
 gain the hypothesis:
 
 ```
-value for "normalize" is a string, but this tool takes a boolean.
-If you did not expect this parameter to be new, your client may be holding a tool
-schema older than this server build -- reconnect the MCP server so it lists the
-tools again. Read screenreader://tools for the parameters this build actually
-takes; a resource is read live and is never cached.
+could not read the arguments {"reader":"nvda","normalize":"true"}: json: cannot
+unmarshal string into Go struct field connectParams.normalize of type bool. The
+value for "normalize" is a string, but this tool takes a boolean. If you did not
+expect this parameter to be new, your client may be holding a tool schema older
+than this server build -- a client caches tools/list, and that cache includes each
+tool's parameters. Read screenreader://tools for the parameters this build
+actually takes: a resource is read live and is never cached, so it describes the
+build that is running even when a cached list does not. Re-listing the tools is
+client UI -- only the human at the keyboard can reconnect this MCP server
 ```
+
+*(Amended to the shipped wording. The draft's version dropped the decoder's own
+sentence; the point of the hint is that it is ADDED to that sentence, so showing
+it without is showing the wrong thing. It also read "reconnect the MCP server",
+in the imperative, at an agent that cannot — the third property below is the one
+that catches it.)*
 
 Three properties this wording has to keep:
 
@@ -146,58 +182,110 @@ Three properties this wording has to keep:
 - **It is a per-call error, not a session fault.** Nothing about it ends a
   session.
 
-**Scope: type mismatches only, on a field the tool declares.** An unknown field,
-a missing required one, or malformed JSON are not evidence of staleness and must
-not collect this hint — a hypothesis attached to everything is noise, and the
-next reader learns to skip it.
+**Scope: type mismatches only, on a field the tool declares.** Malformed JSON is
+not evidence of staleness and must not collect this hint — a hypothesis attached
+to everything is noise, and the next reader learns to skip it.
 
-### 3. `screenreader://tools` publishes each tool's parameters
+> **Amendment, on agreement.** The draft also excluded "an unknown field" and "a
+> missing required one". Those exclusions were unnecessary, and finding out why
+> is worth recording: `decodeParams` calls a plain `json.Unmarshal` with no
+> `DisallowUnknownFields`, and required-ness is checked by each tool afterwards,
+> not by the decoder. So a field no struct declares is **ignored**, an absent one
+> is **left at its zero value**, and neither produces an error that could reach
+> the hint. **Type mismatch and malformed JSON are the only two errors this
+> function can return**, which makes the scope a fact of the code rather than a
+> rule somebody must remember — and `params_test.go` asserts the silence
+> directly, so the limit is pinned rather than asserted in prose.
+>
+> It also closes the draft's second open question in the negative. The mirror
+> case — a client still sending a parameter this build REMOVED — cannot be hinted
+> at, because it does not fail. Making it fail would mean turning on
+> `DisallowUnknownFields`, which rejects harmless extras from any client and is a
+> much larger change than the hint; **not done**, and named here so a later
+> session sees it was considered.
 
-The tools document today records **which capability gates which tool**. It should
-also record **what each tool takes**: parameter names, types, and whether each is
-required.
+### 3. `screenreader://tools` already publishes each tool's parameters — and now says why that matters
 
-This is the substantive half, and the reason is mechanical rather than
-editorial: **a resource is read live on every request, and `tools/list` is
-cached**. So the resource is the one channel in this server that always describes
-the build that is actually running. An agent that hits a puzzling argument error
-can read the document and see the truth without a reconnect, without a human, and
-without knowing that caching exists.
+**Amended on agreement. The draft was wrong about the code, and in the cheapest
+possible direction: this was already built.** Spec 0031's tools document does not
+merely record which capability gates which tool. `toolsDocument` renders, per
+tool, a `Parameters:` block containing that tool's full `InputSchema()` and a
+`Returns:` block containing its `OutputSchema()`, both composed from the registry
+the running process holds — so a tool that gains a parameter gains a document
+entry by construction, which is exactly the property the draft asked for. The
+embedded frame already announces it ("the parameters it takes … both as JSON
+Schema"), and
+`TestEverySchemaInTheDocumentParsesAndMatchesTheToolsOwn` already asserts, per
+tool, that the published schema equals the tool's own, read through a real MCP
+client.
 
-It also gives the middle row of Part 1's table its only defence. An agent that
-suspects it is missing an option can look, rather than concluding from a
-successful call that there was nothing to miss.
+So the mechanism is met and **the `ToolGate` parameter summary the draft proposed
+is withdrawn**. It would have been a second rendering of a fact the document
+already renders in full — and the draft's own objection to duplicating
+descriptions applies with more force to duplicating the shape, since the shape is
+the part a stale cache gets wrong. `tool_catalog.go` and `registry.go` are
+untouched by this entry.
 
-**Names, types and requiredness — not the descriptions.** The descriptions are
-long, they are already in `tools/list`, and duplicating them would create the
-second publisher of one fact that this repo keeps deleting (0024 Part 3.3 was
-withdrawn for exactly that). What the document adds is the part a stale cache
-gets *wrong*, which is the shape.
+**What was genuinely missing is the reason to read it**, and that is what ships
+in its place. The frame told an agent that this document is *static* — "Read it
+before you connect. Nothing in it changes during a session." That is true, and
+read alone it is an invitation to treat the document the same way a client treats
+the tool list: fetch once, keep. The one property that makes it the right thing
+to read at the moment of a puzzling argument error is the property the frame
+never stated, because before this entry nobody had a reason to state it: **a
+resource is read live on every request, and a tool list is cached.** The document
+is therefore the only channel in this server that always describes the build that
+is actually running.
+
+The frame gains a short section saying so, and saying what to do with it: read
+the parameters here rather than trusting the ones you hold, both when a tool
+rejects an argument you believed was right and when you want to be sure you are
+not missing an option. It repeats the split the error message makes — reading
+this is a move the agent can make in the same turn; re-listing the tools is
+client UI only the human can reach.
+
+That last use is the middle row of Part 1's table getting its only defence. An
+agent that suspects it is missing an option can look, rather than concluding from
+a successful call that there was nothing to miss.
 
 ### 4. It does not need a live NVDA
 
 Every claim here is about this server and its client, and none of it touches a
-reader. The conformance tier already runs a real client against the real binary,
-which is where the resource's content is asserted. **This is the first entry in a
-while with no live checklist**, and saying so is part of the estimate.
+reader. The integration tier already runs a real MCP client against this real
+server, which is where the resource's content is asserted. **This is the first
+entry in a while with no live checklist**, and saying so is part of the estimate.
+
+*(Amended: the draft said "conformance tier". The conformance tier is the one
+that needs a real bridge; the tier that reads this document through a real client
+is `server/tests/integration`, and it is where the existing assertion lives.)*
 
 ---
 
 ## Class/file layout
 
-Per AGENTS.md, a spec names every file before the code exists.
+Per AGENTS.md, a spec names every file before the code exists. **Amended on
+agreement**: three rows are struck, because Part 3.3's mechanism was already
+built — `tool_catalog.go`, `registry.go` and a new assertion in
+`tools_resource_test.go` are all withdrawn, and `tools_resource.go` needs no
+change at all. One row is added: the frame, which is where the missing half was.
 
 | File | Role | Collaborators |
 |---|---|---|
-| `server/domain/controllers/tools/params.go` (existing, holds `decodeParams`) | The one place every tool decodes its arguments, which is why the hint has exactly one home. It inspects the decoder's error for a **type** mismatch (`*json.UnmarshalTypeError`), and only then wraps it with the hypothesis and the pointer at the resource. Every other decode error passes through untouched. | Called by every tool's `Execute`. |
-| `server/domain/controllers/tools/params_test.go` (new or existing) | unit | A type mismatch gains the hint and keeps the original detail; a missing required field, an unknown field and malformed JSON do NOT gain it. |
-| `server/domain/entities/tool_catalog.go` | entity (existing) | `ToolGate` gains the tool's parameter summary — name, type, required — so the table stays the single source for what the document says about a tool. Still no reader name and still no capability logic. |
-| `server/domain/controllers/tools/registry.go` | registry (existing) | Fills the summary from each tool's own `InputSchema()`, so a tool that gains a parameter gains a document entry **by construction** rather than by somebody remembering — the property the catalog comment already claims for the gate. |
-| `server/adapters/mcp/tools_resource.go` | adapter (existing) | Renders the parameters into the document. |
-| `server/adapters/mcp/tools_resource_test.go` (existing) | unit | Every registered tool appears with its parameters; the rendered types match the schema the tool publishes. |
-| `server/tests/conformance/` (existing) | conformance | The document, read through a real client from the real binary, names a parameter that exists — the tier where a drift between schema and document would show. |
-| `scripts/redeploy.py` | dev tooling (existing) | The corrected instruction. |
+| `server/domain/controllers/tools/params.go` (existing, holds `decodeParams`) | The one place every tool decodes its arguments, which is why the hint has exactly one home. It inspects the decoder's error for a **type** mismatch (`*json.UnmarshalTypeError`), and only then wraps it with the hypothesis and the pointer at the resource. Every other decode error passes through untouched. `sentAs`, `takes` and `article` are private helpers that phrase it: the two types are named as the published schemas spell them, since the whole point is to send the reader to one. | Called by every tool's `Execute`. |
+| `server/domain/controllers/tools/params_test.go` (new) | unit | In-package, because `decodeParams` is unexported. A type mismatch gains the hint and keeps the original detail; the types are named in schema vocabulary; malformed JSON does NOT gain it; and an unknown field and an absent one produce **no error at all**, which pins the honest limit rather than asserting it in prose. |
+| `server/adapters/mcp/documents/tools-frame.md` | agent-facing document (existing) | Gains the section that says this document is read live and never cached, and is therefore what to trust when a cached list may be older than the build. The frame stays free of any tool name, so the existing drift guard is unaffected. |
+| `scripts/redeploy.py` | dev tooling (existing) | The corrected instruction, plus the two sentences above it that carried the same false confidence. |
+| `AGENTS.md` | dev manual (existing) | The same correction where a session looks the rule up, with the reason it is 11.26 and not 11.6. |
 | `server/adapters/mcp/sdk_server.go` | adapter (existing) | The comment quoted in Part 1 is amended: 0022 (c) closed the within-build half, and this entry is the across-build half. Left uncorrected it is a confident statement that a future session would trust. |
+
+**Withdrawn from the draft's layout**, with the reason, so a reader of the diff
+is not left wondering: `server/domain/entities/tool_catalog.go` and
+`server/domain/controllers/tools/registry.go` (a `ToolGate` parameter summary
+would duplicate what `tools_resource.go` already composes from the same
+registry); `server/adapters/mcp/tools_resource.go` and its unit test (they
+already render and already match); and `server/tests/conformance/` (the
+assertion exists, one tier down, in
+`server/tests/integration/mcp_tools_resource_test.go`).
 
 ---
 
@@ -236,15 +324,23 @@ Per AGENTS.md, a spec names every file before the code exists.
 
 ## Open questions
 
-- **Should the tools document also carry the result shape?** The same argument
-  applies to output schemas, and the same objection (duplication) applies harder,
-  since a result shape is larger. Parameters are what a *caller* gets wrong.
-- **Is a type mismatch the only trigger worth hinting on?** An unknown-field
-  error could equally mean a client sending a parameter this build *removed* —
-  the mirror case. It is rarer, and adding it widens the hint's blast radius.
-- **Does the corrected redeploy text belong in AGENTS.md too?** The script is
-  where it is read at the right moment; the manual is where somebody looks
-  afterwards.
+**All three were settled on agreement**, and the answers are recorded here rather
+than deleted, because two of them were settled by facts rather than by taste.
+
+- **Should the tools document also carry the result shape?** ~~The same argument
+  applies to output schemas, and the same objection (duplication) applies
+  harder.~~ **Moot: it already does.** `toolsDocument` renders `OutputSchema()`
+  beside the input schema, and the integration tier checks both. The question was
+  asked from the board entry rather than from the code.
+- **Is a type mismatch the only trigger worth hinting on?** **Yes, and not by
+  choice.** The mirror case — a client still sending a parameter this build
+  removed — produces no error to hint on, because `decodeParams` ignores fields
+  no struct declares. Catching it would mean `DisallowUnknownFields`, which
+  rejects harmless extras from every client; not done. See 3.2's amendment.
+- **Does the corrected redeploy text belong in AGENTS.md too?** **Yes, both
+  places.** The manual carried the same wrong rule, so correcting only the script
+  would have left the wrong version where a session reads it first. The two say
+  the same thing at different lengths and neither is the other's summary.
 
 ---
 

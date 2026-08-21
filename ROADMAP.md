@@ -189,8 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23, 11.26, 11.27 —
-**six entries** (11.26 and 11.27 opened by the 11.11/11.17 live run) (11.22-11.24 opened by the second external run,
+11.13, 11.16, 11.18, 11.23, 11.27 —
+**five entries** (11.26 and 11.27 were opened by the 11.11/11.17 live run, and
+11.26 is Done with this PR) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -262,7 +263,10 @@ reading 11.25, so the next session was told a number that was already spent, and
 11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, taken
 on a branch before it merged — which is precisely the case the paragraph above
 says to check for; it merged in PR #70. 11.26–11.27 and specs 0034–0035 were
-taken on 2026-08-21 by the two findings of that PR's live run.
+taken on 2026-08-21 by the two findings of that PR's live run. **11.27 and spec
+0035 are taken on the branch `11.27-attendance-is-declared` and are NOT on
+main** — which is that same case again, so do not read 0035's absence from
+`specs/` as the number being free.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1300,7 +1304,26 @@ rather than before it.
     again, in the shape of `test_buffer_purity.py`.
     Spec: none — 0032 Part 2 already decided this; the code did not implement what
     it decided.
-11.26. **E, the schema the client holds** (server lane; no live NVDA). Found
+11.26. **Done (PR #71, 2026-08-21)** — E, the schema the client holds (server
+    lane; no live NVDA, and the first entry in a while with no live checklist).
+    **Two of the draft spec's four ship items were already built**, which is the
+    part worth carrying forward: 0031's `screenreader://tools` has published
+    every tool's full input AND output schema, composed from the registry, since
+    PR #65, with an integration test asserting per tool that the published schema
+    equals the tool's own. The draft proposed adding a parameter summary to
+    `ToolGate` and was written from the board entry rather than from the code. It
+    was withdrawn on agreement as a second publisher of a published fact, and
+    what shipped in its place is one paragraph of the frame: the document never
+    said the property that makes it worth reading at the moment of a puzzling
+    argument error — **a resource is read live, a tool list is cached**.
+    So what shipped is the hint (`params.go`, type mismatches only), the frame
+    paragraph, and three corrected texts: `redeploy.py`, `AGENTS.md` and
+    `sdk_server.go`. The scope of the hint shrank too, and for a fact rather than
+    a preference: `decodeParams` uses a plain `json.Unmarshal`, so unknown and
+    missing fields never produce an error at all — **type mismatch and malformed
+    JSON are the only two errors it can return**, and `params_test.go` pins the
+    silence so the limit is a property of the code.
+    The original finding, kept because it is the argument: Found
     during the 11.11/11.17 live run (PR #70), and not by looking for it: a
     checklist item could not be performed. The server gained ONE optional
     parameter, `normalize` on `connect_reader`, and was redeployed; the next call
@@ -1330,7 +1353,8 @@ rather than before it.
     RESOURCE is read live and never cached, so it is the one channel that always
     describes the running build.
     Spec: [0034-the-schema-the-client-holds.md](specs/0034-the-schema-the-client-holds.md)
-    (drafted 2026-08-21, not agreed).
+    (agreed 2026-08-21, amended in place on agreement — the amendments are marked
+    and every one of them makes the spec smaller).
 11.27. **E, attendance is declared, not derived** (both lanes; small). From a
     question asked during the same run — *is the agent warned whether the machine
     is unattended?* — whose answer is **yes, already** (spec 0032 ships it at
@@ -1356,8 +1380,12 @@ rather than before it.
     older bridge. Not inside `SilenceCapInfo`: nesting the cause in the effect is
     the belief being corrected. Read-only, for 0032's reason, and no new
     capability, following 0033's precedent.
-    Spec: [0035-attendance-is-declared-not-derived.md](specs/0035-attendance-is-declared-not-derived.md)
-    (drafted 2026-08-21, not agreed).
+    Spec: **0035, drafted 2026-08-21, not agreed, and NOT ON MAIN.** It lives on
+    the branch `11.27-attendance-is-declared`, because AGENTS.md says a spec
+    merges with the PR that implements it rather than landing on main separately
+    — and 11.26 was implemented first, so the branch the two were drafted on
+    became 11.26's. The entry stays on the board because the board is where an
+    open finding belongs; only the spec file waits.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

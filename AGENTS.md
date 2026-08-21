@@ -769,11 +769,13 @@ bump.
     second, external agent hit the same wall with no redeploy anywhere. See
     [spec 0022](specs/0022-tool-discovery-an-agent-can-rely-on.md).
 
-    **The one case that still needs a reconnect** is a build in which you ADDED
-    or REMOVED a tool. Then the cached list really is out of date — not because
-    a session began, but because the server's own set of tools changed. Only the
-    maintainer can run it (`/mcp` is client UI, unreachable from the Skill tool,
-    the `claude mcp` CLI and the config file alike), so ask, in these words:
+    **The case that still needs a reconnect** is a build that changed the
+    SURFACE: a tool added or removed, **or a tool's parameters or result
+    changed.** Then the cached list really is out of date — not because a
+    session began, but because the server's own surface is not what it was when
+    the client listed. Only the maintainer can run it (`/mcp` is client UI,
+    unreachable from the Skill tool, the `claude mcp` CLI and the config file
+    alike), so ask, in these words:
 
     ```text
     /mcp reconnect screen-reader-testing
@@ -782,6 +784,21 @@ bump.
     Name the server: the bare `/mcp reconnect` fails with "MCP controls aren't
     available right now". `scripts/live_test.py` needs none of this: it brings
     its own MCP client and its own server process.
+
+    **The parameters half of that rule was learned separately and later**, and
+    it is board entry 11.26 rather than 11.6. The cache includes each tool's
+    SCHEMA, not just its name, so a parameter this build added is one the client
+    will not send correctly until it lists again — and unlike a missing tool it
+    fails *typed*, as an unmarshalling error about JSON and Go structs, naming
+    nothing that would lead you here. Worse, a parameter the client does not
+    know about is simply never sent, the server applies its default, and
+    **nothing fails at all**. Until 2026-08-21 both this rule and
+    `scripts/redeploy.py` said, in the imperative, to reconnect *only* for an
+    added or removed tool, and that advice cost a session a checklist item. When
+    you suspect it, **read `screenreader://tools`**: a resource is served live
+    and never cached, so it is the one channel that describes the build actually
+    running — and reading it is something an agent can do without the
+    maintainer. See [spec 0034](specs/0034-the-schema-the-client-holds.md).
   - `poe live` is NOT part of the gate and never runs unattended: it drives the
     maintainer's real screen reader. Ask first, every time.
 - **Search with the Grep tool (ripgrep), never `grep -r` via Bash.** Ripgrep

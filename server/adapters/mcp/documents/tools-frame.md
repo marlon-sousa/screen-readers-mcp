@@ -8,6 +8,21 @@ paraphrase them.
 
 Read it before you connect. Nothing in it changes during a session.
 
+## This document, not your cached list, describes the running server
+
+A resource is read live, on every request. A tool list is fetched once and
+cached, and that cache includes each tool's parameters -- so if this server was
+rebuilt while your client was attached, its list can be older than the server
+answering it. The list going stale is quiet: a parameter added since you listed
+is one you will not send, and a call that succeeds on the default looks exactly
+like a call that chose it.
+
+So when a tool rejects an argument you believed was right, or when you want to be
+sure you are not missing an option, read the parameters here rather than trusting
+the ones you already hold. Re-listing the tools is client UI, and only the human
+at the keyboard can do it; reading this document is something you can do yourself,
+in the same turn.
+
 ## What it does not answer
 
 This document says what this server **offers** and what each tool **needs**. It
