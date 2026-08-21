@@ -122,6 +122,17 @@ func (c ToolContext) State() (ports.StateInspector, error) {
 	return c.Connection.State, nil
 }
 
+// StateWriter is the write half of the `state` capability, or a structured
+// error. Gated on the same capability as State: a reader that announces `state`
+// announces both, and the limits on what may be SET are per-field and live at
+// the bridge (spec 0033).
+func (c ToolContext) StateWriter() (ports.StateWriter, error) {
+	if c.Connection == nil || c.Connection.StateWrite == nil {
+		return nil, c.missing(entities.CapabilityState)
+	}
+	return c.Connection.StateWrite, nil
+}
+
 // Config is the `config` capability, or a structured error.
 func (c ToolContext) Config() (ports.ConfigAccessor, error) {
 	if c.Connection == nil || c.Connection.Config == nil {

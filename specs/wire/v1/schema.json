@@ -430,6 +430,16 @@
             }
           ]
         },
+        "normalize": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "persona": {
           "type": "string"
         }
@@ -502,6 +512,12 @@
               "type": "null"
             }
           ]
+        },
+        "normalized": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/NormalizedSetting"
+          }
         }
       },
       "required": [
@@ -656,6 +672,29 @@
       ],
       "additionalProperties": true
     },
+    "NormalizedSetting": {
+      "type": "object",
+      "properties": {
+        "keyPath": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "previous": {},
+        "current": {},
+        "why": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "keyPath",
+        "previous",
+        "current",
+        "why"
+      ],
+      "additionalProperties": true
+    },
     "PingResult": {
       "type": "object",
       "properties": {
@@ -789,6 +828,45 @@
       },
       "required": [
         "level"
+      ],
+      "additionalProperties": true
+    },
+    "SetStateParams": {
+      "type": "object",
+      "properties": {
+        "browseMode": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "browse",
+                "focus",
+                "none"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "SetStateResult": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/StateResult"
+        },
+        "changed": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "state"
       ],
       "additionalProperties": true
     },
@@ -1205,6 +1283,14 @@
       "params": null,
       "result": {
         "$ref": "#/$defs/StateResult"
+      }
+    },
+    "setState": {
+      "params": {
+        "$ref": "#/$defs/SetStateParams"
+      },
+      "result": {
+        "$ref": "#/$defs/SetStateResult"
       }
     },
     "getConfig": {

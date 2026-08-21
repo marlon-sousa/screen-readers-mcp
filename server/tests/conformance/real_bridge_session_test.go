@@ -94,6 +94,7 @@ var (
 		"get_next_speech_index",     // speech
 		"get_speech",                // speech
 		"get_state",                 // state
+		"set_state",                 // state
 		"press_gesture",             // gestures
 		"set_config",                // config
 		"set_log_level",             // log
@@ -159,6 +160,7 @@ func runWholeSession(t *testing.T, transport string) {
 	exerciseAnnounce(t, harness)
 	exerciseAskUser(t, harness)
 	exerciseTyping(t, harness)
+	exerciseStateWrite(t, harness)
 	exerciseLog(t, harness)
 	exerciseLogObservation(t, harness)
 	exerciseGuidance(t, harness)
@@ -793,6 +795,57 @@ func exerciseTyping(t *testing.T, harness *testsupport.MCPHarness) {
 	if want := utf8.RuneCountInString(typedText); typed.Typed != want {
 		t.Errorf("typed = %d, want %d (the rune count of %q surviving the round trip)",
 			typed.Typed, want, typedText)
+	}
+}
+
+// exerciseStateWrite: the one command whose whole value is a DISTINCTION, driven
+// across the language boundary (spec 0033).
+//
+// Two calls, and the second is the point. The first moves the mode and reports
+// `changed: ["browseMode"]`; the second asks for the mode the reader is now in
+// and reports `changed: []` -- a success that changed nothing. A binding that
+// dropped `changed`, or sent it as null, or let an empty list arrive as a missing
+// field, makes those two answers identical, which is exactly the ambiguity the
+// command exists to remove. Nothing below the wire can catch that: the Go fake
+// and the Go server cannot disagree about a field name.
+//
+// It also proves the refusal crosses: "none" is reportable and not settable, and
+// the bridge's specific reason has to arrive as a specific error rather than a
+// bare failure.
+func exerciseStateWrite(t *testing.T, harness *testsupport.MCPHarness) {
+	t.Helper()
+
+	var written struct {
+		State struct {
+			BrowseMode string `json:"browseMode"`
+		} `json:"state"`
+		Changed []string `json:"changed"`
+	}
+
+	harness.Call(t, "set_state", map[string]any{"browse_mode": "focus"}).Decode(t, &written)
+	if written.State.BrowseMode != "focus" {
+		t.Errorf("state after the write = %q, want focus", written.State.BrowseMode)
+	}
+	if len(written.Changed) != 1 || written.Changed[0] != "browseMode" {
+		t.Errorf("changed = %v, want [browseMode] -- the write moved the mode", written.Changed)
+	}
+
+	harness.Call(t, "set_state", map[string]any{"browse_mode": "focus"}).Decode(t, &written)
+	if written.State.BrowseMode != "focus" {
+		t.Errorf("state after the no-op = %q, want focus", written.State.BrowseMode)
+	}
+	if len(written.Changed) != 0 {
+		t.Errorf("changed = %v, want empty -- the reader was already in focus mode", written.Changed)
+	}
+
+	// The set-domain is narrower than the get-domain, and the narrowing has to
+	// survive the crossing: "none" is a thing get_state REPORTS and set_state
+	// must refuse.
+	refused := harness.Call(t, "set_state", map[string]any{"browse_mode": "none"})
+	if !refused.IsError {
+		t.Errorf(`set_state browse_mode:"none" was accepted (%s); it is reportable and not settable`, refused.Text)
+	} else if !strings.Contains(refused.Text, "cannot be set") {
+		t.Errorf("refusal = %q, want the bridge's own specific reason", refused.Text)
 	}
 }
 

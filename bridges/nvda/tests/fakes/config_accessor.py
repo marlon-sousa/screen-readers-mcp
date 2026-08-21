@@ -19,7 +19,13 @@ class FakeConfigAccessor(ConfigAccessor):
 	"""Stores and restores config values; records calls for assertions."""
 
 	def __init__(self) -> None:
-		self._store: dict[tuple[str, ...], Any] = {}
+		# Seeded with NVDA's own default for the one key spec 0024 admits, so
+		# every silent-mode test exercises the real normalisation path instead of
+		# tripping over a key the reader would certainly have had. A test that
+		# wants the other case seeds or removes it explicitly.
+		self._store: dict[tuple[str, ...], Any] = {
+			("virtualBuffers", "passThroughAudioIndication"): True,
+		}
 		self._prior: dict[tuple[str, ...], Any] = {}
 		self._restored = False
 		self.get_calls: list[list[str]] = []
@@ -55,6 +61,14 @@ class FakeConfigAccessor(ConfigAccessor):
 	def seed(self, key_path: list[str], value: Any) -> None:
 		"""Seed a key so a test can read it without first writing it."""
 		self._store[tuple(key_path)] = value
+
+	def forget(self, key_path: list[str]) -> None:
+		"""Drop a key entirely, so the fake refuses it the way a reader would.
+
+		The counterpart to seed(): it is how a test stands in for a reader whose
+		configuration does not define a key at all.
+		"""
+		self._store.pop(tuple(key_path), None)
 
 	@property
 	def store(self) -> dict[tuple[str, ...], Any]:

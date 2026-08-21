@@ -62,6 +62,7 @@ func BuildRegistry() *Registry {
 
 		// Gated on `state`.
 		&GetState{},
+		&SetState{},
 
 		// Gated on `config`.
 		&GetConfig{},

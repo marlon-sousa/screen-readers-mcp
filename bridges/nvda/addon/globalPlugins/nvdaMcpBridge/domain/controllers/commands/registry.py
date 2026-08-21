@@ -39,6 +39,7 @@ from .ping import PingHandler
 from .press_gesture import PressGestureHandler
 from .set_config import SetConfigHandler
 from .set_log_level import SetLogLevelHandler
+from .set_state import SetStateHandler
 from .type_text import TypeTextHandler
 from .wait_for_log import WaitForLogHandler
 from .wait_for_speech import WaitForSpeechHandler
@@ -98,6 +99,7 @@ def build_command_registry(
 		protocol.Command.WAIT_FOR_USER_REPLY: WaitForUserReplyHandler(),
 		protocol.Command.GET_FOCUS_INFO: GetFocusInfoHandler(),
 		protocol.Command.GET_STATE: GetStateHandler(),
+		protocol.Command.SET_STATE: SetStateHandler(),
 		protocol.Command.GET_CONFIG: GetConfigHandler(),
 		protocol.Command.SET_CONFIG: SetConfigHandler(),
 		protocol.Command.GET_LOG: GetLogHandler(),

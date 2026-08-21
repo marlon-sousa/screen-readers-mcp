@@ -29,6 +29,7 @@ from .focus_inspector import FocusInspector
 from .gesture_sender import GestureSender
 from .speech_source import SpeechSource
 from .state_inspector import StateInspector
+from .state_setter import StateSetter
 from .text_typer import TextTyper
 
 
@@ -42,6 +43,10 @@ class AdapterSet:
 	text_typer: TextTyper
 	focus_inspector: FocusInspector
 	state_inspector: StateInspector
+	#: Arrives at a mode, idempotently, comparing inside the reader. Separate
+	#: from the inspector because reading a mode and being able to SET it are
+	#: two claims (spec 0033).
+	state_setter: StateSetter
 	config_accessor: ConfigAccessor
 	#: Whether a self-advancing read is running; see the port for why the
 	#: settle cannot answer honestly without it (entry 11.21).

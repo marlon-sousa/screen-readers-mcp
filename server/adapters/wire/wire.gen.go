@@ -62,6 +62,7 @@ const (
 	CommandGetBraille            Command = "getBraille"
 	CommandGetFocusInfo          Command = "getFocusInfo"
 	CommandGetState              Command = "getState"
+	CommandSetState              Command = "setState"
 	CommandGetConfig             Command = "getConfig"
 	CommandSetConfig             Command = "setConfig"
 	CommandAnnounce              Command = "announce"
@@ -244,20 +245,22 @@ type HelloParams struct {
 	Mode            CaptureMode `json:"mode"`
 	ProtocolVersion int         `json:"protocolVersion"`
 	LogLevel        *LogLevel   `json:"logLevel,omitempty"`
+	Normalize       *bool       `json:"normalize,omitempty"`
 	Persona         *string     `json:"persona,omitempty"`
 }
 
 // HelloResult is the wire shape of the same name.
 type HelloResult struct {
-	ProtocolVersion int                `json:"protocolVersion"`
-	Reader          ReaderInfo         `json:"reader"`
-	Capabilities    []Capability       `json:"capabilities"`
-	Mode            CaptureMode        `json:"mode"`
-	Synth           string             `json:"synth"`
-	LogPath         string             `json:"logPath"`
-	BridgeVersion   *string            `json:"bridgeVersion,omitempty"`
-	Guidance        *GetGuidanceResult `json:"guidance,omitempty"`
-	SilenceCap      *SilenceCapInfo    `json:"silenceCap,omitempty"`
+	ProtocolVersion int                 `json:"protocolVersion"`
+	Reader          ReaderInfo          `json:"reader"`
+	Capabilities    []Capability        `json:"capabilities"`
+	Mode            CaptureMode         `json:"mode"`
+	Synth           string              `json:"synth"`
+	LogPath         string              `json:"logPath"`
+	BridgeVersion   *string             `json:"bridgeVersion,omitempty"`
+	Guidance        *GetGuidanceResult  `json:"guidance,omitempty"`
+	SilenceCap      *SilenceCapInfo     `json:"silenceCap,omitempty"`
+	Normalized      []NormalizedSetting `json:"normalized,omitempty"`
 }
 
 // LastSpeechResult is the wire shape of the same name.
@@ -295,6 +298,14 @@ type LogSliceResult struct {
 // NextIndexResult is the wire shape of the same name.
 type NextIndexResult struct {
 	Index int `json:"index"`
+}
+
+// NormalizedSetting is the wire shape of the same name.
+type NormalizedSetting struct {
+	KeyPath  []string        `json:"keyPath"`
+	Previous json.RawMessage `json:"previous"`
+	Current  json.RawMessage `json:"current"`
+	Why      string          `json:"why"`
 }
 
 // PingResult is the wire shape of the same name.
@@ -339,6 +350,17 @@ type SetConfigParams struct {
 // SetLogLevelParams is the wire shape of the same name.
 type SetLogLevelParams struct {
 	Level LogLevel `json:"level"`
+}
+
+// SetStateParams is the wire shape of the same name.
+type SetStateParams struct {
+	BrowseMode *BrowseMode `json:"browseMode,omitempty"`
+}
+
+// SetStateResult is the wire shape of the same name.
+type SetStateResult struct {
+	State   StateResult `json:"state"`
+	Changed []string    `json:"changed,omitempty"`
 }
 
 // SilenceCapInfo is the wire shape of the same name.

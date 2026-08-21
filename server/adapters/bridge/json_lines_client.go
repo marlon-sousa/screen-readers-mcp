@@ -439,6 +439,31 @@ func (c *JSONLinesClient) State() (ports.ReaderState, error) {
 	}, nil
 }
 
+// SetState mirrors State: same struct, the fields present get set. The bridge
+// owns the set-domain (spec 0033) -- "none" and the modes that are readable but
+// not settable are refused there, where the reader's own limits are known,
+// rather than second-guessed here.
+func (c *JSONLinesClient) SetState(request ports.StateWrite) (ports.StateWriteResult, error) {
+	params := wire.SetStateParams{}
+	if request.BrowseMode != nil {
+		mode := wire.BrowseMode(*request.BrowseMode)
+		params.BrowseMode = &mode
+	}
+	var result wire.SetStateResult
+	if err := c.call(wire.CommandSetState, params, &result, DefaultCallTimeout); err != nil {
+		return ports.StateWriteResult{}, err
+	}
+	return ports.StateWriteResult{
+		State: ports.ReaderState{
+			BrowseMode: string(result.State.BrowseMode),
+			SpeechMode: result.State.SpeechMode,
+			SleepMode:  result.State.SleepMode,
+			InputHelp:  result.State.InputHelp,
+		},
+		Changed: result.Changed,
+	}, nil
+}
+
 func (c *JSONLinesClient) GetConfig(keyPath []string) (json.RawMessage, error) {
 	var result wire.ConfigResult
 	err := c.call(wire.CommandGetConfig, wire.GetConfigParams{KeyPath: keyPath}, &result, DefaultCallTimeout)

@@ -187,6 +187,25 @@ that are signalled by sound, and `get_focus_info` answers when the ear has
 nothing to work with. Reach for them here, not as your default way of finding
 out where you are.
 
+## To arrive at a mode, say where you want to be
+
+A mode key is usually a **toggle**, and a toggle is a coin flip whenever
+something else might have moved the mode first -- a page that finished loading
+can put you in browse mode before your keystroke arrives, and then your
+keystroke takes you out of it. The re-check that catches this catches it one
+call too late, after the keys that followed have already gone somewhere else.
+
+So: **to arrive at a mode, use `set_state`; to test the toggle itself, press the
+gesture.** `set_state` compares inside the reader, so there is no window between
+reading and pressing. Asking for the mode you are already in does nothing at all
+-- no sound, no announcement -- which means you can state a precondition on every
+step without making the human at the reader listen to a tone each time. The
+result tells you the state afterwards and whether this call moved anything, so
+you never need to look again.
+
+If the focus is not a browsable document, `set_state` says exactly that. That is
+about the reader, not about the application you are testing.
+
 ## Introspection is for a different job — and this part depends on your stance
 
 `get_focus_info`, `get_state` and `get_config` read the reader's own model

@@ -60,6 +60,18 @@ type SessionOptions struct {
 	// LogLevel optionally raises the READER's own diagnostic verbosity for
 	// the session. Nil leaves it unchanged.
 	LogLevel *entities.ReaderLogLevel
+
+	// Normalize asks the reader to move signals a session cannot capture --
+	// a mode change answered with a sound rather than words -- into the
+	// speech channel it can (spec 0024).
+	//
+	// NIL IS NOT FALSE: it means "whatever this capture mode's default is",
+	// and the two modes differ on purpose. A silent session normalises,
+	// because the human hears no speech anyway and nothing is taken from
+	// them; a live session does not, because the person would hear words
+	// instead of the tone they chose, which is theirs to decide. Only the
+	// caller's SILENCE is ambiguous, so only the caller's silence defers.
+	Normalize *bool
 }
 
 // SessionLifecycle is what a live session can be asked beyond its capabilities:
@@ -125,15 +137,19 @@ type ReaderConnection struct {
 	Lifecycle SessionLifecycle
 
 	// The capability ports. Nil unless announced.
-	Speech    SpeechReader
-	Braille   BrailleReader
-	Gestures  GestureSender
-	Focus     FocusInspector
-	State     StateInspector
-	Config    ConfigAccessor
-	Interact  Interact
-	Text      TextTyper
-	ReaderLog LogReader
+	Speech   SpeechReader
+	Braille  BrailleReader
+	Gestures GestureSender
+	Focus    FocusInspector
+	State    StateInspector
+	// StateWrite is handed out on the SAME capability as State -- `state`
+	// covers reading modes and arriving at them, the way `config` covers
+	// reading and writing config (spec 0033).
+	StateWrite StateWriter
+	Config     ConfigAccessor
+	Interact   Interact
+	Text       TextTyper
+	ReaderLog  LogReader
 
 	// Guidance is the odd one out and is worth saying so: every other port
 	// here backs a TOOL, and this one backs a RESOURCE

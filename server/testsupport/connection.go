@@ -29,17 +29,18 @@ type Connection struct {
 
 	// The fakes behind it, for seeding answers and asserting on interaction.
 	// Each is nil unless its capability was announced.
-	Lifecycle *fakes.FakeSessionLifecycle
-	Speech    *fakes.FakeSpeechReader
-	Braille   *fakes.FakeBrailleReader
-	Gestures  *fakes.FakeGestureSender
-	Focus     *fakes.FakeFocusInspector
-	State     *fakes.FakeStateInspector
-	Config    *fakes.FakeConfigAccessor
-	Interact  *fakes.FakeInteractPort
-	Text      *fakes.FakeTextTyper
-	LogReader *fakes.FakeLogReader
-	Guidance  *fakes.FakeGuidanceReader
+	Lifecycle  *fakes.FakeSessionLifecycle
+	Speech     *fakes.FakeSpeechReader
+	Braille    *fakes.FakeBrailleReader
+	Gestures   *fakes.FakeGestureSender
+	Focus      *fakes.FakeFocusInspector
+	State      *fakes.FakeStateInspector
+	StateWrite *fakes.FakeStateWriter
+	Config     *fakes.FakeConfigAccessor
+	Interact   *fakes.FakeInteractPort
+	Text       *fakes.FakeTextTyper
+	LogReader  *fakes.FakeLogReader
+	Guidance   *fakes.FakeGuidanceReader
 }
 
 // NewConnection builds a session for a reader announcing exactly these
@@ -88,6 +89,10 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 	if set.Has(entities.CapabilityState) {
 		built.State = fakes.NewFakeStateInspector()
 		built.Connection.State = built.State
+		// One capability, both halves -- as `config` hands out both the read
+		// and the write (spec 0033).
+		built.StateWrite = fakes.NewFakeStateWriter()
+		built.Connection.StateWrite = built.StateWrite
 	}
 	if set.Has(entities.CapabilityConfig) {
 		built.Config = fakes.NewFakeConfigAccessor()

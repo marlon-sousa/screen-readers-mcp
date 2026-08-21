@@ -40,6 +40,7 @@ var everyGatedTool = []string{
 	"announce", "ask_user", "get_braille", "get_config", "get_focus_info",
 	"get_last_speech", "get_log", "get_log_position", "get_next_speech_index",
 	"get_speech", "get_state", "press_gesture", "set_config", "set_log_level",
+	"set_state",
 	"type_text", "wait_for_log", "wait_for_speech", "wait_for_speech_to_finish",
 	"wait_for_user_reply",
 }

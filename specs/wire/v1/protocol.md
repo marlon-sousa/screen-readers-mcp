@@ -91,6 +91,22 @@ Fault handling, all of which keep the session alive once established (§3):
    handler once it has decided to emit the record at all, so a bumped level
    is visible in the reader's own log too, for the session's duration. It is
    always restored at teardown, on every exit path.
+   An optional `normalize` (boolean) asks the bridge to move the reader's own
+   signals that a session **cannot capture** into the channel it can — on NVDA,
+   turning `virtualBuffers.passThroughAudioIndication` off so a browse/focus mode
+   change is **spoken** ("Focus mode") instead of played as a wave file. The
+   membership test is narrow and a bridge must not exceed it: **a session may
+   change a setting only if the change moves information between channels without
+   adding or removing any.** Such a change cannot alter what the reader decided to
+   report, only where the report is delivered, so a finding made under it is still
+   a finding about the user's configuration; anything that changes what would have
+   been said is refused however convenient. Omitted means **the mode's default**,
+   which differs by mode and is the only honest default: `silent` normalises (the
+   human hears no speech anyway, so nothing is taken from them), `live` does not
+   (the human would hear words instead of the tone they chose, which is theirs to
+   decide). Every key actually changed is disclosed in `normalized` below, and
+   every one is a session-scoped override dropped at teardown — nothing is written
+   to the reader's disk. Spec 0024.
    An optional `persona` (string) declares **what the agent is standing in for**
    this session — `user`, `validator` or `expert` (spec 0029) — and like `mode`
    it is fixed for the session's whole lifetime. The bridge records it (in its
@@ -144,6 +160,15 @@ Fault handling, all of which keep the session alive once established (§3):
      what thresholds: `{ enabled, warnAfterSeconds, liftAfterSeconds }`. See
      §6.1. Omitted from a build predating the field, which a server MUST report
      as *unknown* rather than as either answer.
+   - `normalized` (array, optional) — every setting this session actually moved
+     between output channels, as `{ keyPath: [string], previous, current, why }`.
+     **Empty or omitted means the session is driving the reader's own
+     configuration untouched**, which is what an agent needs to know before it
+     reports a finding; a non-empty list writes the asterisk down where a human
+     reading the record will find it. A key already at the wanted value is **not**
+     listed: what a session asked for and what it changed are two facts. `why` is
+     a fixed string the bridge owns, for the human reading the transcript, and is
+     never translated. See `normalize` in §3.
 4. After a successful handshake the session is **tolerant**: a failing command
    yields an error response and the session keeps running. Only the conditions in
    §6 (teardown) end it.
@@ -191,7 +216,7 @@ names one group:
 | `gestures` | `pressGesture` |
 | `typing` | `typeText` |
 | `focus` | `getFocusInfo` |
-| `state` | `getState` |
+| `state` | `getState`, `setState` |
 | `config` | `getConfig`, `setConfig` |
 | `interact` | `announce`, `askUser`, `waitForUserReply` |
 | `log` | `getLog`, `getLogPosition`, `waitForLog`, `setLogLevel` |
@@ -219,10 +244,13 @@ Rules:
   gestures on another. A bridge with nothing reader-specific to say simply does
   not announce it, and the agent falls back on the server's documents alone.
 - A command whose group is **not** in the announced set may be rejected with a
-  normal error response. The NVDA bridge announces `speech`, `braille`,
-  `gestures`, `typing` and `announce` today; `focus`, `state` and `config` are
-  defined by this contract and served by no bridge yet, so it does not announce
-  them.
+  normal error response. **The NVDA bridge announces all ten groups** —
+  `speech`, `braille`, `gestures`, `focus`, `state`, `config`, `interact`,
+  `typing`, `log` and `guidance`. (This paragraph read "`focus`, `state` and
+  `config` are defined by this contract and served by no bridge yet" long after
+  all three were served, which is the same defect class as board entry 11.24(a):
+  two documents disagreeing, and this one is the one an outside implementer would
+  trust. Corrected 2026-08-20 with spec 0033, which found it.)
 - `hello`, `ping`, `echo`, and `bye` are lifecycle/diagnostic commands and belong
   to no capability group; they are always available once the session permits them
   (§3).
@@ -301,6 +329,28 @@ means the command takes no parameters. Summary:
 - `getState` → `{ browseMode, speechMode, sleepMode, inputHelp }` — queryable
   state that a reader may signal by sound rather than words; diff two snapshots
   across a gesture to assert a toggle. Values are reader-specific.
+- `setState` `{ browseMode? }` → `{ state, changed: [string] }` — **arrive at** a
+  mode rather than toggle towards one. Every field is optional: the ones present
+  are set, the ones absent are untouched. It answers with the same four fields
+  `getState` reports, sampled **after** the write, plus `changed` naming the
+  fields this call actually moved — an empty `changed` means the reader was
+  already in the asked-for state, which is a success and a different fact from a
+  failed write (that is an error response naming the obstacle).
+  **The set-domain is narrower than the get-domain**, and a bridge must not
+  quietly widen it. `browseMode: "none"` is reportable and **not settable**: it
+  means the focus has no browsable document, which cannot be created by asking
+  for it, and it is refused before anything is attempted. Even `"browse"` and
+  `"focus"` fail when the focused object is not a browsable document, and that
+  failure **must name that reason in those terms** rather than return a bare
+  error or a silent no-op. A mode a bridge reports but does not let a session set
+  — the NVDA bridge withholds `speechMode`, `sleepMode` and `inputHelp` — must be
+  **refused by name with a reason**, never accepted and ignored: an ignored field
+  comes back as `changed: []`, which already means something else.
+  Setting a mode the reader is **already in must do nothing at all** — no script,
+  no earcon, no utterance — so an agent can restate a precondition on every step
+  without making the human at the reader listen to a tone each time. The
+  compare-and-set happens **inside the reader**, so no window exists between the
+  read and the write. Spec 0033.
 - `getConfig` `{ keyPath: [string] }` → `{ value }` — read a reader config value;
   `keyPath` is an opaque path into the reader's config tree.
 - `setConfig` `{ keyPath: [string], value }` → `{ value }` — write one.
