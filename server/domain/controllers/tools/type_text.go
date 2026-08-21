@@ -47,7 +47,8 @@ func (t *TypeText) Description() string {
 		"it when you expect the field itself to announce something. An empty `speech` " +
 		"means nothing had arrived by that instant, never that nothing happened. " +
 		"`state` reports the modes you cannot hear. Use `announce` to tell the human " +
-		"what you are about to type, in your own words. The `typed` count is the length " +
+		"what you are about to type, in your own words; it comes back as `announced`, " +
+		"which confirms it was SAID and never that it was heard. The `typed` count is the length " +
 		"of what was SENT, counted here -- it says nothing about what arrived anywhere, " +
 		"and the text itself is never echoed back, because this is exactly how a " +
 		"secret would be entered."
@@ -100,6 +101,7 @@ func (t *TypeText) OutputSchema() json.RawMessage {
 		},
 		"speechFrom": {"type": "integer", "description": "The first speech index this call covered."},
 		"speechTo": {"type": "integer", "description": "One past the last: the window is [speechFrom, speechTo), so speechTo is exactly what to read from next. Slow effects legitimately arrive after it -- read again from here rather than pressing anything twice."},
+		"announced": {"type": "string", "description": "The announcement that was spoken to the human before the text went in, echoed back. ABSENT when you asked for none. It confirms the announcement was MADE, never that it was HEARD: speech is emitted around five seconds ahead of audio, so if you narrate and act at once you are acting ahead of your own narration."},
 		"state": {
 			"type": "object",
 			"description": "The modes you cannot hear, sampled when the last grace window closed. ABSENT when the reader serves no state capability: absent and \"all four fields zero\" are different answers. Deliberately not focus information.",
@@ -146,6 +148,13 @@ func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if request.Text == "" {
 		return nil, errors.New("text is required")
 	}
+	// The narration is not content and is held to the announce tool's rule, even
+	// though `text` beside it is not: whitespace typed INTO a field is literal,
+	// whitespace spoken ALOUD is two cue beeps and nothing between them.
+	announced, err := announcement(request.Announce)
+	if err != nil {
+		return nil, err
+	}
 	grace := DefaultTypeGraceMs
 	if request.GraceMs != nil {
 		grace = *request.GraceMs
@@ -163,6 +172,6 @@ func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 		// One authority for the number, and it is the side that actually
 		// injected the characters.
 		Typed:       outcome.Typed,
-		observation: observed(outcome.Observation),
+		observation: observed(outcome.Observation, announced),
 	}, nil
 }

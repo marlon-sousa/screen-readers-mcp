@@ -137,6 +137,15 @@ So `connect_reader` tells you whether a human is expected at that machine, in it
   wondering.
 - **Where the machine is unattended**, do not spend round trips narrating to an
   empty room.
+- **Narration rides along, so it is nearly free.** `press_gesture` and `type_text`
+  both take an `announce` string, spoken to the human before they act; you do not
+  need a separate `announce` call to say what you are about to do. Each hands it
+  back as `announced`, which is your confirmation the announcement was **made**.
+  It is never a confirmation that it was **heard**: the reader emits speech
+  around five seconds ahead of the audio the person is listening to, so if you
+  narrate and act in the same breath you are acting ahead of your own narration,
+  and their objection — when it comes — is a reaction to something already
+  several seconds old.
 
 A reader may enforce this rather than trusting you to remember: `silenceCap` says
 whether it does, and after how long. If you meet it, the reader warns its human and
