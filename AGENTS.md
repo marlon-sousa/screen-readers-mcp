@@ -964,3 +964,43 @@ only needs the merged code + its spec + this file.
   is joining. (The original silent-mode mute bug was exactly a server-thread
   `setSynth` racing a main-thread config-profile reload; spec 0008 removed the
   synth swap entirely, but the thread rule stands for tones and gestures.)
+- **Pyright is configured in THREE `pyrightconfig.json` files, and which file
+  wins is a trap.** `shared/` and `bridges/nvda/` each carry their own, and
+  that is what their gates read. The repo root carries a third whose only job
+  is to give an editor, IDE or language-server client opened at the root the
+  same view the gates have: its `include` mirrors the two gates exactly, and it
+  has one `executionEnvironment` per Python project supplying that project's
+  `pythonVersion` and its `.venv` site-packages (an execution environment
+  cannot carry its own `venv`, only `extraPaths`).
+  - **Never put pyright settings in `pyproject.toml`.** Pyright walks UP the
+    tree for a `pyrightconfig.json`, and an ancestor one **outranks a local
+    `[tool.pyright]`** while losing to a local `pyrightconfig.json`. While the
+    projects used `[tool.pyright]`, the root config silently retyped `shared/`
+    as Python 3.13 where it pins 3.11. A `[tool.pyright]` section is now dead
+    config that drifts invisibly; `scripts/doctor.py` fails if one reappears,
+    and fails if a Python project has no execution environment at the root.
+  - Measured: three files the gates pass clean reported **28 errors** from the
+    root before this; after, a full root run is **212 files, 0 errors** — the
+    same 212 the two gates analyse (5 + 207). So a diagnostic seen at the root
+    is now worth acting on. `poe shared-types` / `poe bridge-types` remain the
+    authority: if they ever disagree with the root, the root config has
+    drifted and that is the bug.
+- **Language servers get three things wrong here, whichever agent or editor
+  drives them.** All three fail by giving a confident wrong answer, not an
+  error.
+  - **No language server crosses the Go↔Python boundary.** The wire contract is
+    one schema with two bindings: `specs/wire/v1/schema.json` generates
+    `server/adapters/wire/wire.gen.go`, and `shared/nvda_mcp_wire/protocol.py`
+    mirrors it. "Find references" on a Go command constant will not find its
+    Python counterpart, or the reverse — it is not dead, it is on the other
+    side. For anything wire-shaped the schema is the index and
+    `scripts/drift.py` is the check.
+  - **The first query after the server starts can be silently truncated**,
+    because it answers while still indexing. Measured: "find references" on the
+    bridge's `Clock` port returned **1** result cold and **15 across 8 files**
+    moments later. A suspiciously thin first answer means "not ready", never
+    "this is the blast radius" — ask again before trusting it.
+  - **Pyright does not implement "go to implementation"** (it replies
+    *"Unhandled method textDocument/implementation"*); gopls does. To find the
+    implementations of a Python port, use "find references" on the ABC, or a
+    workspace symbol search.

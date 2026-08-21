@@ -1,0 +1,18 @@
+{
+	"typeCheckingMode": "strict",
+	"pythonVersion": "3.13",
+	"pythonPlatform": "Windows",
+	"venvPath": ".",
+	"venv": ".venv",
+	"include": ["addon/globalPlugins/nvdaMcpBridge", "buildVars.py", "tests"],
+	"exclude": ["sconstruct", ".git", "__pycache__"],
+	"ignore": [
+		"addon/globalPlugins/nvdaMcpBridge/plugin.py",
+		"addon/globalPlugins/nvdaMcpBridge/adapters/nvda_*.py",
+		"addon/globalPlugins/nvdaMcpBridge/views/",
+		"tests/integration/test_profile_override.py"
+	],
+	"extraPaths": ["./addon/globalPlugins", "./tests"],
+	"analyzeUnannotatedFunctions": true,
+	"reportMissingModuleSource": false
+}

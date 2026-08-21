@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -278,17 +279,34 @@ def check_pyright_venv_config() -> list[Result]:
 	With no ``venvPath``/``venv``, pyright resolves imports against whatever
 	environment it inherits. Run one way it is correct; run another it reports
 	every test import as unresolved and buries the real diagnostics.
+
+	Each project's settings live in its own ``pyrightconfig.json``, never in a
+	``[tool.pyright]`` section. Pyright walks UP the tree for a
+	``pyrightconfig.json``, and an ancestor one outranks a local
+	``[tool.pyright]`` -- so the repo-root config written for editors and LSP
+	clients would silently retype these projects if they relied on pyproject.toml.
+	A local ``pyrightconfig.json`` does outrank the ancestor, which is why each
+	project carries one.
 	"""
 	out: list[Result] = []
 	for project in PY_PROJECTS:
-		path = ROOT / project / "pyproject.toml"
+		path = ROOT / project / "pyrightconfig.json"
 		if not path.is_file():
-			out.append(Result(FAIL, f"{project}: pyproject", "missing"))
+			out.append(
+				Result(
+					FAIL,
+					f"{project}: pyright config",
+					"no pyrightconfig.json -- the repo-root config would take over",
+					f"create {project}/pyrightconfig.json with venvPath and venv",
+				)
+			)
 			continue
-		with path.open("rb") as handle:
-			config = tomllib.load(handle)
-		pyright = config.get("tool", {}).get("pyright", {})
-		if pyright.get("venvPath") and pyright.get("venv"):
+		try:
+			config = json.loads(path.read_text(encoding="utf-8"))
+		except ValueError as exc:
+			out.append(Result(FAIL, f"{project}: pyright config", f"unparseable -- {exc}"))
+			continue
+		if config.get("venvPath") and config.get("venv"):
 			out.append(Result(OK, f"{project}: pyright venv", "configured"))
 		else:
 			out.append(
@@ -296,10 +314,61 @@ def check_pyright_venv_config() -> list[Result]:
 					FAIL,
 					f"{project}: pyright venv",
 					"no venvPath/venv -- pyright will report phantom import errors",
-					'add venvPath = "." and venv = ".venv" under [tool.pyright]',
+					f'add "venvPath": "." and "venv": ".venv" to {project}/pyrightconfig.json',
 				)
 			)
-	return out
+
+		# A [tool.pyright] section here is DEAD config: pyrightconfig.json wins.
+		# Left in place it drifts, and the drift is invisible.
+		pyproject = ROOT / project / "pyproject.toml"
+		if pyproject.is_file():
+			with pyproject.open("rb") as handle:
+				if tomllib.load(handle).get("tool", {}).get("pyright"):
+					out.append(
+						Result(
+							FAIL,
+							f"{project}: dead pyright config",
+							"[tool.pyright] in pyproject.toml is ignored -- pyrightconfig.json wins",
+							f"delete [tool.pyright] from {project}/pyproject.toml",
+						)
+					)
+	return out + _check_root_pyright_config()
+
+
+def _check_root_pyright_config() -> list[Result]:
+	"""The repo-root pyrightconfig.json is what an LSP at the root reads.
+
+	It exists so an editor or agent launched at the repo root sees what the gates
+	see. It is NOT what the gates read -- each project's own pyrightconfig.json is.
+	If a Python project is missing an execution environment here, files under it
+	resolve against the wrong interpreter and the root view goes back to lying.
+	"""
+	path = ROOT / "pyrightconfig.json"
+	if not path.is_file():
+		return [
+			Result(
+				FAIL,
+				"root pyright config",
+				"missing -- an LSP at the repo root will report phantom imports",
+				"restore pyrightconfig.json at the repo root",
+			)
+		]
+	try:
+		config = json.loads(path.read_text(encoding="utf-8"))
+	except ValueError as exc:
+		return [Result(FAIL, "root pyright config", f"unparseable -- {exc}")]
+	roots = {env.get("root") for env in config.get("executionEnvironments", [])}
+	missing = [project for project in PY_PROJECTS if project not in roots]
+	if missing:
+		return [
+			Result(
+				FAIL,
+				"root pyright config",
+				f"no executionEnvironment for {', '.join(missing)}",
+				"add one with that root, its pythonVersion, and its .venv site-packages",
+			)
+		]
+	return [Result(OK, "root pyright config", "covers every Python project")]
 
 
 def check_dev_tools() -> list[Result]:

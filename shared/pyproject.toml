@@ -45,13 +45,23 @@ ignore = [
 	"SIM105", # deliberate try/except/pass, commented at each site
 ]
 
-[tool.pyright]
-pythonVersion = "3.11"
-typeCheckingMode = "strict"
-include = ["nvda_mcp_wire", "tests"]
-
-# Which environment to resolve imports against. Without it pyright uses whatever
-# interpreter it inherits, and reports every test import as unresolved under a
-# bare invocation while reporting none under `uv run --with pytest`.
-venvPath = "."
-venv = ".venv"
+# pyright is configured in ./pyrightconfig.json, NOT here.
+#
+# It moved out of this file so that the repo-root pyrightconfig.json -- which
+# exists to give an editor/LSP launched at the repo root the same view the gates
+# have -- cannot hijack this project. Pyright walks UP the tree looking for a
+# pyrightconfig.json, and an ancestor pyrightconfig.json outranks a LOCAL
+# [tool.pyright] in pyproject.toml. It does NOT outrank a local
+# pyrightconfig.json. So this project keeps its own JSON file, and the settings
+# below are the ones that used to live here:
+#
+#   pythonVersion "3.11", typeCheckingMode "strict",
+#   include ["nvda_mcp_wire", "tests"], venvPath "." and venv ".venv".
+#
+# venvPath/venv are the load-bearing pair: without them pyright resolves imports
+# against whatever interpreter it inherits, and reports every test import as
+# unresolved under a bare invocation while reporting none under
+# `uv run --with pytest`. scripts/doctor.py checks they are still set.
+#
+# Do not re-add a [tool.pyright] section here: pyrightconfig.json wins, so it
+# would be dead config that silently drifts. doctor.py fails if one reappears.
