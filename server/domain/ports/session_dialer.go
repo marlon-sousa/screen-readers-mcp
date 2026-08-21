@@ -60,6 +60,18 @@ type SessionOptions struct {
 	// LogLevel optionally raises the READER's own diagnostic verbosity for
 	// the session. Nil leaves it unchanged.
 	LogLevel *entities.ReaderLogLevel
+
+	// Normalize asks the reader to move signals a session cannot capture --
+	// a mode change answered with a sound rather than words -- into the
+	// speech channel it can (spec 0024).
+	//
+	// NIL IS NOT FALSE: it means "whatever this capture mode's default is",
+	// and the two modes differ on purpose. A silent session normalises,
+	// because the human hears no speech anyway and nothing is taken from
+	// them; a live session does not, because the person would hear words
+	// instead of the tone they chose, which is theirs to decide. Only the
+	// caller's SILENCE is ambiguous, so only the caller's silence defers.
+	Normalize *bool
 }
 
 // SessionLifecycle is what a live session can be asked beyond its capabilities:

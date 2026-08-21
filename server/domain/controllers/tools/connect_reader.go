@@ -83,6 +83,10 @@ func (t *ConnectReader) InputSchema() json.RawMessage {
 			"enum": ["user", "validator", "expert"],
 			"description": "WHAT YOU ARE STANDING IN FOR this session, which decides what a finding from it means. \"user\": an ordinary, NON-EXPERT screen reader user -- your vocabulary is bounded to what this platform's accessibility contract assumes of an ordinary user, plus the reader's ordinary reading commands, and if a task needs anything that reaches past focus (object navigation, a review cursor, a simulated click) THE TASK HAS FAILED rather than being worked around. \"validator\": the same driving vocabulary and the same limits, so that \"reachable\" means the same thing in your report as in theirs, plus introspection to characterise what you find; you may step outside the vocabulary only to characterise a failure you have ALREADY found, never to get past one, and you say so when you do. \"expert\": nothing is off limits -- the reader's own log, configuration and internals are the instruments you came for -- because you are working out how the thing behaves rather than returning a verdict. Read screenreader://guidance for the full profiles before choosing. Fixed for the whole session: a stance cannot be retrofitted onto a run that already happened, so changing it means disconnecting and connecting again."
 		},
+		"normalize": {
+			"type": "boolean",
+			"description": "Ask the reader to move signals this session could not otherwise capture into speech, where the reader offers the same information both ways -- a mode change answered with a SOUND becomes words you can read back. OMIT THIS unless you have a reason: the default differs by capture mode and is the right one in each. A silent session normalises, because the human hears nothing anyway and so loses nothing; a live session does not, because the person at the reader would hear words in place of the sound they chose, and that is theirs to decide. Pass true in a live session when the human has agreed to it, or false in a silent one when the sound behaviour is itself what you are testing. Whatever is actually changed comes back in the normalized field of the result, and every key is restored when the session ends."
+		},
 		"log_level": {
 			"type": "string",
 			"enum": ["debug", "io", "debugwarning", "info"],
@@ -152,6 +156,20 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 		"silenceCap": {
 			"type": "string",
 			"description": "WHETHER A HUMAN IS EXPECTED AT THIS MACHINE, and what the reader does about long silences. In a silent session the person at the reader hears nothing except what you deliberately say to them with the announce tool, so a reader may bound how long that can go on: warn them, then restore speech. Read this and act on it -- announce before any stretch of work that does not drive the reader, and you will never meet the cap. You cannot change it: it is set on that machine, deliberately out of your reach."
+		},
+		"normalized": {
+			"type": "array",
+			"description": "Reader settings THIS SESSION CHANGED so that signals it could not otherwise capture arrive as speech instead. A reader may answer some actions with a sound rather than words, and a sound is not something a capture can read; where the reader offers the same information as speech, the session may ask for it that way. ABSENT MEANS NOTHING WAS CHANGED and you are driving the reader exactly as its user left it. When it is present, say so in any finding you report: the reader was not in its own configuration. Each entry carries the reader's own key path and its own reason, and every one is restored when the session ends.",
+			"items": {
+				"type": "object",
+				"properties": {
+					"keyPath": {"type": "array", "items": {"type": "string"}, "description": "The reader's own config path, outermost key first."},
+					"previous": {"description": "What the setting was before this session touched it."},
+					"current": {"description": "What it is now, for this session only."},
+					"why": {"type": "string", "description": "The reader's own one-line reason this key is one a session may move."}
+				},
+				"required": ["keyPath", "previous", "current", "why"]
+			}
 		}
 	},
 	"required": ["reader", "readerVersion", "endpoint", "capabilities", "mode", "persona", "stance", "synth", "logPath", "silenceCap"]
@@ -164,6 +182,10 @@ type connectParams struct {
 	Mode     string `json:"mode"`
 	Persona  string `json:"persona"`
 	LogLevel string `json:"log_level"`
+	// A POINTER so that "not sent" stays distinct from "sent false": the
+	// reader's default differs by capture mode, and only an absent field can
+	// mean "use it" (spec 0024).
+	Normalize *bool `json:"normalize"`
 }
 
 // connectResult is what an agent needs to know a session began: who answered,
@@ -238,6 +260,19 @@ type connectResult struct {
 	// It is prose rather than a struct because there is exactly one thing to do
 	// with it, and a number an agent has to interpret is a number it will not.
 	SilenceCap string `json:"silenceCap"`
+	// Normalized is every reader setting this session moved between output
+	// channels so that a capture reading only speech can see it (spec 0024).
+	//
+	// OMITTED WHEN EMPTY, and the absence is the useful answer: it means this
+	// session is driving the reader exactly as its user left it. When it is
+	// present, a finding from this session carries an asterisk, and this is
+	// where it is written down rather than left implied -- which is the whole
+	// of 0024 Part 3.2 and the reason the field exists at all.
+	//
+	// Here rather than behind a resource for the reason `stance` is here:
+	// connect is the one moment an agent is guaranteed to be reading, and a
+	// disclosure an agent has to go and fetch is a disclosure it will not read.
+	Normalized []normalizedSetting `json:"normalized,omitempty"`
 }
 
 func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
@@ -271,7 +306,7 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		return nil, err
 	}
 
-	options := ports.SessionOptions{Mode: mode, Persona: persona}
+	options := ports.SessionOptions{Mode: mode, Persona: persona, Normalize: request.Normalize}
 	if request.LogLevel != "" {
 		level, err := entities.ParseReaderLogLevel(request.LogLevel)
 		if err != nil {
@@ -325,6 +360,7 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		// bridge that predates the field, which is a different answer from
 		// "uncapped" and must not be reported as one.
 		SilenceCap: session.SilenceCap.Sentence(),
+		Normalized: normalizedFrom(session.Normalized),
 	}, nil
 }
 
@@ -340,4 +376,32 @@ func knownReaders(ctx ToolContext) string {
 		names = append(names, reader.Name)
 	}
 	return fmt.Sprintf("known readers are %v", names)
+}
+
+// normalizedSetting is one disclosed channel shift, in the shape the agent
+// reads it (spec 0024 Part 3.2).
+type normalizedSetting struct {
+	KeyPath  []string        `json:"keyPath"`
+	Previous json.RawMessage `json:"previous"`
+	Current  json.RawMessage `json:"current"`
+	Why      string          `json:"why"`
+}
+
+// normalizedFrom returns nil for an empty list rather than an empty slice, so
+// the field is OMITTED instead of arriving as `[]`. Both would be truthful, and
+// omission is the one that reads as "nothing was changed" at a glance.
+func normalizedFrom(settings []entities.NormalizedSetting) []normalizedSetting {
+	if len(settings) == 0 {
+		return nil
+	}
+	disclosed := make([]normalizedSetting, 0, len(settings))
+	for _, setting := range settings {
+		disclosed = append(disclosed, normalizedSetting{
+			KeyPath:  setting.KeyPath,
+			Previous: setting.Previous,
+			Current:  setting.Current,
+			Why:      setting.Why,
+		})
+	}
+	return disclosed
 }

@@ -121,6 +121,14 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		level := wire.LogLevel(*opts.LogLevel)
 		params.LogLevel = &level
 	}
+	// Nil is left OFF the params entirely rather than sent as false, so the
+	// bridge applies its own per-mode default. Sending false would silently
+	// turn "I did not say" into "do not", which is the distinction the field
+	// exists to keep (spec 0024).
+	if opts.Normalize != nil {
+		normalize := *opts.Normalize
+		params.Normalize = &normalize
+	}
 	if opts.Persona != "" {
 		// Sent so the bridge can record it in its own transcript and say it
 		// aloud to whoever is at the machine (spec 0029). A bridge that
@@ -181,6 +189,18 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 			WarnAfter: result.SilenceCap.WarnAfterSeconds,
 			LiftAfter: result.SilenceCap.LiftAfterSeconds,
 		}
+	}
+
+	// Spec 0024. Carried through verbatim: the key paths and values are the
+	// reader's own vocabulary and the reason is its own sentence, so there is
+	// nothing here for this server to interpret.
+	for _, entry := range result.Normalized {
+		session.Normalized = append(session.Normalized, entities.NormalizedSetting{
+			KeyPath:  entry.KeyPath,
+			Previous: entry.Previous,
+			Current:  entry.Current,
+			Why:      entry.Why,
+		})
 	}
 
 	connection := &ports.ReaderConnection{

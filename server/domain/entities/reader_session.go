@@ -13,6 +13,8 @@
 // agent apply what it already knows about that reader.
 package entities
 
+import "encoding/json"
+
 // ReaderIdentity is which screen reader answered. Its own type rather than two
 // loose strings, because identity travels together everywhere it goes.
 type ReaderIdentity struct {
@@ -77,4 +79,34 @@ type ReaderSession struct {
 	// like Mode, it is the BRIDGE's answer rather than anything the agent
 	// asked for. Nothing in this server can change it.
 	SilenceCap *SilenceCap
+
+	// Normalized is every reader setting this SESSION moved from one output
+	// channel to another at `hello` (spec 0024) -- on NVDA, turning the
+	// browse/focus earcon into spoken words so a capture that reads only
+	// speech can see a mode change at all.
+	//
+	// EMPTY MEANS THE SESSION IS DRIVING THE USER'S OWN CONFIGURATION, which
+	// is what an agent needs to know before it reports a finding: a finding
+	// made under settings we imposed carries an asterisk, and this is where
+	// the asterisk is written down rather than implied. Recorded on the
+	// session because it is fixed for its lifetime, and restored by the
+	// bridge at teardown either way.
+	Normalized []NormalizedSetting
+}
+
+// NormalizedSetting is one setting the session moved between channels, and why.
+//
+// The reason is the bridge's own fixed string rather than anything this server
+// composes: the server does not know what the key means on that reader, and a
+// reason invented here could disagree with the one in the reader's transcript.
+type NormalizedSetting struct {
+	// KeyPath is the reader's own config path, outermost key first.
+	KeyPath []string
+
+	// Previous and Current are the reader's own values, opaque here.
+	Previous json.RawMessage
+	Current  json.RawMessage
+
+	// Why is one line, written by the bridge, for the human reading the record.
+	Why string
 }
