@@ -11,9 +11,20 @@
 // tool goes on at Bind and nothing is ever added or removed, so this server
 // never emits `tools/list_changed` and there is no notification a client can
 // miss. A client that caches `tools/list` for the life of the process is holding
-// a correct list -- which is the whole point, and what closes board entry 11.6
-// for BOTH of the failures wearing its symptom: our own `poe redeploy` freezing
-// a client's list, and an external client that simply never re-listed.
+// a correct LIST -- which is the whole point, and what closes board entry 11.6:
+// a session opening or closing changes nothing about the surface, so an external
+// client that never re-lists is not thereby wrong.
+//
+// AMENDED by spec 0034 (board entry 11.26). This comment used to claim 0022 (c)
+// closed 11.6 "for BOTH of the failures wearing its symptom", naming our own
+// `poe redeploy` first. That half is false, and it is the half a future session
+// would have trusted. Making the list a constant removes every reason it can
+// change WITHIN a build; `poe redeploy` replaces the build. On 2026-08-21 the
+// list did not change and a SCHEMA INSIDE IT did -- one added parameter, a
+// client serialising against the cached `inputSchema` that did not declare it,
+// and a type error that named JSON rather than staleness. Same first symptom,
+// different cause, and nothing in this process can fix it: the never-cached
+// channel is `screenreader://tools`, and the re-list is the human's to run.
 //
 // The ToolPublisher port this used to implement is GONE, along with the
 // connection controller's publish/retract calls: with nothing to publish there

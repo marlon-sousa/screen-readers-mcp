@@ -188,9 +188,10 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-20**:
-11.13, 11.16, 11.18, 11.23 —
-**four entries** (11.22-11.24 opened by the second external run,
+below. **Open as of 2026-08-21**:
+11.13, 11.16, 11.18, 11.23, 11.27 —
+**five entries** (11.26 and 11.27 were opened by the 11.11/11.17 live run, and
+11.26 is Done with this PR) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -253,15 +254,19 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.26** and the next free spec number is
-**0034**. (11.22–11.24 and spec 0030 were taken by the second external run on
+The next free board number is **11.28** and the next free spec number is
+**0036**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
 reading 11.25, so the next session was told a number that was already spent, and
 11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, taken
 on a branch before it merged — which is precisely the case the paragraph above
-says to check for, and it is now in PR #70.
+says to check for; it merged in PR #70. 11.26–11.27 and specs 0034–0035 were
+taken on 2026-08-21 by the two findings of that PR's live run. **11.27 and spec
+0035 are taken on the branch `11.27-attendance-is-declared` and are NOT on
+main** — which is that same case again, so do not read 0035's absence from
+`specs/` as the number being free.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1299,6 +1304,88 @@ rather than before it.
     again, in the shape of `test_buffer_purity.py`.
     Spec: none — 0032 Part 2 already decided this; the code did not implement what
     it decided.
+11.26. **Done (PR #71, 2026-08-21)** — E, the schema the client holds (server
+    lane; no live NVDA, and the first entry in a while with no live checklist).
+    **Two of the draft spec's four ship items were already built**, which is the
+    part worth carrying forward: 0031's `screenreader://tools` has published
+    every tool's full input AND output schema, composed from the registry, since
+    PR #65, with an integration test asserting per tool that the published schema
+    equals the tool's own. The draft proposed adding a parameter summary to
+    `ToolGate` and was written from the board entry rather than from the code. It
+    was withdrawn on agreement as a second publisher of a published fact, and
+    what shipped in its place is one paragraph of the frame: the document never
+    said the property that makes it worth reading at the moment of a puzzling
+    argument error — **a resource is read live, a tool list is cached**.
+    So what shipped is the hint (`params.go`, type mismatches only), the frame
+    paragraph, and three corrected texts: `redeploy.py`, `AGENTS.md` and
+    `sdk_server.go`. The scope of the hint shrank too, and for a fact rather than
+    a preference: `decodeParams` uses a plain `json.Unmarshal`, so unknown and
+    missing fields never produce an error at all — **type mismatch and malformed
+    JSON are the only two errors it can return**, and `params_test.go` pins the
+    silence so the limit is a property of the code.
+    The original finding, kept because it is the argument: Found
+    during the 11.11/11.17 live run (PR #70), and not by looking for it: a
+    checklist item could not be performed. The server gained ONE optional
+    parameter, `normalize` on `connect_reader`, and was redeployed; the next call
+    sent `"normalize": "true"` — a **string** — and failed on unmarshalling. The
+    client was serialising against the `inputSchema` it had cached, which did not
+    declare the field at all. `/mcp reconnect` fixed it immediately.
+    **This is not 11.6 again, and the difference is the entry.** Spec 0022 (c)
+    made the tool LIST a constant, which removed every reason it could change
+    *within a build* — but `poe redeploy` replaces the build, and a schema inside
+    an unchanged list went stale. `sdk_server.go` currently claims 0022 (c)
+    "closes board entry 11.6 for BOTH of the failures wearing its symptom",
+    naming `poe redeploy` first; that claim is half wrong and is corrected by
+    this entry rather than left for a future session to trust.
+    **It is worse than a missing tool, because it fails quietly.** An invisible
+    tool cannot be called, so the agent notices. A stale schema lets the call
+    happen and fails *typed*, in the vocabulary of JSON rather than of staleness.
+    The dangerous case fails not at all: a parameter the client does not know
+    about is simply never sent, the server applies its default, and a successful
+    call means both "the caller chose the default" and "the caller could not have
+    chosen anything else".
+    A server cannot refresh a client's cache and cannot tell staleness from a
+    plain mistake, so what ships is legibility, not a cure: correct the
+    `redeploy.py` instruction (which currently says, in the imperative, to
+    reconnect ONLY for an added or removed tool — the advice that would have cost
+    this session), attach an honest hypothesis to a **type-mismatch** decode error
+    only, and publish each tool's parameters in `screenreader://tools` — a
+    RESOURCE is read live and never cached, so it is the one channel that always
+    describes the running build.
+    Spec: [0034-the-schema-the-client-holds.md](specs/0034-the-schema-the-client-holds.md)
+    (agreed 2026-08-21, amended in place on agreement — the amendments are marked
+    and every one of them makes the spec smaller).
+11.27. **E, attendance is declared, not derived** (both lanes; small). From a
+    question asked during the same run — *is the agent warned whether the machine
+    is unattended?* — whose answer is **yes, already** (spec 0032 ships it at
+    connect in a required field, in all three states). Finding out WHY produced
+    this entry.
+    The bridge's setting is `unattended`; it computes `enabled = not unattended`;
+    **the wire carries only the derived `enabled`**; and the server renders
+    "UNATTENDED" by inverting it back. That is lossless today — a bijection — so
+    **nothing is broken, and this entry must not be read as a bug report.**
+    It is fragile in one direction, and it is the harmful one. The inversion holds
+    only while `unattended` is the SOLE input to `enabled`. A user who turns the
+    cap off because the 90-second lift disrupts them is sitting right there and
+    would be reported as an empty room; a JAWS or TalkBack bridge with no cap
+    machinery must either claim a cap it does not run or have every session told
+    nobody is listening. Wrong towards "attended" costs round trips; wrong towards
+    "unattended" tells a well-behaved agent to STOP NARRATING to a blind person
+    who is there — the harm 0032 exists to prevent, reached from the other end.
+    The bridge already reasons from that asymmetry when it READS the setting
+    (defaulting to attended, and logging when it cannot parse it) and then
+    discards the reasoning when it TRANSMITS it.
+    Ships `attended` as a sibling of `silenceCap` at `hello`, absent as a third
+    answer, with today's inference kept as an explicit COMPATIBILITY path for an
+    older bridge. Not inside `SilenceCapInfo`: nesting the cause in the effect is
+    the belief being corrected. Read-only, for 0032's reason, and no new
+    capability, following 0033's precedent.
+    Spec: **0035, drafted 2026-08-21, not agreed, and NOT ON MAIN.** It lives on
+    the branch `11.27-attendance-is-declared`, because AGENTS.md says a spec
+    merges with the PR that implements it rather than landing on main separately
+    — and 11.26 was implemented first, so the branch the two were drafted on
+    became 11.26's. The entry stays on the board because the board is where an
+    open finding belongs; only the spec file waits.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
