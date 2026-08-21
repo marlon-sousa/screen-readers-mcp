@@ -1,8 +1,84 @@
 # 0024 — a session the agent can hear
 
-Status: **drafted 2026-08-03, not agreed.** Board entry **11.11**. Comes out of a
-live run on 2026-08-03 that failed for a reason neither the agent nor the human
-could see, because each of them was missing a different half of what NVDA said.
+Status: **drafted 2026-08-03; re-cut 2026-08-20 against what
+[0025](0025-one-round-trip-per-intention.md) actually shipped; not agreed.**
+Board entry **11.11**, to be decided together with **11.17** and
+[0033](0033-a-toggle-with-no-setter.md) — same gesture, complementary remedies,
+and the board is explicit that they should not be built by two people who have
+not read both. Comes out of a live run on 2026-08-03 that failed for a reason
+neither the agent nor the human could see, because each of them was missing a
+different half of what NVDA said.
+
+---
+
+## Revision 2026-08-20 — what 0025 took off this spec
+
+This spec was drafted on 2026-08-03 and passed over five times. In the meantime
+**0025 shipped** (PR #64, 2026-08-18), and its Part 3.3 puts `getState`'s four
+fields — `browseMode`, `speechMode`, `sleepMode`, `inputHelp` — on **every**
+`pressGesture`/`typeText` result, sampled at the close of the grace window, at no
+extra round trip. Honesty about that comes before anything else here, because two
+of this spec's three deliverables were arguments about a cost that no longer
+exists.
+
+**The 2026-08-03 incident, replayed on today's build, is caught.** The agent
+presses `NVDA+space` and the same result tells it `"browseMode": "focus"`. It
+would not have pressed `h` six times. That is worth saying plainly rather than
+burying: the failure this spec is named after is no longer the failure this spec
+prevents.
+
+**So Part 3.3 is withdrawn** — `readerQuiet` at `hello`, reporting the quiet
+states that must not be corrected. Its own open question named 0025 as the thing
+that might answer it, and 0025 did: `speechMode` and `sleepMode` now arrive
+*after* every action rather than once at the handshake, which is the half a
+`hello`-only answer could never cover, since sleep mode is per-application and
+goes stale the moment the agent changes window. Shipping it anyway would leave
+two answers to one question with different staleness — the shape of defect
+11.24(a) was, and 11.6 closed by making the reader the single publisher.
+
+**And the cost argument in Part 1 no longer holds as written.** *"`getState` is a
+poll, and a poll costs a full round trip to learn one bit"* was true when it was
+written. For the gesture that motivated this spec it is now false: the bit rides
+back on the call the agent was already making.
+
+### What survives, stated as narrowly as it deserves
+
+Not "the agent cannot know which mode it is in" — it can. What it cannot do is
+**observe the moment the mode changed, or a change it did not cause.**
+
+- **A snapshot answers *which*, never *when*.** It says "you are in focus mode
+  now". It cannot distinguish *your keystroke put us here* from *we were already
+  here before you pressed anything* — one observable, two situations, which is
+  the defect this repo has cured four times over (0020/0021, 0023, and again
+  in 11.24). Normalised, the change arrives as an utterance in the speech
+  stream, in order, with its own `emittedAt` (0028), so "the mode changed
+  between these two utterances, 40 ms after that key" is a recoverable fact and
+  an assertion-grade observation. A testing tool that can only report the
+  current mode can support *"we are in focus mode"* and never *"pressing enter
+  put us in focus mode"*, which is the sentence a test is actually trying to
+  write.
+- **Nothing rides on a call the agent does not make.** The snapshot exists only
+  on `pressGesture`/`typeText`. NVDA switches modes **by itself** — a page load
+  restoring browse mode, focus landing in an editable field — and those switches
+  happen while the agent is reading, waiting, or thinking. That is not a corner
+  case: it is the exact mechanism of the 2026-08-03 failure (the *reload* flipped
+  the mode; the agent's toggle then flipped it the wrong way) and of
+  [0027](0027-the-first-external-run.md) ask 2, where a reporter who had never
+  read 0023 blamed the application for automatic switching. Normalisation puts
+  every one of those in the transcript as it happens.
+- **The membership test is governance, and is untouched by any of this.** It is
+  the reusable part: the next tempting setting gets judged without re-running
+  this argument. It would be worth writing down even if the first cut admitted
+  nothing at all.
+- **The transcript is read by humans later.** A `.wav` played into a room leaves
+  no record anywhere; words do.
+
+### What that changes about the ship
+
+Two things ship instead of three (Part 3, below), and the admitted set is cut to
+**one key** — see the open question this closes at the end. The spec is smaller
+than it was drafted, and its warrant is different: not *the agent cannot learn
+the mode* but *the agent cannot witness the change*.
 
 ---
 
@@ -166,9 +242,19 @@ the right place: a test that admitted everything convenient would not be a test.
 
 ---
 
-## Part 3 — the three things that ship
+## Part 3 — the two things that ship
+
+*(Three, as drafted. The third is withdrawn — see the revision of 2026-08-20.)*
 
 ### 1. Normalise (channel-shift only)
+
+**The first cut admits exactly one key**: `virtualBuffers.passThroughAudioIndication`.
+That closes this spec's own first open question, and the revision of 2026-08-20
+sharpens the reason — `progressBarOutputMode` passes the membership test, but no
+run has been blocked by it, every admitted key is a small tax on fidelity, and
+the entity holds the set as *data*, so the second key is a one-line addition with
+a test to argue against rather than a new shape. Ship the key that cost a
+session; let the next one be admitted by the run that needs it.
 
 At `hello`, for the settings admitted by the test, write the speech rendering
 through the existing `ConfigAccessor`, which already records the prior value on
@@ -194,20 +280,20 @@ agent must never be quietly driving a different NVDA than the user's. If the
 list is empty the agent knows it is on the user's own configuration; if it is
 not, the asterisk is *written down* rather than implied.
 
-### 3. Report what must not be fixed
+### ~~3. Report what must not be fixed~~ — **withdrawn 2026-08-20**
 
-Some state is genuinely the user's and the membership test forbids touching it —
-but silence caused by it is indistinguishable from "the keystroke did nothing":
+As drafted: some state is genuinely the user's and the membership test forbids
+touching it — `speechMode` `"off"` or `"beeps"`, `sleepMode` on for the focused
+application — but silence caused by it is indistinguishable from "the keystroke
+did nothing", so `hello` would report both as `readerQuiet` and let an empty
+speech buffer be attributed.
 
-- `speechMode` is `"off"` or `"beeps"` — NVDA is not speaking at all.
-- `sleepMode` is on for the focused application — NVDA is deliberately quiet
-  there.
-
-The answer is not correction. It is **telling the agent at `hello`**, so an
-empty speech buffer can be attributed. `getState` already computes both
-([`get_state.py`](../bridges/nvda/addon/globalPlugins/nvdaMcpBridge/domain/controllers/commands/get_state.py));
-this surfaces them at the one moment the agent is certain to be paying
-attention, at the cost of no extra round trip.
+**0025 Part 3.3 ships exactly these two fields on every mutating result**, which
+is strictly better than the handshake answer for the reason this spec's own open
+question anticipated: sleep mode is per-application, so a `hello`-only answer
+goes stale the moment the agent changes window. Building it now would add a
+second, staler publisher of one fact. Withdrawn, and the open question is closed
+with it.
 
 ### The through-line
 
@@ -223,8 +309,11 @@ This is the repo's recurring defect, met for the fourth time:
   channel this session cannot capture, versus the reader is asleep or muted.
 
 Every time, the cure has been to let the caller tell which situation they are
-in, or to state at the outset which situation is possible. Parts 1 and 3 are the
-same cure applied to the *capture* side.
+in, or to state at the outset which situation is possible. This spec is the same
+cure applied to the *capture* side — and after the revision of 2026-08-20 it is
+the **fourth** line of that list that it answers, not the third: 0025 already
+tells the agent which mode it is in, and what remains unanswerable without this
+is *when the mode changed, and whether this session caused it*.
 
 ---
 
@@ -237,13 +326,13 @@ Per AGENTS.md, "a spec MUST include the class/file layout".
 | `bridges/.../domain/entities/session_normalization.py` (new) | **entity** — holds the admitted set as data: key path, desired value, and the one-line *why*. Pure; knows nothing of NVDA or config. Exists so the membership test lives in one reviewable list rather than scattered across a handler. | Read by `HelloHandler`. |
 | `bridges/.../domain/controllers/commands/hello.py` | controller (existing) | Applies the set through `ctx.adapter_set.config_accessor` when the mode/parameter admits it; collects the prior values into the result; asks the state inspector for `speechMode`/`sleepMode` to report. |
 | `bridges/.../domain/ports/config_accessor.py` | port (existing) | Unchanged — `set` already returns the prior value and teardown already restores. |
-| `bridges/.../protocol.py` | wire (existing) | `HelloParams` gains `normalize: bool \| None`; `HelloResult` gains `normalized: list[NormalizedKey]` and `readerQuiet: ReaderQuiet \| None`. New dataclasses `NormalizedKey`, `ReaderQuiet`. |
+| `bridges/.../protocol.py` | wire (existing) | `HelloParams` gains `normalize: bool \| None`; `HelloResult` gains `normalized: list[NormalizedKey]`. One new dataclass, `NormalizedKey`. (`ReaderQuiet` is **gone** with Part 3.3 — 0025 ships those two fields on every mutating result.) |
 | `bridges/.../domain/ports/transcript.py` + adapter | port/adapter (existing) | One new line per normalised key at session open. |
-| `server/domain/controllers/tools/connect_reader.go` | controller (existing) | Surfaces `normalized` and `readerQuiet` in the tool result, and gains the opt-in parameter for live mode. |
+| `server/domain/controllers/tools/connect_reader.go` | controller (existing) | Surfaces `normalized` in the tool result, and gains the opt-in parameter for live mode. |
 | `specs/wire/v1/protocol.md` | contract (existing) | `hello` shape updated in place — `PROTOCOL_VERSION` 1 is pre-release (AGENTS.md), both halves ship from this repo, so this costs a rebuild rather than a migration. |
 | `bridges/nvda/tests/unit/domain/entities/test_session_normalization.py` (new) | unit | Asserts the admitted set contains only channel-shift keys — the membership test as an executable assertion, so a future addition has to argue with a test. |
-| `bridges/nvda/tests/unit/.../test_hello.py` (existing) | unit | Normalisation applied in silent, skipped in live unless asked; prior values reported; nothing written when the key already has the desired value. |
-| `server/tests/integration/mcp_connect_reader_test.go` (existing) | integration | `normalized` and `readerQuiet` reach the agent. |
+| `bridges/nvda/tests/unit/.../test_hello.py` (existing) | unit | Normalisation applied in silent, skipped in live unless asked; prior values reported; nothing written when the key already has the desired value. **And the observation that motivates the whole spec, as a test**: with the key normalised, a mode change reaches the speech buffer as an utterance — which is what a snapshot cannot be made to do. |
+| `server/tests/integration/mcp_connect_reader_test.go` (existing) | integration | `normalized` reaches the agent. |
 
 No new port and no new adapter: writing config already has one, and the
 admitted set is a value, not a collaborator.
@@ -292,19 +381,22 @@ the disclosure through without understanding it.
 
 ## Open questions
 
-- **Should `progressBarOutputMode` be in the first cut at all?** It passes the
-  test, but no live run has yet been blocked by it, and every admitted key is a
-  small tax on fidelity. Shipping only the key that actually cost a session is
-  defensible.
+Two of the four are **closed by the revision of 2026-08-20**, both by 0025
+having shipped:
+
+- ~~**Should `progressBarOutputMode` be in the first cut at all?**~~ **No.** The
+  case for admitting an untested second key is weaker now that browse/focus is
+  covered after the fact by the snapshot: the first cut admits one key, and the
+  entity holds the set as data so the next run that needs one can add it.
+- ~~**Does `readerQuiet` belong at `hello` only, or on every result?**~~
+  **Neither — it belongs to 0025, which built it.** Part 3.3 withdrawn.
+
+Still open:
+
 - **Should normalisation be per-key opt-out?** A user debugging the tone
   behaviour itself would want it off. `normalize: false` covers that bluntly;
-  per-key control may be more than anyone needs.
-- **Does `readerQuiet` belong at `hello` only, or on every result?** Sleep mode
-  is per-application, so it can become true *during* a session by switching
-  windows — the `hello` answer goes stale exactly when the agent changes app.
-  This interacts directly with [0025](0025-one-round-trip-per-intention.md),
-  which proposes carrying a state snapshot on every mutating result; if that
-  lands, the right answer may be to report it there and not at `hello`.
+  per-key control may be more than anyone needs. (With a one-key admitted set
+  this is nearly moot, which is one more argument for the one-key cut.)
 - **Is "why" prose on the wire justified?** It costs bytes on every connect to
   say something a spec already says. Against dropping it: the transcript is read
   by humans who will not have the spec open.

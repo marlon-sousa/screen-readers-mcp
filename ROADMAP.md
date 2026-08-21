@@ -252,12 +252,14 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.26** and the next free spec number is
-**0033**. (11.22–11.24 and spec 0030 were taken by the second external run on
-2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19.
+**0034**. (11.22–11.24 and spec 0030 were taken by the second external run on
+2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
 reading 11.25, so the next session was told a number that was already spent, and
-11.18 gained a second kind of evidence.
+11.18 gained a second kind of evidence. Spec 0033 by 11.17 on 2026-08-20, on an
+unmerged branch — which is precisely the case the paragraph above says to check
+for.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -758,10 +760,30 @@ rather than before it.
     between channels without adding or removing any — plus disclosure of every
     key changed, and reporting (not fixing) the quiet states it must not touch.
     A `setConfig` one-liner is the mitigation available on today's build, no code.
+    **Re-cut 2026-08-20, after 0025 shipped, and the entry is smaller than it
+    was.** 0025 Part 3.3 puts `browseMode` on every `pressGesture`/`typeText`
+    result, so the 2026-08-03 incident replayed on today's build IS caught: the
+    toggle answers `"browseMode": "focus"` in the same call and the six `h`
+    presses never happen. What survives is narrower and was never the headline. A
+    snapshot answers *which* mode, never *when it changed* or *whether this
+    session caused it* — one observable, two situations, the defect this repo has
+    cured four times. And nothing rides on a call the agent does not make, while
+    NVDA switches modes BY ITSELF (a page load, focus entering an editable
+    field), which is the actual mechanism of the 2026-08-03 failure: the reload
+    flipped the mode and the agent's toggle then flipped it the wrong way.
+    Normalised, each switch lands in the speech stream in order with its own
+    `emittedAt`, so *"pressing enter put us in focus mode"* becomes assertable
+    where *"we are in focus mode now"* is all a snapshot can support. Part 3.3 of
+    the spec (`readerQuiet` at `hello`) is **withdrawn** — 0025 built it, better,
+    on every result — and the admitted set is cut to one key.
+    **This is NOT marked "absorbed by 11.12."** 11.16 was marked that on
+    2026-08-16 and the marking was withdrawn the same day, on reading the spec in
+    full; the discipline that produced that withdrawal is why this entry states
+    what shrank and what did not, rather than closing.
     Spec: [0024-a-session-the-agent-can-hear.md](specs/0024-a-session-the-agent-can-hear.md)
-    (drafted 2026-08-03, not agreed). **Paired with 11.17** — see that entry for
-    why the two remedies for this gesture are complementary and should be
-    decided together.
+    (drafted 2026-08-03, re-cut 2026-08-20, not agreed). **Paired with 11.17** —
+    see that entry for why the two remedies for this gesture are complementary
+    and should be decided together.
 11.12. **Done (PR #64, 2026-08-18)** — E, one round trip per intention (lane 2,
     server + bridge). Implements
     the two routes 11.9 named. 0023's act/settle/listen loop is three round trips
@@ -1011,7 +1033,22 @@ rather than before it.
     was chosen over a nullable bool for this same reason and the setter must
     honour it. `speechMode`, `sleepMode` and `inputHelp` are symmetric.
     Classified `mutates_reader` for 11.3. Amends published wire v1. Needs live
-    NVDA. Spec: none yet.
+    NVDA.
+    Spec: [0033-a-toggle-with-no-setter.md](specs/0033-a-toggle-with-no-setter.md)
+    (drafted 2026-08-20, not agreed) — written alongside 0024's re-cut so the pair
+    can be decided in one conversation, which is what this entry has asked for
+    since it was opened. It carries a membership rule of its own (*a mode may be
+    set only where the reader already gives its user a command for it —
+    idempotence, never capability*), `browseMode` alone in the first cut with
+    `speechMode`/`sleepMode` held back because those two can leave a human unable
+    to hear their own machine, a result carrying the state AFTER plus `changed`,
+    and setting-what-is-already-set doing literally nothing so a precondition
+    costs the human no tone. This entry's set-domain asymmetry and its
+    compare-inside-NVDA requirement are carried through verbatim. **One thing is
+    left for the conversation to settle**: whether `setState` joins the `state`
+    capability or takes its own — the spec recommends its own, since a reader may
+    read a mode it cannot set and should not have to decline `getState` to say
+    so.
 11.18. **E, the board is not self-enforcing** (neither lane; CI). Five
     consecutive entries merged without the Done mark their own PR was supposed to
     apply: 11.4 (#46) read "Next.", 11.5 (#48) "Implemented", 11.7 (#49) carried
