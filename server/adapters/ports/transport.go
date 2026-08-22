@@ -3,7 +3,7 @@
 //
 // ROLE: adapter seam -- a port BETWEEN adapters. The domain never sees this
 // file; it is what lets the JSON-lines client hold every decision while the
-// bytes come from a leaf that makes none (AGENTS.md, "adapters are LAYERED so
+// bytes come from a leaf that makes none (the root AGENTS.md, "adapters are LAYERED so
 // the untestable part shrinks to a leaf").
 // IMPLEMENTED BY: adapters/bridge/tcp_transport.go and
 // adapters/bridge/pipe_transport_windows.go (leaves), fakes/transport.go.

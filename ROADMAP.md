@@ -189,9 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23 —
-**four entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
-and both are now Done: 11.26 in PR #71 and **11.27 with this PR**) (11.22-11.24 opened by the second external run,
+11.13, 11.16, 11.18, 11.23, 11.28 —
+**five entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
 0030 ask 1b and deliberately left 11.6 open — the two shared a symptom and were
@@ -254,7 +254,7 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.28** and the next free spec number is
+The next free board number is **11.29** and the next free spec number is
 **0036**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
@@ -265,8 +265,11 @@ on a branch before it merged — which is precisely the case the paragraph above
 says to check for; it merged in PR #70. 11.26–11.27 and specs 0034–0035 were
 taken on 2026-08-21 by the two findings of that PR's live run. 11.27 and spec 0035 spent a day
 in exactly that state — drafted on a branch, absent from `specs/` on main — and
-**both land with this PR**, so the warning stands as a worked example rather than
+**both landed in PR #72**, so the warning stands as a worked example rather than
 as a live hazard.
+11.28 was taken on 2026-08-21 by the AGENTS.md split, which opened it for a
+flaky test the split's own gate run surfaced and deliberately did not fix — no
+spec number went with it, since it has no spec yet.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1413,6 +1416,41 @@ rather than before it.
     control dialog's own checkbox, in both directions, and the compatibility path
     was checked against a **genuinely older bridge** — the pre-0035 build still
     installed at the start of the run, whose `HelloResult` has no such field.
+11.28. **E, a flaky integration test — the named-pipe roundtrip times out under
+    full-suite load** (neither lane; bridge tests). Observed once on 2026-08-21,
+    during the `poe dev` run that gated the AGENTS.md split:
+    `tests/integration/test_named_pipe_session_roundtrip.py::test_a_whole_session_over_a_real_named_pipe`
+    failed with `AssertionError: no reply from the bridge within timeout`. It then
+    passed **2/2 in isolation** and in **three later full `poe dev` runs** on the
+    same checkout. It is unrelated to the pyright work that landed in 10477fd and
+    to the documentation split that opened this entry; **it is recorded rather
+    than fixed**, because that PR is documentation-only and a timing fix is code.
+    **What is known, and it is deliberately little.** The helper is
+    `_read_reply(agent, timeout=5.0)`, which sets a deadline from
+    `time.monotonic()` and reads past poll-timeouts until the bridge answers. That
+    is a **wall-clock budget**, so it is spent by anything that delays the reply,
+    including the machine being busy with the rest of the suite — which is the
+    one condition under which it has ever failed. The same helper, with the same
+    5.0s default, is duplicated in `test_socket_session_roundtrip.py` and
+    `test_wire_session_roundtrip.py`, so whatever this is, it is a property of the
+    **shape all three share** and not of the pipe leaf. Neither has been seen to
+    fail.
+    **What is NOT claimed.** That the product is fine. A single failure that will
+    not reproduce is exactly as consistent with a real race in the connection
+    stack — accept, handshake or dispatch — as with a starved test process, and
+    nothing gathered so far separates the two. The reason to write it down is the
+    asymmetry: an intermittently red gate teaches people to re-run it, and the
+    next occurrence will be read as "that flaky one" by whoever has read this
+    entry, which is how a real bug gets to hide inside a known-flaky test.
+    **What would settle it**, roughly in cost order: capture WHERE the budget goes
+    (log the elapsed time and the last message on the failing path, so a failure
+    says whether the bridge answered late or not at all); decide whether a
+    fixed wall-clock deadline is the right instrument for a test whose subject is
+    a real OS IPC leaf, or whether these three tests should share one helper with
+    a load-tolerant budget; and only then consider whether anything in the
+    connection stack can actually lose or delay a first reply.
+    Spec: **none yet** — needs a spec conversation before implementation, like
+    every other open entry.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

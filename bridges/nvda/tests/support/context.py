@@ -4,8 +4,8 @@
 # A command handler is testable with a hand-built SessionContext and no Session
 # at all -- that is the point of splitting dispatch out. make_context assembles
 # one from fakes; each test seeds only the pieces its handler touches. These are
-# builders, not fixtures, because every handler wants a different shape (AGENTS.md
-# fixture policy).
+# builders, not fixtures, because every handler wants a different shape (the root
+# AGENTS.md's fixture policy).
 
 from __future__ import annotations
 

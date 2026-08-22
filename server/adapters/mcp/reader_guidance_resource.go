@@ -122,8 +122,8 @@ func readerGuidanceDocument(guidance GuidanceSource) (string, error) {
 	return framed + document.Text, nil
 }
 
-// The four documents this adapter owns, as markdown files (AGENTS.md invariant
-// 9). The frame carries `{{reader}}` and `{{persona}}` placeholders rather than
+// The four documents this adapter owns, as markdown files (the root AGENTS.md,
+// invariant 9). The frame carries `{{reader}}` and `{{persona}}` placeholders rather than
 // printf verbs, so that a stray percent sign in prose cannot turn into a
 // formatting fault in a document nobody compiles.
 

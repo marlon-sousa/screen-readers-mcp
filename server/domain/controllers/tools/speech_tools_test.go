@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // ONE TEST FILE FOR FIVE TOOLS, deliberately, and it is the one place this
-// package departs from "one test module per source module" (AGENTS.md). The
+// package departs from "one test module per source module" (the root AGENTS.md). The
 // reason is that these five are a single capability GROUP over a single port,
 // and the properties worth asserting are properties of the group: the half-open
 // index window that makes toIndex the next since_index, and the fact that "not

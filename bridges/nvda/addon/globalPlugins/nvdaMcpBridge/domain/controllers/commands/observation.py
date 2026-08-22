@@ -13,7 +13,7 @@
 # exactly the failure spec 0028 recorded when three append() implementations each
 # grew the same field by hand.
 #
-# LAYOUT AMENDMENT to spec 0025 (AGENTS.md: an amendment rides in the PR with a
+# LAYOUT AMENDMENT to spec 0025 (the root AGENTS.md: an amendment rides in the PR with a
 # one-line why): the spec's table names the two controllers and the buffer, and
 # does not mention this module. The why is the paragraph above -- the duplication
 # is across commands, so the remedy cannot live inside either one of them.

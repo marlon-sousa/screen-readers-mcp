@@ -8,7 +8,7 @@
 #
 # The `clock` fixture (conftest) is the same object these buffers were built
 # on, so a test that advances time is advancing the buffer's own clock by
-# construction. See AGENTS.md ("Testing").
+# construction. See the root AGENTS.md ("Testing").
 
 from __future__ import annotations
 

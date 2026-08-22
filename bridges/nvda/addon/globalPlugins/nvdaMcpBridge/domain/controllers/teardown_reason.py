@@ -1,7 +1,7 @@
 # nvdaMcpBridge domain -- TeardownReason: why a session ended.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
-# ROLE: a domain-only enum (plain Enum, per AGENTS.md -- it never crosses the
+# ROLE: a domain-only enum (plain Enum, per the root AGENTS.md -- it never crosses the
 # wire, so it is not a StrEnum in protocol.py).
 # USED BY: the Session controller (sets it on every exit path), the
 # SessionContext's close() capability (a command asks to end the session with a

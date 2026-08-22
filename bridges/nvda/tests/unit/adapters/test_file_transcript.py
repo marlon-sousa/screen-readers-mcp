@@ -5,7 +5,7 @@
 # tested precisely against a FakeFileWriter: exact lines, no filesystem. Only
 # create_session_log -- which picks real paths and prunes real files -- touches
 # the disk. The TextFileWriter leaf beneath it has no test file on purpose: it
-# makes no decisions. See AGENTS.md ("Testing").
+# makes no decisions. See the root AGENTS.md ("Testing").
 
 from __future__ import annotations
 

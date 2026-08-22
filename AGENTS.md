@@ -7,6 +7,27 @@ For *what to do now*, read [`ROADMAP.md`](ROADMAP.md) — the status board; its
 first non-Done entry is the next step, and its Spec field says whether that
 step is a spec conversation or implementation.
 
+## Where the rest of the manual is
+
+This file is the spine: what we are building, how the repo is laid out, the
+four-role vocabulary both halves share, the hard invariants, the workflow, and
+the task list. It is self-contained — an agent or contributor who reads only
+this file has everything needed to work the repo safely.
+
+The detail that belongs to **one** project lives beside that project, so a
+session working there picks it up without carrying the rest:
+
+| File | What is in it |
+|---|---|
+| [`shared/AGENTS.md`](shared/AGENTS.md) | The wire contract: the stdlib-only rule, and the policy that a `PROTOCOL_VERSION` 1 shape may still be changed in place. |
+| [`server/AGENTS.md`](server/AGENTS.md) | The Go half: its ports/entities/controllers/adapters inventory, the Go mechanics of the shared rules, build tags and the Go-only test rules. |
+| [`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md) | The NVDA bridge: its architecture, the command-handler dispatch layer, its test shapes, the rules for driving a live NVDA, and the NVDA gotchas. |
+| [`docs/dev-commands.md`](docs/dev-commands.md) | Why each gate in the task list exists and what it cost to learn, plus the underlying commands `poe` wraps. |
+
+Each project file assumes this one and does not repeat it. Nothing below is
+optional reading because a project file exists: if a rule is here, it applies
+everywhere.
+
 ## How this repo is developed
 
 **Agentic-first.** The system is built and reviewed largely by an AI agent
@@ -67,18 +88,9 @@ version numbers: `hello` compares `PROTOCOL_VERSION` and never the components'
 own versions, so each releases on its own cadence
 ([spec 0012](specs/0012-packaging-and-release.md)).
 
-**`PROTOCOL_VERSION` 1 is PRE-RELEASE, and a wire shape may be changed in
-place** — see [`specs/wire/v1/protocol.md`](specs/wire/v1/protocol.md) §8. There
-are no external consumers: both halves ship from this repo and `hello` is an
-exact-equality check, so a changed shape costs a rebuild of both, not a
-migration. Only once a **non-Python bridge** depends on the contract does an
-incompatible change require a version bump and a new `specs/wire/vN/`.
-
-This is here because the policy was written in §8 of the published contract,
-which a session implementing a *bridge feature* has no reason to open — so
-"additive only" gets assumed, and a cleaner shape gets designed around instead
-of taken. Prefer the right shape and change it; say so in the PR. The version
-number exists to stop a **stale bridge/server pairing**, not to freeze shapes.
+The rest of that policy — when a shape may be changed in place, and what would
+make it cost a version bump instead — is in
+[`shared/AGENTS.md`](shared/AGENTS.md), with the contract it governs.
 
 ## Layout
 
@@ -88,6 +100,9 @@ number exists to stop a **stale bridge/server pairing**, not to freeze shapes.
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
+
+`shared/`, `server/` and `bridges/nvda/` each carry their own `AGENTS.md` with
+the rules specific to them; see the index above.
 
 ## Internal architecture — ports & adapters (bridge AND server)
 
@@ -128,67 +143,10 @@ ports.
                   # controller its ports. Stays PURE so it is type-checked.
 ```
 
-Bridge (`bridges/nvda/addon/globalPlugins/nvdaMcpBridge/`): the Session
-lifecycle in `domain/controllers/session.py` (+ `teardown_reason.py`), the
-per-command handlers under `domain/controllers/commands/` (see "Command
-handlers" below); entities `speech_buffer.py` / `braille_buffer.py` /
-`indexed_buffer.py` / `bridge_events.py` / `connection_mode.py`; ports
-`adapter_factory.py` (+ `AdapterSet`), `speech_source.py`, `braille_source.py`,
-`gesture_sender.py`, `announcer.py`, `session_signals.py`, `log.py`,
-`log_capture.py`, `bridge_config.py`, `event_bus.py`, plus `clock.py`,
-`message_channel.py`, `transcript.py`; adapters `json_lines_channel.py`,
-`file_transcript.py`, `text_file_writer.py`, `real_clock.py`, the `nvda_*.py`
-edge adapters, and the connection stack (`socket_transport.py`,
-`named_pipe_transport.py`, `tcp_listener.py`, `named_pipe_listener.py`,
-`build_listener.py`). `protocol.py` (the synced shared wire module) sits at the
-package root, `plugin.py` is the NVDA edge, and `views/bridge_dialog.py` is the
-control UI — a **driving actor**, not an adapter: it consumes ports rather than
-implementing one (see [spec 0011](specs/0011-bridge-control-ui.md)).
-Server (session D, complete; [spec 0013](specs/0013-mcp-server.md)): same four
-roles, no `internal/` segment, so the trees line up
-(`nvdaMcpBridge/domain/ports/clock.py` ↔ `server/domain/ports/clock.go`). As
-built:
-
-- `domain/ports/` — one interface per file. Seven capability-group ports
-  (speech, braille, gestures, focus, state, config, plus `session_dialer.go`)
-  rather than one fat `BridgeClient`, so a reader without braille is a *missing
-  collaborator* rather than a runtime check: `Dial` returns a `ReaderConnection`
-  whose capability ports are **nil when unannounced**. Plus `endpoint_source.go`,
-  `endpoint_probe.go`, `tool_publisher.go` (how the domain publishes and retracts
-  tools without meeting the SDK), `clock.go` and `log.go`.
-- `domain/entities/` — `reader_session.go`, `capability.go`,
-  `connection_state.go`, `endpoint.go`, `configured_reader.go`,
-  `reader_listing.go`, and `tool_catalog.go`, which **is** the capability gate: a
-  pure table of capability in, tool names out, containing no reader's name.
-- `domain/controllers/connection.go` — the agent-driven session lifecycle (list,
-  connect, disconnect, loss detection, the heartbeat). It holds the only state in
-  the process, and it is an ordinary value owned by wiring.
-- `domain/controllers/tools/` — one controller per MCP tool (fifteen), mirroring
-  the bridge's one-handler-per-command rule, plus `registry.go` (the explicit
-  map, which also yields the catalog), `dispatcher.go` (one tool call as a use
-  case) and `tool_context.go` (the per-call parameter object, the analogue of the
-  bridge's `SessionContext`; its capability accessors are the only way to reach a
-  port, so a tool cannot forget to check). `Execute` takes **erased params** and
-  each tool declares its own JSON schema, which is what lets the MCP adapter have
-  zero per-tool code.
-- `adapters/` — `mcp/` (the go-sdk stdio server, the tool binding, the
-  `screenreader://info` resource, and the middleware backstop that answers a call
-  to a *retracted* tool with a capability error rather than "unknown tool"),
-  `bridge/` (the JSON-lines client holding every decision, the handshake, and the
-  TCP and named-pipe transport leaves), `discovery/` (the pipe scan), `wire/`
-  (generated from the published schema, imported only by `bridge/`), and the
-  clock and stderr-log leaves.
-- `tests/` — `architecture/` (untagged: the import boundaries, plus the rule that
-  the conformance tier may never substitute the fake bridge), `integration/`
-  (`//go:build integration`: the whole server against a Go fake bridge over real
-  transports) and `conformance/` (`//go:build conformance`, Windows CI: the built
-  binary over stdio against the **real Python bridge**).
-
-Go mechanics for the same rules: ports are interfaces with a
-`var _ ports.X = (*Impl)(nil)` assertion in each adapter; the domain never
-imports `adapters/wire` or the MCP SDK; and there is **no package-level mutable
-state anywhere in `server/`**, which is what keeps concurrent sessions a later
-map-plus-lookup rather than an unpicking of globals.
+Which file plays which role in each half — the bridge's session, handlers,
+entities, ports and adapters, and the server's Go equivalents — is inventoried
+in [`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md) and
+[`server/AGENTS.md`](server/AGENTS.md).
 
 Rules that keep this honest:
 
@@ -209,10 +167,6 @@ Rules that keep this honest:
 
   If you are tempted to put a decision in a leaf, it belongs one layer up.
 
-- **Ports are `abc.ABC`s with `@abstractmethod`** (not `Protocol`): an
-  incomplete adapter fails at construction, and the interface itself can't be
-  instantiated. The domain depends only on ports; adapters subclass and
-  implement them; **`wiring.py` is the only place that knows both.**
 - **One interface/class per file, and NO re-export facades.** Each port,
   controller, entity and adapter is its own file; a small private helper may
   share its owner's file (e.g. `_LineReader` inside `json_lines_channel.py`). A
@@ -224,76 +178,18 @@ Rules that keep this honest:
   dependencies are exactly the ports it lists. This applies to
   `shared/nvda_mcp_wire` too: import from `nvda_mcp_wire.protocol`, so both
   halves address the wire contract through a module named `protocol`.
-- **No DI container library.** `wiring.py` read top-to-bottom *is* the answer to
-  "who connects what"; annotation-driven auto-wiring hides that graph and turns
-  compile-time wiring errors into runtime ones inside NVDA. `dependency-injector`
-  is additionally disqualified: it is Cython-compiled and ships platform wheels
-  (the `pydantic-core` objection), and any third-party lib risks a collision in
-  NVDA's shared `sys.modules`. If wiring ever gets genuinely hard to follow,
-  promote it to an explicit hand-written `container.py` of factory functions —
-  same central place, zero dependencies, still checked by pyright.
-- **Mode (silent/live) is only known after `hello`.** Do not build
-  mode-specific adapters up front. `wiring.py` injects an **`AdapterFactory`
-  port**; `Session` reads `hello`, then calls `factory.build(mode)` for the
-  adapter set. No "configure the adapter after constructing it".
 - **Enumerations are `enum`, never class-of-`Final`-constants.** Wire enums
   (`CaptureMode`, `Command`) are `enum.StrEnum` in `protocol.py` (members are
   `str`, so JSON stays plain); domain-only enums (`TeardownReason`) are plain
   `enum.Enum`. `Request.cmd` stays a raw `str` so an unknown command yields a
   clean error instead of a validation crash.
-- **The NVDA/SDK edge is exempt from the type checker; the domain is not.** We
-  do **not** vendor stubs and do **not** depend on the NVDA source. Instead the
-  side-effecting adapter files (those importing NVDA, plus the bridge's
-  `plugin.py`) are listed in pyright's `ignore`, so their unresolved imports
-  raise nothing. This is safe precisely *because* the domain is pure and fully
-  strict-checked and those thin edge files are validated by the milestone-6
-  live-NVDA integration tests. Keep edge files thin — real logic belongs in the
-  checked domain.
 
-## Command handlers — the dispatch layer — **Decided**
-
-The `Session` is a controller, but it does two jobs and delegates one. Session
-**lifecycle** — the handshake, the heartbeat/inactivity watchdogs, and the
-teardown that restores the synth on every path — stays in
-`domain/controllers/session.py`. Per-command work lives in
-`domain/controllers/commands/`, one **`CommandHandler`** (an `abc.ABC`) per wire
-command, one file each, mirrored one-for-one by a test. This keeps the Session
-small and lets a command be added or tested in isolation.
-
-- **A handler is a controller.** It orchestrates one use case over
-  ports/entities and returns a wire result, or **raises** to fail it — a
-  `CommandError` for its own errors, a `protocol.ValidationError` for bad
-  params, `GestureError` from the port. The Session centralises everything
-  else: it wraps the result in a `Response` with the request id, turns any
-  raise into an error reply, and owns the watchdog bookkeeping. Handlers never
-  touch the channel, the loop, or teardown.
-- **Handlers see only a `SessionContext`, never the Session.** The context
-  (`commands/session_context.py`) is the per-session bundle — clock,
-  transcript, the speech/braille buffers, the `AdapterSet` — plus exactly one
-  lifecycle capability, `close(reason)`. A command that must end the session
-  (`bye`, and session C's panic path) calls `close`; it cannot reach lifecycle
-  internals. Because a handler needs only a hand-built context, it is
-  unit-tested with **no Session and no run loop** (`tests/support/context.py`
-  builds one from fakes).
-- **The registry is an explicit map, not a container.**
-  `commands/registry.py`'s `build_command_registry(...)` is a hand-written
-  `command → handler` dict, read top to bottom — the same reason `wiring.py` is
-  explicit (no DI container, no decorator auto-registration). Handlers are
-  stateless singletons; the per-session state is the context passed to
-  `execute`. **`hello` is the exception:** it is the bootstrap command that
-  *builds* the session, so it is wired with the `AdapterFactory` and the NVDA
-  version and populates the context — the Session no longer knows the factory
-  at all.
-- **Dispatch policy is declared on the handler, not special-cased in the
-  loop.** `resets_inactivity` (false only for `ping`) and
-  `available_before_hello` (true only for `hello`) are class attributes the
-  dispatcher reads, so the one loop needs no `if cmd == ...`.
-- **One dispatch loop.** The Session runs a single `while self._reason is None:`
-  loop over a pre-hello/established state: pre-hello only `hello` is accepted
-  and any failure ends the handshake; established, the session is tolerant (an
-  error reply, keep going). A `TIMEOUT` sets no reason and polls again; every
-  real exit sets the reason. (This replaced the two poll loops the first cut
-  had.)
+The rules that only one half renders live with that half: the bridge's ABC
+ports, `wiring.py`, the no-DI-container argument, the "mode is only known after
+`hello`" rule and the exempt NVDA edge are in
+[`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md); the Go mechanics — interface
+assertions, no package-level mutable state — are in
+[`server/AGENTS.md`](server/AGENTS.md).
 
 ## Testing
 
@@ -315,17 +211,9 @@ The mirror applies per package, not just to the bridge:
 `shared/tests/unit/test_protocol.py` ↔ `nvda_mcp_wire/protocol.py`.
 
 **In Go the mirror is the language's own convention**, so the server renders the
-same rule differently ([spec 0013](specs/0013-mcp-server.md)): `session.go` ↔
-`session_test.go` **beside it**, one test file per source file. A parallel tree
-is not merely awkward there but counterproductive — a Go test sees unexported
-identifiers only from inside its package's directory, so the layout would force
-every collaborator public to satisfy a directory. Two Go-only rules come with
-it: tests are `package foo_test` by default (a test that needs internals is
-first evidence the decomposition is wrong; white-box is allowed where an
-unexported helper deserves direct coverage, and the header says why), and the
-scenario tiers live in `server/tests/<usecase>/` behind build tags
-(`//go:build integration`, `//go:build conformance`) so `go test ./...` stays
-fast and the Windows-only conformance run opts in explicitly.
+same rule differently — one test file beside each source file, `package
+foo_test` by default, and the scenario tiers behind build tags. That is in
+[`server/AGENTS.md`](server/AGENTS.md).
 
 One test module per source module — **do not** let a test module cover its
 neighbours. (The rule earns its keep immediately: one `test_speech_buffer.py`
@@ -350,29 +238,8 @@ double — builders, helpers — lives in a sibling `tests/support/` package
 (`from support.context import make_context`), so `fakes/` stays exactly the port
 doubles and nothing else.
 
-**`tests/integration/` is named after the USE CASE, not the file** — these prove
-a whole scenario end to end. Two kinds live here. **Headless** scenarios drive
-the real session stack (real dispatch, real JSON-lines framing) over a
-`LoopbackTransport` with a fake NVDA, no socket and no NVDA — so they **run in
-CI** like any unit test (e.g. `test_wire_session_roundtrip.py`, the recipe lane
-2 builds on). **Live-NVDA** scenarios (`test_live_nvda_e2e.py`,
-`test_live_nvda_pipe_e2e.py`) need a real NVDA and are the only place that
-proves a *real* adapter behaves like its fake; they do not run in CI.
-
 Keep test module basenames unique across the tree (pytest's prepend import mode
 requires it). Mirroring gives that for free, since source basenames are unique.
-
-### Driving a live NVDA — three things that cost real time
-
-A live-NVDA run drives the machine a **blind developer is currently using**. Everything below was learned by getting it wrong on the maintainer's own desktop.
-
-**Announce every phase transition, not just the start.** `announce()` is the only channel the tester has. Without it, focus moves, dialogs open and keys are typed with no explanation — which for a screen-reader user is indistinguishable from their machine misbehaving. Announce *before* the action, including before verification steps, not only before the ones you hand over.
-
-**Prime the control, then set the override — never the reverse.** A settings dialog reads its values when it *opens*. If a dialog is already open when an override is set, pressing OK writes the **pre-override** value back, which the hook faithfully captures into the override map — so the override looks displaced when it was simply overwritten, exactly as spec 0015 documents. This reads as a failure of the write hook and is not one. Sit on the control first.
-
-**The 120s inactivity watchdog invalidates any step with human work between the override and the check.** `ping` deliberately does not reset it (`command_handler.py:38-41`: it proves liveness, not that the agent is still testing). A session dies while the tester navigates a dialog, silently discarding the override, and the result reads as "the override did not survive a profile switch". Either prime the tester so the gap is seconds, or drive the whole step from the agent. Most steps turn out to be agent-drivable: `get_config`, `get_speech` and `get_focus_info` make the assertions without anyone needing to *hear* anything, so reserve the human for what genuinely needs hands or ears.
-
-Corollary worth remembering: `setConfig` can enable a setting a test needs and teardown restores it, so "the tester's configuration is wrong for this test" is usually solvable without asking them to change anything.
 
 ### Doubles are hand-written stateful fakes, not mocks
 
@@ -447,6 +314,11 @@ microseconds. This is also why `freezegun` / `time-machine` are the wrong tool
 here: they patch the global clock but leave `time.sleep` real, so the wait loops
 would still sleep for real — and patching globals under a `Clock` port would
 make the port pointless for testing.
+
+The test shapes that belong to the bridge alone are in
+[`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md): what its `tests/integration/`
+holds — headless scenarios that run in CI, and live-NVDA ones that do not — and
+the three things that cost real time when driving a live NVDA.
 
 ## Hard invariants — do not break
 
@@ -562,19 +434,11 @@ doctor and aborts with a non-zero exit if it fails, so `poe bridge` on a broken
 environment refuses to run rather than producing a green tick you should not
 believe.
 
-It is not ceremony. Every check in it corresponds to something that has already
-cost someone hours, because the symptom pointed nowhere near the cause:
-
-| Symptom | Real cause |
-|---|---|
-| ~140 phantom `Import "pytest" could not be resolved` from pyright | pyright had no venv configured, so it analysed against the wrong interpreter |
-| `uv trampoline failed to canonicalize script path` | a stale console-script shim; names neither the tool nor the fix |
-| A search returns thousands of `site-packages/...` lines | no ripgrep, so it fell back to `grep -r`, which ignores `.gitignore` |
-| The bridge behaves like an older wire contract | `addon/…/protocol.py` is a **copy**; `sync_shared.py` had not been re-run |
-| `scons` fails late in the addon build | `msgfmt`/`markdown` missing |
-
-A red doctor makes green tests and red tests equally uninformative. Fix it
-first.
+**Why each of these gates exists, and what it cost to learn, is in
+[`docs/dev-commands.md`](docs/dev-commands.md)** — along with the underlying
+commands `poe` wraps, if you need one directly. Read it when a gate surprises
+you or when you are changing what CI checks; you do not need it to run the
+tasks.
 
 ### The task list
 
@@ -593,146 +457,6 @@ uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
 uv run poe build         # both deliverables: the server binary and the .nvda-addon
 ```
-
-**`.github/workflows/ci.yml` no longer spells out any commands.** Each job
-installs a toolchain and calls one task — `uv run poe ci-shared`, `ci-server`,
-`ci-bridge`, `ci-conformance`, one per job, named after it. So **a change to
-what CI checks is a change to `pyproject.toml`**, which you can run and prove
-before pushing; the workflow changes only when a job needs a different
-toolchain. Keep the job↔task pairing 1:1.
-
-That unification is not cosmetic. While the two lists were maintained by hand
-they drifted, in both directions: `poe ci` grew a `lint` task the workflow never
-ran, the workflow's ruff step covered `addon tests` while poe covered two more
-files, and **staticcheck and the Linux build existed only in the workflow** — so
-no developer could run them, and the first sign of a failure was a red PR.
-`staticcheck` is also now pinned; at `@latest` an upstream release turns the
-repo red with no commit of ours behind it, and the bisect begins by hunting for
-a change that does not exist.
-
-**Rebuild the server binary after touching `server/`.** `.mcp.json` spawns
-`server/screenreader-mcp.exe`, so an agent that edits Go code and then drives
-the MCP tools is testing the OLD server against the NEW bridge. The symptom is
-a field simply missing from a result, which reads as "the bridge did not send
-it" rather than "your binary predates it" -- that is exactly how `bridgeVersion`
-went unnoticed through an entire live checklist. `poe doctor` fails when the
-binary is older than any `server/*.go`, and **a rebuild alone is not enough**:
-the MCP client spawned the old process at startup, so the connection has to be
-restarted too.
-
-**`poe dev` repairs this rather than reporting it.** Its first step is
-`redeploy --if-stale`, a no-op when the binary is current and a full
-kill-delete-rebuild when it is not. The staleness question is answerable by
-comparing two mtimes, so asking it at the *end* of a minute-long doctor run —
-and thereby costing two full runs per Go change — was pure waste. One definition
-of "stale" serves both: `doctor.stale_server_binary()`, which `redeploy.py`
-imports rather than restating, so dev and the doctor cannot drift into
-disagreeing about the same tree.
-
-**`poe live` is quarantined for safety, not speed.** The live-NVDA tests press
-gestures, open the Run dialog, type into whatever currently has focus, and
-change the reader's configuration -- on the machine you are sitting at. They
-were previously harmless only by accident: they skip when nothing is listening
-on the pipe, so nobody noticed until a developer ran the suite with their own
-NVDA and bridge up and had their screen reader commandeered mid-task. For a
-blind developer that is not a nuisance, it is losing control of the machine.
-They are now marked `live_nvda` and excluded by `addopts`; running them is an
-explicit act. Never add them to `ci`.
-
-`poe dev` is the one to run before saying something works: the full doctor, then
-exactly what CI runs.
-
-**`dev` and `ci` differ only in what they assume about the machine.** `dev` asks
-first whether *this workstation* is fit to work the repo — Go and ripgrep
-present, venvs intact, the MCP server binary not stale — because a desktop
-drifts, and the failures that follow name everything except their cause. A
-runner is rebuilt from `ci.yml` every time and cannot have drifted, so `ci`
-skips those questions and does the work. Under `CI` (set by GitHub Actions, and
-by anything else worth the name) the doctor drops the machine checks by itself;
-export `CI=1` locally to rehearse a runner. This is what kept `poe` out of the
-workflow for so long: the `shared` job installs uv and nothing else, so the
-*required* `go` and `rg` aborted it before a single test ran.
-
-The checks that survive under `CI` are the ones about the *checkout* rather than
-the machine: pyright's venv configuration, and the addon's copy of the wire
-module matching `shared/`.
-
-Every task except `doctor`, `fix`, `check` and the remediations is gated on
-`check` (the fast doctor subset, ~1s, silent when it passes). The diagnostics
-are exempt on purpose: gating the tool that reports a broken environment on that
-same environment would make the breakage unreportable. The remediations —
-`build-server`, `redeploy`, `sync` — are exempt by the same rule, since each one
-*repairs* a condition the doctor fails on, and gating it would deadlock.
-
-**Tool minimums are floors, never pins.** The doctor fails a tool that is *below*
-the version this repo needs and is silent about anything newer, so upgrading is
-always safe and nothing here ever has to be revisited because a tool moved
-forward. Each minimum exists for a stated reason -- `gh` below 2.55 cannot edit
-a PR body, `go` tracks `server/go.mod` -- and gettext is presence-only, because
-its Windows builds report versions that do not order against the GNU ones and a
-comparison that gives wrong answers is worse than none.
-
-**The `VIRTUAL_ENV ... does not match the project environment path` warning is
-expected noise, once per task.** It is nested `uv run`: `uv run poe <task>`
-activates the ROOT env by exporting `VIRTUAL_ENV` into poe, and every suite task
-is a second `uv run --directory <subproject>` whose own env is
-`<subproject>/.venv`. The inner uv reports that it is ignoring the inherited
-variable and then resolves the subproject's env correctly — verified: `sys.prefix`
-inside `poe bridge` is `bridges/nvda/.venv`. Two things follow. **Do not pass
-`--active`**, which the warning itself suggests: that forces the root env, which
-has neither pytest nor pyright for the subprojects, and is the one way to turn
-this cosmetic message into a real failure. And do not try to silence it from
-`pyproject.toml` — `[tool.poe.env]` cannot clear `VIRTUAL_ENV` (a plain variable
-set there does land; that one does not), and `executor.type = "simple"` does not
-either, because the value is inherited rather than set by poe. Silencing it means
-either dropping `uv run` in front of `poe` (which reintroduces the Windows
-console-script trampoline this file's header warns about) or turning every `cmd`
-task into a `shell` task. Both cost more than the warning does.
-
-**`poe lint` is now a real gate, and the format check is half of it.** The
-backlog that once justified leaving ruff out is cleared: every Python file in
-the repo — 179 of them, across `shared/`, `bridges/nvda/` and `scripts/` — is
-clean and formatted, and `ci` fails on a new violation. Specs that list "ruff
-green" in their definition of done now describe something that actually runs.
-
-Two things that gate had to fix, worth knowing because both were invisible:
-
-- **`ruff check` says nothing about indentation.** Only `ruff format --check`
-  does, and nothing ran it, so a file could arrive space-indented in a tab repo
-  and pass every gate — which is exactly how PR #46 added a dozen of them.
-- **`scripts/` was linted by nothing.** `shared/` and `bridges/nvda/` each carry
-  their own ruff config, and everything between them — the dev scripts,
-  `sync_shared.py`, `buildVars.py` — fell through the gap. The root
-  `pyproject.toml` now covers it with the same rule set.
-- **Go formatting was checked by nothing either.** Neither `go vet` nor
-  staticcheck has an opinion about layout, so the Go half had the same hole the
-  Python half just closed — and it was holding two files, a struct field and a
-  map entry added without realigning the block around them. `poe go-fmt` runs in
-  `ci-server` now. It is a script rather than one command because `gofmt -l`
-  prints the offenders and then **exits 0**, so the obvious one-liner is a gate
-  that can never fail.
-
-**Every gate lints a DIRECTORY, never a list of files — deny-list, not
-allow-list.** Both holes above were allow-list holes: a gate that named paths,
-so a file at a path nobody had thought of was ungated and looked fine. Naming
-paths only covers files that already exist, which is the wrong set; the risk is
-the file that does not exist yet — the one a contributor or a model is about to
-add. Verified by planting space-indented files in nine locations, two of them in
-directories that did not previously exist: with file lists, three slipped
-through silently; with `.`, none do.
-
-So if something must not be linted, **exclude it, and say why at the exclusion**
-— adding a path to an exclude list should feel like a decision, where adding one
-to an allow-list feels like nothing at all. Two things are excluded today, both
-vendored from the NVDA AddonTemplate scaffold, because reformatting upstream's
-code only makes the next scaffold sync noisy: `bridges/nvda/site_scons/` and
-`bridges/nvda/sconstruct`.
-
-The rule set is **chosen, not inherited**: `select` is listed explicitly in all
-three configs, because ruff's defaults have widened across releases and a
-project with no `select` enforces whatever version happens to be installed.
-Changing what this repo enforces should be a deliberate edit, not a version
-bump.
 
 ### Notes for agents specifically
 
@@ -821,38 +545,6 @@ bump.
   calls in this harness. Use absolute paths, or `Set-Location` inside each
   command.
 
-### The underlying commands
-
-`poe` is a thin wrapper; these are what it runs, if you need one directly:
-
-```sh
-# shared wire contract (no NVDA needed)
-uv run --directory shared pytest
-uv run --directory shared pyright
-
-# MCP server (no NVDA needed; tests use a fake bridge). Go, not Python.
-go -C server build ./...
-go -C server test ./...                       # unit tests
-go -C server test -tags integration ./...     # whole server, real transports
-go -C server vet ./...
-go -C server generate ./adapters/wire         # regenerate the binding from the schema
-
-# Cross-language conformance: the built binary against the REAL Python bridge,
-# over a real named pipe and real loopback TCP. Windows; needs a Python 3.13 on
-# PATH (or CONFORMANCE_PYTHON set to one). It FAILS rather than skips if it
-# cannot reach the real bridge -- that is the whole point of the tier.
-go -C server test -tags conformance -count=1 ./tests/conformance/
-
-# NVDA addon: copy the shared module in, then run headless tests + pyright.
-# No NVDA checkout needed — the domain is pure; the NVDA edge is in pyright's
-# ignore list (no stubs, no source dependency).
-py -3.13 bridges/nvda/sync_shared.py
-uv run --directory bridges/nvda pytest       # headless domain tests
-uv run --directory bridges/nvda pyright
-# builds: prefer `uv run poe build-server` / `build-addon` (same commands, one entry point)
-cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
-```
-
 Driving the whole stack against a **live NVDA** — build the add-on, start the
 bridge, and run a script standing in for the MCP client — is
 [`CONTRIBUTING.md`](CONTRIBUTING.md), "Setting up to test against a live NVDA".
@@ -910,17 +602,6 @@ only needs the merged code + its spec + this file.
 
 ## Gotchas learned the hard way
 
-- **Silent-mode synth swap fights config profiles.** NVDA reloads the synth
-  from `config["speech"]["synth"]` on *every* `config.post_configProfileSwitch`
-  (`synthDriverHandler.py:420`, `566-584`). The naive
-  `setSynth(spy, isFallback=True)` leaves config pointing at the real synth, so
-  the first profile switch rips the spy out. Fix: set config's synth name to
-  the spy, guard `config.pre_configSave`, and patch
-  `synthDriverHandler.getSynthInstance`. See the spec's fail-safe section.
-- **NVDA answers on non-speech channels.** Some actions (e.g. NVDA+space
-  toggling browse/focus mode) signal via an earcon/beep, not words, so speech
-  assertions have nothing to match. Use `getState` (browse/focus mode, speech
-  mode, sleep, input help) to assert those.
 - **CI job names are short and stable (`shared`, `server`, `bridge`) — don't
   "improve" them.** Branch protection matches required status checks by the
   literal job name, so a descriptive name couples the merge gate to the job's
@@ -931,39 +612,6 @@ only needs the merged code + its spec + this file.
   free to change. If a job name ever must change, update
   `repos/<owner>/<repo>/branches/main/protection/required_status_checks` in the
   same breath — push the workflow first, let it report, then flip the setting.
-- **NVDA reference source is `../nvda/source`** (2026.1). Consult it for APIs
-  rather than guessing; only `source/` is needed. It is a **reference only** —
-  not a build/CI/type-check dependency. Adapter files that import NVDA go in
-  pyright's `ignore` list (see the ports & adapters section); the domain they
-  serve stays fully strict-checked.
-- **`buildVars.pythonSources` must be RECURSIVE (`**/*.py`).** This addon is a
-  hexagonal *package* with subdirectories, not the flat single-module addon the
-  AddonTemplate assumes. sconstruct turns each `pythonSource` into a build
-  dependency of the `.nvda-addon`, so the template's non-recursive
-  `globalPlugins/nvdaMcpBridge/*.py` tracked only the top-level modules — editing
-  anything under `adapters/` or `domain/` changed no tracked dependency and
-  `scons` reported *"up to date"* without repackaging, silently shipping stale
-  code. (The build *action* rglobs the whole tree, which is exactly why a forced
-  clean rebuild always looked correct and hid the hole.) When you build, don't
-  trust "up to date" alone after a subdirectory edit — or just keep the glob
-  recursive.
-- **A crashed client must never take the bridge server down.** A client that
-  dies mid-session RSTs the socket, so `sock.recv` raises `ConnectionResetError`
-  (WinError 10054), *not* `b""`. The Session loop only catches `ChannelClosed`,
-  so an un-mapped socket error escapes up through `run()` and kills the
-  `BridgeServer` accept loop — a crashed *client* stops the *bridge*. The
-  `SocketTransport` leaf maps any socket error other than the idle timeout to
-  `b""` (an abrupt reset is an abrupt EOF), and `BridgeServer` wraps each session
-  so no session fault can break the accept loop. Keep both.
-- **NVDA mutations run on NVDA's MAIN thread; the bridge Session runs on a
-  background (server) thread.** Anything that touches NVDA from an adapter —
-  `tones`, the synth, gestures — must marshal to the main thread
-  (`adapters/nvda_main_thread.run_on_main`, or `wx.CallAfter`), or it races
-  NVDA's own main-thread work. Teardown paths use the fire-and-forget form so a
-  main-thread caller (panic/terminate) can't deadlock waiting on the thread it
-  is joining. (The original silent-mode mute bug was exactly a server-thread
-  `setSynth` racing a main-thread config-profile reload; spec 0008 removed the
-  synth swap entirely, but the thread rule stands for tones and gestures.)
 - **Pyright is configured in THREE `pyrightconfig.json` files, and which file
   wins is a trap.** `shared/` and `bridges/nvda/` each carry their own, and
   that is what their gates read. The repo root carries a third whose only job
@@ -1004,3 +652,9 @@ only needs the merged code + its spec + this file.
     *"Unhandled method textDocument/implementation"*); gopls does. To find the
     implementations of a Python port, use "find references" on the ABC, or a
     workspace symbol search.
+
+The gotchas that belong to the NVDA bridge — the silent-mode synth swap and
+config profiles, NVDA answering on non-speech channels, the reference source,
+the recursive `buildVars.pythonSources` glob, a crashed client taking the bridge
+down, and NVDA's main-thread rule — are in
+[`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md).

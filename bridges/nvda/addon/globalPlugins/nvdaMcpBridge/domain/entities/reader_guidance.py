@@ -27,7 +27,7 @@
 # harmless and says nothing about the key that now reaches past focus.
 #
 # THE DOCUMENTS ARE .md FILES READ AT RUN TIME, which is the same rule the server
-# follows (AGENTS.md invariant 9) reaching the opposite mechanism: Go embeds them
+# follows (the root AGENTS.md, invariant 9) reaching the opposite mechanism: Go embeds them
 # into the binary at compile time, and Python has no compile step to embed
 # anything into, so they ship inside the .nvda-addon and are read from disk on
 # first use. Two consequences worth knowing:

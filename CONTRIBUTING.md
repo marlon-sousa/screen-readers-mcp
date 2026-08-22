@@ -13,7 +13,11 @@ For anything scoped to one part of the system, its own document is the authority
 and this file points at it rather than repeating it:
 
 - **Architecture, the ports-and-adapters rules, hard invariants, testing
-  conventions** — [`AGENTS.md`](AGENTS.md), the developer manual.
+  conventions** — [`AGENTS.md`](AGENTS.md), the developer manual. Detail belonging
+  to one project lives beside it, in [`shared/AGENTS.md`](shared/AGENTS.md),
+  [`server/AGENTS.md`](server/AGENTS.md) and
+  [`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md); the reasoning behind the
+  task list is in [`docs/dev-commands.md`](docs/dev-commands.md).
 - **What is done, in review, and next** — [`ROADMAP.md`](ROADMAP.md), the status
   board.
 - **What the thing is and what its tools do** — [`README.md`](README.md).
@@ -97,7 +101,8 @@ and rejects a mismatch with a clear error, so each half releases on its own
 cadence.
 
 Inside the server, the same four roles as the bridge (the rules are in
-[`AGENTS.md`](AGENTS.md)):
+[`AGENTS.md`](AGENTS.md), and the Go half's own in
+[`server/AGENTS.md`](server/AGENTS.md)):
 
 ```
 server/

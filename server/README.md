@@ -141,4 +141,5 @@ server in your client, or restart it.
 ## Developing the server
 
 Layout, the test tiers, the wire binding generator, and the release process are
-in [CONTRIBUTING.md](../CONTRIBUTING.md) and [AGENTS.md](../AGENTS.md).
+in [CONTRIBUTING.md](../CONTRIBUTING.md), [AGENTS.md](AGENTS.md) (this package's
+manual) and the root [AGENTS.md](../AGENTS.md).

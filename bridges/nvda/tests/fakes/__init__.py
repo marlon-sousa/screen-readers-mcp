@@ -10,4 +10,4 @@
 #
 # Each fake subclasses the ABC it stands in for, so a fake that drifts from its
 # port fails at construction. They are hand-written and STATEFUL rather than
-# mocks; see AGENTS.md ("Testing") for the reasoning.
+# mocks; see the root AGENTS.md ("Testing") for the reasoning.

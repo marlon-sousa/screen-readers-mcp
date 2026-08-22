@@ -197,7 +197,7 @@ func compact(schema json.RawMessage) []byte {
 }
 
 // The frame: the preamble and the error convention, as a MARKDOWN FILE rather
-// than a Go string literal (AGENTS.md rule 9).
+// than a Go string literal (the root AGENTS.md, rule 9).
 //
 // IT NAMES NO TOOL, and a test asserts it. That is the second of spec 0031 Part
 // 4's three measures against drift: everything tool-specific is composed above,

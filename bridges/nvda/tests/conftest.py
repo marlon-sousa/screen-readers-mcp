@@ -10,7 +10,7 @@
 #
 # It also holds the fixtures that cut across test modules -- only those. A
 # fixture used by one module lives in that module; one shared by siblings lives
-# in a conftest.py beside them. See AGENTS.md ("Testing") for the layout rules
+# in a conftest.py beside them. See the root AGENTS.md ("Testing") for the layout rules
 # and for when a fixture is the right tool at all.
 
 from __future__ import annotations

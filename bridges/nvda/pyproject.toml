@@ -157,7 +157,7 @@ ignore = [
 #   There is NO NVDA source dependency and NO vendored stubs: the side-effecting
 #   edge that imports NVDA is exempted via `ignore`, because the domain it
 #   serves is fully checked and the edge is validated by live-NVDA integration
-#   tests. See AGENTS.md "Internal architecture -- ports & adapters".
+#   tests. See AGENTS.md "Rules that keep this honest -- the Python half".
 #
 # * The `ignore` list is that NVDA-importing edge: unresolved NVDA imports there
 #   raise nothing. Keep those files thin (glue only); real logic belongs in the

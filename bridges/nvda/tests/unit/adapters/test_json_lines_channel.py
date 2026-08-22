@@ -7,7 +7,7 @@
 #
 # No fixture for the channel: every test scripts a DIFFERENT byte stream, which
 # is per-test customisation, so a builder helper fits and a fixture would not.
-# See AGENTS.md ("Testing").
+# See the root AGENTS.md ("Testing").
 
 from __future__ import annotations
 

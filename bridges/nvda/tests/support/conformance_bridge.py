@@ -2,7 +2,7 @@
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 # ROLE: test scaffolding (a builder, not a port double -- hence tests/support/,
-# per AGENTS.md). It is the headless bridge of
+# per the root AGENTS.md). It is the headless bridge of
 # tests/integration/test_socket_session_roundtrip.py and
 # test_named_pipe_session_roundtrip.py -- a real BridgeServer, a real listener, a
 # real Session, a FakeAdapterFactory in place of NVDA -- made STARTABLE AS A
