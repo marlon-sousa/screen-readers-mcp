@@ -25,6 +25,23 @@ package entities
 
 import "sort"
 
+// GatedByItsSteps is the THIRD gating value, for a tool whose gate is not one
+// capability but whatever the call it was handed asks for (spec 0036, part 2).
+//
+// `run_sequence` is the case and may stay the only one. It honestly has no
+// capability: declaring one would be a lie, and declaring it EMPTY means
+// "callable before a session exists", which is what the four discovery tools
+// mean and is the opposite of true here. So the table gains a value that says
+// what is actually so -- gated by its steps -- and `screenreader://tools`,
+// `precondition()` and this file's own Capabilities() each render it as such.
+//
+// IT IS NOT A CAPABILITY AND NEVER CROSSES THE WIRE. It is absent from
+// AllCapabilities(), it has no Meaning(), no bridge can announce it and
+// Capabilities() below excludes it: it is a property of the TABLE, not of the
+// vocabulary a reader speaks. The spelling is one no `hello` could collide with
+// even by accident, which is the belt to that braces.
+const GatedByItsSteps Capability = "(its steps)"
+
 // ToolGate is one tool's entry: its name and what gates it.
 type ToolGate struct {
 	// Name is the tool's MCP name.
@@ -33,7 +50,8 @@ type ToolGate struct {
 	// Capability is the group a reader must announce for this tool to be
 	// advertised. EMPTY means ungated -- the four discovery and connection
 	// tools, which must be there before any reader is, since they are how a
-	// reader gets connected in the first place.
+	// reader gets connected in the first place. GatedByItsSteps is the third
+	// answer, for a tool that needs a session but no one fixed capability.
 	Capability Capability
 }
 
@@ -93,7 +111,10 @@ func (c ToolCatalog) Capabilities() []Capability {
 	seen := map[Capability]struct{}{}
 	var all []Capability
 	for _, gate := range c.gates {
-		if gate.Capability == "" {
+		// Neither of the two non-capability gating values belongs in an
+		// answer about the capability vocabulary: "" is ungated, and
+		// GatedByItsSteps is a tool whose gate is per call.
+		if gate.Capability == "" || gate.Capability == GatedByItsSteps {
 			continue
 		}
 		if _, ok := seen[gate.Capability]; ok {

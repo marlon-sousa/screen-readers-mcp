@@ -88,7 +88,7 @@ func (t *PressGesture) InputSchema() json.RawMessage {
 		},
 		"announce": {
 			"type": "string",
-			"description": "Spoken aloud to the human at the reader before anything is pressed -- audible even in a silent session. Say what you are about to do, in their language. Costs no extra call."
+			"description": "Spoken aloud to the human at the reader before anything is pressed -- audible even in a silent session, which is what it is FOR. Use it when they would otherwise not know: a SILENT session with somebody there, where this is the only thing they hear. In a LIVE session they can already hear the reader answer every key, so narrating each one talks over the speech they are following -- save it for what the reader will not tell them, such as that you are about to go quiet. Never narrate to an unattended machine. See silenceCap on connect_reader for whether anyone is there."
 		}
 	},
 	"required": ["gestures"],

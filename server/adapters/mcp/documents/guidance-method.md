@@ -118,6 +118,52 @@ when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
 
+## When you already know the next few steps, send them together
+
+The loop above is one intention at a time, and that is right whenever what you
+do next depends on what you just heard. Often it does not: typing a value and
+submitting it, opening something and reading where you landed, starting
+something and interrupting it while it is still running. Those are steps you
+knew before you sent the first one, and `run_sequence` carries them in a single
+call.
+
+**What that buys is not speed, it is reach.** Between two of your calls, seconds
+pass — that is your own turn time, not the reader's, and nothing here can shorten
+it. Between two steps of a plan, a fraction of a millisecond passes. So a plan
+can do something you simply cannot do across separate calls: act on a moment
+that has already gone by the time you could have taken another turn. Interrupting
+a command that finishes in a second and a half is the standing example.
+
+Three things to hold on to:
+
+- **A plan is a bet placed before the first keystroke.** Its steps cannot react
+  to what the reader says, except by stopping. If the second thing you do depends
+  on what you heard from the first, that is two calls and should be.
+- **It comes back as one window with a bookmark per step**, so you can still see
+  which step spoke and which was silent — batching does not cost you the
+  observation, which is the whole reason it is worth doing.
+- **`outcome` has three values, and the middle one is not a failure.** A
+  `wait_for_speech` step whose text never arrived answers `trigger_not_found`:
+  the plan stopped, nothing broke, and your next move is different from the one a
+  real failure calls for.
+
+The same rules apply inside a plan as outside it. `delay` is the application's
+known timing and `settle` is the reader's unknown latency; neither is evidence of
+anything on its own, and a plan that only sleeps is the failure this document
+opened by warning about, produced faster.
+
+**A plan that interrupts must size its wait to the capture mode.** This is the
+one place the mode you chose changes what a plan does rather than what the human
+hears. The point of interrupting is to act while the reader is still going, so
+the wait before the interrupting step has to be shorter than the thing you are
+interrupting — and in a silent session there is no audio pacing that thing, so it
+can be over in a fraction of the time the same reading takes aloud. A wait that
+lands mid-sentence in one mode can land after the end in the other, and when it
+does **nothing fails**: the plan reports `completed`, the interrupting step
+returns normally, and you are looking at a result that proves nothing. If a plan
+of yours depends on interrupting, read the merged window and check the
+interruption actually cut something short, rather than trusting that the plan ran.
+
 ## Say something to the human, or the room stays silent
 
 In a **silent** session the person at the reader hears nothing at all except what
@@ -129,23 +175,50 @@ having died, and if they are blind they cannot look at the screen to check.
 So `connect_reader` tells you whether a human is expected at that machine, in its
 `silenceCap` field. **Read it, and act on it:**
 
-- **Where a human is expected**, `announce` before any stretch of work that does
-  not drive the reader — before a long analysis, before you go away to think,
-  before anything that will take more than a few seconds without a keypress. One
-  short sentence saying what you are doing is enough. It costs almost nothing, and
-  it is the only thing standing between that person and sitting in silence
-  wondering.
-- **Where the machine is unattended**, do not spend round trips narrating to an
-  empty room.
-- **Narration rides along, so it is nearly free.** `press_gesture` and `type_text`
-  both take an `announce` string, spoken to the human before they act; you do not
-  need a separate `announce` call to say what you are about to do. Each hands it
-  back as `announced`, which is your confirmation the announcement was **made**.
-  It is never a confirmation that it was **heard**: the reader emits speech
-  around five seconds ahead of the audio the person is listening to, so if you
-  narrate and act in the same breath you are acting ahead of your own narration,
-  and their objection — when it comes — is a reaction to something already
-  several seconds old.
+- **Silent, and a human is expected.** This is where `announce` earns its keep and
+  where it is close to an obligation. Say something before any stretch of work
+  that does not drive the reader — before a long analysis, before you go away to
+  think, before anything that will take more than a few seconds without a
+  keypress. One short sentence is enough. It costs almost nothing, and it is the
+  only thing standing between that person and sitting in silence wondering.
+- **Unattended, in either mode.** Do not narrate to an empty room. Every
+  announcement is a round trip spent telling nobody anything, and an unattended
+  machine that you are talking to should also make you ask why you are not in
+  `silent`.
+- **The reader did not say.** `silenceCap` has a third answer, given by a reader
+  that cannot declare whether anyone is there. **Treat it as attended and
+  narrate.** The two mistakes are not the same size: narrating to an empty room
+  wastes a round trip, and staying quiet at an occupied one leaves somebody
+  unable to tell whether their computer is still alive.
+
+**And the case that is easiest to get wrong, because the reflex points the wrong
+way: a LIVE session with a human at the machine.** They can already hear
+everything — every window title, every keystroke's answer, the reader's own
+account of what you just did. Narrating that back to them tells them nothing they
+did not just hear, and it does not merely waste a round trip: an announcement
+speaks, so it **competes with the speech they were listening to**. Announcing each
+step of a live run is talking over the very thing they are trying to follow.
+
+So in a live session, announce only what **the reader itself will not tell them**:
+
+- that you are about to go quiet — a stretch with no keystrokes is silence in
+  live mode too, and silence is what worries somebody;
+- that you are about to do something disruptive, or something they might want to
+  stop before it happens;
+- that you have finished, or hit something you cannot get past.
+
+If they asked to follow along, or how something *sounds* is what you are testing,
+say so at the start and then let the reader do the talking.
+
+**Narration rides along, so when it is warranted it is nearly free.**
+`press_gesture`, `type_text` and `run_sequence` all take an `announce` string,
+spoken to the human before they act; you do not need a separate `announce` call to
+say what you are about to do. Each hands it back as `announced`, which is your
+confirmation the announcement was **made**. It is never a confirmation that it was
+**heard**: the reader emits speech around five seconds ahead of the audio the
+person is listening to, so if you narrate and act in the same breath you are
+acting ahead of your own narration, and their objection — when it comes — is a
+reaction to something already several seconds old.
 
 A reader may enforce this rather than trusting you to remember: `silenceCap` says
 whether it does, and after how long. If you meet it, the reader warns its human and

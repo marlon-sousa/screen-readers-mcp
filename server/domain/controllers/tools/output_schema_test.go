@@ -71,6 +71,8 @@ var resultOf = map[string]any{
 	"get_config": configResult{},
 	"set_config": configResult{},
 
+	"run_sequence": runSequenceResult{},
+
 	"get_log":          ports.LogSliceResult{},
 	"get_log_position": logPositionResult{},
 	"wait_for_log":     waitForLogResult{},

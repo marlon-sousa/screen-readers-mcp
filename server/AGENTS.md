@@ -31,7 +31,7 @@ built:
 - `domain/controllers/connection.go` — the agent-driven session lifecycle (list,
   connect, disconnect, loss detection, the heartbeat). It holds the only state in
   the process, and it is an ordinary value owned by wiring.
-- `domain/controllers/tools/` — one controller per MCP tool (fifteen), mirroring
+- `domain/controllers/tools/` — one controller per MCP tool, mirroring
   the bridge's one-handler-per-command rule, plus `registry.go` (the explicit
   map, which also yields the catalog), `dispatcher.go` (one tool call as a use
   case) and `tool_context.go` (the per-call parameter object, the analogue of the

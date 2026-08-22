@@ -29,6 +29,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
 // declare turns a domain Tool into the SDK's description of it.
@@ -69,8 +70,22 @@ func declare(tool tools.Tool) *sdk.Tool {
 // and spec 0005 principle 2 keeps reader names out of this file by construction.
 func precondition(tool tools.Tool) string {
 	capability := tool.Capability()
-	if capability == "" {
+	switch capability {
+	case "":
 		return ""
+	case entities.GatedByItsSteps:
+		// SPEC AMENDMENT (spec 0036, rides in 11.16): the spec named
+		// tools_resource.go as the place the third gating value is rendered,
+		// and this is the second. The sentence is composed here rather than
+		// written into a description, so a tool whose gate is per call would
+		// otherwise have this sentence claim a capability it does not have --
+		// the one place the value could become a lie by omission.
+		return "REQUIRES A CONNECTED READER, but no one fixed capability: what this needs " +
+			"depends on what you send it, and the whole request is checked against what the " +
+			"reader announced BEFORE any of it is delivered. A request naming something the " +
+			"reader cannot do is refused entire, saying which part of it asked -- read " +
+			"screenreader://tools, or the guidance connect_reader returns, to see what this " +
+			"reader can do. "
 	}
 	return "REQUIRES A CONNECTED READER that announced the `" + string(capability) +
 		"` capability -- call connect_reader first, and read screenreader://tools " +

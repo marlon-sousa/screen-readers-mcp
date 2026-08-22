@@ -154,10 +154,21 @@ func groupByCapability(registry *tools.Registry) []group {
 // added without one, and what it says here is what the wire contract says it is
 // -- not a gloss this document invented for its own use.
 func heading(capability entities.Capability) string {
-	if capability == "" {
+	switch capability {
+	case "":
 		return "## Always available\n\nThese need no capability and no session. They are how you " +
 			"find a reader, open a session, end it, and ask whether it is still alive -- so they " +
 			"stay callable across a disconnect, which is what lets you reconnect after one."
+	case entities.GatedByItsSteps:
+		// The third gating value, rendered honestly (spec 0036, part 2). It
+		// heads a group of its own rather than being filed under a
+		// capability it does not have, and it takes no Meaning() from the
+		// entity because it is not part of the wire vocabulary a reader
+		// announces -- there is nothing for the contract to gloss.
+		return "## Gated by its steps\n\nThese need a connected reader, but not one fixed " +
+			"capability: what they require is decided by the CALL. Each is checked against what " +
+			"this session announced before anything is delivered, and a request naming something " +
+			"the reader cannot do is refused whole, saying which part of it asked."
 	}
 	return fmt.Sprintf("## The `%s` capability\n\n%s", capability, capability.Meaning())
 }
@@ -166,8 +177,13 @@ func heading(capability entities.Capability) string {
 // than left to the heading: an agent that jumped to a tool should not have to
 // scroll back to find out what it needs.
 func gate(capability entities.Capability) string {
-	if capability == "" {
+	switch capability {
+	case "":
 		return "**Ungated.** Callable whenever this server is running."
+	case entities.GatedByItsSteps:
+		return "**Gated by its steps.** Callable while a reader is connected that announced " +
+			"whatever the particular call asks for -- so what it needs depends on what you send, " +
+			"and the whole request is checked before any of it is delivered."
 	}
 	return fmt.Sprintf("**Gated on `%s`.** Callable only while a reader that announced "+
 		"that capability is connected.", capability)

@@ -96,6 +96,7 @@ var (
 		"get_state",                 // state
 		"set_state",                 // state
 		"press_gesture",             // gestures
+		"run_sequence",              // gated by its steps, not by one capability
 		"set_config",                // config
 		"set_log_level",             // log
 		"type_text",                 // typing

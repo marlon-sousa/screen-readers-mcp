@@ -188,9 +188,11 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23, 11.28 —
-**five entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+below. **Open as of 2026-08-22**:
+11.13, 11.18, 11.23, 11.28, 11.29, 11.30 —
+**six entries** (11.16 is Done: `run_sequence`, spec 0036; **11.29 and 11.30 were
+both opened by 11.16's live run** — 11.29 a pre-existing bridge off-by-one it made
+reachable, 11.30 a fact an agent is told once and can never ask for again) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
 and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
@@ -255,7 +257,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.29** and the next free spec number is
-**0036**. (11.22–11.24 and spec 0030 were taken by the second external run on
+**0037**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
@@ -270,6 +272,9 @@ as a live hazard.
 11.28 was taken on 2026-08-21 by the AGENTS.md split, which opened it for a
 flaky test the split's own gate run surfaced and deliberately did not fix — no
 spec number went with it, since it has no spec yet.
+Spec 0036 was taken on 2026-08-22 by 11.16, drafted on that entry's branch
+before it merges — which is again the case the paragraph above says to check
+for.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -954,8 +959,20 @@ rather than before it.
     **stays** for the still-speaking heuristic rather than being replaced, and a
     stamp on *command* results is deliberately deferred until after 11.12, whose
     grace window is about to change what those results hold.
-11.16. **E, no way to combine an action with its submit** (server lane).
-    **Open — the "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
+11.16. **Done (2026-08-22)** — E, no way to combine an action with its submit
+    (server lane). Ships `run_sequence`: one MCP call carrying up to 32 steps of
+    six kinds, with per-step bookmarks and ONE merged speech window. The class of
+    behaviour that could not be tested at all is testable — a command with a 1.5 s
+    finish delay can now be typed, submitted, waited on and interrupted inside a
+    single call, because the steps are separated by a fraction of a millisecond
+    rather than by two agent turns. Composition is over the bridge's existing
+    commands, so no wire change, no bridge change and no add-on rebuild. `outcome`
+    is three-valued: a `wait_for_speech` step that timed out reports
+    `trigger_not_found`, which is neither `completed` nor `failed`. The tool is
+    advertised like every other and carries the third gating value — *gated by its
+    steps* — with the whole plan validated against the session's capabilities
+    before the first keystroke is delivered.
+    **The "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
     day**, on reading spec 0025 in full. 0025 solves a *larger* problem — a grace
     window collapsing act/settle/listen from three round trips into one — and
     because it is larger it looks like it must cover this too. It does not: it
@@ -1014,7 +1031,38 @@ rather than before it.
       orders of magnitude to spare. Classified `mutates_reader` so 11.3
       withholds it; no capability of its own.
     Also retires the report's smallest ask, `type_text replace: true` — select
-    all, delete, type is a sequence. Spec: none yet.
+    all, delete, type is a sequence.
+    Spec: [0036-one-call-several-intentions.md](specs/0036-one-call-several-intentions.md)
+    (**agreed 2026-08-22**; it rode on this entry's implementing branch and merged
+    with the PR, carrying nine layout amendments made while implementing). The tool is
+    `run_sequence`. Two of the 2026-08-15 decisions are amended in it, both
+    because spec 0025 was agreed the day after them: the **trailing read step is
+    narrowed to an orientation read** (focus, optionally braille), since 0025 put
+    speech on every mutating result and the sequence's own merged window already
+    spans the whole plan; and the **"no capability of its own" question is moot**,
+    since 0022 removed the visibility gate entirely on 2026-08-19 — capability is
+    a per-call check now, so the plan is validated up front and the tool is
+    advertised like every other.
+    **What the live run added** (NVDA 2026.1.1, 2026-08-22, both capture modes),
+    which is the half no automated tier reaches: the untestable scenario really is
+    expressible — a say-all started, left running 1.5 s and interrupted by a
+    keystroke, all inside ONE call, with nothing arriving after the plan closed.
+    Against a real reader the per-step spans partitioned the merged window exactly
+    (`2→2→5→13→13→17→17` over a merged `[2,17)`, every index present once). A
+    refused plan delivered no keystroke **and spoke no announcement** — verified by
+    the speech index not moving across two malformed plans, one of which carried an
+    `announce` the human would have heard. `trigger_not_found` came back as an
+    ordinary successful MCP result naming the waiting step, with the remaining
+    steps absent from `steps` entirely. `state` moved `none` → `browse` → `none`,
+    sampled after the last step each time. `screenreader://tools` rendered the
+    third gating value under its own `## Gated by its steps` heading, claiming no
+    capability. The braille half of the read step could only be exercised, not
+    confirmed: no display is attached to this machine, so its window was legitimately
+    empty while its own index space advanced independently of speech.
+    The run also **opened 11.29** — a pre-existing off-by-one in the bridge's
+    `wait_for_speech` that this entry's start-mark amendment made reachable, and
+    that costs the amendment its exact intended case.
+
 11.17. **Done (PR #70, 2026-08-20)** — E, a toggle with no setter (both lanes).
     **Paired with 11.11** — same
     gesture, same confusion, two different sessions, and the remedies are
@@ -1451,6 +1499,78 @@ rather than before it.
     connection stack can actually lose or delay a first reply.
     Spec: **none yet** — needs a spec conversation before implementation, like
     every other open entry.
+11.29. **E, `wait_for_speech`'s `after_index` is exclusive where every other index
+    in this system is an inclusive left edge** (lane 1; the bridge). Found by
+    11.16's live checklist on 2026-08-22 against NVDA 2026.1.1, and **not
+    introduced by it**: 11.16 only made the boundary reachable, by having a plan's
+    trigger match from the plan's own start mark.
+    **Measured, three calls, one session.** `get_speech(since_index=22)` returns the
+    utterance sitting AT index 22. `wait_for_speech(after_index=22, "Log")` does not
+    see that same utterance and answers `found: false`. The same wait with
+    `after_index=21` finds it, reporting `index: 22`. So the wait scans history
+    correctly and the left edge is the one thing wrong: it matches `index >
+    after_index` where `get_speech` matches `index >= since_index`.
+    **Why this is its own entry rather than a note on 11.16.** It bites the ordinary
+    documented pattern, with no sequence involved. `get_next_speech_index` is "the
+    index the NEXT captured utterance will take", and every description teaches:
+    bookmark, act, pass that bookmark as `after_index`. Under an exclusive edge that
+    silently discards **the first utterance the action caused** — precisely the one
+    being waited for. It fails as a TIMEOUT rather than an error, so it reads as
+    "the reader never said it" and points nowhere near the boundary.
+    Inside `run_sequence` the same off-by-one costs the amendment its exact case: a
+    plan whose trigger arrives as the plan's FIRST utterance cannot match, which is
+    the "arrived a fraction of a millisecond early" case the amendment exists for.
+    Observed live — a plan pressing the report-title command and then waiting for a
+    word of that title answered `trigger_not_found`, with the matching utterance
+    sitting in its own merged window.
+    **Which side drifted is not in doubt; the fix is not therefore obvious.** The
+    repo's convention is a half-open `[from, to)` window with an inclusive left
+    edge, and the tool description says "at or after this index", so the bridge is
+    wrong rather than the document. What needs deciding is whether to change the
+    comparison in a shipped command — any caller that has been compensating for it
+    would feel that — or to change every description and the documented pattern to
+    say "strictly after"; and, if the former, whether `wait_for_log` shares the
+    shape and should move with it.
+    Spec: **none yet** — needs a spec conversation before implementation, like
+    every other open entry.
+
+11.30. **E, attendance is stated once, at connect, and can never be asked for
+    again** (lane 2; the server). Opened 2026-08-22 by the conversation following
+    11.16's live run, from the question "can the agent know whether the machine is
+    attended?".
+    **It can, and only there.** `connect_reader`'s `silenceCap` is the single place
+    an agent learns whether a human is at the reader. It is deliberately one
+    sentence rather than a flag — the struct says why, and that decision is not
+    what this entry questions — and it gives three answers: attended, unattended,
+    or a reader too old to declare it (which resolves towards narrating). `status`
+    does not carry it: `suppressing` answers a different question, whether speech
+    is being withheld right now. `screenreader://info` does not carry it either.
+    **Attendance is fixed for the session, but the agent's memory of it is not.**
+    Spec 0035 made it connect-only for a good reason — it cannot change while a
+    session lives, so there is nothing to re-read *in the reader*. What can change
+    is who is holding the fact: a context that has been compacted, a sub-agent
+    handed a live session, a session picked up after a restart. None of them can
+    recover it, and the only route back is to disconnect and reconnect — throwing
+    the session away to ask a question about it.
+    **Why this fact rather than any other the connect result carries.** Losing it
+    fails towards silence at an occupied machine. An agent that cannot remember
+    whether anyone is listening, and reasons carefully from what it has, concludes
+    it should not waste round trips narrating — which is exactly the wrong answer
+    for a blind person sitting in front of a reader that has gone quiet. Every
+    other field in that result fails towards an ordinary mistake.
+    **No wire change is needed**, which is what makes this small: the server
+    already holds the sentence in its own `ReaderSession` for the life of the
+    session, so re-publishing it costs no traffic to the bridge.
+    Open for the spec conversation: **where it belongs.** `status` is the obvious
+    home and may be the wrong one — a resource is read live and never cached, and
+    `screenreader://info` already exists to answer "what is true of the session in
+    front of me", which is precisely this question; an agent can read a resource
+    without spending a tool call or asking the human for anything. Whether it
+    should be the same prose in both places, or whether one of them wants a
+    shorter form, is the other half of the same question.
+    Spec: **none yet** — needs a spec conversation before implementation, like
+    every other open entry.
+
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

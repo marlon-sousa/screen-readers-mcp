@@ -95,6 +95,12 @@ type CapabilityError struct {
 	// Reader is the name of the reader currently connected, or empty when
 	// none is -- which is what distinguishes the two messages below.
 	Reader string
+
+	// Step is which step of a PLAN needed it, counting from 1, or 0 for an
+	// ordinary call. Spec 0036: run_sequence validates a whole plan up front
+	// and refuses it entire, so "this reader has no braille" is only half an
+	// answer -- the agent still has to find which of its own steps asked.
+	Step int
 }
 
 func (e *CapabilityError) Error() string {
@@ -102,6 +108,12 @@ func (e *CapabilityError) Error() string {
 		return fmt.Sprintf(
 			"%s needs a connected reader, and none is: call connect_reader first",
 			e.Tool)
+	}
+	if e.Step > 0 {
+		return fmt.Sprintf(
+			"%s step %d needs the %q capability, which the connected reader %q "+
+				"did not announce; the plan was refused whole and nothing was delivered",
+			e.Tool, e.Step, e.Capability, e.Reader)
 	}
 	return fmt.Sprintf(
 		"%s needs the %q capability, which the connected reader %q did not announce",
