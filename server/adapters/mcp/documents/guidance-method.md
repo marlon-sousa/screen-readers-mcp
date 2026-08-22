@@ -118,6 +118,40 @@ when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
 
+## When you already know the next few steps, send them together
+
+The loop above is one intention at a time, and that is right whenever what you
+do next depends on what you just heard. Often it does not: typing a value and
+submitting it, opening something and reading where you landed, starting
+something and interrupting it while it is still running. Those are steps you
+knew before you sent the first one, and `run_sequence` carries them in a single
+call.
+
+**What that buys is not speed, it is reach.** Between two of your calls, seconds
+pass — that is your own turn time, not the reader's, and nothing here can shorten
+it. Between two steps of a plan, a fraction of a millisecond passes. So a plan
+can do something you simply cannot do across separate calls: act on a moment
+that has already gone by the time you could have taken another turn. Interrupting
+a command that finishes in a second and a half is the standing example.
+
+Three things to hold on to:
+
+- **A plan is a bet placed before the first keystroke.** Its steps cannot react
+  to what the reader says, except by stopping. If the second thing you do depends
+  on what you heard from the first, that is two calls and should be.
+- **It comes back as one window with a bookmark per step**, so you can still see
+  which step spoke and which was silent — batching does not cost you the
+  observation, which is the whole reason it is worth doing.
+- **`outcome` has three values, and the middle one is not a failure.** A
+  `wait_for_speech` step whose text never arrived answers `trigger_not_found`:
+  the plan stopped, nothing broke, and your next move is different from the one a
+  real failure calls for.
+
+The same rules apply inside a plan as outside it. `delay` is the application's
+known timing and `settle` is the reader's unknown latency; neither is evidence of
+anything on its own, and a plan that only sleeps is the failure this document
+opened by warning about, produced faster.
+
 ## Say something to the human, or the room stays silent
 
 In a **silent** session the person at the reader hears nothing at all except what

@@ -73,6 +73,10 @@ func BuildRegistry() *Registry {
 		&GetLogPosition{},
 		&WaitForLog{},
 		&SetLogLevel{},
+
+		// Gated by its steps: a plan spans several capabilities, so it
+		// declares none and is checked per call (spec 0036).
+		&RunSequence{},
 	)
 }
 

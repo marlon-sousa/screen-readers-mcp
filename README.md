@@ -181,6 +181,7 @@ identical either way.
 |---|---|
 | `press_gesture` | Presses one or more gestures, in order. |
 | `type_text` | Types literal text into whatever holds focus — layout-independent Unicode, so accented characters and punctuation land correctly. It does not interpret Enter or newlines and submits nothing; compose that with `press_gesture`. |
+| `run_sequence` | Several intentions in **one** call: up to 32 steps — press, type, delay, settle, wait for a phrase, orient — dispatched back to back, answered with one merged speech window and a bookmark per step. Steps are separated by a fraction of a millisecond rather than by an agent's turn, so it can do what separate calls cannot: interrupt a command that finishes in a second and a half. A plan cannot react to what it hears, only stop, so anything whose next step depends on the last is still two calls. |
 
 **On NVDA**, gestures are written the way NVDA's own User Guide writes them:
 `NVDA+f7`, `control+home`, `downArrow`, `alt+tab`. Not internal identifiers —

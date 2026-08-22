@@ -148,7 +148,7 @@ sequence start to the grace period after the last step.
   "speechFrom": 40,
   "speechTo": 43,
   "state": { "browseMode": "focus", "speechMode": "talk", "sleepMode": false, "inputHelp": false },
-  "announced": true
+  "announced": "opening a terminal"
 }
 ```
 
@@ -308,7 +308,11 @@ next step's dispatch belonging to neither — returned by nothing, and invisible
 
 A plan is bounded so a malformed one cannot hang the session: **at most 32
 steps** and a **30 s total budget**, after which the sequence stops and reports
-`failed` with the step it reached. `settle` and `wait_for_speech` are the only
+`failed` with the step it reached. The budget is checked BETWEEN steps, so it is
+paired with two per-step bounds (amended in while implementing, below): a waiting
+step may not ask for more than 30 s and `gap_ms` may not exceed 5 s, without
+which a single step could outlive the budget on its own and the budget would
+bound nothing. `settle` and `wait_for_speech` are the only
 unbounded-looking steps and both already carry their own timeout; the budget is
 the backstop for their sum, not a substitute for them.
 
@@ -357,6 +361,31 @@ Per AGENTS.md, "a spec MUST include the class/file layout".
 
 **No new port and no new adapter.** Every collaborator this needs already exists,
 which is the whole reason a sequence is affordable server-side.
+
+### Layout amendments made while implementing (2026-08-22)
+
+Per AGENTS.md, an amendment rides in the PR with a one-line why. Nine, none of
+which changes what the tool is:
+
+| Amendment | Why |
+|---|---|
+| `sequenceRun` — a private helper sharing `run_sequence.go`, holding one plan in flight (the marks, the deadline, the per-step results) | The walk needs all of it at once. As free functions it would be six parameters threaded through every step kind, and the "role" question the layout exists to ask has an answer: it is not one, which is exactly why it shares its controller's file rather than getting its own. |
+| The table's collaborator list gains **`ctx.Interact()`**, for the announcement | The announcement must precede step 1 *whatever step 1 is*. Riding it on the first step only works when that step is mutating, so it would have been two code paths and an announcement whose timing depended on the plan's shape. One command, 0.2 ms, one path. A plan that announces therefore needs `interact`, checked before anything is delivered like every other requirement. |
+| And **`ctx.State()`**, for the mode snapshot | 0025 §3 puts the modes on every mutating result. Sampled once after the last step, it reports the state the plan LEFT the reader in; taken from whichever step happened to be the last mutating one, it would be stale by however many steps followed. |
+| Per-step bookmarks come from a mark the SERVER takes before each step (`getNextSpeechIndex`), not from the mutating command's own reported `speechFrom` | It has to be one coordinate for all six kinds. A `delay` and a `settle` report nothing, so spans drawn from two different sources would not partition the merged window — and partitioning it is the property the whole result shape rests on. Each step's span is `[mark before it, mark before the next)`, and the last runs to the final read's end. |
+| A `wait_for_speech` step matches from the PLAN's start index, not from its own dispatch | The trigger can legitimately land in the fraction of a millisecond between the previous step going out and this one being dispatched. A wait bounded by its own mark would miss it and abort a plan that was working — the same race the grace window exists to acknowledge, one level up. |
+| A lost connection surfaces as an ERROR, not as `outcome: "failed"` | The session is over, not a step. `Dispatcher.Execute` watches for `ErrConnectionLost` to record the loss, and a result carrying `failed` would sail past it, leaving the server believing it still had a reader. |
+| Part 3.3's bounds gain two per-step numbers: a waiting step (`delay`, `settle`, `wait_for_speech`) may not exceed **30 s**, and `gap_ms` may not exceed **5 s** | The 30 s budget is checked *between* steps, so without a per-step bound one step could outlive it alone and the budget would bound nothing. With them the worst case is the budget plus one step. |
+| `adapters/mcp/tool_binding.go` renders the third gating value too | The layout named `tools_resource.go`, and there are two places: `precondition()` composes the sentence a gated tool's description opens with, and left alone it would have said `run_sequence` requires the `(its steps)` capability — the one place the honest third value could become a lie by omission. |
+| `documents/guidance.md` in the table is `documents/guidance-method.md` | That document was split into a preamble and a method half before this entry; 0023's loop — the part this adds a section to — is in the method half. |
+| The example result above says `"announced": "opening a terminal"`, where the draft said `true` | 0025's own amendment of 2026-08-20 (board entry 11.24(b)) made `announced` an ECHO rather than a boolean, and this result embeds that shape unchanged. A `true` would confirm the mechanism and not the message. |
+
+Two things the layout got exactly right and are worth recording as such: nothing
+new was needed on the wire, and `output_schema_test.go` picked the tool up on its
+own — it failed until `run_sequence` named the struct its `Execute` returns,
+which is what that test is for. Two hand-maintained lists of the advertised
+surface (the integration tier's capability gate and the conformance tier's) also
+needed the name, by the same design: they enumerate the whole surface on purpose.
 
 ### Amendments to the 2026-08-15 decisions
 

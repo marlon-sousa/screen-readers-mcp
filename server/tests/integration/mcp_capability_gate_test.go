@@ -36,11 +36,15 @@ import (
 )
 
 // everyGatedTool is what a reader announcing every capability should see.
+//
+// run_sequence is among them although it is gated by no ONE capability (spec
+// 0036): what it needs is decided per call, and it is advertised like everything
+// else, which is exactly what this list is about.
 var everyGatedTool = []string{
 	"announce", "ask_user", "get_braille", "get_config", "get_focus_info",
 	"get_last_speech", "get_log", "get_log_position", "get_next_speech_index",
-	"get_speech", "get_state", "press_gesture", "set_config", "set_log_level",
-	"set_state",
+	"get_speech", "get_state", "press_gesture", "run_sequence", "set_config",
+	"set_log_level", "set_state",
 	"type_text", "wait_for_log", "wait_for_speech", "wait_for_speech_to_finish",
 	"wait_for_user_reply",
 }

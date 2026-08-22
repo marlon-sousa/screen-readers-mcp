@@ -188,9 +188,9 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-21**:
-11.13, 11.16, 11.18, 11.23, 11.28 —
-**five entries** (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+below. **Open as of 2026-08-22**:
+11.13, 11.18, 11.23, 11.28 —
+**four entries** (11.16 is Done: `run_sequence`, spec 0036) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
 and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
@@ -957,8 +957,20 @@ rather than before it.
     **stays** for the still-speaking heuristic rather than being replaced, and a
     stamp on *command* results is deliberately deferred until after 11.12, whose
     grace window is about to change what those results hold.
-11.16. **E, no way to combine an action with its submit** (server lane).
-    **Open — the "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
+11.16. **Done (2026-08-22)** — E, no way to combine an action with its submit
+    (server lane). Ships `run_sequence`: one MCP call carrying up to 32 steps of
+    six kinds, with per-step bookmarks and ONE merged speech window. The class of
+    behaviour that could not be tested at all is testable — a command with a 1.5 s
+    finish delay can now be typed, submitted, waited on and interrupted inside a
+    single call, because the steps are separated by a fraction of a millisecond
+    rather than by two agent turns. Composition is over the bridge's existing
+    commands, so no wire change, no bridge change and no add-on rebuild. `outcome`
+    is three-valued: a `wait_for_speech` step that timed out reports
+    `trigger_not_found`, which is neither `completed` nor `failed`. The tool is
+    advertised like every other and carries the third gating value — *gated by its
+    steps* — with the whole plan validated against the session's capabilities
+    before the first keystroke is delivered.
+    **The "absorbed by 11.12" marking of 2026-08-16 was withdrawn the same
     day**, on reading spec 0025 in full. 0025 solves a *larger* problem — a grace
     window collapsing act/settle/listen from three round trips into one — and
     because it is larger it looks like it must cover this too. It does not: it
@@ -1019,8 +1031,8 @@ rather than before it.
     Also retires the report's smallest ask, `type_text replace: true` — select
     all, delete, type is a sequence.
     Spec: [0036-one-call-several-intentions.md](specs/0036-one-call-several-intentions.md)
-    (**drafted 2026-08-22, awaiting agreement in conversation**; it rides on this
-    entry's implementing branch and merges with the PR). The tool is
+    (**agreed 2026-08-22**; it rode on this entry's implementing branch and merged
+    with the PR, carrying nine layout amendments made while implementing). The tool is
     `run_sequence`. Two of the 2026-08-15 decisions are amended in it, both
     because spec 0025 was agreed the day after them: the **trailing read step is
     narrowed to an orientation read** (focus, optionally braille), since 0025 put

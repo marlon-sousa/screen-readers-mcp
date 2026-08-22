@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/controllers/tools"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -71,6 +72,19 @@ func TestTheToolsDocumentListsEveryToolExactlyOnceWithTheGateTheCatalogGivesIt(t
 		case "":
 			if !strings.Contains(section, "Ungated") {
 				t.Errorf("%s is ungated and its section does not say so", tool.Name())
+			}
+		case entities.GatedByItsSteps:
+			// The third gating value (spec 0036). Its section must say what
+			// is actually so -- gated by what the CALL asks for -- and must
+			// not name a capability, because there is no one capability to
+			// name and inventing one would be the lie the value exists to
+			// avoid.
+			if !strings.Contains(section, "Gated by its steps") {
+				t.Errorf("%s is gated by its steps and its section does not say so", tool.Name())
+			}
+			if strings.Contains(section, "**Gated on `") {
+				t.Errorf("%s claims a single gating capability, which it does not have",
+					tool.Name())
 			}
 		default:
 			if !strings.Contains(section, "`"+string(capability)+"`") {
