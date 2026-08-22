@@ -76,8 +76,14 @@ other.
 machine is now hearing nothing at all -- not the reader, not the keys you send,
 nothing -- and if they are blind they cannot glance at the screen to check whether
 anything is happening. Whether you owe them narration depends on whether anyone is
-there at all, and `connect_reader` answers that in its `silenceCap` field: it says
-either that a human is expected at this machine or that the machine is unattended.
+there at all, and `connect_reader` answers that in its `silenceCap` field. It is a
+sentence rather than a flag, and it gives **three** answers, not two: that a human
+is expected at this machine, that the machine is unattended, or that the reader did
+not say. **The third is not a licence to guess** -- it means you are talking to a
+reader that cannot declare it, and the sentence itself tells you what to do, which
+is to narrate anyway. Silence costs a present human a great deal and costs an empty
+room a round trip, so the uncertain case resolves towards speaking.
+
 **Read it, and act on it** -- *Say something to the human* below is that rule in
 full, and it is the price of the mode you should almost always be choosing.
 

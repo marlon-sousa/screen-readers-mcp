@@ -185,6 +185,11 @@ So `connect_reader` tells you whether a human is expected at that machine, in it
   announcement is a round trip spent telling nobody anything, and an unattended
   machine that you are talking to should also make you ask why you are not in
   `silent`.
+- **The reader did not say.** `silenceCap` has a third answer, given by a reader
+  that cannot declare whether anyone is there. **Treat it as attended and
+  narrate.** The two mistakes are not the same size: narrating to an empty room
+  wastes a round trip, and staying quiet at an occupied one leaves somebody
+  unable to tell whether their computer is still alive.
 
 **And the case that is easiest to get wrong, because the reflex points the wrong
 way: a LIVE session with a human at the machine.** They can already hear
