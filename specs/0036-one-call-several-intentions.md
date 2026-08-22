@@ -1,6 +1,6 @@
 # 0036 — one call, several intentions
 
-Status: **draft, 2026-08-22.** Board entry **11.16**. Comes out of the first
+Status: **agreed 2026-08-22.** Board entry **11.16**. Comes out of the first
 external run ([0027](0027-the-first-external-run.md), asks 3, 3b and 5), all
 three of which still read **unmet**.
 
@@ -256,12 +256,36 @@ window by construction.
 the sequence's single timing knob. Anything longer or deliberate is a `delay`
 step, so there are not two parameters doing one job. `0` opts out.
 
+**It is deliberately not overridable per step**, and the cost of that is
+accepted rather than overlooked: `type_text`'s own grace default is `0`, not
+`100`, because typing emits one worthless utterance per character, so a typing
+step inside a plan sits through a gap it has no use for. That is at most a
+handful of milliseconds per typing step, spent inside a call that exists to
+save whole model turns. Two knobs that both mean "wait here" is the more
+expensive mistake, because it is the kind that drifts.
+
 `announce` rides along exactly as it does on the mutating tools (0025 §4) and
 comes back as `announced`, which confirms it was **said** and never that it was
 heard. A plan is the case where this matters most: it is the one call that can
 occupy the reader for several seconds, and per [0032](0032-a-bound-on-the-silence.md)
 and [0035](0035-attendance-is-declared-not-derived.md) there may be a human at
 the machine hearing nothing.
+
+**Validation happens first, and a refused plan does not announce.** The
+principle is sharper than the ordering: *if the agent tried to do something it
+cannot, the agent is told why — not the human.* A capability refusal is a
+message about the agent's own mistake, and `announce` is the channel to the
+person at the machine. Speaking a refusal down it would interrupt someone to
+report a thing that never happened and that they can do nothing about.
+
+The same principle settles the case one step further in, which is otherwise easy
+to get wrong: **a plan that fails midway does not announce the failure either.**
+The human has by then heard the agent's own announcement and something
+half-happened, so there is a real situation to explain — but explaining it is the
+agent's job, in its own words, with the `announce` tool it already has, once it
+has read `outcome` and `failed_step`. A canned apology spoken by the server would
+be the server narrating on the agent's behalf, which is exactly the ownership
+0025 §4 gave to the agent.
 
 ### 2. Composition is over the bridge's existing commands
 
@@ -283,9 +307,10 @@ next step's dispatch belonging to neither — returned by nothing, and invisible
 ### 3. Bounds
 
 A plan is bounded so a malformed one cannot hang the session: **at most 32
-steps**, and a **total budget** after which the sequence stops and reports
+steps** and a **30 s total budget**, after which the sequence stops and reports
 `failed` with the step it reached. `settle` and `wait_for_speech` are the only
-unbounded-looking steps and both already carry their own timeout.
+unbounded-looking steps and both already carry their own timeout; the budget is
+the backstop for their sum, not a substitute for them.
 
 Worth noting because it is not obvious: the bridge's 120 s inactivity watchdog is
 **not** at risk. Each step is a real command on the wire, so each resets it.
@@ -379,20 +404,17 @@ Two, both caused by 0025 landing the day after those decisions:
 
 ---
 
-## Open questions
+## Open questions — **all three settled 2026-08-22**
 
-1. **The total budget.** 32 steps is proposed as a bound nobody will hit by
-   accident. The wall-clock budget is not proposed, because the honest number
-   depends on whether `settle` and `wait_for_speech` steps are expected in long
-   plans. **30 s** is a starting suggestion.
-2. **Should `gap_ms` be overridable per step?** Proposed *no*, on the grounds
-   that a `delay` step already expresses "wait longer here" and two knobs for one
-   job is how they drift. The counter-case is `type_text`, whose own default
-   grace is 0 rather than 100 because typing emits one worthless utterance per
-   character — inside a plan it would sit through a 100 ms gap for nothing.
-3. **Does a refused plan announce?** If `announce` is present and the plan is then
-   rejected up front, the human has been told about work that will not happen.
-   Proposed: validate first, announce second.
+1. **The total budget.** Settled: **32 steps and 30 s**. See Part 3.3.
+2. **Should `gap_ms` be overridable per step?** Settled: **no**. The `type_text`
+   counter-case is real and is accepted as a cost, in the wording of Part 3.1 —
+   a few wasted milliseconds inside a call that saves whole model turns, against
+   two parameters that both mean "wait here" and would drift.
+3. **Does a refused plan announce?** Settled: **no**, and on a principle rather
+   than an ordering — *if the agent tried to do something it cannot, the agent is
+   told why, not the human.* Recorded in Part 3.1, where it also disposes of the
+   mid-plan failure case: the server never speaks on the agent's behalf.
 
 ---
 
