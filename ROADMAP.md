@@ -189,9 +189,10 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-22**:
-11.13, 11.18, 11.23, 11.28, 11.29 —
-**five entries** (11.16 is Done: `run_sequence`, spec 0036; **11.29 was opened by
-11.16's live run** and is a pre-existing bridge off-by-one it made reachable) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+11.13, 11.18, 11.23, 11.28, 11.29, 11.30 —
+**six entries** (11.16 is Done: `run_sequence`, spec 0036; **11.29 and 11.30 were
+both opened by 11.16's live run** — 11.29 a pre-existing bridge off-by-one it made
+reachable, 11.30 a fact an agent is told once and can never ask for again) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
 and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
@@ -1530,6 +1531,43 @@ rather than before it.
     would feel that — or to change every description and the documented pattern to
     say "strictly after"; and, if the former, whether `wait_for_log` shares the
     shape and should move with it.
+    Spec: **none yet** — needs a spec conversation before implementation, like
+    every other open entry.
+
+11.30. **E, attendance is stated once, at connect, and can never be asked for
+    again** (lane 2; the server). Opened 2026-08-22 by the conversation following
+    11.16's live run, from the question "can the agent know whether the machine is
+    attended?".
+    **It can, and only there.** `connect_reader`'s `silenceCap` is the single place
+    an agent learns whether a human is at the reader. It is deliberately one
+    sentence rather than a flag — the struct says why, and that decision is not
+    what this entry questions — and it gives three answers: attended, unattended,
+    or a reader too old to declare it (which resolves towards narrating). `status`
+    does not carry it: `suppressing` answers a different question, whether speech
+    is being withheld right now. `screenreader://info` does not carry it either.
+    **Attendance is fixed for the session, but the agent's memory of it is not.**
+    Spec 0035 made it connect-only for a good reason — it cannot change while a
+    session lives, so there is nothing to re-read *in the reader*. What can change
+    is who is holding the fact: a context that has been compacted, a sub-agent
+    handed a live session, a session picked up after a restart. None of them can
+    recover it, and the only route back is to disconnect and reconnect — throwing
+    the session away to ask a question about it.
+    **Why this fact rather than any other the connect result carries.** Losing it
+    fails towards silence at an occupied machine. An agent that cannot remember
+    whether anyone is listening, and reasons carefully from what it has, concludes
+    it should not waste round trips narrating — which is exactly the wrong answer
+    for a blind person sitting in front of a reader that has gone quiet. Every
+    other field in that result fails towards an ordinary mistake.
+    **No wire change is needed**, which is what makes this small: the server
+    already holds the sentence in its own `ReaderSession` for the life of the
+    session, so re-publishing it costs no traffic to the bridge.
+    Open for the spec conversation: **where it belongs.** `status` is the obvious
+    home and may be the wrong one — a resource is read live and never cached, and
+    `screenreader://info` already exists to answer "what is true of the session in
+    front of me", which is precisely this question; an agent can read a resource
+    without spending a tool call or asking the human for anything. Whether it
+    should be the same prose in both places, or whether one of them wants a
+    shorter form, is the other half of the same question.
     Spec: **none yet** — needs a spec conversation before implementation, like
     every other open entry.
 
