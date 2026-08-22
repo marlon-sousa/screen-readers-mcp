@@ -91,7 +91,7 @@ exercise add-on logic against it without launching NVDA at all.
 | [`server/`](server/) | The MCP server (`screenreader-mcp`), in Go: MCP tool call → bridge command → result. |
 | [`bridges/nvda/`](bridges/nvda/) | The NVDA add-on (`nvdaMcpBridge`), built with scons. Its build copies `shared/`'s protocol module in, so bridge and server can never drift. |
 | [`specs/`](specs/) | Numbered design specs, RFC-style. |
-| [`scripts/`](scripts/) | Developer tooling, including the live-NVDA driver. |
+| [`scripts/`](scripts/) | Developer tooling, including the live-NVDA driver and the [live-test pages](scripts/live_pages/) its checklists drive. |
 
 The server and the bridge **share no code**. They meet only at a local endpoint
 speaking the contract in [`specs/wire/v1/`](specs/wire/v1/), and each side binds
@@ -223,6 +223,14 @@ The headless and conformance tiers fake NVDA. The one thing they cannot do is
 prove the whole stack with a **real NVDA and a human who can hear the speech** —
 which is how every live-NVDA checklist in a pull request is run. Get the
 environment ready once:
+
+**If your checklist needs a page to drive, it belongs in the repo.**
+[`scripts/live_pages/`](scripts/live_pages/) holds the fixtures the existing
+checklists use — a structural page, a growing page, and a generator for a long
+one — each with a comment saying which check it serves. Add yours there in the
+same PR as the checklist rather than building one in a temp directory: a
+measurement quoted against a page nobody else has is not reproducible evidence.
+The rule, and what it cost to learn, is in [`AGENTS.md`](AGENTS.md).
 
 ### 1. Build the server binary
 

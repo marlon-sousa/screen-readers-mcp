@@ -599,6 +599,23 @@ only needs the merged code + its spec + this file.
   (`.github/workflows/checklist.yml`) fails while the PR body has an unchecked
   box, so an unfinished checklist cannot merge once that job is in the
   required status checks.
+- **Anything a live checklist DEPENDS ON is versioned, in the same PR as the
+  checklist — Decided.** If a check needs a web page, a document, a sample file
+  or a fixture of any kind, it goes in [`scripts/live_pages/`](scripts/live_pages/)
+  (or beside the driver that uses it), with a comment saying which item it serves
+  and why it is shaped the way it is. **Do not build one in a temp directory and
+  cite it.** The rule exists because that is exactly what happened on
+  2026-08-22: three fixtures were written to a session scratchpad, and the PR
+  went up quoting a measurement — 1103 lines, 5.73 s — that nobody else could
+  reproduce, against pages that no longer existed. A live checklist is this
+  repo's substitute for a CI test on the reader edge, and evidence that cannot
+  be re-run is weaker than it looks.
+  - Fixtures, **not golden files**. The reader renders under the tester's own
+    locale and verbosity, so expected *strings* are machine-specific and must
+    not be committed as assertions — `scripts/live_pages/README.md` says what to
+    compare instead.
+  - Generate rather than commit anything large and repetitive: a six-line
+    generator is reviewable and 66 KB of filler is not.
 
 ## Gotchas learned the hard way
 

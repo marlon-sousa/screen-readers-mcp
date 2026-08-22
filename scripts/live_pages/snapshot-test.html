@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Snapshot Test Page</title></head>
+<body>
+<!--
+  Structural fixture for spec 0026's live checklist: items 1 through 8.
+
+  EVERY ELEMENT HERE IS LOAD-BEARING. Nothing is decoration, and removing any of
+  it silently weakens a checklist item:
+
+  * The h1/h2 hierarchy       -- item 1: a heading must carry its LEVEL.
+  * The two links             -- item 1: a link must say that it is one.
+  * The radio group           -- item 1, and the maintainer's own example: a
+                                 radio button must report its STATE, and the
+                                 fieldset makes the group boundary announce too.
+  * The five-item list        -- items 4 and 5, and the one that actually caught
+                                 a bug. NVDA announces "list with 5 items" ONCE
+                                 on entry and an exit transition on leaving, so
+                                 this is where a control-field cache that is
+                                 wrong becomes visible. The 2026-08-22 run found
+                                 the snapshot welding a list-EXIT transition onto
+                                 line 0 when the caret sat inside this list; a
+                                 page without a list would have passed.
+  * Short, distinct text      -- item 2 compares snapshot lines to arrowing
+                                 utterances by eye, one at a time.
+
+  Fifteen lines total, which is small enough to read a whole snapshot in one
+  glance and large enough that `maxLines` and `fromLine` have something to bite.
+-->
+<h1>Snapshot Test Page</h1>
+<p>An ordinary paragraph of prose.</p>
+<a href="https://example.com/one">First result link</a>
+<h2>Choose a language</h2>
+<fieldset>
+	<legend>Language</legend>
+	<input type="radio" id="pt" name="lang" checked><label for="pt">Portuguese</label>
+	<input type="radio" id="en" name="lang"><label for="en">English</label>
+</fieldset>
+<h2>A list</h2>
+<ul>
+	<li>Alpha item</li>
+	<li>Beta item</li>
+	<li>Gamma item</li>
+	<li>Delta item</li>
+	<li>Epsilon item</li>
+</ul>
+<a href="https://example.com/two">Second result link</a>
+<p>Closing paragraph.</p>
+</body>
+</html>

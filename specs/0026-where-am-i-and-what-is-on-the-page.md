@@ -449,6 +449,12 @@ reversal is that a silent cap makes an agent believe a partial page is the page
 `maxLines` as the remedy for a document already known to be huge.
 
 
+**The pages are in [`scripts/live_pages/`](../scripts/live_pages/)**, versioned
+with the checklist that needs them, so every item below can be re-run rather
+than merely read. Their README says which page serves which item — and why they
+are fixtures rather than golden files, since the rendering is the tester's own
+locale and verbosity.
+
 Everything above except the NVDA edge is unit-testable, and the edge is exactly
 where this can be wrong. The implementing PR's body carries these as checkboxes,
 per AGENTS.md:
