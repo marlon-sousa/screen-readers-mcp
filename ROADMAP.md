@@ -255,7 +255,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.29** and the next free spec number is
-**0036**. (11.22–11.24 and spec 0030 were taken by the second external run on
+**0037**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
@@ -270,6 +270,9 @@ as a live hazard.
 11.28 was taken on 2026-08-21 by the AGENTS.md split, which opened it for a
 flaky test the split's own gate run surfaced and deliberately did not fix — no
 spec number went with it, since it has no spec yet.
+Spec 0036 was taken on 2026-08-22 by 11.16, drafted on that entry's branch
+before it merges — which is again the case the paragraph above says to check
+for.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1014,7 +1017,18 @@ rather than before it.
       orders of magnitude to spare. Classified `mutates_reader` so 11.3
       withholds it; no capability of its own.
     Also retires the report's smallest ask, `type_text replace: true` — select
-    all, delete, type is a sequence. Spec: none yet.
+    all, delete, type is a sequence.
+    Spec: [0036-one-call-several-intentions.md](specs/0036-one-call-several-intentions.md)
+    (**drafted 2026-08-22, awaiting agreement in conversation**; it rides on this
+    entry's implementing branch and merges with the PR). The tool is
+    `run_sequence`. Two of the 2026-08-15 decisions are amended in it, both
+    because spec 0025 was agreed the day after them: the **trailing read step is
+    narrowed to an orientation read** (focus, optionally braille), since 0025 put
+    speech on every mutating result and the sequence's own merged window already
+    spans the whole plan; and the **"no capability of its own" question is moot**,
+    since 0022 removed the visibility gate entirely on 2026-08-19 — capability is
+    a per-call check now, so the plan is validated up front and the tool is
+    advertised like every other.
 11.17. **Done (PR #70, 2026-08-20)** — E, a toggle with no setter (both lanes).
     **Paired with 11.11** — same
     gesture, same confusion, two different sessions, and the remedies are
