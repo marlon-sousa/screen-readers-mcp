@@ -189,8 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-22**:
-11.13, 11.18, 11.23, 11.28 —
-**four entries** (11.16 is Done: `run_sequence`, spec 0036) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
+11.13, 11.18, 11.23, 11.28, 11.29 —
+**five entries** (11.16 is Done: `run_sequence`, spec 0036; **11.29 was opened by
+11.16's live run** and is a pre-existing bridge off-by-one it made reachable) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
 and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
 [0030](specs/0030-the-second-external-run.md)). **11.22 is Done** (PR #65),
 taken ahead of the lane head; see the reprioritisation note below. It answered
@@ -1041,6 +1042,26 @@ rather than before it.
     since 0022 removed the visibility gate entirely on 2026-08-19 — capability is
     a per-call check now, so the plan is validated up front and the tool is
     advertised like every other.
+    **What the live run added** (NVDA 2026.1.1, 2026-08-22, both capture modes),
+    which is the half no automated tier reaches: the untestable scenario really is
+    expressible — a say-all started, left running 1.5 s and interrupted by a
+    keystroke, all inside ONE call, with nothing arriving after the plan closed.
+    Against a real reader the per-step spans partitioned the merged window exactly
+    (`2→2→5→13→13→17→17` over a merged `[2,17)`, every index present once). A
+    refused plan delivered no keystroke **and spoke no announcement** — verified by
+    the speech index not moving across two malformed plans, one of which carried an
+    `announce` the human would have heard. `trigger_not_found` came back as an
+    ordinary successful MCP result naming the waiting step, with the remaining
+    steps absent from `steps` entirely. `state` moved `none` → `browse` → `none`,
+    sampled after the last step each time. `screenreader://tools` rendered the
+    third gating value under its own `## Gated by its steps` heading, claiming no
+    capability. The braille half of the read step could only be exercised, not
+    confirmed: no display is attached to this machine, so its window was legitimately
+    empty while its own index space advanced independently of speech.
+    The run also **opened 11.29** — a pre-existing off-by-one in the bridge's
+    `wait_for_speech` that this entry's start-mark amendment made reachable, and
+    that costs the amendment its exact intended case.
+
 11.17. **Done (PR #70, 2026-08-20)** — E, a toggle with no setter (both lanes).
     **Paired with 11.11** — same
     gesture, same confusion, two different sessions, and the remedies are
@@ -1477,6 +1498,41 @@ rather than before it.
     connection stack can actually lose or delay a first reply.
     Spec: **none yet** — needs a spec conversation before implementation, like
     every other open entry.
+11.29. **E, `wait_for_speech`'s `after_index` is exclusive where every other index
+    in this system is an inclusive left edge** (lane 1; the bridge). Found by
+    11.16's live checklist on 2026-08-22 against NVDA 2026.1.1, and **not
+    introduced by it**: 11.16 only made the boundary reachable, by having a plan's
+    trigger match from the plan's own start mark.
+    **Measured, three calls, one session.** `get_speech(since_index=22)` returns the
+    utterance sitting AT index 22. `wait_for_speech(after_index=22, "Log")` does not
+    see that same utterance and answers `found: false`. The same wait with
+    `after_index=21` finds it, reporting `index: 22`. So the wait scans history
+    correctly and the left edge is the one thing wrong: it matches `index >
+    after_index` where `get_speech` matches `index >= since_index`.
+    **Why this is its own entry rather than a note on 11.16.** It bites the ordinary
+    documented pattern, with no sequence involved. `get_next_speech_index` is "the
+    index the NEXT captured utterance will take", and every description teaches:
+    bookmark, act, pass that bookmark as `after_index`. Under an exclusive edge that
+    silently discards **the first utterance the action caused** — precisely the one
+    being waited for. It fails as a TIMEOUT rather than an error, so it reads as
+    "the reader never said it" and points nowhere near the boundary.
+    Inside `run_sequence` the same off-by-one costs the amendment its exact case: a
+    plan whose trigger arrives as the plan's FIRST utterance cannot match, which is
+    the "arrived a fraction of a millisecond early" case the amendment exists for.
+    Observed live — a plan pressing the report-title command and then waiting for a
+    word of that title answered `trigger_not_found`, with the matching utterance
+    sitting in its own merged window.
+    **Which side drifted is not in doubt; the fix is not therefore obvious.** The
+    repo's convention is a half-open `[from, to)` window with an inclusive left
+    edge, and the tool description says "at or after this index", so the bridge is
+    wrong rather than the document. What needs deciding is whether to change the
+    comparison in a shipped command — any caller that has been compensating for it
+    would feel that — or to change every description and the documented pattern to
+    say "strictly after"; and, if the former, whether `wait_for_log` shares the
+    shape and should move with it.
+    Spec: **none yet** — needs a spec conversation before implementation, like
+    every other open entry.
+
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
