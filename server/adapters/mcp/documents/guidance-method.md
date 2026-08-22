@@ -152,6 +152,18 @@ known timing and `settle` is the reader's unknown latency; neither is evidence o
 anything on its own, and a plan that only sleeps is the failure this document
 opened by warning about, produced faster.
 
+**A plan that interrupts must size its wait to the capture mode.** This is the
+one place the mode you chose changes what a plan does rather than what the human
+hears. The point of interrupting is to act while the reader is still going, so
+the wait before the interrupting step has to be shorter than the thing you are
+interrupting — and in a silent session there is no audio pacing that thing, so it
+can be over in a fraction of the time the same reading takes aloud. A wait that
+lands mid-sentence in one mode can land after the end in the other, and when it
+does **nothing fails**: the plan reports `completed`, the interrupting step
+returns normally, and you are looking at a result that proves nothing. If a plan
+of yours depends on interrupting, read the merged window and check the
+interruption actually cut something short, rather than trusting that the plan ran.
+
 ## Say something to the human, or the room stays silent
 
 In a **silent** session the person at the reader hears nothing at all except what

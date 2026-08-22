@@ -33,6 +33,54 @@ names no keystrokes anywhere, deliberately -- it cannot know whether you are
 driving a Windows desktop reader or a touch-screen one, and a key that does not
 exist on the reader in front of you is worse than no advice.
 
+## How you are capturing: choose silent unless you can say why not
+
+`connect_reader` takes a `mode`, and like the stance it is fixed for the whole
+session. **Prefer `silent`. Treat `live` as the exception, and one you can name a
+reason for.**
+
+In `silent` the reader's speech is captured for you and the person at the machine
+hears none of it. In `live` the reader speaks normally and you observe what it was
+asked to say. **Capture is complete either way** -- neither mode gives you more of
+what was said, and an interrupted announcement is captured whole in both, because
+capture happens when the reader decides to speak rather than when the sound
+finishes. So the choice is not about how much you learn. It is about two other
+things.
+
+**What the human is subjected to.** A live run means everything you do is spoken
+aloud at somebody's machine, at talking speed, for as long as you work. That is
+their computer, and you are occupying it.
+
+**How fast the reader can answer you.** In a live session speech is paced by
+audio: an announcement, or a command that reads a document aloud, takes as long to
+produce as it takes to say. A silent session has no sound to wait for, so the same
+reading can arrive far faster -- fast enough that a wait which was comfortable in
+one mode is much too long in the other. **Never carry a delay you tuned in one
+mode into the other without checking it.** How much faster is the reader's own
+business; `screenreader://reader-guidance` is where that reader says what silent
+costs and gains there.
+
+So `live` is for one situation: **a human needs to hear this run as it happens** --
+they are following along, or how something *sounds* is itself what you are
+testing. Everything else is `silent`.
+
+Two consequences worth carrying with you.
+
+**The text you match on can differ between the modes.** One mode may hand you the
+words as the reader assembled them and the other as it will pronounce them, with
+punctuation and symbols expanded into words. So **match on words, not on
+punctuation**, and do not assume a trigger string tuned in one mode fires in the
+other.
+
+**Silent puts an obligation on you, and it is not optional.** The person at the
+machine is now hearing nothing at all -- not the reader, not the keys you send,
+nothing -- and if they are blind they cannot glance at the screen to check whether
+anything is happening. Whether you owe them narration depends on whether anyone is
+there at all, and `connect_reader` answers that in its `silenceCap` field: it says
+either that a human is expected at this machine or that the machine is unattended.
+**Read it, and act on it** -- *Say something to the human* below is that rule in
+full, and it is the price of the mode you should almost always be choosing.
+
 ## Who you are connecting as
 
 Before you connect you must say **what you are standing in for**, because it
