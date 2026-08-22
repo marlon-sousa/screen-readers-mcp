@@ -246,6 +246,7 @@ names one group:
 | `interact` | `announce`, `askUser`, `waitForUserReply` |
 | `log` | `getLog`, `getLogPosition`, `waitForLog`, `setLogLevel` |
 | `guidance` | `getGuidance` |
+| `document` | `getDocumentSnapshot` |
 
 Rules:
 
@@ -269,9 +270,9 @@ Rules:
   gestures on another. A bridge with nothing reader-specific to say simply does
   not announce it, and the agent falls back on the server's documents alone.
 - A command whose group is **not** in the announced set may be rejected with a
-  normal error response. **The NVDA bridge announces all ten groups** —
+  normal error response. **The NVDA bridge announces all eleven groups** —
   `speech`, `braille`, `gestures`, `focus`, `state`, `config`, `interact`,
-  `typing`, `log` and `guidance`. (This paragraph read "`focus`, `state` and
+  `typing`, `log`, `guidance` and `document`. (This paragraph read "`focus`, `state` and
   `config` are defined by this contract and served by no bridge yet" long after
   all three were served, which is the same defect class as board entry 11.24(a):
   two documents disagreeing, and this one is the one an outside implementer would
@@ -505,6 +506,47 @@ means the command takes no parameters. Summary:
   normative and the bridge instantiates it: a bridge may name its reader's escape
   hatches and the commands that constitute them; it may not redefine what a
   persona is for or what counts as success.
+
+- `getDocumentSnapshot` `{ fromLine?, maxLines?, maxChars? }` → `{ hasDocument,
+  capturedAt, title, lines: [{ line, text }], fromLine, toLine, truncatedBy }` —
+  the whole document the reader is showing, as the flat lines a user arrows
+  through (spec 0026).
+
+  **The ordinary call carries no parameters and returns the entire document.**
+  Reading a page a line at a time costs one round trip per line, and a snapshot
+  that were bounded by default would be incomplete by default — an agent would
+  read the first screenful of a long page and believe it had the page.
+
+  `lines` is the reader's own **presentation**, not its text: a heading carries
+  its level, a link says it is one, a radio button says whether it is checked,
+  in the reader's words and under the user's own verbosity settings. It is the
+  same flat text the person at the reader reads — the delivery differs, the
+  substance does not. A bridge **must not** render this by moving the user's
+  reading position, and **must not** produce speech doing it: this is an
+  observation, and it must leave the reader exactly where it found it.
+
+  `capturedAt` is wall clock in §7.1's format. **A snapshot is one instant.**
+  Whatever the document did afterwards is not in it, and nothing in the shape
+  can say whether it did anything; the way to see change is to take another
+  snapshot and compare.
+
+  `fromLine` / `maxLines` / `maxChars` bound the read; `0` (or absent) means no
+  limit. They carry a cost the shape cannot express: **two calls are two
+  moments.** A document that changes between them yields a reading stitched from
+  states that never coexisted, and only the unbounded call returns a coherent
+  picture. `line` ordinals stay **absolute** so a coordinate read from one call
+  is usable in the next.
+
+  `truncatedBy` is `"none"`, `"maxLines"` or `"maxChars"` — a closed set with no
+  null, for §5's `browseMode` reason: "nothing was truncated" is one of the
+  answers, so it is a member and not a missing field. A document that ends
+  exactly on a bound reports `"none"`: the bound coincided, it did not bite.
+
+  `hasDocument: false` means the focus is in nothing this reader renders as a
+  flat document — a dialog, a native application, the desktop. **A real answer,
+  not an empty document and not an error**: the other fields are empty and
+  `capturedAt` is still set, because the bridge looked, at a time, and found
+  nothing.
 
 Reader-specific vocabulary — gesture ids, roles, states, config key paths, state
 values — is **opaque payload**: the server routes it without interpreting it, and

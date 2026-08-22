@@ -13,6 +13,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from .indexed_buffer import IndexedBuffer
+from .speech_text import join_speech
 
 if TYPE_CHECKING:
 	from ..ports.clock import Clock
@@ -46,26 +47,6 @@ SPEECH_FINISHED_SECONDS: float = 1.0
 CONTINUOUS_READ_STALE_SECONDS: float = 6.0
 
 
-def _join_speech(sequence: Any) -> str:
-	"""Join the plain-string parts of a speech sequence with a separating space.
-
-	NVDA speech sequences interleave ``str`` fragments with ``SpeechCommand``
-	objects (pitch, index, callbacks, ...). Only the strings are spoken words,
-	so those are all we capture.
-
-	The parts are joined with a SPACE, not concatenated. A sequence's fragments
-	are separate utterances -- a name, a role, a position, an accelerator letter
-	-- and running them together produces text no reader can segment:
-	``"Move" + "indisponivel" + "m"`` came out as ``Moveindisponivelm``, and
-	``"Google Chrome" + "17 de 37"`` as ``Google Chrome17 de 37``. The join is
-	the only place the boundary is known, so it is the only place it can be kept.
-	"""
-	if not isinstance(sequence, (list, tuple)):
-		return ""
-	parts = [c.strip() for c in sequence if isinstance(c, str)]  # pyright: ignore[reportUnknownVariableType]
-	return " ".join(p for p in parts if p)
-
-
 class SpeechBuffer(IndexedBuffer):
 	"""Indexed capture of NVDA speech sequences with wait-for / wait-to-finish.
 
@@ -93,7 +74,7 @@ class SpeechBuffer(IndexedBuffer):
 		return [""]
 
 	def _render(self, entry: Any) -> str:
-		return _join_speech(entry)
+		return join_speech(entry)
 
 	def set_observer(self, observer: Callable[[str], None] | None) -> None:
 		"""Register a callback fired (outside the lock) for each appended text.
@@ -115,7 +96,7 @@ class SpeechBuffer(IndexedBuffer):
 		with self._lock:
 			self._record(sequence, log_position)
 			self._speaking = True
-			text = _join_speech(sequence)
+			text = join_speech(sequence)
 		if self._observer is not None and text:
 			self._observer(text)
 

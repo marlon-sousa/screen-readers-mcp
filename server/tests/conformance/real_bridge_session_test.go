@@ -87,6 +87,7 @@ var (
 		"ask_user",                  // interact
 		"get_braille",               // braille
 		"get_config",                // config
+		"get_document_snapshot",     // document
 		"get_focus_info",            // focus
 		"get_last_speech",           // speech
 		"get_log",                   // log
@@ -290,8 +291,10 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	// `guidance` joined in entry 11.20 (spec 0029). It is the only member here
 	// that gates no tool, which is why gatedTools above is unchanged -- and
 	// asserting the exact set is what makes that visible rather than assumed.
+	// `document` joined in entry 11.13 (spec 0026) and does gate one,
+	// get_document_snapshot.
 	want := []string{
-		"braille", "config", "focus", "gestures", "guidance",
+		"braille", "config", "document", "focus", "gestures", "guidance",
 		"interact", "log", "speech", "state", "typing",
 	}
 	got := slices.Clone(session.Capabilities)

@@ -25,6 +25,7 @@ from ... import protocol
 from .braille_source import BrailleSource
 from .config_accessor import ConfigAccessor
 from .continuous_read import ContinuousRead
+from .document_reader import DocumentReader
 from .focus_inspector import FocusInspector
 from .gesture_sender import GestureSender
 from .speech_source import SpeechSource
@@ -51,6 +52,10 @@ class AdapterSet:
 	#: Whether a self-advancing read is running; see the port for why the
 	#: settle cannot answer honestly without it (entry 11.21).
 	continuous_read: ContinuousRead
+	#: Hands over the reader's flat document rendering, whole (spec 0026). Not
+	#: mode-specific: the read produces no speech, so silent and live are the
+	#: same read.
+	document_reader: DocumentReader
 
 
 class AdapterFactory(ABC):

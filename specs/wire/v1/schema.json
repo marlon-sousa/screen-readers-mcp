@@ -104,6 +104,60 @@
       ],
       "additionalProperties": true
     },
+    "DocumentSnapshotParams": {
+      "type": "object",
+      "properties": {
+        "fromLine": {
+          "type": "integer"
+        },
+        "maxLines": {
+          "type": "integer"
+        },
+        "maxChars": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "DocumentSnapshotResult": {
+      "type": "object",
+      "properties": {
+        "hasDocument": {
+          "type": "boolean"
+        },
+        "capturedAt": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "lines": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SnapshotLine"
+          }
+        },
+        "fromLine": {
+          "type": "integer"
+        },
+        "toLine": {
+          "type": "integer"
+        },
+        "truncatedBy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "maxLines",
+            "maxChars"
+          ]
+        }
+      },
+      "required": [
+        "hasDocument",
+        "capturedAt"
+      ],
+      "additionalProperties": true
+    },
     "EchoParams": {
       "type": "object",
       "properties": {
@@ -473,7 +527,8 @@
               "interact",
               "typing",
               "log",
-              "guidance"
+              "guidance",
+              "document"
             ]
           }
         },
@@ -897,6 +952,22 @@
         "enabled",
         "warnAfterSeconds",
         "liftAfterSeconds"
+      ],
+      "additionalProperties": true
+    },
+    "SnapshotLine": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "text"
       ],
       "additionalProperties": true
     },
@@ -1377,6 +1448,14 @@
       "params": null,
       "result": {
         "$ref": "#/$defs/GetGuidanceResult"
+      }
+    },
+    "getDocumentSnapshot": {
+      "params": {
+        "$ref": "#/$defs/DocumentSnapshotParams"
+      },
+      "result": {
+        "$ref": "#/$defs/DocumentSnapshotResult"
       }
     },
     "bye": {

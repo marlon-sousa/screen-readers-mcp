@@ -41,7 +41,8 @@ import (
 // 0036): what it needs is decided per call, and it is advertised like everything
 // else, which is exactly what this list is about.
 var everyGatedTool = []string{
-	"announce", "ask_user", "get_braille", "get_config", "get_focus_info",
+	"announce", "ask_user", "get_braille", "get_config", "get_document_snapshot",
+	"get_focus_info",
 	"get_last_speech", "get_log", "get_log_position", "get_next_speech_index",
 	"get_speech", "get_state", "press_gesture", "run_sequence", "set_config",
 	"set_log_level", "set_state",

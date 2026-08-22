@@ -590,6 +590,62 @@ func (c *JSONLinesClient) Guidance() (ports.ReaderGuidance, error) {
 	}, nil
 }
 
+// --- the document port --------------------------------------------------------
+
+// Snapshot asks the bridge for the reader's flat document, whole by default.
+//
+// The three bounds are sent only when the agent set them: the wire's zero means
+// "no limit", so omitting them and sending zero mean the same thing, and sending
+// nothing keeps the request honest about what was asked for.
+//
+// DefaultCallTimeout is deliberately NOT special-cased upwards here even though
+// this is the one read whose cost scales with the document. If a very large page
+// cannot be rendered inside the ordinary budget, that is a fact the live
+// checklist is supposed to surface (spec 0026, item 9), and hiding it behind a
+// longer timeout would hide it from the measurement that decides whether the
+// unbounded default stands.
+func (c *JSONLinesClient) Snapshot(bounds ports.DocumentBounds) (ports.DocumentSnapshot, error) {
+	params := wire.DocumentSnapshotParams{}
+	if bounds.FromLine != 0 {
+		from := bounds.FromLine
+		params.FromLine = &from
+	}
+	if bounds.MaxLines != 0 {
+		maxLines := bounds.MaxLines
+		params.MaxLines = &maxLines
+	}
+	if bounds.MaxChars != 0 {
+		maxChars := bounds.MaxChars
+		params.MaxChars = &maxChars
+	}
+
+	var result wire.DocumentSnapshotResult
+	if err := c.call(wire.CommandGetDocumentSnapshot, params, &result, DefaultCallTimeout); err != nil {
+		return ports.DocumentSnapshot{}, err
+	}
+
+	lines := make([]ports.SnapshotLine, 0, len(result.Lines))
+	for _, line := range result.Lines {
+		lines = append(lines, ports.SnapshotLine{Line: line.Line, Text: line.Text})
+	}
+	// A bridge that omits `truncatedBy` means the read was not cut off. The
+	// domain's value set has no empty member, so the absence is mapped to the
+	// member that says so rather than passed through as "".
+	truncatedBy := string(wire.TruncatedByNone)
+	if result.TruncatedBy != nil {
+		truncatedBy = string(*result.TruncatedBy)
+	}
+	return ports.DocumentSnapshot{
+		HasDocument: result.HasDocument,
+		CapturedAt:  result.CapturedAt,
+		Title:       derefString(result.Title),
+		Lines:       lines,
+		FromLine:    derefInt(result.FromLine),
+		ToLine:      derefInt(result.ToLine),
+		TruncatedBy: truncatedBy,
+	}, nil
+}
+
 // --- the lifecycle port -------------------------------------------------------
 
 func (c *JSONLinesClient) Ping() (ports.PingReport, error) {

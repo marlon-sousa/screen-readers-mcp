@@ -45,6 +45,12 @@ const (
 	// it: every earlier capability arrived by adding names to that list, and
 	// this one adds none.
 	CapabilityGuidance Capability = "guidance"
+
+	// CapabilityDocument is the reader rendering documents into a flat text
+	// buffer the user reads with the cursor keys -- NVDA's browse mode, and
+	// whatever the analogue is elsewhere -- and being able to hand that
+	// rendering over whole (spec 0026). Gates get_document_snapshot.
+	CapabilityDocument Capability = "document"
 )
 
 // AllCapabilities is every capability the wire contract declares, in the order
@@ -71,6 +77,7 @@ func AllCapabilities() []Capability {
 		CapabilityConfig,
 		CapabilityLog,
 		CapabilityGuidance,
+		CapabilityDocument,
 	}
 }
 
@@ -119,6 +126,9 @@ func (c Capability) Meaning() string {
 	case CapabilityGuidance:
 		return "The reader's own written GUIDANCE for the persona this session declared. " +
 			"It gates a resource rather than a tool: screenreader://reader-guidance."
+	case CapabilityDocument:
+		return "The whole DOCUMENT the reader is showing, as the flat lines a user arrows " +
+			"through -- roles and all, in one call instead of one round trip per line."
 	}
 	return ""
 }
