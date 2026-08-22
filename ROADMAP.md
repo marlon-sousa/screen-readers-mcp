@@ -189,8 +189,9 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-22**:
-11.13, 11.18, 11.23, 11.28, 11.29, 11.30 —
-**six entries** (11.16 is Done: `run_sequence`, spec 0036; **11.29 and 11.30 were
+11.18, 11.23, 11.28, 11.29, 11.30 —
+**five entries** (11.16 is Done: `run_sequence`, spec 0036; **11.13 is Done**:
+the document snapshot, spec 0026, which closed the server lane's head; **11.29 and 11.30 were
 both opened by 11.16's live run** — 11.29 a pre-existing bridge off-by-one it made
 reachable, 11.30 a fact an agent is told once and can never ask for again) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
 and both are now Done: 11.26 in PR #71 and 11.27 in **PR #72**) (11.22-11.24 opened by the second external run,
@@ -216,7 +217,8 @@ four times, and the fifth pass was made a decision rather than another silence.
 **11.11 and 11.17 closed together on 2026-08-20** (PR #70) — the pair the board
 required to be decided in one conversation, and they were — so lane 1 has no open
 entry at all. **11.6 closed on 2026-08-19**, taking 11.24(a) with it, so the
-server lane's head is **11.13**.
+server lane's head is **11.13**, and **11.13 closed on 2026-08-22**, so both
+lanes are open again.
 
 **11.22 is taken before 11.6, deliberately, on 2026-08-18** — the
 reprioritisation this section requires to be made explicitly, the way 11.4 was
@@ -846,7 +848,8 @@ rather than before it.
     (drafted 2026-08-03, **agreed 2026-08-16** — all five open questions settled
     there). The board read "not agreed" until 2026-08-18 while the spec said
     agreed: one more instance of 11.18's drift, found by reading both.
-11.13. **E, where am I, and what is on the page** (lane 1, bridge + server). Two
+11.13. **Done (2026-08-22)** -- E, where am I, and what is on the page (lane 1,
+    bridge + server). Two
     questions the repo has been treating as one. **"Where am I" is already
     solved and this builds nothing for it** — it is `NVDA+Tab`, a gesture whose
     answer is speech, made one round trip by 11.12; 0023 settled that and a
@@ -889,7 +892,45 @@ rather than before it.
     capture *is* a route to reading a document in a silent session, and this
     entry still has two candidate designs to weigh rather than one.
     Spec: [0026-where-am-i-and-what-is-on-the-page.md](specs/0026-where-am-i-and-what-is-on-the-page.md)
-    (drafted 2026-08-03, not agreed).
+    (drafted 2026-08-03, revised and **agreed 2026-08-22**, implemented in the
+    same PR). The revision settled the two candidate designs and reversed one of
+    the draft's decisions on the maintainer's instruction: **the whole buffer is
+    the default**, because a snapshot bounded by default is incomplete by
+    default -- `fromLine`/`maxLines`/`maxChars` survive as an agent-supplied
+    opt-in whose cost (two calls are two moments) the contract now states. The
+    say-all route is rejected on the DESIGN rather than on the retracted defect:
+    it moves the caret, produces utterances with no line coordinates, and costs
+    reader time proportional to the document. It stays available as a gesture
+    and is the snapshot's cross-check. Two further decisions the board did not
+    carry: `truncatedBy` is `"none"`/`"maxLines"`/`"maxChars"` with **no null**
+    (0015's doctrine -- a falsy check must not be how an agent asks), and
+    `capturedAt` is stamped on every result including `hasDocument: false`.
+    The tool is `get_document_snapshot` (wire `getDocumentSnapshot`), gated on a
+    new `document` capability -- the NVDA bridge now announces eleven groups.
+    **The finding that shaped the implementation**: the buffer's raw text has no
+    roles in it, so the snapshot renders through `speech.getTextInfoSpeech`,
+    which yields what `speakTextInfo` would have spoken and speaks nothing. That
+    buys four properties -- no speech is emitted, the caret does not move, the
+    control-field cache is carried across lines as arrowing does, and **that
+    cache must be ours**: `getTextInfoSpeech` writes its cache back onto the
+    document object unless `useCache` is an explicit `SpeakTextInfoState`
+    (`speech/speech.py`, `_getTextInfoSpeech_updateCache`), so the default would
+    silently corrupt the user's real browse-mode context. **Live run 2026-08-22, all ten checklist items pass**, and it
+    earned its keep: it found a caret-dependent rendering no unit test could
+    have, because the seeding happens inside NVDA -- `SpeakTextInfoState(obj)`
+    does not merely avoid writing back, it SEEDS itself from the user's live
+    reading position, so a snapshot taken with the caret inside a list rendered
+    line 0 as `fora de lista titulo nivel 1 ...` and the same unchanged page
+    returned different text from two caret positions. Fixed by clearing the
+    three caches; the spec's checklist item 5 now carries the converse as a
+    standing check. Item 9 answered in favour of the unbounded default -- 1103
+    lines rendered in no more time than one line, within a two-second noise
+    floor, reader responsive throughout -- and surfaced the one surface change
+    the run argued for: the render is cheap and the ANSWER is not, since 1103
+    lines is 60 KB of JSON, so the tool description now names `maxLines` as the
+    remedy for a document already known to be huge. Also confirmed live: the
+    tool refuses on a bridge without the capability, naming it; and it works
+    under `user` as well as `expert`, since it is deliberately not stance-gated.
 11.14. **Done (PR #55, 2026-08-16)** — E, the guidance never says how to get the
     application in front (server lane). Docs only. Ask 4 of
     [0027](specs/0027-the-first-external-run.md), which preserves all five asks

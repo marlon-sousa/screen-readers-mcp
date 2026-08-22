@@ -108,7 +108,9 @@ genuinely the question.
 
 **3. Orient**, if what you heard was not enough. Press the reader's own
 "report the focused object" command and listen to the answer. Its report-title
-and read-whole-window commands are there for the same reason. This is ordinary
+and read-whole-window commands are there for the same reason. (To read a whole
+DOCUMENT rather than hear a window, see `get_document_snapshot` below -- that is
+a different question and it has a one-call answer.) This is ordinary
 screen reader operating knowledge -- asking the reader where you are is a
 *command you send*, and its answer comes back in that same call, like any other
 key's.
@@ -117,6 +119,35 @@ key's.
 when it produces nothing, which is itself information. If you still cannot tell
 where you are, call `ask_user` and ask the human at the machine. Do not guess,
 and do not proceed with an action whose target you are unsure of.
+
+## To read a whole document, ask for it -- do not arrow through it
+
+The loop above answers *where am I*. It is a bad way to answer **what is on this
+page**, because reading a document by arrowing costs one round trip per line: a
+twenty-line page is twenty calls, and a session has been lost to exactly that --
+it reached a results page and never got the three titles it went there for.
+
+If the reader announced it, `get_document_snapshot` returns the **whole
+document** in one call, as the flat lines a user arrows through: headings with
+their level, links, radio buttons with their state, in the reader's own words.
+Call it with no arguments. It is not a structural read of an object model -- it
+is the same text the person at the reader reads, delivered all at once instead
+of a line per keystroke, so **every stance may use it**, unlike the
+introspection tools further down.
+
+Three things to hold on to:
+
+- **It is a still frame.** `capturedAt` says when. Anything the page did
+  afterwards -- a live region updating, content still loading, an infinite
+  scroll -- is not in it, and nothing in the result can tell you that it
+  happened. To see change, take another snapshot and compare.
+- **If you ask for a slice, you are asking for two moments.** `fromLine`,
+  `maxLines` and `maxChars` are there for a genuinely enormous document, and a
+  page that changes between two calls gives you a reading stitched from states
+  that never existed together. The unbounded call is the only coherent one.
+- **`hasDocument: false` is an answer, not a failure.** A dialog, a native
+  application, the desktop: there is no flat document to hand over, and there
+  the reader's own navigation commands are still the only way to read.
 
 ## When you already know the next few steps, send them together
 

@@ -125,5 +125,6 @@ func EveryCapability() []entities.Capability {
 		entities.CapabilityFocus, entities.CapabilityState, entities.CapabilityConfig,
 		entities.CapabilityInteract, entities.CapabilityTyping,
 		entities.CapabilityLog, entities.CapabilityGuidance,
+		entities.CapabilityDocument,
 	}
 }

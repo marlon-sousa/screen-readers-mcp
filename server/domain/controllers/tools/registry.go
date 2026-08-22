@@ -68,6 +68,9 @@ func BuildRegistry() *Registry {
 		&GetConfig{},
 		&SetConfig{},
 
+		// Gated on `document`.
+		&GetDocumentSnapshot{},
+
 		// Gated on `log`.
 		&GetLog{},
 		&GetLogPosition{},

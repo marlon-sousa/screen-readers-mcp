@@ -288,6 +288,7 @@ def test_command_set_matches_plan_v1() -> None:
 		"waitForLog",
 		"setLogLevel",
 		"getGuidance",
+		"getDocumentSnapshot",
 		"bye",
 	}
 	assert {c.value for c in p.Command} == expected
@@ -353,7 +354,49 @@ def test_capabilities_cover_one_per_command_group() -> None:
 		# The one member that names a group of ONE, and the only one that gates a
 		# resource rather than a set of tools (spec 0029).
 		"guidance",
+		# Also a group of one: the reader can hand over its flat document
+		# rendering whole, instead of a line per keystroke (spec 0026).
+		"document",
 	}
+
+
+def test_document_snapshot_params_default_to_the_whole_document() -> None:
+	# The ordinary call carries NO parameters: a snapshot bounded by default is
+	# incomplete by default, which is the defect spec 0026 removed.
+	params = p.from_dict(p.DocumentSnapshotParams, {})
+	assert (params.fromLine, params.maxLines, params.maxChars) == (0, 0, 0)
+
+
+def test_document_snapshot_result_round_trips_with_its_lines() -> None:
+	original = p.DocumentSnapshotResult(
+		hasDocument=True,
+		capturedAt="2026-08-22 14:31:07.412",
+		title="BlindTec",
+		lines=[p.SnapshotLine(line=0, text="heading level 1 BlindTec")],
+		fromLine=0,
+		toLine=1,
+		truncatedBy=p.TruncatedBy.MAX_LINES,
+	)
+	restored = p.from_dict(p.DocumentSnapshotResult, p.decode_message(p.encode_message(original)))
+	assert restored == original
+	assert isinstance(restored.lines[0], p.SnapshotLine)
+	assert isinstance(restored.truncatedBy, p.TruncatedBy)
+
+
+def test_no_document_is_a_false_and_not_an_absence() -> None:
+	# A dialog, the desktop, a native app: hasDocument False with everything else
+	# empty. `capturedAt` is still stamped -- the bridge looked, at a time.
+	result = p.DocumentSnapshotResult(hasDocument=False, capturedAt="2026-08-22 14:31:07.412")
+	d = p.to_dict(result)
+	assert d["hasDocument"] is False
+	assert d["lines"] == []
+	assert d["truncatedBy"] == "none"
+
+
+def test_truncated_by_has_no_null() -> None:
+	# `if not result.truncatedBy` must not be how an agent asks whether the read
+	# was capped -- spec 0015's doctrine, applied here.
+	assert {m.value for m in p.TruncatedBy} == {"none", "maxLines", "maxChars"}
 
 
 def test_from_dict_rejects_unknown_capability() -> None:

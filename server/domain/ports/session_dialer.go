@@ -150,6 +150,9 @@ type ReaderConnection struct {
 	Interact   Interact
 	Text       TextTyper
 	ReaderLog  LogReader
+	// Document is the `document` capability: the reader's flat document
+	// rendering, handed over whole (spec 0026).
+	Document DocumentReader
 
 	// Guidance is the odd one out and is worth saying so: every other port
 	// here backs a TOOL, and this one backs a RESOURCE

@@ -26,6 +26,7 @@ from .command_handler import CommandHandler
 from .echo import EchoHandler
 from .get_braille import GetBrailleHandler
 from .get_config import GetConfigHandler
+from .get_document_snapshot import GetDocumentSnapshotHandler
 from .get_focus_info import GetFocusInfoHandler
 from .get_guidance import GetGuidanceHandler
 from .get_last_speech import GetLastSpeechHandler
@@ -67,6 +68,10 @@ NVDA_CAPABILITIES: tuple[protocol.Capability, ...] = (
 	# no reader-specific instruction to give simply leaves it out, and the agent
 	# falls back on the server's reader-agnostic documents.
 	protocol.Capability.GUIDANCE,
+	# Spec 0026: NVDA renders documents into a browse-mode buffer the user reads
+	# with the cursor keys, and this bridge can hand that rendering over whole.
+	# Also a group of one -- getDocumentSnapshot.
+	protocol.Capability.DOCUMENT,
 )
 
 
@@ -107,5 +112,6 @@ def build_command_registry(
 		protocol.Command.WAIT_FOR_LOG: WaitForLogHandler(),
 		protocol.Command.SET_LOG_LEVEL: SetLogLevelHandler(),
 		protocol.Command.GET_GUIDANCE: GetGuidanceHandler(),
+		protocol.Command.GET_DOCUMENT_SNAPSHOT: GetDocumentSnapshotHandler(),
 	}
 	return registry

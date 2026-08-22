@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Dynamic Page</title></head>
+<body>
+<!--
+  Dynamic fixture for spec 0026's live checklist: item 10.
+
+  A page that grows on its own, so that "a snapshot is one instant" can be
+  OBSERVED rather than asserted. Take two snapshots a few seconds apart: the
+  second carries a line the first does not, and the difference between their
+  `capturedAt` stamps is exactly what explains it.
+
+  FIVE SECONDS is chosen against the round trip, not for realism. An agent's
+  call takes a few seconds, so this is slow enough that two snapshots taken back
+  to back can still land in the same interval (which is worth seeing too) and
+  fast enough that the tester never waits. Do not make it much faster: a page
+  that changes DURING the render would be testing something else, and something
+  this design cannot promise anything about.
+
+  `aria-live="polite"` is here because a live region is the case the spec's
+  honest limits name by name -- "a live region that updates after the read is
+  not in it". This is that region.
+-->
+<h1>Dynamic Page</h1>
+<p>This line is here from the start.</p>
+<div id="live" aria-live="polite"></div>
+<script>
+	var n = 0;
+	setInterval(function () {
+		n += 1;
+		var p = document.createElement('p');
+		p.textContent = 'Update number ' + n + ' arrived after the page loaded.';
+		document.getElementById('live').appendChild(p);
+	}, 5000);
+</script>
+</body>
+</html>

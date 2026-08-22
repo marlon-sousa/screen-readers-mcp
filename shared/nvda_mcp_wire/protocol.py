@@ -55,6 +55,8 @@ __all__ = [
 	"Command",
 	"CommandShape",
 	"ConfigResult",
+	"DocumentSnapshotParams",
+	"DocumentSnapshotResult",
 	"EchoParams",
 	"EchoResult",
 	"ErrorInfo",
@@ -84,8 +86,10 @@ __all__ = [
 	"SetStateParams",
 	"SetStateResult",
 	"SilenceCapInfo",
+	"SnapshotLine",
 	"SpeechResult",
 	"StateResult",
+	"TruncatedBy",
 	"TypeParams",
 	"TypeResult",
 	"ValidationError",
@@ -178,6 +182,13 @@ class Capability(StrEnum):
 	#: than a tool, so a bridge with nothing reader-specific to say simply omits
 	#: it and the agent falls back on the server's reader-agnostic documents.
 	GUIDANCE = "guidance"
+	#: The reader renders documents into a FLAT TEXT BUFFER the user reads with
+	#: the cursor keys -- NVDA's browse mode, and whatever its analogue is
+	#: elsewhere -- and can hand that rendering over whole (spec 0026). Gates
+	#: ``getDocumentSnapshot``. A reader with no such notion omits it, and the
+	#: agent is back to one round trip per line, which is the situation this
+	#: capability exists to escape.
+	DOCUMENT = "document"
 
 
 class BrowseMode(StrEnum):
@@ -194,6 +205,24 @@ class BrowseMode(StrEnum):
 	BROWSE = "browse"
 	FOCUS = "focus"
 	NONE = "none"
+
+
+class TruncatedBy(StrEnum):
+	"""Why a document snapshot stopped where it did (spec 0026).
+
+	A closed tri-state for :class:`BrowseMode`'s reason: "nothing was truncated"
+	IS one of the three answers, so it is a member and not a null. ``truncated:
+	true`` was rejected for spec 0021's reason -- capped by line count and capped
+	by character budget are different situations, and an agent that asks again
+	with a bigger budget is right in one case and wrong in the other.
+
+	``NONE`` is also the answer when a document ends exactly on a bound: the
+	bound did not bite, it coincided.
+	"""
+
+	NONE = "none"
+	MAX_LINES = "maxLines"
+	MAX_CHARS = "maxChars"
 
 
 class Command(StrEnum):
@@ -227,6 +256,7 @@ class Command(StrEnum):
 	WAIT_FOR_LOG = "waitForLog"
 	SET_LOG_LEVEL = "setLogLevel"
 	GET_GUIDANCE = "getGuidance"
+	GET_DOCUMENT_SNAPSHOT = "getDocumentSnapshot"
 	BYE = "bye"
 
 
@@ -1284,6 +1314,90 @@ class GetGuidanceResult:
 
 
 @dataclass
+class DocumentSnapshotParams:
+	"""How much of the browse document to render (spec 0026).
+
+	**Every field is optional and the ordinary call carries none of them**, which
+	returns the WHOLE document. That is the point of the command: reading a page
+	line by line costs one round trip per line, and a snapshot that is bounded by
+	default is incomplete by default -- an agent would read the first screenful
+	of a long page and believe it had the page.
+
+	The bounds exist for the agent who has decided it wants less, and they carry
+	a cost the shape cannot express: **two calls are two moments.** A document
+	that changes between them -- an infinite scroll, a live region, a page still
+	loading -- yields a read stitched from states that never coexisted, and
+	nothing in the result can detect it. Only the unbounded call returns a
+	coherent picture.
+	"""
+
+	#: First buffer line to include. Lines keep their ABSOLUTE ordinals in the
+	#: result, so line 14 is line 14 whether or not the read started at 0.
+	fromLine: int = 0
+	#: Stop after this many lines; ``0`` means no limit.
+	maxLines: int = 0
+	#: Stop once the rendered text reaches this many characters; ``0`` means no
+	#: limit. A budget smaller than the first line still returns that line --
+	#: coming back with nothing would read as an empty document.
+	maxChars: int = 0
+
+
+@dataclass
+class SnapshotLine:
+	"""One line of the document, as the reader renders it.
+
+	A **list of these, not a joined blob**, for spec 0021's reason: a line needs
+	a coordinate, so an agent can say "the third result is at line 14" and act
+	from there.
+	"""
+
+	#: The buffer's own line ordinal.
+	line: int
+	#: The line as the reader PRESENTS it -- roles and states included, in the
+	#: reader's own words and under the user's own verbosity settings. This is
+	#: the flat text the user arrows through, not a structural read: a heading
+	#: carries its level, a link says it is one, a radio button says whether it
+	#: is checked.
+	text: str
+
+
+def _no_snapshot_lines() -> list[SnapshotLine]:
+	"""An empty line list, typed -- ``list`` alone is partially unknown."""
+	return []
+
+
+@dataclass
+class DocumentSnapshotResult:
+	"""The browse document at one instant, as lines (spec 0026).
+
+	**A still frame, not a description of the page.** Whatever the document did
+	after ``capturedAt`` is not in here, and nothing in this shape can tell you
+	whether it did anything: to see change, take another snapshot and compare.
+	"""
+
+	#: Whether the focus is in a document the reader renders into a flat buffer
+	#: at all. ``False`` for a dialog, a native application, the desktop -- which
+	#: is a real answer and NOT an empty document, the distinction this protocol
+	#: has now drawn four times (specs 0020, 0021, 0023, 0024). When it is
+	#: ``False`` every other field is empty and ``capturedAt`` is still stamped:
+	#: the bridge did look, at a time, and found nothing.
+	hasDocument: bool
+	#: Wall clock at the read, in ``getLogPosition``'s and ``emittedAt``'s format
+	#: so it joins to the reader's log and the session transcript by paste.
+	capturedAt: str
+	#: The document's own title, best-effort; empty when it has none.
+	title: str = ""
+	#: The lines, in document order.
+	lines: list[SnapshotLine] = field(default_factory=_no_snapshot_lines)
+	#: First line included.
+	fromLine: int = 0
+	#: One past the last line included, so ``[fromLine, toLine)`` is the span.
+	toLine: int = 0
+	#: Which bound stopped the read, or ``"none"``. See :class:`TruncatedBy`.
+	truncatedBy: TruncatedBy = TruncatedBy.NONE
+
+
+@dataclass
 class WaitForLogResult:
 	"""Whether a matching record appeared, and where it landed.
 
@@ -1345,5 +1459,6 @@ COMMAND_SHAPES: Final[Mapping[Command, CommandShape]] = {
 	Command.WAIT_FOR_LOG: CommandShape(WaitForLogParams, WaitForLogResult),
 	Command.SET_LOG_LEVEL: CommandShape(SetLogLevelParams, LogLevelResult),
 	Command.GET_GUIDANCE: CommandShape(None, GetGuidanceResult),
+	Command.GET_DOCUMENT_SNAPSHOT: CommandShape(DocumentSnapshotParams, DocumentSnapshotResult),
 	Command.BYE: CommandShape(None, AckResult),
 }

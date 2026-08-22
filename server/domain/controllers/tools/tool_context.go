@@ -122,6 +122,16 @@ func (c ToolContext) State() (ports.StateInspector, error) {
 	return c.Connection.State, nil
 }
 
+// Document is the `document` capability, or a structured error. A reader that
+// renders no flat document never announces the group, and the agent is told so
+// by name rather than by the tool quietly returning nothing.
+func (c ToolContext) Document() (ports.DocumentReader, error) {
+	if c.Connection == nil || c.Connection.Document == nil {
+		return nil, c.missing(entities.CapabilityDocument)
+	}
+	return c.Connection.Document, nil
+}
+
 // StateWriter is the write half of the `state` capability, or a structured
 // error. Gated on the same capability as State: a reader that announces `state`
 // announces both, and the limits on what may be SET are per-field and live at

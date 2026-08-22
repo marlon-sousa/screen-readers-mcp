@@ -73,6 +73,7 @@ const (
 	CommandWaitForLog            Command = "waitForLog"
 	CommandSetLogLevel           Command = "setLogLevel"
 	CommandGetGuidance           Command = "getGuidance"
+	CommandGetDocumentSnapshot   Command = "getDocumentSnapshot"
 	CommandBye                   Command = "bye"
 )
 
@@ -101,6 +102,7 @@ const (
 	CapabilityTyping   Capability = "typing"
 	CapabilityLog      Capability = "log"
 	CapabilityGuidance Capability = "guidance"
+	CapabilityDocument Capability = "document"
 )
 
 // CaptureMode is a closed value set in the wire contract.
@@ -123,6 +125,16 @@ const (
 	LogLevelInfo         LogLevel = "info"
 	LogLevelWarning      LogLevel = "warning"
 	LogLevelError        LogLevel = "error"
+)
+
+// TruncatedBy is a closed value set in the wire contract.
+type TruncatedBy string
+
+// The values TruncatedBy may take.
+const (
+	TruncatedByNone     TruncatedBy = "none"
+	TruncatedByMaxLines TruncatedBy = "maxLines"
+	TruncatedByMaxChars TruncatedBy = "maxChars"
 )
 
 // AckResult is the wire shape of the same name.
@@ -163,6 +175,24 @@ type BrailleResult struct {
 // ConfigResult is the wire shape of the same name.
 type ConfigResult struct {
 	Value json.RawMessage `json:"value"`
+}
+
+// DocumentSnapshotParams is the wire shape of the same name.
+type DocumentSnapshotParams struct {
+	FromLine *int `json:"fromLine,omitempty"`
+	MaxLines *int `json:"maxLines,omitempty"`
+	MaxChars *int `json:"maxChars,omitempty"`
+}
+
+// DocumentSnapshotResult is the wire shape of the same name.
+type DocumentSnapshotResult struct {
+	HasDocument bool           `json:"hasDocument"`
+	CapturedAt  string         `json:"capturedAt"`
+	Title       *string        `json:"title,omitempty"`
+	Lines       []SnapshotLine `json:"lines,omitempty"`
+	FromLine    *int           `json:"fromLine,omitempty"`
+	ToLine      *int           `json:"toLine,omitempty"`
+	TruncatedBy *TruncatedBy   `json:"truncatedBy,omitempty"`
 }
 
 // EchoParams is the wire shape of the same name.
@@ -369,6 +399,12 @@ type SilenceCapInfo struct {
 	Enabled          bool    `json:"enabled"`
 	WarnAfterSeconds float64 `json:"warnAfterSeconds"`
 	LiftAfterSeconds float64 `json:"liftAfterSeconds"`
+}
+
+// SnapshotLine is the wire shape of the same name.
+type SnapshotLine struct {
+	Line int    `json:"line"`
+	Text string `json:"text"`
 }
 
 // SpeechEntry is the wire shape of the same name.
