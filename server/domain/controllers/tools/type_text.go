@@ -69,7 +69,7 @@ func (t *TypeText) InputSchema() json.RawMessage {
 		},
 		"announce": {
 			"type": "string",
-			"description": "Spoken aloud to the human at the reader before the text is injected -- audible even in a silent session. Describe what you are typing rather than repeating it, if it is sensitive."
+			"description": "Spoken aloud to the human at the reader before the text is injected -- audible even in a silent session, which is what it is FOR. Describe what you are typing rather than repeating it, if it is sensitive. Worth saying in a SILENT session with somebody there; in a LIVE one they can hear the field answer for itself, so do not narrate over it. Never narrate to an unattended machine."
 		}
 	},
 	"required": ["text"],

@@ -175,23 +175,45 @@ having died, and if they are blind they cannot look at the screen to check.
 So `connect_reader` tells you whether a human is expected at that machine, in its
 `silenceCap` field. **Read it, and act on it:**
 
-- **Where a human is expected**, `announce` before any stretch of work that does
-  not drive the reader — before a long analysis, before you go away to think,
-  before anything that will take more than a few seconds without a keypress. One
-  short sentence saying what you are doing is enough. It costs almost nothing, and
-  it is the only thing standing between that person and sitting in silence
-  wondering.
-- **Where the machine is unattended**, do not spend round trips narrating to an
-  empty room.
-- **Narration rides along, so it is nearly free.** `press_gesture` and `type_text`
-  both take an `announce` string, spoken to the human before they act; you do not
-  need a separate `announce` call to say what you are about to do. Each hands it
-  back as `announced`, which is your confirmation the announcement was **made**.
-  It is never a confirmation that it was **heard**: the reader emits speech
-  around five seconds ahead of the audio the person is listening to, so if you
-  narrate and act in the same breath you are acting ahead of your own narration,
-  and their objection — when it comes — is a reaction to something already
-  several seconds old.
+- **Silent, and a human is expected.** This is where `announce` earns its keep and
+  where it is close to an obligation. Say something before any stretch of work
+  that does not drive the reader — before a long analysis, before you go away to
+  think, before anything that will take more than a few seconds without a
+  keypress. One short sentence is enough. It costs almost nothing, and it is the
+  only thing standing between that person and sitting in silence wondering.
+- **Unattended, in either mode.** Do not narrate to an empty room. Every
+  announcement is a round trip spent telling nobody anything, and an unattended
+  machine that you are talking to should also make you ask why you are not in
+  `silent`.
+
+**And the case that is easiest to get wrong, because the reflex points the wrong
+way: a LIVE session with a human at the machine.** They can already hear
+everything — every window title, every keystroke's answer, the reader's own
+account of what you just did. Narrating that back to them tells them nothing they
+did not just hear, and it does not merely waste a round trip: an announcement
+speaks, so it **competes with the speech they were listening to**. Announcing each
+step of a live run is talking over the very thing they are trying to follow.
+
+So in a live session, announce only what **the reader itself will not tell them**:
+
+- that you are about to go quiet — a stretch with no keystrokes is silence in
+  live mode too, and silence is what worries somebody;
+- that you are about to do something disruptive, or something they might want to
+  stop before it happens;
+- that you have finished, or hit something you cannot get past.
+
+If they asked to follow along, or how something *sounds* is what you are testing,
+say so at the start and then let the reader do the talking.
+
+**Narration rides along, so when it is warranted it is nearly free.**
+`press_gesture`, `type_text` and `run_sequence` all take an `announce` string,
+spoken to the human before they act; you do not need a separate `announce` call to
+say what you are about to do. Each hands it back as `announced`, which is your
+confirmation the announcement was **made**. It is never a confirmation that it was
+**heard**: the reader emits speech around five seconds ahead of the audio the
+person is listening to, so if you narrate and act in the same breath you are
+acting ahead of your own narration, and their objection — when it comes — is a
+reaction to something already several seconds old.
 
 A reader may enforce this rather than trusting you to remember: `silenceCap` says
 whether it does, and after how long. If you meet it, the reader warns its human and

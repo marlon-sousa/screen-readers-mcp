@@ -208,7 +208,7 @@ func (t *RunSequence) InputSchema() json.RawMessage {
 		},
 		"announce": {
 			"type": "string",
-			"description": "Spoken aloud to the human at the reader before step 1 -- audible even in a silent session. A plan is the one call that can occupy the reader for several seconds, so say what it is about to do. A refused plan says nothing: if you asked for something this reader cannot do, that is a message for you and not for them."
+			"description": "Spoken aloud to the human at the reader before step 1 -- audible even in a silent session, which is what it is FOR. A plan can occupy the reader for several seconds, so in a SILENT session with somebody there, say what it is about to do: those seconds are silence they cannot account for. In a LIVE session they hear every step as it happens, so announcing the plan talks over the run they are listening to -- say something only if the plan will do something surprising or leave the reader quiet. Never narrate to an unattended machine; see silenceCap on connect_reader for whether anyone is there. A refused plan says nothing: if you asked for something this reader cannot do, that is a message for you and not for them."
 		}
 	},
 	"required": ["steps"],
