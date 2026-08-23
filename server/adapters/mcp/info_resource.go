@@ -59,6 +59,25 @@ type info struct {
 	Persona string `json:"persona,omitempty"`
 	Synth   string `json:"synth,omitempty"`
 
+	// Attendance is whether a human is expected at the reader's machine, in the
+	// same sentence `connect_reader` returns -- rendered by the same
+	// SilenceCap.Sentence, so the two cannot say different things (spec 0038).
+	//
+	// A SESSION CONSTANT, republished because the AGENT'S MEMORY of it is not
+	// constant (entry 11.30). Spec 0035 made attendance connect-only for a good
+	// reason and that stands: it cannot change while a session lives, so there is
+	// nothing to re-read in the reader. What changes is who is holding the fact --
+	// a compacted context, a sub-agent handed a live session, a session picked up
+	// after a restart. Before this, the only route back was to disconnect and
+	// reconnect, throwing the session away to ask a question about it.
+	//
+	// It is THIS fact rather than any other in the connect result because losing
+	// it fails towards silence at an occupied machine: an agent that cannot
+	// remember whether anyone is listening reasons, defensibly and wrongly, that
+	// narrating to an empty room is waste. Every other field fails towards an
+	// ordinary mistake that shows up as an error.
+	Attendance string `json:"attendance,omitempty"`
+
 	// LogPath is the READER-SIDE transcript, as a path, and deliberately not as
 	// a resource. That conversation happened (spec 0021) and came out against
 	// transmitting it: the file is written for the human at the reader, with
@@ -82,9 +101,13 @@ func (s *Server) addInfoResource(sessions SessionSource) {
 			Name:     "screen reader session",
 			MIMEType: "application/json",
 			Description: "Which screen reader is connected, what it announced it can do, " +
-				"the capture mode in effect, and where this session's two log files are. " +
+				"the capture mode in effect, whether a human is expected at that machine, " +
+				"and where this session's two log files are. " +
 				"Read this to learn which reader you are driving, then apply what you " +
-				"already know about that reader.",
+				"already know about that reader. READ IT AGAIN IF YOU HAVE LOST TRACK OF " +
+				"THE SESSION -- everything here was true at connect and is still true now, " +
+				"including whether anyone is listening, which you must know before " +
+				"deciding whether to narrate.",
 		},
 		func(_ context.Context, _ *sdk.ReadResourceRequest) (*sdk.ReadResourceResult, error) {
 			document, err := json.MarshalIndent(describe(sessions), "", "  ")
@@ -118,6 +141,9 @@ func describe(sessions SessionSource) info {
 	document.Mode = session.Mode.String()
 	document.Persona = session.Persona.String()
 	document.Synth = session.Synth
+	// The same call connect_reader makes, on state the session has held all
+	// along -- so re-publishing it asks nothing of the bridge and adds no traffic.
+	document.Attendance = session.SilenceCap.Sentence(session.Attended)
 	document.LogPath = session.LogPath
 	// There is no reader-log PATH to report: spec 0020 replaced 0009's capture
 	// file with the in-memory journal, read through the get_log tool instead.

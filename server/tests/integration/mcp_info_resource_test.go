@@ -10,6 +10,7 @@
 package integration_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/adapters/wire"
@@ -142,5 +143,79 @@ func TestThePersonaIsAbsentWithNoSession(t *testing.T) {
 
 	if got, present := h.ReadInfo(t)["persona"]; present {
 		t.Errorf("persona = %v, want absent when no session is standing in for anything", got)
+	}
+}
+
+// Attendance belongs beside the persona for the same reason the persona belongs
+// beside the reader: an agent asking "what am I driving?" and "what am I
+// standing in for?" also has to ask "is anybody listening?", and all three are
+// one question asked three ways (spec 0038, entry 11.30).
+//
+// It is a SESSION CONSTANT, republished because the agent's memory of it is not
+// constant. Before this, an agent whose context had been compacted could recover
+// it only by disconnecting and reconnecting.
+func TestTheInfoResourceReportsAttendance(t *testing.T) {
+	attended := true
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
+		Reader:   wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
+		Attended: &attended,
+	})
+	if got := h.Connect(t); got.IsError {
+		t.Fatalf("connect_reader: %s", got.Text)
+	}
+
+	sentence, _ := h.ReadInfo(t)["attendance"].(string)
+	if sentence == "" {
+		t.Fatal("attendance is missing; an agent that lost its context cannot ask again")
+	}
+	if !strings.Contains(sentence, "HUMAN IS EXPECTED") {
+		t.Errorf("attendance = %q, want the sentence that says somebody is there", sentence)
+	}
+}
+
+// The other side of the same fact. This is the one that fails towards silence if
+// it is wrong in the opposite direction -- an agent told nobody is there when
+// somebody is stops narrating to a person who can hear nothing else.
+func TestTheInfoResourceReportsAnUnattendedMachine(t *testing.T) {
+	attended := false
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{Attended: &attended})
+	if got := h.Connect(t); got.IsError {
+		t.Fatalf("connect_reader: %s", got.Text)
+	}
+
+	sentence, _ := h.ReadInfo(t)["attendance"].(string)
+	if !strings.Contains(sentence, "UNATTENDED") {
+		t.Errorf("attendance = %q, want the sentence that says the room is empty", sentence)
+	}
+}
+
+// THE ANTI-DRIFT ASSERTION. The two surfaces share SilenceCap.Sentence, which is
+// the real guarantee; this is the tripwire that fires if anyone ever renders one
+// of them separately. A shortened form here was considered and rejected (0038):
+// the sentence is written to be acted on, and an agent recovering from a
+// compaction needs the instruction more than one reading it at connect, not less.
+func TestInfoAndConnectReportTheSameAttendanceSentence(t *testing.T) {
+	attended := true
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{Attended: &attended})
+
+	connected := h.Connect(t)
+	if connected.IsError {
+		t.Fatalf("connect_reader: %s", connected.Text)
+	}
+	var result struct {
+		SilenceCap string `json:"silenceCap"`
+	}
+	connected.Decode(t, &result)
+
+	if got, _ := h.ReadInfo(t)["attendance"].(string); got != result.SilenceCap {
+		t.Errorf("the two renderings have drifted:\n  info:    %q\n  connect: %q", got, result.SilenceCap)
+	}
+}
+
+func TestAttendanceIsAbsentWithNoSession(t *testing.T) {
+	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
+
+	if got, present := h.ReadInfo(t)["attendance"]; present {
+		t.Errorf("attendance = %v, want absent: with no session there is nobody to be there", got)
 	}
 }

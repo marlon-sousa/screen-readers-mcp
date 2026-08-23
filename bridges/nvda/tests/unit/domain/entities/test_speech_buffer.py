@@ -100,13 +100,42 @@ def test_collect_since_is_not_the_settle(clock: FakeClock, speech: SpeechBuffer)
 # -- search / wait ------------------------------------------------------------
 
 
-def test_index_of_respects_exclusive_after_index(speech: SpeechBuffer) -> None:
+def test_index_of_treats_after_index_as_an_inclusive_left_edge(speech: SpeechBuffer) -> None:
 	speech.append(["alpha"])  # index 1
 	speech.append(["beta"])  # index 2
 	speech.append(["alpha again"])  # index 3
 	assert speech.index_of("alpha") == 1
-	assert speech.index_of("alpha", after_index=1) == 3
+	# THE ENTRY AT THE EDGE MATCHES. This is entry 11.29's live measurement in
+	# miniature: the bookmark names index 1, and index 1 is what must be found.
+	# It answered 3 until spec 0037 -- silently skipping the very utterance the
+	# caller was waiting for.
+	assert speech.index_of("alpha", after_index=1) == 1
 	assert speech.index_of("missing") == -1
+
+
+def test_index_of_excludes_everything_left_of_the_edge(speech: SpeechBuffer) -> None:
+	"""The other side of the boundary: inclusive must not become "from zero"."""
+	speech.append(["alpha"])  # index 1
+	speech.append(["beta"])  # index 2
+	speech.append(["alpha again"])  # index 3
+	assert speech.index_of("alpha", after_index=2) == 3
+	assert speech.index_of("alpha", after_index=4) == -1
+
+
+def test_index_of_clamps_a_negative_edge(speech: SpeechBuffer) -> None:
+	"""Without the clamp an inclusive edge would slice from the END of the list."""
+	speech.append(["alpha"])  # index 1
+	assert speech.index_of("alpha", after_index=-5) == 1
+
+
+def test_index_of_no_constraint_and_zero_agree(speech: SpeechBuffer) -> None:
+	"""Index 0 is the empty sentinel, so the two requests coincide harmlessly.
+
+	They stay distinct on the wire on purpose (see ``wait_for_speech.go``); what
+	is asserted here is only that neither can miss a real capture.
+	"""
+	speech.append(["alpha"])  # index 1
+	assert speech.index_of("alpha", after_index=0) == speech.index_of("alpha") == 1
 
 
 def test_wait_for_returns_immediately_when_already_present(clock: FakeClock, speech: SpeechBuffer) -> None:

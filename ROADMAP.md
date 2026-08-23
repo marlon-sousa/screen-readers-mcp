@@ -188,9 +188,11 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-22**:
-11.18, 11.23, 11.28, 11.29, 11.30 —
-**five entries** (11.16 is Done: `run_sequence`, spec 0036; **11.13 is Done**:
+below. **Open as of 2026-08-23**:
+11.18, 11.23, 11.28 —
+**three entries** (11.29 and 11.30 are both Done, shipped together in one PR:
+the inclusive left edge, spec 0037, and attendance you can ask for again, spec
+0038) (11.16 is Done: `run_sequence`, spec 0036; **11.13 is Done**:
 the document snapshot, spec 0026, which closed the server lane's head; **11.29 and 11.30 were
 both opened by 11.16's live run** — 11.29 a pre-existing bridge off-by-one it made
 reachable, 11.30 a fact an agent is told once and can never ask for again) (11.26 and 11.27 were both opened by the 11.11/11.17 live run,
@@ -259,7 +261,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.31** and the next free spec number is
-**0037**. (11.22–11.24 and spec 0030 were taken by the second external run on
+**0039**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
@@ -280,8 +282,11 @@ for.
 11.29 and 11.30 were both taken on 2026-08-22 by the conversation following
 11.16's live run, and **this line was not updated with them** — it still read
 11.29 on 2026-08-23, when a session asking "what is next?" was handed a number
-already spent for the second time. Corrected here by a direct push to main;
-neither entry has a spec yet, so no spec number went with them.
+already spent for the second time. Corrected by a direct push to main.
+Specs 0037 and 0038 were then taken the same day by those two entries, on the
+branch that implements both — again the case the paragraph above says to check
+for — and this line moved to 0039 with them, in the same commit, which is the
+habit the paragraph is asking for.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
@@ -1545,8 +1550,11 @@ rather than before it.
     connection stack can actually lose or delay a first reply.
     Spec: **none yet** — needs a spec conversation before implementation, like
     every other open entry.
-11.29. **E, `wait_for_speech`'s `after_index` is exclusive where every other index
-    in this system is an inclusive left edge** (lane 1; the bridge). Found by
+11.29. **Done (2026-08-23)** — E, `wait_for_speech`'s `after_index` is exclusive
+    where every other index in this system is an inclusive left edge (lane 1; the
+    bridge). Shipped in ONE PR with 11.30, at the maintainer's request: two
+    unrelated defects from the same live run, each a handful of lines, neither
+    worth holding a lane open for. Found by
     11.16's live checklist on 2026-08-22 against NVDA 2026.1.1, and **not
     introduced by it**: 11.16 only made the boundary reachable, by having a plan's
     trigger match from the plan's own start mark.
@@ -1577,11 +1585,28 @@ rather than before it.
     would feel that — or to change every description and the documented pattern to
     say "strictly after"; and, if the former, whether `wait_for_log` shares the
     shape and should move with it.
-    Spec: **none yet** — needs a spec conversation before implementation, like
-    every other open entry.
+    **Decided 2026-08-23: the comparison moves.** Two things found while writing
+    the spec settled it. The server's own fake ALREADY implements the inclusive
+    edge — `fakes/speech_reader.go` loops from `*wait.AfterIndex` — so every
+    server-side unit test has been asserting inclusive behaviour against an
+    inclusive double while the real bridge was exclusive. That is `AGENTS.md`'s
+    stated limit of hand-written fakes, *"what they cannot prove is that the real
+    adapter behaves like the fake"*, happening for real, and it means the fix
+    makes the bridge agree with what the server was already tested against. And
+    the conformance test COULD NOT have caught it: it asserted only
+    `waited.Index >= before.Index`, which passes under both edges, while its own
+    header claimed to be "the one place index arithmetic crosses the language
+    boundary". That assertion is now the discriminating one — it waits for the
+    FIRST line the gesture caused, which sits exactly at the bookmark.
+    **`wait_for_log` does NOT share the shape and did not move**: `find_since` is
+    already inclusive (`first = max(start, self._oldest_position)`) and is reached
+    by a differently-named `sincePosition`. So the entry was speech-only and
+    smaller than this board allowed for.
+    Spec: [0037](specs/0037-the-inclusive-left-edge.md) (**agreed 2026-08-23**).
 
-11.30. **E, attendance is stated once, at connect, and can never be asked for
-    again** (lane 2; the server). Opened 2026-08-22 by the conversation following
+11.30. **Done (2026-08-23)** — E, attendance is stated once, at connect, and can
+    never be asked for again (lane 2; the server). Shipped in one PR with 11.29;
+    see that entry. Opened 2026-08-22 by the conversation following
     11.16's live run, from the question "can the agent know whether the machine is
     attended?".
     **It can, and only there.** `connect_reader`'s `silenceCap` is the single place
@@ -1614,8 +1639,23 @@ rather than before it.
     without spending a tool call or asking the human for anything. Whether it
     should be the same prose in both places, or whether one of them wants a
     shorter form, is the other half of the same question.
-    Spec: **none yet** — needs a spec conversation before implementation, like
-    every other open entry.
+    **Decided 2026-08-23: `screenreader://info`, and the same sentence.** The
+    resource's own header already argued this case for a different fact — a
+    resource was chosen over `initialize.instructions` because *"instructions are
+    frozen at handshake time… a resource is read when the agent wants it and
+    always describes the session that exists now"* — and an agent recovering from
+    a compaction is that argument a second time. It also sits with `persona`,
+    which is there because "what am I driving" and "what am I standing in for" are
+    one question; "is anybody listening" is its third form. `status` was weighed
+    and lost: its fields are per-moment (`suppressing` is the one that already
+    attracts this confusion) where attendance is fixed for the session, so a
+    constant beside live readings invites re-polling. The honest counter — that a
+    lost agent reaches for a tool sooner than a resource URI — is recorded in the
+    spec's limits as a GUIDANCE question, not a reason to duplicate the fact.
+    Both surfaces render through the one `SilenceCap.Sentence`, with an
+    integration test as the tripwire.
+    Spec: [0038](specs/0038-attendance-you-can-ask-for-again.md)
+    (**agreed 2026-08-23**).
 
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture

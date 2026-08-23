@@ -68,7 +68,7 @@ Alongside the tools, the server publishes three documents a client can read:
 | Resource | What it holds |
 |---|---|
 | `screenreader://guidance` | How to drive a screen reader: the loop, and what a successful call does and does not prove. Static, so it can be read **before** connecting. |
-| `screenreader://info` | The connected reader, its version, the capture mode, its capabilities. |
+| `screenreader://info` | The connected reader, its version, the capture mode, its capabilities, and whether a human is expected at that machine. Re-readable at any time, which is the point: everything here was true at connect and is still true, so an agent that has lost its context recovers it here instead of reconnecting. |
 | `screenreader://session-record` | What this session has done, from the server's own traffic. |
 
 ## Flags

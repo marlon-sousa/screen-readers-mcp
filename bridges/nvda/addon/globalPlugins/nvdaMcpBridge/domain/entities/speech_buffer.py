@@ -108,10 +108,30 @@ class SpeechBuffer(IndexedBuffer):
 	def index_of(self, text: str, after_index: int | None = None) -> int:
 		"""First index at/after ``after_index`` whose text contains ``text``.
 
-		``after_index`` is exclusive (search starts at ``after_index + 1``),
-		matching NVDASpyLib. Returns ``-1`` when not found.
+		``after_index`` is an INCLUSIVE left edge: the entry sitting AT it can
+		match. That is this repo's convention everywhere else -- ``entries_since``,
+		``slice_since``, ``find_since`` and ``getSpeech``'s ``sinceIndex`` all
+		render a half-open window with an inclusive left edge -- and it is what
+		every description of ``waitForSpeech`` promises ("at or after this index").
+
+		It read ``after_index + 1`` until spec 0037, borrowed from NVDASpyLib,
+		whose indexing conventions are not ours. That silently discarded the FIRST
+		utterance an action caused, which is precisely the one the documented
+		bookmark-act-wait pattern is waiting for, and it failed as a timeout rather
+		than an error -- so it read as "the reader never said it" (entry 11.29).
+
+		``after_index=None`` (no constraint) and ``after_index=0`` now select the
+		same entries, and that is harmless: index 0 is the empty sentinel, so no
+		real capture is ever there. They stay two distinct requests on the wire
+		because the server keeps them distinct on purpose -- see
+		``wait_for_speech.go``.
+
+		A negative ``after_index`` is clamped into range, same as
+		``entries_since`` does with its own anchor: without the clamp the
+		inclusive edge would slice from the END of the list and report a match
+		that is not there. Returns ``-1`` when not found.
 		"""
-		first = 0 if after_index is None else after_index + 1
+		first = 0 if after_index is None else max(0, after_index)
 		with self._lock:
 			for offset, entry in enumerate(self._entries[first:]):
 				if text in self._render(entry):
