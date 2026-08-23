@@ -1,7 +1,8 @@
 # 0038 — attendance you can ask for again
 
-Status: **drafted 2026-08-23, awaiting agreement.** Board entry **11.30**, lane 2
-(the server). Opened 2026-08-22 by the conversation following 11.16's live run,
+Status: **agreed 2026-08-23.** Board entry **11.30**, lane 2 (the server), and
+**shipping in one PR with [0037](0037-the-inclusive-left-edge.md)** — see that
+spec's status note for why the two travel together. Opened 2026-08-22 by the conversation following 11.16's live run,
 from the question *"can the agent know whether the machine is attended?"*
 
 ---

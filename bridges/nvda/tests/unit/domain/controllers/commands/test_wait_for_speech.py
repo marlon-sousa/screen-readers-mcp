@@ -17,6 +17,29 @@ def test_wait_for_speech_found(clock: FakeClock) -> None:
 	assert "Find" in result.text
 
 
+def test_the_bookmark_act_wait_pattern_finds_the_first_utterance_the_action_caused(
+	clock: FakeClock,
+) -> None:
+	"""Entry 11.29, at the handler: the taught pattern must not skip its own hit.
+
+	Every description teaches bookmark, act, wait on that bookmark. Here the
+	bookmark is taken while the buffer is empty -- so it names index 1 -- and the
+	action then produces exactly one utterance, which lands AT index 1. Under the
+	exclusive edge this timed out, reporting the reader had never spoken.
+	"""
+	speech = speech_with(clock)
+	bookmark = speech.next_index()
+	ctx = make_context(clock, speech=speech)
+	speech.append(["Find dialog"])  # the action's first and only utterance
+
+	result = WaitForSpeechHandler().execute(
+		ctx, request("waitForSpeech", text="Find", afterIndex=bookmark, timeout=1.0)
+	)
+	assert result.found is True
+	assert result.index == bookmark
+	assert "Find" in result.text
+
+
 def test_wait_for_speech_not_found_returns_a_fresh_bookmark(clock: FakeClock) -> None:
 	ctx = make_context(clock, speech=speech_with(clock, "hello"))
 	result = WaitForSpeechHandler().execute(

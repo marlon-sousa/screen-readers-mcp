@@ -1,7 +1,10 @@
 # 0037 — the inclusive left edge
 
-Status: **drafted 2026-08-23, awaiting agreement.** Board entry **11.29**, lane 1
-(the bridge). Found by 11.16's live checklist on 2026-08-22 against NVDA
+Status: **agreed 2026-08-23.** Board entry **11.29**, lane 1 (the bridge), and
+**shipping in one PR with [0038](0038-attendance-you-can-ask-for-again.md)** —
+two unrelated defects from the same live run, kept together at the maintainer's
+request because each is a handful of lines and neither is worth a lane of its
+own. Found by 11.16's live checklist on 2026-08-22 against NVDA
 2026.1.1, and **not introduced by it**: `run_sequence` only made the boundary
 reachable, by having a plan's trigger match from the plan's own start mark.
 

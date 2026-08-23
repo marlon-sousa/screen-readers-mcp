@@ -641,6 +641,31 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 			waited.Index, before.Index)
 	}
 
+	// THE LEFT EDGE ITSELF (spec 0037, entry 11.29). The wait above cannot see
+	// it: secondLine lands one PAST the bookmark, so `>` and `>=` agree about it
+	// and the assertion holds under either. firstLine is the discriminating case
+	// -- it is the FIRST utterance the gesture caused, so it sits exactly AT the
+	// bookmark, and an exclusive edge skips it and times out. That is what the
+	// bridge did until 0037 while this file's own header claimed to be "the one
+	// place index arithmetic crosses the language boundary".
+	var atEdge struct {
+		Found bool `json:"found"`
+		Index int  `json:"index"`
+	}
+	harness.Call(t, "wait_for_speech", map[string]any{
+		"text":        firstLine,
+		"after_index": before.Index,
+		"timeout":     5,
+	}).Decode(t, &atEdge)
+	if !atEdge.Found {
+		t.Fatalf("wait_for_speech(after_index=%d) did not find %q, the first line the gesture caused; "+
+			"the bridge is treating the left edge as exclusive", before.Index, firstLine)
+	}
+	if atEdge.Index != before.Index {
+		t.Errorf("wait_for_speech matched %q at index %d, want the bookmark itself (%d)",
+			firstLine, atEdge.Index, before.Index)
+	}
+
 	var finished struct {
 		Finished bool `json:"finished"`
 	}
