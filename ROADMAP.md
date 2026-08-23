@@ -258,7 +258,7 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.29** and the next free spec number is
+The next free board number is **11.31** and the next free spec number is
 **0037**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
@@ -277,6 +277,11 @@ spec number went with it, since it has no spec yet.
 Spec 0036 was taken on 2026-08-22 by 11.16, drafted on that entry's branch
 before it merges — which is again the case the paragraph above says to check
 for.
+11.29 and 11.30 were both taken on 2026-08-22 by the conversation following
+11.16's live run, and **this line was not updated with them** — it still read
+11.29 on 2026-08-23, when a session asking "what is next?" was handed a number
+already spent for the second time. Corrected here by a direct push to main;
+neither entry has a spec yet, so no spec number went with them.
 This line is the one the paragraph above tells people to trust, so it is updated
 by whichever PR consumes a number.)
 
