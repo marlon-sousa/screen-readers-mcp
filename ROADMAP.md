@@ -188,9 +188,12 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-23**:
+below. **Open as of 2026-08-27**:
 11.18, 11.23, 11.28 —
-**three entries** (11.29 and 11.30 are both Done, shipped together in one PR:
+**three entries, unchanged**: 11.31 was opened and closed in one documentation
+PR and never joined this list (the four READMEs had drifted behind the shipped
+surface, one of them still teaching a rule spec 0022 retired). (11.29 and 11.30
+are both Done, shipped together in one PR:
 the inclusive left edge, spec 0037, and attendance you can ask for again, spec
 0038) (11.16 is Done: `run_sequence`, spec 0036; **11.13 is Done**:
 the document snapshot, spec 0026, which closed the server lane's head; **11.29 and 11.30 were
@@ -260,7 +263,7 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.31** and the next free spec number is
+The next free board number is **11.32** and the next free spec number is
 **0039**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
@@ -276,6 +279,10 @@ as a live hazard.
 11.28 was taken on 2026-08-21 by the AGENTS.md split, which opened it for a
 flaky test the split's own gate run surfaced and deliberately did not fix — no
 spec number went with it, since it has no spec yet.
+11.31 was taken on 2026-08-27 by the README audit, and no spec number with it
+for the same reason: a correction to documentation against the shipped surface
+decides nothing. It moved this line to 11.32 in the same commit that spent the
+number, which is the habit the paragraph above is asking for.
 Spec 0036 was taken on 2026-08-22 by 11.16, drafted on that entry's branch
 before it merges — which is again the case the paragraph above says to check
 for.
@@ -1656,6 +1663,67 @@ rather than before it.
     integration test as the tripwire.
     Spec: [0038](specs/0038-attendance-you-can-ask-for-again.md)
     (**agreed 2026-08-23**).
+11.31. **Done (2026-08-27)** — E, the READMEs describe a server we stopped
+    shipping (neither lane; documentation). An audit of all four READMEs against
+    the running surface — the 26 tool controllers in
+    `server/domain/controllers/tools/`, the 5 resource adapters in
+    `server/adapters/mcp/`, and the bridge's own command registry and dialog —
+    found them behind by between one entry and the entire Go rewrite.
+    **The worst of it was not an omission but a retired rule still taught as the
+    headline.** Both the root and the server README described capability-gated
+    tool *visibility*: four tools before a session, the rest appearing on
+    connect, withdrawn on disconnect. Spec 0022 retired that on 2026-08-19 —
+    every tool is advertised from startup and nothing is withdrawn — and the
+    server README carried it under a section header calling it *"the single most
+    confusing thing about the server"*, which is exactly how confidently wrong
+    documentation reads. This is the misconception AGENTS.md records as having
+    cost one session an entire live checklist and trapped a second, external
+    agent; leaving it in the two documents a new reader meets first was the
+    single highest-cost thing in the repo that nobody had noticed.
+    **`connect_reader`'s documented signature was wrong**, which is worse than a
+    gap because it fails on first contact: the root README named the reader, the
+    capture mode and an optional log level, while `persona` has been **required**
+    since 11.19 (spec 0029, 2026-08-17). `normalize` was undocumented too.
+    **What had shipped and was never written down**, per document:
+    - root README: `get_document_snapshot` (11.13), `set_state` (11.17),
+      `screenreader://tools` (11.22 — it said "four documents", there are five),
+      personas at all beyond one passing mention, the silence cap and attendance
+      (11.10, 11.25, 11.27, 11.30), and the fact that `press_gesture` and
+      `type_text` return their own speech window (11.12). That last one made its
+      worked example *wrong*, not merely dated: it taught press → settle → read,
+      the three-call loop 11.12 replaced, while `wait_for_speech_to_finish`'s own
+      description says in capitals that it is not the step after every action.
+      `get_next_speech_index` was described by the job it no longer has.
+    - server README: `screenreader://reader-guidance` and `screenreader://tools`
+      (it said "three documents"), persona, and the schema half of the reconnect
+      rule (11.26 / spec 0034) — including that an agent can read
+      `screenreader://tools` itself rather than asking the maintainer.
+    - bridge README: personas and the resolved-from-NVDA gesture tables (11.19,
+      11.20), `set_state` (11.17), the document snapshot (11.13), channel
+      normalisation (11.11), and the silence cap entire (11.10, 11.25, 11.27).
+      It also said the control dialog *"has four things in it"* when it has
+      seven, and that *"both preferences"* are stored when there are five. This
+      is the document that ships into the `.nvda-addon` as the Help an NVDA user
+      reads in the Add-on Manager, and the omission was the one thing a blind
+      user most needs to know before installing: that the silence has a ceiling,
+      what it is, and that they set it.
+    - `shared/README.md`: untouched since the first commit. It described the
+      server as *"desktop CPython"* — Go since spec 0013, 2026-07-22 — and rested
+      the contract on *"both sides run the exact same bytes"*, a guarantee that
+      stopped existing when the Go binding started being generated from
+      `specs/wire/v1/schema.json`. It named neither the two drift gates nor the
+      conformance tier that replaced it.
+    **Why this happened, and it is 11.18's shape rather than carelessness.**
+    Every PR flips its own ROADMAP entry because a rule says to and a reviewer
+    can see it; nothing says to update the README, and no gate can see that one
+    was not. So the board stayed accurate on main while the prose drifted for
+    three weeks, entry by entry, each PR leaving a gap too small to be worth its
+    own objection. **Recorded rather than remedied here**, because a remedy is a
+    gate and this PR is documentation: whether it can be a check at all is the
+    same open question 11.18 is on hold over, and the two should be settled
+    together rather than one inventing a mechanism the other is reconsidering.
+    Spec: none — a correction to documentation against the shipped surface,
+    adding no design decision. The audit that scoped it is in the PR body.
 
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
