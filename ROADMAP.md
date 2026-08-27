@@ -189,10 +189,13 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-27**:
-11.18, 11.23, 11.28 —
-**three entries, unchanged**: 11.31 was opened and closed in one documentation
-PR and never joined this list (the four READMEs had drifted behind the shipped
-surface, one of them still teaching a rule spec 0022 retired). (11.29 and 11.30
+11.18, 11.23 —
+**two entries**, and both are conversations rather than code: 11.18 is on hold
+and 11.23 has no spec yet. (11.28 is Done: the flaky roundtrip now reports where
+its budget went, spec 0039 — the flake itself is not fixed, and that is the
+claim. 11.31 was opened and closed in one documentation PR and never joined this
+list: the four READMEs had drifted behind the shipped surface, one of them still
+teaching a rule spec 0022 retired.) (11.29 and 11.30
 are both Done, shipped together in one PR:
 the inclusive left edge, spec 0037, and attendance you can ask for again, spec
 0038) (11.16 is Done: `run_sequence`, spec 0036; **11.13 is Done**:
@@ -264,7 +267,7 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.32** and the next free spec number is
-**0039**. (11.22–11.24 and spec 0030 were taken by the second external run on
+**0040**. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
@@ -283,6 +286,9 @@ spec number went with it, since it has no spec yet.
 for the same reason: a correction to documentation against the shipped surface
 decides nothing. It moved this line to 11.32 in the same commit that spent the
 number, which is the habit the paragraph above is asking for.
+Spec 0039 was then taken the same day by 11.28, on that entry's branch before it
+merges — again the case the paragraph above says to check for — and this line
+moved to 0040 with it, in the same commit.
 Spec 0036 was taken on 2026-08-22 by 11.16, drafted on that entry's branch
 before it merges — which is again the case the paragraph above says to check
 for.
@@ -1522,8 +1528,8 @@ rather than before it.
     control dialog's own checkbox, in both directions, and the compatibility path
     was checked against a **genuinely older bridge** — the pre-0035 build still
     installed at the start of the run, whose `HelloResult` has no such field.
-11.28. **E, a flaky integration test — the named-pipe roundtrip times out under
-    full-suite load** (neither lane; bridge tests). Observed once on 2026-08-21,
+11.28. **Done (2026-08-27)** — E, a flaky integration test — the named-pipe
+    roundtrip times out under full-suite load (neither lane; bridge tests). Observed once on 2026-08-21,
     during the `poe dev` run that gated the AGENTS.md split:
     `tests/integration/test_named_pipe_session_roundtrip.py::test_a_whole_session_over_a_real_named_pipe`
     failed with `AssertionError: no reply from the bridge within timeout`. It then
@@ -1555,8 +1561,35 @@ rather than before it.
     a real OS IPC leaf, or whether these three tests should share one helper with
     a load-tolerant budget; and only then consider whether anything in the
     connection stack can actually lose or delay a first reply.
-    Spec: **none yet** — needs a spec conversation before implementation, like
-    every other open entry.
+    **What shipped, and what deliberately did not.** The flake is not fixed; it
+    is made diagnosable, which is all spec 0039 claims. `_read_reply` was
+    BYTE-IDENTICAL in all three roundtrip tests, so it became one
+    `tests/support/roundtrip.py` — and its budget stopped being wall clock. It
+    now counts **polls that returned `Timeout`**: the question a test asks is
+    "how many chances did the bridge have to answer", and that coincides with
+    elapsed time only while this process is scheduled, which is the one
+    condition in doubt. The budget is the same size (100 polls at 0.05 s is the
+    5.0 s it replaced) because **making it more generous is the single change
+    that could hide a real fault**. A 60 s wall-clock backstop remains, since a
+    poll budget can never expire if nothing polls, and hitting it reports as a
+    different finding — the transport stopped answering, not the bridge stayed
+    silent. No production code was touched, no retry or skip was added, and the
+    connection stack was not audited: that is the entry's third step and it
+    waits for a failure that names its own site.
+    **Two things the implementation settled.** A dropped first reply is ruled
+    out by construction, not by argument — `read_message` drains buffered lines
+    before touching the transport and `_LineReader` keeps a partial across
+    polls — which removes the most attractive "real race" candidate. And the
+    eight exchanges in the failing test are not equally at risk: seven expect a
+    sub-millisecond answer, while `waitForSpeechToFinish` blocks bridge-side for
+    `SPEECH_FINISHED_SECONDS` (1.0) on a real clock, so it is the only one where
+    a scheduling delay compounds with a genuine wait. It is the one to bet on
+    and was deliberately not "fixed", since betting is what this closes.
+    Spec: [0039](specs/0039-a-flake-that-says-where-it-went.md)
+    (**agreed 2026-08-27**; rides in this entry's PR, with one amendment made
+    while implementing — the promised "was a message skipped?" element does not
+    exist, because `read_reply` returns the first non-`Timeout` message, and the
+    per-poll average took its place as the load discriminator).
 11.29. **Done (2026-08-23)** — E, `wait_for_speech`'s `after_index` is exclusive
     where every other index in this system is an inclusive left edge (lane 1; the
     bridge). Shipped in ONE PR with 11.30, at the maintainer's request: two

@@ -11,9 +11,7 @@
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
-from typing import Any
 
 from fakes.adapter_factory import FakeAdapterFactory
 from fakes.announcer import FakeAnnouncer
@@ -25,22 +23,8 @@ from fakes.user_prompter import FakeUserPrompter
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters.json_lines_channel import JsonLinesChannel
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
-from nvdaMcpBridge.domain.ports.message_channel import Timeout
 from nvdaMcpBridge.wiring import build_session
-
-
-def _request(id: int, cmd: str, **params: Any) -> p.Request:
-	return p.Request(id=id, cmd=cmd, params=dict(params))
-
-
-def _read_reply(agent: JsonLinesChannel, timeout: float = 5.0) -> dict[str, Any]:
-	"""Read past the poll-timeouts until the bridge actually answers."""
-	deadline = time.monotonic() + timeout
-	while time.monotonic() < deadline:
-		message = agent.read_message()
-		if not isinstance(message, Timeout):
-			return message
-	raise AssertionError("no reply from the bridge within timeout")
+from support.roundtrip import read_reply, request
 
 
 def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
@@ -67,8 +51,8 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 	thread.start()
 	try:
 		# Handshake.
-		agent.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
-		hello = _read_reply(agent)
+		agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+		hello = read_reply(agent, awaiting="hello")
 		assert hello["result"]["mode"] == "silent"
 		assert hello["result"]["synth"] == "espeak"
 		# The multi-reader handshake fields arrive over the real wire (entry 8).
@@ -77,12 +61,12 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 
 		# Echo an awkward payload -- byte-exact through encode/frame/decode/validate.
 		payload = {"u": "olá café \U0001f600", "nested": [1, 2, {"x": True}], "n": 3.5}
-		agent.write(_request(2, "echo", payload=payload))
-		assert _read_reply(agent)["result"]["payload"] == payload
+		agent.write(request(2, "echo", payload=payload))
+		assert read_reply(agent, awaiting="echo (id 2)")["result"]["payload"] == payload
 
 		# Scripted gesture -> speech -> wait-to-finish -> read it back.
-		agent.write(_request(3, "pressGesture", gestures=["NVDA+f7"]))
-		pressed = _read_reply(agent)["result"]
+		agent.write(request(3, "pressGesture", gestures=["NVDA+f7"]))
+		pressed = read_reply(agent, awaiting="pressGesture (id 3)")["result"]
 		# Spec 0025: the gesture reply already carries what it caused, so the
 		# act/settle/listen loop is one round trip here rather than three. The
 		# settle and the read below still run because both commands still
@@ -93,22 +77,25 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		assert pressed["state"]["speechMode"] == "talk"
 		# Silent mode has no exact finish now (the synth is untouched), so this
 		# resolves on the buffer's ~1s elapsed heuristic -- give it room.
-		agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))
-		assert _read_reply(agent, timeout=6.0)["result"]["finished"] is True
-		agent.write(_request(5, "getSpeech", sinceIndex=0))
+		agent.write(request(4, "waitForSpeechToFinish", timeout=3.0))
+		assert (
+			read_reply(agent, awaiting="waitForSpeechToFinish (id 4)", polls=120)["result"]["finished"]
+			is True
+		)
+		agent.write(request(5, "getSpeech", sinceIndex=0))
 		# One entry per utterance, each with its own index and journal position
 		# (spec 0021) -- the joined blob is gone, so the assertion looks per entry.
-		entries = _read_reply(agent)["result"]["entries"]
+		entries = read_reply(agent, awaiting="getSpeech (id 5)")["result"]["entries"]
 		assert any("Elements list dialog" in entry["text"] for entry in entries)
 		assert all("index" in entry and "logPosition" in entry for entry in entries)
 
 		# Announce a hint through the (fake) synth -- bridge->human channel.
-		agent.write(_request(6, "announce", text="pressing bye now"))
-		assert _read_reply(agent)["result"] == {"ok": True}
+		agent.write(request(6, "announce", text="pressing bye now"))
+		assert read_reply(agent, awaiting="announce (id 6)")["result"] == {"ok": True}
 
 		# -- askUser / waitForUserReply (spec 0016) --------------------------
-		agent.write(_request(7, "askUser", prompt="plug in the display"))
-		ask_reply = _read_reply(agent)["result"]
+		agent.write(request(7, "askUser", prompt="plug in the display"))
+		ask_reply = read_reply(agent, awaiting="askUser (id 7)")["result"]
 		ticket = ask_reply["ticket"]
 		assert len(ticket) == 12
 		# Speech suppression is suspended while the window is open.
@@ -116,8 +103,8 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		assert len(user_prompter.presented) == 1
 
 		# Poll once before the answer -- answered=false, window still open.
-		agent.write(_request(8, "waitForUserReply", ticket=ticket, timeout=0.0))
-		poll1 = _read_reply(agent)["result"]
+		agent.write(request(8, "waitForUserReply", ticket=ticket, timeout=0.0))
+		poll1 = read_reply(agent, awaiting="waitForUserReply (id 8)")["result"]
 		assert poll1["answered"] is False
 
 		# The human answers (simulating the ack gesture via the entity).
@@ -126,8 +113,8 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		prompt.answer()
 
 		# Poll again -- answered=true, speech resumed, prompt cleared.
-		agent.write(_request(9, "waitForUserReply", ticket=ticket, timeout=0.0))
-		poll2 = _read_reply(agent)["result"]
+		agent.write(request(9, "waitForUserReply", ticket=ticket, timeout=0.0))
+		poll2 = read_reply(agent, awaiting="waitForUserReply (id 9)")["result"]
 		assert poll2["answered"] is True
 		assert factory.speech_source.resumed == 1
 		assert session.session_context.get_outstanding_prompt() is None
@@ -137,15 +124,15 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		factory.config_accessor.seed(["speech", "synth"], "espeak")
 
 		# getFocusInfo from the seeded fake.
-		agent.write(_request(10, "getFocusInfo"))
-		focus = _read_reply(agent)["result"]
+		agent.write(request(10, "getFocusInfo"))
+		focus = read_reply(agent, awaiting="getFocusInfo (id 10)")["result"]
 		assert focus["name"] == "Test Button"
 		assert focus["role"] == "BUTTON"
 		assert focus["states"] == ["FOCUSABLE", "FOCUSED"]
 
 		# getState from the seeded fake.
-		agent.write(_request(11, "getState"))
-		state_reply = _read_reply(agent)
+		agent.write(request(11, "getState"))
+		state_reply = read_reply(agent, awaiting="getState (id 11)")
 		assert state_reply is not None, "no reply for getState"
 		assert state_reply.get("error") is None, f"getState error: {state_reply.get('error')}"
 		state = state_reply["result"]
@@ -154,18 +141,18 @@ def test_a_whole_session_over_the_wire(tmp_path: Path) -> None:
 		assert state["sleepMode"] is False
 
 		# getConfig reads a pre-seeded key.
-		agent.write(_request(12, "getConfig", keyPath=["speech", "synth"]))
-		config_read = _read_reply(agent)["result"]
+		agent.write(request(12, "getConfig", keyPath=["speech", "synth"]))
+		config_read = read_reply(agent, awaiting="getConfig (id 12)")["result"]
 		assert config_read == {"value": "espeak"}
 
 		# setConfig writes and returns the prior value.
-		agent.write(_request(13, "setConfig", keyPath=["speech", "synth"], value="sapi5"))
-		config_write = _read_reply(agent)["result"]
+		agent.write(request(13, "setConfig", keyPath=["speech", "synth"], value="sapi5"))
+		config_write = read_reply(agent, awaiting="setConfig (id 13)")["result"]
 		assert config_write == {"value": "espeak"}
 
 		# Bye -> ack, then teardown stops capture (speech would flow again).
-		agent.write(_request(14, "bye"))
-		assert _read_reply(agent)["result"] == {"ok": True}
+		agent.write(request(14, "bye"))
+		assert read_reply(agent, awaiting="bye (id 14)")["result"] == {"ok": True}
 	finally:
 		thread.join(timeout=5.0)
 
@@ -218,24 +205,24 @@ def _guidance_over_a_session(tmp_path: Path, *personas: str) -> tuple[str, ...]:
 		thread.start()
 		try:
 			agent.write(
-				_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION, persona=persona)
+				request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION, persona=persona)
 			)
-			hello = _read_reply(agent)
+			hello = read_reply(agent, awaiting="hello")
 			# The handshake SUCCEEDS whatever the persona is -- including one this
 			# bridge has never heard of (protocol.md §4).
 			assert hello["result"]["mode"] == "silent"
 			assert p.Capability.GUIDANCE.value in hello["result"]["capabilities"]
 
-			agent.write(_request(2, "getGuidance"))
-			guidance = _read_reply(agent)["result"]
+			agent.write(request(2, "getGuidance"))
+			guidance = read_reply(agent, awaiting="getGuidance (id 2)")["result"]
 			# Echoed as received, and answered for the session's own persona:
 			# there is no parameter to have got wrong.
 			assert guidance["persona"] == persona
 			assert guidance["recognised"] is (persona != "auditor")
 			texts.append(guidance["text"])
 
-			agent.write(_request(3, "bye"))
-			_read_reply(agent)
+			agent.write(request(3, "bye"))
+			read_reply(agent, awaiting="bye (id 3)")
 		finally:
 			thread.join(timeout=5.0)
 	return tuple(texts)
