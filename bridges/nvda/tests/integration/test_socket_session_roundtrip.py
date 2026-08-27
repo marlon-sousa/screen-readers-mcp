@@ -31,22 +31,8 @@ from nvdaMcpBridge.adapters.socket_transport import SocketTransport
 from nvdaMcpBridge.adapters.tcp_listener import TcpListener
 from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 from nvdaMcpBridge.domain.controllers.session import Session
-from nvdaMcpBridge.domain.ports.message_channel import Timeout
 from nvdaMcpBridge.wiring import build_session
-
-
-def _request(id: int, cmd: str, **params: Any) -> p.Request:
-	return p.Request(id=id, cmd=cmd, params=dict(params))
-
-
-def _read_reply(agent: JsonLinesChannel, timeout: float = 5.0) -> dict[str, Any]:
-	"""Read past the poll-timeouts until the bridge actually answers."""
-	deadline = time.monotonic() + timeout
-	while time.monotonic() < deadline:
-		message = agent.read_message()
-		if not isinstance(message, Timeout):
-			return message
-	raise AssertionError("no reply from the bridge within timeout")
+from support.roundtrip import read_reply, request, wait_until
 
 
 def _dial(endpoint: str | None) -> JsonLinesChannel:
@@ -54,15 +40,6 @@ def _dial(endpoint: str | None) -> JsonLinesChannel:
 	host, port = endpoint.rsplit(":", 1)
 	client = socket.create_connection((host, int(port)), timeout=5.0)
 	return JsonLinesChannel(SocketTransport(client))
-
-
-def _wait_until(predicate: Any, timeout: float = 2.0) -> None:
-	deadline = time.monotonic() + timeout
-	while time.monotonic() < deadline:
-		if predicate():
-			return
-		time.sleep(0.005)
-	raise AssertionError("condition not met within timeout")
 
 
 def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
@@ -95,18 +72,18 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 		# -- first session ---------------------------------------------------
 		agent = _dial(endpoint)
 		try:
-			agent.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
-			hello = _read_reply(agent)
+			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+			hello = read_reply(agent, awaiting="hello")
 			assert hello["result"]["mode"] == "silent"
 			assert hello["result"]["reader"] == {"name": "nvda", "version": "2026.1.0"}
 			assert hello["result"]["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 
 			payload = {"u": "olá café \U0001f600", "nested": [1, 2, {"x": True}]}
-			agent.write(_request(2, "echo", payload=payload))
-			assert _read_reply(agent)["result"]["payload"] == payload
+			agent.write(request(2, "echo", payload=payload))
+			assert read_reply(agent, awaiting="echo (id 2)")["result"]["payload"] == payload
 
-			agent.write(_request(3, "pressGesture", gestures=["NVDA+f7"]))
-			pressed = _read_reply(agent)["result"]
+			agent.write(request(3, "pressGesture", gestures=["NVDA+f7"]))
+			pressed = read_reply(agent, awaiting="pressGesture (id 3)")["result"]
 			# Spec 0025: the gesture reply already carries what it caused, so the
 			# act/settle/listen loop is one round trip here rather than three. The
 			# settle and the read below still run because both commands still
@@ -115,33 +92,42 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 			assert any("Elements list dialog" in e["text"] for e in pressed["speech"])
 			assert pressed["speechTo"] > pressed["speechFrom"]
 			assert pressed["state"]["speechMode"] == "talk"
-			agent.write(_request(4, "waitForSpeechToFinish", timeout=3.0))
-			assert _read_reply(agent, timeout=6.0)["result"]["finished"] is True
-			agent.write(_request(5, "getSpeech", sinceIndex=0))
+			agent.write(request(4, "waitForSpeechToFinish", timeout=3.0))
+			assert (
+				read_reply(agent, awaiting="waitForSpeechToFinish (id 4)", polls=120)["result"]["finished"]
+				is True
+			)
+			agent.write(request(5, "getSpeech", sinceIndex=0))
 			# One entry per utterance since spec 0021, not a joined blob.
-			entries = _read_reply(agent)["result"]["entries"]
+			entries = read_reply(agent, awaiting="getSpeech (id 5)")["result"]["entries"]
 			assert any("Elements list dialog" in entry["text"] for entry in entries)
 
-			agent.write(_request(6, "bye"))
-			assert _read_reply(agent)["result"] == {"ok": True}
+			agent.write(request(6, "bye"))
+			assert read_reply(agent, awaiting="bye")["result"] == {"ok": True}
 		finally:
 			agent.close()
 
 		# The session ended (bye) and the server is accepting again, no restart.
-		_wait_until(lambda: server.status.state is ServerState.LISTENING)
+		wait_until(
+			lambda: server.status.state is ServerState.LISTENING,
+			awaiting="the server to accept again",
+		)
 		assert factories[0].speech_source.stopped == 1
 
 		# -- second session, same server -------------------------------------
 		agent = _dial(endpoint)
 		try:
-			agent.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
-			assert _read_reply(agent)["result"]["mode"] == "silent"
-			agent.write(_request(2, "bye"))
-			assert _read_reply(agent)["result"] == {"ok": True}
+			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+			assert read_reply(agent, awaiting="hello")["result"]["mode"] == "silent"
+			agent.write(request(2, "bye"))
+			assert read_reply(agent, awaiting="bye")["result"] == {"ok": True}
 		finally:
 			agent.close()
 
-		_wait_until(lambda: server.status.state is ServerState.LISTENING)
+		wait_until(
+			lambda: server.status.state is ServerState.LISTENING,
+			awaiting="the server to accept again",
+		)
 		assert len(factories) == 2
 		assert factories[1].speech_source.stopped == 1
 	finally:
@@ -201,19 +187,23 @@ def test_an_abruptly_reset_client_does_not_kill_the_server(tmp_path: Path) -> No
 		# Open a session, then abort the connection with a RST (SO_LINGER 0).
 		raw = socket.create_connection((host, int(port)), timeout=5.0)
 		agent = JsonLinesChannel(SocketTransport(raw))
-		agent.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
-		_read_reply(agent)
+		agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+		read_reply(agent, awaiting="hello")
 		raw.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
 		raw.close()  # -> RST to the bridge
 
 		# The server survives: back to LISTENING, and a fresh session still works.
-		_wait_until(lambda: server.status.state is ServerState.LISTENING, timeout=5.0)
+		wait_until(
+			lambda: server.status.state is ServerState.LISTENING,
+			awaiting="the server to accept again",
+			timeout=5.0,
+		)
 		agent2 = _dial(endpoint)
 		try:
-			agent2.write(_request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
-			assert _read_reply(agent2)["result"]["mode"] == "silent"
-			agent2.write(_request(2, "bye"))
-			assert _read_reply(agent2)["result"] == {"ok": True}
+			agent2.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
+			assert read_reply(agent2, awaiting="hello")["result"]["mode"] == "silent"
+			agent2.write(request(2, "bye"))
+			assert read_reply(agent2, awaiting="bye")["result"] == {"ok": True}
 		finally:
 			agent2.close()
 	finally:
