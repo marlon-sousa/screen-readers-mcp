@@ -43,10 +43,69 @@ no developer could run them, and the first sign of a failure was a red PR.
 repo red with no commit of ours behind it, and the bisect begins by hunting for
 a change that does not exist.
 
+## The server is everywhere; a bridge is somewhere
+
+**Every server task runs on every host, with no guard and no skip** — build,
+vet, unit and integration tests, gofmt, staticcheck, the wire-binding gate, the
+Linux cross-build and the conformance tier. That is a requirement rather than an
+observation: a host where the server does not build is a host this project does
+not support. The server's one host-shaped part, the named-pipe transport, is
+handled by Go's own build tags and needs nothing from `poe`.
+
+**A bridge is different, because a bridge follows its reader.** NVDA and JAWS are
+Windows, VoiceOver is macOS, TalkBack is Android behind a host SDK. So each
+bridge declares its own requirements, in its own `pyproject.toml`, split by
+tier:
+
+| Tier | The question it answers |
+|---|---|
+| `headless` | can I run its tests here? |
+| `package` | can I build its shippable artifact here? |
+| `live` | can I drive the real reader here? |
+
+For the NVDA bridge the answers are: anywhere, anywhere, and Windows only. Its
+domain is stdlib-only Python with NVDA behind ports, and scons is pure Python, so
+only the last one is actually Windows-bound.
+
+```sh
+uv run poe bridges          # every bridge, every tier, RUNS or SKIP with its reason
+BRIDGES=nvda uv run poe doctor   # narrow to one bridge deliberately
+```
+
+**And each tier declares its own commands**, so `poe bridge`, `bridge-types`,
+`bridge-lint`, `sync`, `build-bridge`, `live` and `live-slow` are one dispatcher
+(`scripts/bridge_task.py`) running what the selected bridges declare. They used
+to name `bridges/nvda` in their own command strings, which meant `poe
+bridge-types` type-checked the NVDA bridge on a machine where nobody was working
+it. The commands have to live with the bridge anyway, because a bridge is not
+necessarily a uv project: NVDA's tests are pytest under uv, and a VoiceOver
+bridge in Go or Swift will be neither.
+
+With `BRIDGES` unset, a bridge is selected when it can do **any** of its work
+here — which is what makes a fresh macOS checkout pick up a macOS bridge with
+nothing configured, and a typo in `BRIDGES` an error rather than a silent
+selection of nothing.
+
+Two consequences you will see:
+
+- **The doctor prints `SKIP`.** A check that does not apply here says so, with
+  its reason (`not applicable on macos`, `NVDA itself runs only on Windows`),
+  because the first question anyone has on a new host is "what is *not* being
+  checked?" — and silence cannot answer it. A skip never affects the exit code.
+- **`poe live` refuses** on a host where no selected bridge declares a live
+  tier, instead of running pytest, matching no tests and printing a green
+  "0 selected" that reads exactly like a pass. It is the only bridge task that
+  refuses: for `test`, `types` and `lint`, having nothing to do because you are
+  not working that bridge here is a success, and reporting it as a failure would
+  turn `poe types` red on a perfectly good checkout.
+
+The reasoning, the evidence and what adding Linux would cost are in
+[spec 0042](../specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md).
+
 ## Rebuild the server binary after touching `server/`
 
 **Rebuild the server binary after touching `server/`.** `.mcp.json` spawns
-`server/screenreader-mcp.exe`, so an agent that edits Go code and then drives
+`server/screenreader-mcp` (`.exe` on Windows), so an agent that edits Go code and then drives
 the MCP tools is testing the OLD server against the NEW bridge. The symptom is
 a field simply missing from a result, which reads as "the bridge did not send
 it" rather than "your binary predates it" -- that is exactly how `bridgeVersion`
@@ -198,9 +257,12 @@ go -C server vet ./...
 go -C server generate ./adapters/wire         # regenerate the binding from the schema
 
 # Cross-language conformance: the built binary against the REAL Python bridge,
-# over a real named pipe and real loopback TCP. Windows; needs a Python 3.13 on
-# PATH (or CONFORMANCE_PYTHON set to one). It FAILS rather than skips if it
-# cannot reach the real bridge -- that is the whole point of the tier.
+# over real loopback TCP -- and, on Windows only, a real named pipe as well (that
+# scenario is //go:build conformance && windows, since both transports' leaves
+# are). Needs a Python 3.13 on PATH, or CONFORMANCE_PYTHON set to one; `poe` puts
+# the workspace venv's 3.13 on PATH, so usually neither is anything you do. It
+# FAILS rather than skips if it cannot reach the real bridge -- that is the whole
+# point of the tier.
 go -C server test -tags conformance -count=1 ./tests/conformance/
 
 # NVDA addon: copy the shared module in, then run headless tests + pyright.
@@ -209,6 +271,6 @@ go -C server test -tags conformance -count=1 ./tests/conformance/
 py -3.13 bridges/nvda/sync_shared.py
 uv run --directory bridges/nvda pytest       # headless domain tests
 uv run --directory bridges/nvda pyright
-# builds: prefer `uv run poe build-server` / `build-addon` (same commands, one entry point)
+# builds: prefer `uv run poe build-server` / `build-bridge` (same commands, one entry point)
 cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
 ```

@@ -67,13 +67,13 @@ need [Go](https://go.dev/dl/) 1.25+, [uv](https://docs.astral.sh/uv/), and NVDA
 uv run poe build-server
 ```
 
-You get `server/screenreader-mcp.exe` — one statically linked file with no
-runtime to install.
+You get `server/screenreader-mcp` — `server/screenreader-mcp.exe` on Windows —
+one statically linked file with no runtime to install.
 
 ### 2. Build and install the add-on
 
 ```sh
-uv run poe build-addon
+uv run poe build-bridge
 ```
 
 Open the resulting `nvdaMcpBridge-<version>.nvda-addon` with NVDA and restart
@@ -94,7 +94,10 @@ and shows what the bridge is doing right now.
 For Claude Code:
 
 ```sh
+# Windows
 claude mcp add --scope user screenreader -- C:\path\to\screen-readers-mcp\server\screenreader-mcp.exe
+# macOS / Linux
+claude mcp add --scope user screenreader -- /path/to/screen-readers-mcp/server/screenreader-mcp
 ```
 
 No arguments are needed: the binary ships knowing where our bridges listen.

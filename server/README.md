@@ -21,8 +21,12 @@ uv run poe build-server
 or directly:
 
 ```sh
-go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp
+go -C server build -o screenreader-mcp ./cmd/screenreader-mcp      # macOS, Linux
+go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp  # Windows
 ```
+
+The `poe` task computes that suffix from the host, which is why it is a script
+rather than a one-liner (`scripts/build_server.py`, spec 0042).
 
 Statically linked (`CGO_ENABLED=0`, no cgo dependencies), so the artifact is one
 file that runs with no runtime installed.
@@ -32,7 +36,10 @@ file that runs with no runtime installed.
 For Claude Code, user-wide:
 
 ```sh
+# Windows
 claude mcp add --scope user screenreader -- C:\path\to\screen-readers-mcp\server\screenreader-mcp.exe
+# macOS / Linux
+claude mcp add --scope user screenreader -- /path/to/screen-readers-mcp/server/screenreader-mcp
 ```
 
 Any MCP client works the same way: it launches this executable and talks to it

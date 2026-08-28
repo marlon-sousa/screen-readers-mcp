@@ -23,10 +23,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from support.platforms import skip_module_unless_windows
 
 #: Every test here drives a REAL NVDA on this machine -- gestures, typed
 #: text, config changes. Excluded from the default run; see pyproject.toml.
 pytestmark = pytest.mark.live_nvda
+
+# And the marker is NOT enough on its own: it deselects these tests only after
+# this module has been imported, and the import below reaches an adapter whose
+# module body calls ctypes.WinDLL. On a non-Windows host that is a collection
+# error, not a deselection. Spec 0042, decision 6.
+skip_module_unless_windows("dials a real named pipe, which is a Win32 facility")
 
 from nvdaMcpBridge import protocol as p
 from nvdaMcpBridge.adapters import named_pipe_transport
@@ -237,7 +244,14 @@ def test_silent_session_captures_a_gesture_and_finishes() -> None:
 	try:
 		_hello(agent, "silent")
 		start = agent.result("getNextSpeechIndex")["index"]
-		assert agent.result("pressGesture", gestures=[SPEAKING_GESTURE]) == {"ok": True}
+		# Spec 0025: the reply already carries what the key caused, so it is no
+		# longer a bare {"ok": True}. `pressed` says which gestures went out and
+		# the ring span each landed in; the getSpeech below still runs because
+		# that command is what this test covers, not because it is still the way
+		# to learn what a key said.
+		pressed = agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		assert [press["gesture"] for press in pressed["pressed"]] == [SPEAKING_GESTURE]
+		assert pressed["speechTo"] >= pressed["speechFrom"] >= start
 		assert agent.result("waitForSpeechToFinish", timeout=3.0)["finished"] is True
 		speech = agent.result("getSpeech", sinceIndex=start)
 		spoken = "\n".join(entry["text"] for entry in speech["entries"])

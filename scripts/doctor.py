@@ -34,11 +34,18 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from platforms import ANY_HOST, HOST, SERVER_BINARY_NAME, Host, supports
+
+from bridges import UnknownBridge, selected, undeclared
+
 ROOT = Path(__file__).resolve().parent.parent
 
-#: The MCP server binary `.mcp.json` spawns. Named once, here, because
-#: redeploy.py imports the staleness check below rather than restating it.
-BINARY = ROOT / "server" / "screenreader-mcp.exe"
+#: The MCP server binary an MCP client spawns. Named once, here, because
+#: redeploy.py imports the staleness check below rather than restating it. The
+#: FILENAME comes from platforms.py -- `.exe` on Windows, bare elsewhere -- so
+#: that the doctor, the build and the redeploy can never disagree about which
+#: file they are talking about.
+BINARY = ROOT / "server" / SERVER_BINARY_NAME
 
 #: The Python projects, and the dev tools each must be able to run.
 PY_PROJECTS = ("shared", "bridges/nvda")
@@ -54,7 +61,12 @@ def on_ci() -> bool:
 	return bool(os.environ.get("CI"))
 
 
-OK, WARN, FAIL = "ok", "warn", "fail"
+# SKIP is a fourth outcome, and it exists because SILENCE WAS THE ALTERNATIVE.
+# A doctor that simply omits the checks that do not apply to this host cannot be
+# read as a statement about the machine -- and the first question anyone has on a
+# new host is precisely "what is NOT being checked here?". A skip prints, with
+# its reason, and never affects the exit code. Only FAIL does.
+OK, WARN, FAIL, SKIP = "ok", "warn", "fail", "skip"
 
 
 @dataclass
@@ -82,71 +94,86 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 # -- checks -------------------------------------------------------------------
 
 
-#: (binary, required, minimum, why it matters, how to get it).
+#: How to check one external binary, wherever it is wanted.
 #:
-#: "Required" means you cannot work the repo without it; everything else
-#: degrades one named task and is reported as a warning.
-#:
-#: A minimum of None means "presence is all we can check" -- gettext's Windows
-#: builds report version strings that do not order sensibly against the GNU
-#: ones, and a comparison that gives wrong answers is worse than no comparison.
-BINARIES = (
-	(
-		"uv",
-		True,
+#: The version floor and the advice live in ONE table, because the same tool can
+#: be wanted by the repo itself and by a bridge's tier -- and a floor that
+#: differed between the two would be a floor nobody could state. A bridge
+#: declares the NAME of a tool it needs; what "new enough" means stays here.
+@dataclass(frozen=True)
+class Tool:
+	#: None means "presence is all we can check" -- gettext's Windows builds
+	#: report version strings that do not order sensibly against the GNU ones,
+	#: and a comparison that gives wrong answers is worse than no comparison.
+	minimum: tuple[int, ...] | None
+	why: str
+	fix: str
+
+
+TOOLS: dict[str, Tool] = {
+	"uv": Tool(
 		(0, 5, 0),
 		"runs every Python task; 0.5 is where dependency-groups landed",
 		"https://docs.astral.sh/uv/getting-started/",
 	),
-	(
-		"go",
-		True,
+	"go": Tool(
 		(1, 25, 0),
 		"builds and tests the MCP server; the minimum is server/go.mod's own",
 		"https://go.dev/dl/",
 	),
-	("git", True, (2, 30), "version control", "https://git-scm.com/downloads"),
-	(
-		"rg",
-		True,
+	"git": Tool((2, 30), "version control", "https://git-scm.com/downloads"),
+	"rg": Tool(
 		(13, 0),
 		"without it a search falls back to grep -r, which does NOT honour "
 		".gitignore and so reads .venv and __pycache__ -- thousands of "
 		"irrelevant lines per search",
-		"winget install BurntSushi.ripgrep.MSVC",
+		"winget install BurntSushi.ripgrep.MSVC  |  brew install ripgrep",
 	),
-	(
-		"scons",
-		False,
-		(4, 0),
-		"builds the .nvda-addon",
-		"pip install scons  (into the interpreter you build addons with)",
-	),
-	(
-		"msgfmt",
-		False,
-		None,
-		"gettext: scons compiles the addon's .po files into .mo with it",
-		"winget install GnuWin32.GetText  (or the gettext-tools MSYS2 package)",
-	),
-	("xgettext", False, None, "gettext: extracts the addon's translatable strings", "same as msgfmt"),
-	(
-		"gh",
-		False,
+	"gh": Tool(
 		(2, 55),
 		"PR and issue work. BELOW 2.55 `gh pr edit` fails with the Projects-classic "
 		"deprecation error and every body/title edit needs a REST workaround",
-		"winget upgrade GitHub.cli",
+		"winget upgrade GitHub.cli  |  brew install gh",
 	),
-	(
-		"pwsh",
-		False,
+	"pwsh": Tool(
 		(7, 0),
-		"PowerShell 7. The Windows PowerShell 5.1 this box defaults to has no "
+		"PowerShell 7. The Windows PowerShell 5.1 that box defaults to has no "
 		"&& or ||, and wraps every native stderr line in a multi-line ErrorRecord "
 		"-- verbose, slow to read, and it reports failure on exit code 0",
 		"winget install Microsoft.PowerShell",
 	),
+	"scons": Tool(
+		(4, 0),
+		"builds a bridge's shippable artifact",
+		"uv tool install scons --with markdown",
+	),
+	"msgfmt": Tool(
+		None,
+		"gettext: scons compiles a bridge's .po files into .mo with it",
+		"winget install GnuWin32.GetText  |  brew install gettext",
+	),
+	"xgettext": Tool(None, "gettext: extracts a bridge's translatable strings", "same as msgfmt"),
+}
+
+#: (tool, required, hosts) -- what the REPO needs, whatever bridge you work on.
+#:
+#: "Required" means you cannot work the repo without it; everything else degrades
+#: one named task and is reported as a warning.
+#:
+#: `hosts` is ANY_HOST unless the tool is only meaningful somewhere, and a tool
+#: that is not meaningful here is SKIPPED rather than warned about: `pwsh` exists
+#: to replace a shell only Windows has, so warning a macOS box about it is noise
+#: -- and noise trains people to ignore the whole report.
+#:
+#: A BRIDGE's build tools are deliberately not here. They are declared by the
+#: bridge, per tier, and checked in check_bridges(). See spec 0042, decision 2.
+CORE_TOOLS: tuple[tuple[str, bool, tuple[str, ...]], ...] = (
+	("uv", True, (ANY_HOST,)),
+	("go", True, (ANY_HOST,)),
+	("git", True, (ANY_HOST,)),
+	("rg", True, (ANY_HOST,)),
+	("gh", False, (ANY_HOST,)),
+	("pwsh", False, (Host.WINDOWS,)),
 )
 
 
@@ -163,37 +190,44 @@ def _version_of(text: str) -> tuple[int, ...] | None:
 	return tuple(int(part) for part in match.group(1).split("."))
 
 
-def check_binaries() -> list[Result]:
-	"""Everything the workspace shells out to, required or not."""
+def _check_tool(name: str, required: bool, label: str | None = None) -> Result:
+	"""Is this binary present, and new enough? Shared by the core and bridge checks."""
+	spec = TOOLS[name]
+	shown = label or name
+	if shutil.which(name) is None:
+		return Result(FAIL if required else WARN, shown, f"not on PATH -- {spec.why}", spec.fix)
+	# `go` spells it `go version`, not `go --version`.
+	code, banner = _run([name, "version"] if name == "go" else [name, "--version"])
+	if code != 0 or not banner:
+		return Result(WARN, shown, "present, but would not report a version", spec.fix)
+	first = banner.splitlines()[0].strip()
+	found = _version_of(banner)
+	minimum = spec.minimum
+	# A FLOOR, never a pin: anything at or above the minimum passes, so a newer
+	# toolchain is always fine. Pad the found version to the minimum's length
+	# first, or a two-part 1.25 would compare as older than a three-part 1.25.0
+	# and fail a version that satisfies it.
+	padded = (found + (0,) * len(minimum))[: len(minimum)] if (minimum and found) else None
+	if padded and minimum and padded < minimum:
+		want = ".".join(str(part) for part in minimum)
+		return Result(
+			FAIL if required else WARN,
+			shown,
+			f"{first} -- below the {want} this repo needs. {spec.why}",
+			spec.fix,
+		)
+	return Result(OK, shown, first)
+
+
+def check_core_tools() -> list[Result]:
+	"""Everything the workspace shells out to, whatever bridge you are working on."""
 	out: list[Result] = []
-	for name, required, minimum, why, fix in BINARIES:
-		if shutil.which(name) is None:
-			out.append(Result(FAIL if required else WARN, name, f"not on PATH -- {why}", fix))
+	for name, required, hosts in CORE_TOOLS:
+		if not supports(hosts):
+			where = ", ".join(str(host) for host in hosts)
+			out.append(Result(SKIP, name, f"not applicable on {HOST} -- wanted only on {where}"))
 			continue
-		# `go` spells it `go version`, not `go --version`.
-		code, banner = _run([name, "version"] if name == "go" else [name, "--version"])
-		if code != 0 or not banner:
-			out.append(Result(WARN, name, "present, but would not report a version", fix))
-			continue
-		shown = banner.splitlines()[0].strip()
-		found = _version_of(banner)
-		# A FLOOR, never a pin: anything at or above the minimum passes, so a
-		# newer toolchain is always fine. Pad the found version to the
-		# minimum's length first, or a two-part 1.25 would compare as older
-		# than a three-part 1.25.0 and fail a version that satisfies it.
-		padded = (found + (0,) * len(minimum))[: len(minimum)] if (minimum and found) else None
-		if padded and padded < minimum:
-			want = ".".join(str(part) for part in minimum)
-			out.append(
-				Result(
-					FAIL if required else WARN,
-					name,
-					f"{shown} -- below the {want} this repo needs. {why}",
-					fix,
-				)
-			)
-		else:
-			out.append(Result(OK, name, shown))
+		out.append(_check_tool(name, required))
 	return out
 
 
@@ -250,6 +284,77 @@ def check_addon_build_deps() -> list[Result]:
 					f'"{interpreter}" -m pip install {module}',
 				)
 			)
+	return out
+
+
+def check_bridges() -> list[Result]:
+	"""Each selected bridge: which of its tiers run here, and what those tiers need.
+
+	The SERVER is deliberately absent from this section and always will be. It is
+	built and tested on every host with no guard, and no bridge has an opinion
+	about it (spec 0042, decision 1). What genuinely varies per machine is what you
+	can do with a BRIDGE, because that follows the reader: NVDA and JAWS are
+	Windows, VoiceOver is macOS, TalkBack is Android behind a host SDK.
+
+	A tier's tools are checked as WARNINGS even when the tier runs here. The FAIL
+	bar in this file is "believing any other result would be a mistake", and a
+	missing packaging tool does not make a test lie -- it stops you packaging.
+	"""
+	out: list[Result] = []
+	for name in undeclared():
+		out.append(
+			Result(
+				FAIL,
+				f"bridges/{name}",
+				"no [tool.screen-readers-mcp.bridge] declaration -- nothing about it is checked",
+				f"add the block to bridges/{name}/pyproject.toml, as bridges/nvda does",
+			)
+		)
+	try:
+		chosen = selected()
+	except UnknownBridge as exc:
+		out.append(Result(FAIL, "BRIDGES", str(exc), "unset BRIDGES, or name a directory under bridges/"))
+		return out
+	if not chosen:
+		out.append(
+			Result(
+				WARN,
+				"bridges",
+				f"no bridge declares any work on {HOST}; the server half is still fully checked",
+				"uv run poe bridges  (what each bridge declares, and where it runs)",
+			)
+		)
+		return out
+
+	#: tool -> the first tier that asked for it, so one missing binary is reported
+	#: once with a name that says who wanted it.
+	wanted: dict[str, str] = {}
+	for bridge in chosen:
+		for tier in bridge.tiers:
+			label = f"{bridge.name}: {tier.name}"
+			if not tier.runs_here():
+				why = tier.reason or f"declared for {', '.join(tier.hosts) or 'no host'}"
+				out.append(Result(SKIP, label, why))
+				continue
+			out.append(Result(OK, label, f"can {tier.question} here"))
+			for tool in tier.tools:
+				wanted.setdefault(tool, label)
+	for tool, wanted_by in sorted(wanted.items()):
+		if tool not in TOOLS:
+			out.append(
+				Result(
+					FAIL,
+					tool,
+					f"{wanted_by} declares a tool this doctor has no check for",
+					"add it to TOOLS in scripts/doctor.py, with its floor and its fix",
+				)
+			)
+			continue
+		out.append(_check_tool(tool, required=False, label=f"{wanted_by}: {tool}"))
+	# The scons INTERPRETER's imports are only a question once something wants
+	# scons at all, so the check rides along rather than being asked everywhere.
+	if "scons" in wanted:
+		out += check_addon_build_deps()
 	return out
 
 
@@ -335,6 +440,14 @@ def check_pyright_venv_config() -> list[Result]:
 	return out + _check_root_pyright_config()
 
 
+def _venv_root(path: str) -> Path | None:
+	"""The `.venv` directory an extraPath points inside, if it names one."""
+	parts = Path(path).parts
+	if ".venv" not in parts:
+		return None
+	return ROOT.joinpath(*parts[: parts.index(".venv") + 1])
+
+
 def _check_root_pyright_config() -> list[Result]:
 	"""The repo-root pyrightconfig.json is what an LSP at the root reads.
 
@@ -357,7 +470,8 @@ def _check_root_pyright_config() -> list[Result]:
 		config = json.loads(path.read_text(encoding="utf-8"))
 	except ValueError as exc:
 		return [Result(FAIL, "root pyright config", f"unparseable -- {exc}")]
-	roots = {env.get("root") for env in config.get("executionEnvironments", [])}
+	environments = config.get("executionEnvironments", [])
+	roots = {env.get("root") for env in environments}
 	missing = [project for project in PY_PROJECTS if project not in roots]
 	if missing:
 		return [
@@ -368,7 +482,44 @@ def _check_root_pyright_config() -> list[Result]:
 				"add one with that root, its pythonVersion, and its .venv site-packages",
 			)
 		]
-	return [Result(OK, "root pyright config", "covers every Python project")]
+
+	# An execution environment cannot carry its own `venv`, only `extraPaths`, so
+	# each one names a venv's site-packages BY PATH -- and that path is
+	# host-shaped: `.venv/Lib/site-packages` on Windows,
+	# `.venv/lib/python3.13/site-packages` on POSIX. Both are listed, since
+	# pyright ignores an extraPath that does not exist.
+	#
+	# WHICH IS EXACTLY WHY THIS CHECK EXISTS. "Ignores what is missing" means a
+	# wrong path costs nothing at parse time and everything at analysis time: on
+	# macOS, before spec 0042, all three environments named only the Windows
+	# layout and a root run reported 331 errors where the gates report none. A
+	# silent extraPath needs a loud check, or the config drifts again the next
+	# time a layout does.
+	blind: list[str] = []
+	for env in environments:
+		listed = [path for path in env.get("extraPaths", []) if "site-packages" in path]
+		venvs = {venv for venv in (_venv_root(path) for path in listed) if venv is not None}
+		if not any(venv.is_dir() for venv in venvs):
+			# A venv that has not been CREATED yet is not a config error, and
+			# calling it one makes this check fire on every CI runner: each job
+			# builds only the project environments its own task needs, so
+			# `shared/.venv` does not exist while the bridge job runs. (It fired
+			# on both new jobs the first time this shipped.) check_dev_tools owns
+			# "your venv is missing"; this check owns "your paths name the wrong
+			# LAYOUT", which can only be asked where there is a venv to name.
+			continue
+		if listed and not any((ROOT / path).is_dir() for path in listed):
+			blind.append(f"{env.get('root')} ({', '.join(listed)})")
+	if blind:
+		return [
+			Result(
+				FAIL,
+				"root pyright config",
+				f"no site-packages path resolves on this host for: {'; '.join(blind)}",
+				"add this host's venv layout to that executionEnvironment's extraPaths",
+			)
+		]
+	return [Result(OK, "root pyright config", "covers every Python project, and resolves here")]
 
 
 def check_dev_tools() -> list[Result]:
@@ -435,22 +586,47 @@ def check_trampolines() -> list[Result]:
 
 
 def check_conformance_python() -> Result:
-	"""The conformance tier spawns a real Python 3.13 to host the bridge."""
+	"""The conformance tier spawns a real Python 3.13 to host the bridge.
+
+	This MIRRORS the Go test's own search -- `pythonInterpreter` and `probePython`
+	in server/tests/conformance/python_bridge_test.go: CONFORMANCE_PYTHON first as
+	a space-separated command, then `python`, `python3.13`, `python3`, and the `py`
+	launcher only on Windows; the floor is `sys.version_info >= (3, 13)`.
+
+	It has to mirror it, because it speaks FOR it. This check used to look for the
+	Windows `py` launcher and nothing else, so on macOS it warned that the tier
+	would fail while the tier itself passed -- `poe` puts the workspace venv's 3.13
+	on PATH and the Go probe finds it. A doctor that is wrong about a passing tier
+	is worse than one that says nothing about it.
+	"""
+	probe = "import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)"
 	override = os.environ.get("CONFORMANCE_PYTHON")
-	if override:
-		code, out = _run([override, "--version"])
-		if code == 0:
-			return Result(OK, "conformance python", f"CONFORMANCE_PYTHON={out}")
-		return Result(FAIL, "conformance python", f"CONFORMANCE_PYTHON={override} does not run", "")
-	if shutil.which("py"):
-		code, out = _run(["py", "-3.13", "--version"])
-		if code == 0:
-			return Result(OK, "conformance python", out or "py -3.13")
+	if override and override.strip():
+		command = override.split()
+		if _run([*command, "-c", probe])[0] == 0:
+			version = _run([*command, "--version"])[1].splitlines()
+			shown = version[0] if version else override
+			return Result(OK, "conformance python", f"CONFORMANCE_PYTHON={shown}")
+		return Result(
+			FAIL,
+			"conformance python",
+			f"CONFORMANCE_PYTHON={override} is not a Python 3.13 that runs",
+			"unset it and let the tier find one, or point it at a real 3.13",
+		)
+	candidates = [["python"], ["python3.13"], ["python3"]]
+	if HOST is Host.WINDOWS:
+		candidates.append(["py", "-3.13"])
+	for candidate in candidates:
+		if shutil.which(candidate[0]) is None:
+			continue
+		if _run([*candidate, "-c", probe])[0] == 0:
+			shown = _run([*candidate, "--version"])[1].splitlines()
+			return Result(OK, "conformance python", f"{' '.join(candidate)} -- {shown[0] if shown else 'ok'}")
 	return Result(
 		WARN,
 		"conformance python",
-		"no py -3.13 found; the conformance tier will fail rather than skip",
-		"install Python 3.13, or set CONFORMANCE_PYTHON to one",
+		"no Python 3.13 on PATH; the conformance tier will fail rather than skip",
+		"py -3.13" if HOST is Host.WINDOWS else "uv python install 3.13, or set CONFORMANCE_PYTHON",
 	)
 
 
@@ -611,9 +787,9 @@ def main() -> int:
 	# The REPO checks below the guard are asked everywhere, because they are
 	# facts about the checkout rather than about the machine.
 	if not on_ci():
-		results += check_binaries()
+		results += check_core_tools()
 		results.append(check_bare_python())
-		results += check_addon_build_deps()
+		results += check_bridges()
 		results.append(check_server_binary())
 	results += check_pyright_venv_config()
 	results.append(check_shared_synced())
@@ -632,7 +808,11 @@ def main() -> int:
 		# Nothing to say: the gate passed and the real task is what matters.
 		return 0
 
-	marks = {OK: "PASS", WARN: "WARN", FAIL: "FAIL"}
+	marks = {OK: "PASS", WARN: "WARN", FAIL: "FAIL", SKIP: "SKIP"}
+	# The host is printed even when nothing is wrong, because every SKIP below
+	# is only readable against it: "not applicable on macos" means nothing if
+	# you cannot see which machine answered.
+	print(f"host: {HOST}\n")
 	width = max(len(r.check) for r in results)
 	for result in results:
 		print(f"  {marks[result.status]}  {result.check.ljust(width)}  {result.detail}")
@@ -640,6 +820,7 @@ def main() -> int:
 			print(f"        {' ' * width}  -> {result.fix}")
 
 	warnings = [r for r in results if r.status == WARN]
+	skipped = [r for r in results if r.status == SKIP]
 	print()
 	if failures:
 		print(f"{len(failures)} check(s) FAILED. Fix these before trusting any other result --")
@@ -647,7 +828,8 @@ def main() -> int:
 		if not args.fix:
 			print("Many are repaired by:  uv run poe fix")
 		return 1
-	print(f"Environment is sound ({len(warnings)} warning(s)). Safe to work.")
+	tail = f", {len(skipped)} not applicable here" if skipped else ""
+	print(f"Environment is sound ({len(warnings)} warning(s){tail}). Safe to work.")
 	return 0
 
 

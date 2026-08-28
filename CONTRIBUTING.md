@@ -42,15 +42,56 @@ the NVDA source where the tooling and the next reviewer expect to find it.
 
 ## Prerequisites
 
+The list splits in two, and the split is the point: **the server is developed and
+tested on every host, unconditionally** — a machine where it does not build is a
+machine this project does not support. A **bridge** works where its reader does,
+and each bridge declares that for itself. See
+[spec 0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md).
+
+Run `uv run poe bridges` at any time to see what your machine can actually do.
+
+### Every host — Windows, macOS, Linux
+
 | Requirement | Version | Why |
 |---|---|---|
-| **Windows** | 10/11 | The add-on and any live test need it. The server and the shared wire binding are cross-platform, but the full system is driven on Windows. |
-| **Go** | 1.25+ (matches `server/go.mod`) | Builds the server. Static binary — `CGO_ENABLED=0`, no C toolchain needed. |
-| **[uv](https://docs.astral.sh/uv/)** | current | Runs and isolates every Python part (shared wire, bridge tests, schema generation). |
-| **Python** | 3.13 (`py -3.13`) | Matches NVDA's embedded interpreter. Prefer `uv run` or `py -3.13` over a bare `python`, whose meaning varies per machine — `uv run poe doctor` reports what yours actually resolves to. |
+| **Go** | **1.25.x** (matches `server/go.mod`) | Builds the server. Static binary — `CGO_ENABLED=0`, no C toolchain needed. **Pin 1.25, do not take "or newer":** the pinned `staticcheck@2025.1.1` cannot read Go 1.27's export data and `poe go-staticcheck` fails with `internal error in importing ... export data version 4`. CI pins 1.25 too. |
+| **[uv](https://docs.astral.sh/uv/)** | current (0.5+) | Runs and isolates every Python part (shared wire, bridge tests, schema generation). On macOS use the [standalone installer](https://docs.astral.sh/uv/getting-started/) rather than Homebrew, whose `uv` formula has no bottle for every macOS and will build llvm and rust from source. |
+| **Python** | 3.13 | Matches NVDA's embedded interpreter. `uv python install 3.13` is enough; you do not need it on `PATH`, because `uv run` provisions it. Prefer `uv run` over a bare `python`, whose meaning varies per machine — `uv run poe doctor` reports what yours resolves to. |
+| **ripgrep** | 13+ | Searches honour `.gitignore`; `grep -r` does not, and `.venv` is enormous. |
+| **git** | 2.30+ | Version control. |
+| **[GitHub CLI](https://cli.github.com/)** | 2.55+ | Optional. PR and issue work; below 2.55 `gh pr edit` fails on the Projects-classic deprecation. |
+
+### Per bridge
+
+A bridge's requirements are declared in its own `pyproject.toml`, under
+`[tool.screen-readers-mcp.bridge]`, so this table follows from that file rather
+than duplicating it. Today there is one bridge.
+
+| For the **NVDA** bridge | Version | Needed for |
+|---|---|---|
+| **scons + python-markdown** | scons 4+ | Building the `.nvda-addon`. `uv tool install scons --with markdown` installs both into one interpreter. Works on any host. |
+| **gettext** (`msgfmt`, `xgettext`) | any | Same — scons compiles the add-on's translations with it. `brew install gettext` on macOS. |
+| **Windows** | 10/11 | **Only** for the `live` tier: installing the add-on and driving a real NVDA. Its headless tests and its `.nvda-addon` build run on macOS and Linux too. |
 | **NVDA (installed)** | **2026.1.0** or later | The minimum supported version (`bridges/nvda/buildVars.py`, `addon_minimumNVDAVersion`). A live test needs a running copy. |
-| **NVDA source checkout** | tag `release-2026.1` | **Required.** The reference for reading real NVDA APIs. See below. |
-| **scons + add-on build deps** | per `bridges/nvda/` | Builds the `.nvda-addon`. `uv run poe build-addon` drives it. |
+| **NVDA source checkout** | tag `release-2026.1` | The reference for reading real NVDA APIs. See below. |
+| **PowerShell 7** (`pwsh`) | 7+ | Optional, Windows only. Windows PowerShell 5.1 has no `&&`/`||` and reports failure on exit code 0. |
+
+### Setting up on macOS
+
+Verified on macOS 15, x86_64, with Homebrew at `/usr/local`:
+
+```sh
+brew install go@1.25 ripgrep gh gettext
+echo 'export PATH="/usr/local/opt/go@1.25/bin:$PATH"' >> ~/.bash_profile
+curl -LsSf https://astral.sh/uv/install.sh | sh          # NOT brew install uv
+uv python install 3.13
+uv tool install scons --with markdown                    # only to build the .nvda-addon
+uv run poe fix && uv run poe doctor
+```
+
+A healthy macOS doctor reports **0 warnings and 2 skips** — `pwsh`, and the NVDA
+bridge's `live` tier — each naming its own reason. `poe live` refuses here rather
+than running pytest and matching nothing.
 
 ## The NVDA source checkout
 
@@ -244,7 +285,7 @@ default endpoints (`--print-default-config` shows them).
 ### 2. Build and install the add-on
 
 ```sh
-uv run poe build-addon    # syncs the shared wire module in, then packages
+uv run poe build-bridge   # syncs the shared wire module in, then packages
 ```
 
 Open the built `nvdaMcpBridge-<version>.nvda-addon` with NVDA and restart when
@@ -280,7 +321,7 @@ run it with no scenario to list them all.
 A quick connectivity check, which also proves `announce` is audible, is:
 
 ```sh
-py -3.13 scripts/live_test.py ./server/screenreader-mcp.exe smoke
+py -3.13 scripts/live_test.py ./server/screenreader-mcp.exe smoke   # Windows; NVDA is the only live reader today
 ```
 
 If you hear the announcement, the whole chain is wired up. Which scenarios to run
@@ -304,6 +345,10 @@ server by creating a **`.mcp.json`** at the repo root:
 }
 ```
 
+On macOS or Linux the command is `"./server/screenreader-mcp"` — the binary
+carries the host's own convention for naming an executable, and nothing more
+(spec 0042).
+
 The command is **relative**, so it resolves to whatever binary you built in your
 own checkout — no per-machine path to edit. This file is **git-ignored on
 purpose**: it is yours, not the repo's, so it never clobbers a `.mcp.json` you
@@ -313,7 +358,9 @@ your existing `mcpServers`** rather than replacing the file.
 Two things must be true before the tools appear:
 
 - You have **built the server binary** (step 1 above); the relative command only
-  resolves if `./server/screenreader-mcp.exe` exists in your checkout.
+  resolves if `./server/screenreader-mcp.exe` exists in your checkout (on macOS
+  or Linux, `./server/screenreader-mcp` — the binary carries the host's own
+  executable convention, spec 0042).
 - Claude Code loads project MCP servers at **startup** and asks you to **approve**
   them, so **restart it**, then approve `screen-reader-testing` when prompted —
   only then do the `mcp__screen-reader-testing__*` tools appear.

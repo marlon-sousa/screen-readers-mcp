@@ -44,6 +44,7 @@ The split exists for a reason: the server must survive NVDA restarts, since rest
    ```
    uv run poe build-server
    claude mcp add --scope user screenreader -- <checkout>\server\screenreader-mcp.exe
+   (on macOS or Linux the binary has no .exe suffix)
    ```
 
    The server takes no arguments: it ships knowing where this add-on listens. Ask the agent to list readers, then to connect to one.
