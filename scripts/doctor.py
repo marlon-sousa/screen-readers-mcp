@@ -440,6 +440,14 @@ def check_pyright_venv_config() -> list[Result]:
 	return out + _check_root_pyright_config()
 
 
+def _venv_root(path: str) -> Path | None:
+	"""The `.venv` directory an extraPath points inside, if it names one."""
+	parts = Path(path).parts
+	if ".venv" not in parts:
+		return None
+	return ROOT.joinpath(*parts[: parts.index(".venv") + 1])
+
+
 def _check_root_pyright_config() -> list[Result]:
 	"""The repo-root pyrightconfig.json is what an LSP at the root reads.
 
@@ -490,6 +498,16 @@ def _check_root_pyright_config() -> list[Result]:
 	blind: list[str] = []
 	for env in environments:
 		listed = [path for path in env.get("extraPaths", []) if "site-packages" in path]
+		venvs = {venv for venv in (_venv_root(path) for path in listed) if venv is not None}
+		if not any(venv.is_dir() for venv in venvs):
+			# A venv that has not been CREATED yet is not a config error, and
+			# calling it one makes this check fire on every CI runner: each job
+			# builds only the project environments its own task needs, so
+			# `shared/.venv` does not exist while the bridge job runs. (It fired
+			# on both new jobs the first time this shipped.) check_dev_tools owns
+			# "your venv is missing"; this check owns "your paths name the wrong
+			# LAYOUT", which can only be asked where there is a venv to name.
+			continue
 		if listed and not any((ROOT / path).is_dir() for path in listed):
 			blind.append(f"{env.get('root')} ({', '.join(listed)})")
 	if blind:

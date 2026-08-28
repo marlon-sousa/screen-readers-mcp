@@ -1805,7 +1805,13 @@ rather than before it.
     config's `ignore` list instead — beside the NVDA edge already there for the
     same kind of reason — and lose no coverage, since the bridge's own config
     still analyses them under its own (top-level, and correct) Windows setting.
-    Root **0 errors**; `poe bridge-types` unchanged at 0.
+    Root **0 errors**; `poe bridge-types` unchanged at 0. The doctor check that
+    guards this was itself **too strict on its first push**, turning both the
+    `nvda-bridge` and the new `portable` job red: a CI job builds only the
+    project venvs its own task needs, so `shared/.venv` does not exist while the
+    bridge job runs, and "no site-packages resolves" is not a config error there.
+    It now asks the question only where a venv exists — which is the first thing
+    the new macOS job earned, three minutes after it was added.
     **The structure, which is the part that outlives macOS.** The organising rule
     is that **the server is built and tested on every host unconditionally** —
     a requirement, not an observation — while **a bridge works where its reader

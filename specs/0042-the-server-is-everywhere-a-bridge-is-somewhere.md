@@ -298,9 +298,19 @@ Two changes, and the second replaces what this decision first said.
 pyright ignores an `extraPath` that does not exist, so listing both is correct on
 both hosts and wrong on neither. That is also its weakness — a path that stops
 existing fails silently, which is how this got to 331 errors unnoticed. So
-`_check_root_pyright_config` is extended: **every execution environment must have
-at least one `site-packages` extraPath that exists on this machine**, and a FAIL
-says which one does not.
+`_check_root_pyright_config` is extended: **every execution environment whose
+venv exists must have at least one `site-packages` extraPath that exists on this
+machine**, and a FAIL says which one does not.
+
+"Whose venv exists" is not a hedge, and it was learned the expensive way: the
+first push of this PR turned **both** the `nvda-bridge` and `portable` jobs red,
+because a CI job builds only the project environments its own task needs — so
+`shared/.venv` genuinely does not exist while the bridge job runs, and the check
+called that a broken config. A missing venv is `check_dev_tools`'s question;
+this check owns "your paths name the wrong **layout**", which can only be asked
+where there is a venv to name. Verified both ways: with `shared/.venv` moved
+aside the doctor is silent and exits 0, and with a deliberately wrong
+`site-packages` path it still FAILs and names it.
 
 **The Win32 leaves.** With the layout fixed, 132 errors remained on macOS, all in
 `named_pipe_transport.py` and `named_pipe_listener.py`, all about `ctypes.WinDLL`
