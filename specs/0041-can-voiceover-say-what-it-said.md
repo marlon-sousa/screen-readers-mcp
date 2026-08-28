@@ -454,8 +454,34 @@ change, which is the same action A1 proper needs. Until then, **restoring the
 voice is a human action in VoiceOver Utility**, and any bridge on this route must
 be designed for that.
 
-**C4 — does audio pass-through work? — NOT YET RUN.** Now the critical path, per
-C2.
+**C4 — does audio pass-through work? (pass, outside the extension; unproven
+inside it)** The unit no longer renders silence. Each utterance's SSML is
+re-spoken with an ordinary Apple voice and those samples are returned, so
+capturing does not cost the user their speech. Silence is still available, but it
+is now **opt-in** behind a marker file rather than the default — the default
+cannot be the setting that mutes a screen reader.
+
+Measured by driving the re-synthesis directly, three consecutive utterances in
+pt-BR on macOS 15.0:
+
+| | |
+|---|---|
+| Re-spoken with | `com.apple.eloquence.pt-BR.Reed`, chosen automatically |
+| Added latency, first sample | 0.218 s, 0.216 s, 0.220 s |
+| Wall time for ~2 s of speech | 0.28 s, 0.30 s, 0.26 s |
+| Audio | 22050 Hz mono float32, peak ≈ 0.57, no clipping, audibly intelligible |
+| Realtime contention drops | 0 |
+
+Two details are load-bearing rather than incidental. The re-synthesis voice is
+chosen by **excluding any voice whose identifier ends in ours**, so re-entrancy
+is impossible by construction rather than by naming an Apple voice that may not
+exist on another machine. And the language comes from the SSML's `xml:lang`, not
+from what our voice declares: VoiceOver speaks the user's language, so trusting
+our own declaration would have re-spoken Portuguese with an English voice.
+
+**What this does not yet prove** is that `AVSpeechSynthesizer` works *inside* the
+sandboxed extension, where the measurement above did not run. That, and the ~0.22
+s latency's effect on a reader in use, are answered by the same run as A1 proper.
 
 ### Group D — what the fallback costs
 

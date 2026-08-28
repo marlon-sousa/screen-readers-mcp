@@ -174,7 +174,12 @@ fi
 codesign --force --sign - --timestamp=none "$APP"
 
 echo "== compiling probe"
-swiftc -target "$TARGET" -o "$BUILD/probe" Sources/Probe/main.swift
+# The probe compiles the audio-unit sources IN, rather than linking the
+# framework, so it can exercise PassThrough directly without those types having
+# to be public for the sake of a test.
+swiftc -target "$TARGET" \
+	-framework AVFoundation -framework AudioToolbox \
+	-o "$BUILD/probe" Sources/Probe/main.swift Sources/Voice/*.swift
 
 echo "== built $APP (sandbox=$SANDBOX network=$NETWORK in-process=$IN_PROCESS)"
 codesign -dv --entitlements - "$EXT" 2>&1 | sed 's/^/   /'
