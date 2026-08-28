@@ -1,8 +1,8 @@
 # Redeploy the MCP server binary: kill every running copy, then rebuild.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
-# WHY THIS EXISTS: `go build -o server/screenreader-mcp.exe` fails while the
-# binary is running -- Windows locks a loaded image against being overwritten --
+# WHY THIS EXISTS: rebuilding the server fails while the binary is running --
+# Windows locks a loaded image against being overwritten --
 # and with stdio MCP there is no single server to ask nicely. Each CLIENT spawns
 # its OWN process, so a session with two agents attached has two copies of the
 # same exe holding the same file, and no shared endpoint to shut down. An HTTP
@@ -20,10 +20,18 @@
 # The cost is real and deliberate (Marlon's call): EVERY agent's connection to
 # this binary dies, not just the one asking. That is why the run reports each pid
 # it killed, and why --dry-run exists to check the targeting first.
+#
+# ON POSIX the file-locking half of the argument does not apply -- a running
+# executable can be replaced, and `go build` writes a new file and renames it
+# anyway -- but the KILLING half still does, and it is the half that matters:
+# clients respawn their own servers, so a copy left running is a copy still
+# serving the code this task exists to replace.
 
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import subprocess
 import sys
 import time
@@ -35,7 +43,9 @@ from pathlib import Path
 # disagreement whose symptom would be dev passing and the doctor failing on the
 # same unchanged tree. scripts/ is sys.path[0] when either file is run directly,
 # so this is a plain sibling import needing no package.
+from build_server import build
 from doctor import BINARY, stale_server_binary
+from platforms import HOST, Host
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,11 +63,15 @@ def running_copies() -> list[tuple[int, str]]:
 
 	Matched on the executable's PATH, not merely its name: another checkout of
 	this project, or an installed copy elsewhere, is somebody else's server and
-	must not be killed because it happens to share a filename. CIM rather than
-	the deprecated wmic.
+	must not be killed because it happens to share a filename.
 	"""
+	return _windows_copies() if HOST is Host.WINDOWS else _posix_copies()
+
+
+def _windows_copies() -> list[tuple[int, str]]:
+	"""CIM rather than the deprecated wmic."""
 	script = (
-		"Get-CimInstance Win32_Process -Filter \"Name='screenreader-mcp.exe'\" | "
+		f"Get-CimInstance Win32_Process -Filter \"Name='{BINARY.name}'\" | "
 		'ForEach-Object { "$($_.ProcessId)|$($_.ExecutablePath)" }'
 	)
 	code, out = _run(["powershell", "-NoProfile", "-Command", script])
@@ -75,6 +89,77 @@ def running_copies() -> list[tuple[int, str]]:
 	return found
 
 
+def _executable_of(pid: int, reported: str) -> str:
+	"""The real path behind a pid, as well as this host can answer it.
+
+	Linux answers exactly, through /proc/<pid>/exe. macOS has no /proc, but its
+	`ps -o comm` already prints the full path, so the reported value IS the
+	answer there. The weaker case -- a `ps` that reports only a basename -- falls
+	back to that basename and will therefore not match BINARY's full path, so it
+	kills nothing rather than killing the wrong thing.
+	"""
+	try:
+		return os.readlink(f"/proc/{pid}/exe")
+	except OSError:
+		return reported
+
+
+def _posix_copies() -> list[tuple[int, str]]:
+	"""`ps` across every user's processes, then narrowed to this exact file.
+
+	Matched by resolved path, like the Windows branch. It is a weaker match than
+	Win32's ExecutablePath -- a process that rewrote its own argv or exec'd
+	through a symlink could evade it -- and that is accepted rather than papered
+	over: this is a dev tool killing dev servers.
+	"""
+	code, out = _run(["ps", "-Ao", "pid=,comm="])
+	if code != 0:
+		print(f"  could not enumerate processes: {out}", file=sys.stderr)
+		return []
+	found: list[tuple[int, str]] = []
+	for line in out.splitlines():
+		pid_text, _, reported = line.strip().partition(" ")
+		if not pid_text.isdigit():
+			continue
+		reported = reported.strip()
+		if Path(reported).name != BINARY.name:
+			continue
+		path = _executable_of(int(pid_text), reported)
+		try:
+			if Path(path).resolve() == BINARY.resolve():
+				found.append((int(pid_text), path))
+		except OSError:
+			continue
+	return found
+
+
+def _posix_kill(pid: int, grace: float = 5.0) -> str:
+	"""SIGTERM, then SIGKILL if it is still there.
+
+	SIGTERM first because the server's exit is what the bridge reads as teardown,
+	and teardown is what unregisters the speech filter -- the invariant this whole
+	tool is arranged around. SIGKILL only after the grace period, because a
+	server that will not leave is worse than an abrupt one: the bridge treats a
+	dropped connection as teardown either way.
+	"""
+	try:
+		os.kill(pid, signal.SIGTERM)
+	except OSError as exc:
+		return f"could not kill ({exc})"
+	deadline = time.monotonic() + grace
+	while time.monotonic() < deadline:
+		try:
+			os.kill(pid, 0)
+		except OSError:
+			return "killed"
+		time.sleep(0.1)
+	try:
+		os.kill(pid, signal.SIGKILL)
+	except OSError as exc:
+		return f"could not kill ({exc})"
+	return "killed (SIGKILL, it ignored SIGTERM)"
+
+
 def _is_replaceable() -> bool:
 	"""Whether the binary can be overwritten right now.
 
@@ -82,6 +167,10 @@ def _is_replaceable() -> bool:
 	makes this a direct test of the thing we actually care about -- rather than
 	inferring it from a process list that may be a moment out of date, since a
 	handle is released slightly after the process disappears.
+
+	On POSIX it is essentially always true, and deliberately still asked: the
+	answer is the same shape, the wait loop below simply returns immediately, and
+	there is no second code path to keep honest.
 	"""
 	if not BINARY.exists():
 		return True
@@ -103,8 +192,11 @@ def kill_all(dry_run: bool) -> int:
 		if dry_run:
 			print(f"  WOULD kill pid {pid} ({path})")
 			continue
-		code, out = _run(["taskkill", "/F", "/PID", str(pid)])
-		state = "killed" if code == 0 else f"could not kill ({out})"
+		if HOST is Host.WINDOWS:
+			code, out = _run(["taskkill", "/F", "/PID", str(pid)])
+			state = "killed" if code == 0 else f"could not kill ({out})"
+		else:
+			state = _posix_kill(pid)
 		print(f"  pid {pid}: {state}")
 	return len(copies)
 
@@ -145,17 +237,6 @@ def remove_binary(timeout: float = 10.0) -> bool:
 			print(f"  could not delete the binary: {exc}", file=sys.stderr)
 			return False
 	return not BINARY.exists()
-
-
-def build() -> bool:
-	print("  building server/screenreader-mcp.exe")
-	code, out = _run(
-		["go", "-C", "server", "build", "-o", "screenreader-mcp.exe", "./cmd/screenreader-mcp"],
-		cwd=ROOT,
-	)
-	if out:
-		print("  " + out.replace("\n", "\n  "))
-	return code == 0
 
 
 def main() -> int:

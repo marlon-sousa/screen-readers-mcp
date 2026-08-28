@@ -266,8 +266,15 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.32** and the next free spec number is
-**0040**. (11.22–11.24 and spec 0030 were taken by the second external run on
+The next free board number is **11.35** and the next free spec number is
+**0043**. Three unmerged branches account for the gap, which is exactly the case
+the paragraph above describes: 11.32, 11.33 and spec 0040 were taken on
+2026-08-27 by the observation stream, on the branch that also re-cut 0017; spec
+**0041** was taken the same day by the VoiceOver capture spike, on its own branch
+and with **no board number**, because where a VoiceOver bridge sits is a lane
+question the board has not answered and claiming a number for it would decide
+that by accident; and 11.34 with spec 0042 were taken on 2026-08-28 by the macOS
+host work, which moved this line in the same commit that spent them. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
 instance that proves the rule below: PR #68 took the number and left this line
@@ -1758,6 +1765,85 @@ rather than before it.
     Spec: none — a correction to documentation against the shipped surface,
     adding no design decision. The audit that scoped it is in the PR body.
 
+11.34. **Done (2026-08-28)** — neither lane (dev tooling, tests, CI), the server
+    is everywhere and a bridge is somewhere. Opened on 2026-08-28 by the first
+    attempt to work this repo from macOS, and closed in the same session.
+    **What was actually broken was small, and what was WRONG was larger.** Of the
+    whole task list, exactly one thing failed: `poe bridge` aborted during
+    collection, because `test_named_pipe_session_roundtrip.py` and
+    `test_live_nvda_pipe_e2e.py` import an adapter whose module body calls
+    `ctypes.WinDLL`. `shared`, `types`, `lint`, `go` (including `-tags
+    integration`), `gates`, `conformance` and even the `.nvda-addon` build were already
+    green on macOS — the Go half had been written portable on purpose, with
+    `//go:build conformance && windows` and a `py`-launcher candidate added only
+    `if runtime.GOOS == "windows"`. What was wrong was the PYTHON tooling's
+    silent Windows assumptions: the doctor warned about `pwsh` (a Windows
+    PowerShell 5.1 concern), and warned that the conformance tier would fail for
+    want of a `py` launcher **while the tier itself passed** — the Go probe finds
+    the workspace venv's 3.13 on `PATH`, so the doctor was speaking for a tier
+    without asking that tier's question. `redeploy.py` enumerated processes with
+    `Get-CimInstance` and killed with `taskkill`, so on macOS it silently killed
+    nothing and reported success.
+    **The most expensive finding was the one nobody could have seen from
+    Windows.** The repo-root `pyrightconfig.json` — the file whose entire job is
+    to give an editor or LSP the same view the gates have — reported **331
+    errors** on macOS where the gates report none, in two independent ways.
+    First, its `extraPaths` named `.venv/Lib/site-packages`, the Windows venv
+    layout; both layouts are now listed, and the doctor FAILS when no
+    `site-packages` path in an execution environment resolves on this machine,
+    because "pyright ignores an extraPath that does not exist" is precisely what
+    let this rot unseen. That took it to 132 — all of them `ctypes.WinDLL` and
+    `ctypes.WinError` in the two Win32 adapters. The cause of those: **an
+    `executionEnvironment`'s `pythonPlatform` does not drive the `sys.platform`
+    narrowing typeshed gates those symbols on; only the top-level one does.** The
+    config had said `"pythonPlatform": "Windows"` in the `bridges/nvda`
+    environment, where it did nothing, and on Windows the top-level default is
+    Windows anyway, so the dead setting was invisibly redundant. Setting it at the
+    TOP level does give 0 errors, and was **rejected**: the root config covers
+    `shared/` too, and a file saying "analyse this whole repo as Windows" makes a
+    claim about the repo that is not true. The two Win32 leaves joined the root
+    config's `ignore` list instead — beside the NVDA edge already there for the
+    same kind of reason — and lose no coverage, since the bridge's own config
+    still analyses them under its own (top-level, and correct) Windows setting.
+    Root **0 errors**; `poe bridge-types` unchanged at 0.
+    **The structure, which is the part that outlives macOS.** The organising rule
+    is that **the server is built and tested on every host unconditionally** —
+    a requirement, not an observation — while **a bridge works where its reader
+    does and declares that itself**, in its own `pyproject.toml`, split into
+    `headless` / `package` / `live` tiers with a `reason` the doctor prints when
+    it skips one. NVDA declares "tests anywhere, package anywhere, live on
+    Windows"; only the last is genuinely Windows-bound. The doctor gained a
+    fourth status, `SKIP`, because a check silently omitted cannot be read as a
+    statement about the machine. `poe bridges` prints the registry; `poe live`
+    refuses where no selected bridge has a live tier instead of matching no tests
+    and reporting green; `BRIDGES=nvda` narrows deliberately.
+    **The tasks are dispatched, not hard-coded** — which reverses what the spec
+    first said. `poe bridge-types` named `bridges/nvda` in its own command
+    string, so on a host where nobody is working the NVDA bridge it type-checked
+    it anyway: "the NVDA bridge" and "a bridge" were the same thing, which is the
+    conflation the entry exists to remove. So each tier declares its own
+    COMMANDS too, and `scripts/bridge_task.py` runs them for every selected
+    bridge that can, `SKIP`ping the rest. The commands can only live with the
+    bridge, because a bridge is not necessarily a uv project — a VoiceOver bridge
+    in Go or Swift will be neither pytest nor uv. Doing nothing is a SUCCESS for
+    `test`/`types`/`lint` (you are not working that bridge here) and a FAILURE
+    for `live` alone, which is why only `live` passes `--require`.
+    `build-addon` became `build-bridge`: "addon" is NVDA's word for its own
+    artifact.
+    **Measured on macOS 15, x86_64** — doctor 6 warnings → **0 warnings and 2
+    skips**; `poe bridge` collection error → **588 passed, 3 skipped**; root
+    pyright **331 → 0**. CI gained a `portable` matrix job running `uv run poe
+    ci` on `macos-latest`, whose first run is also this repo's first evidence
+    about Apple Silicon; the four Windows job names and their runner are
+    untouched, so branch protection is unaffected and making `portable` required
+    is a separate, later settings edit. **Adding Linux is one word in that
+    matrix** — that claim is the structure's own test, and it is a claim rather
+    than a measurement: no Linux run has happened.
+    Spec: [0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md)
+    (**agreed 2026-08-28**; rides in this entry's PR, with two amendments made
+    while implementing — the `live` guard asks the bridge registry for a tier
+    rather than `platforms.py` for an OS name, and decision 7 gained the
+    top-level `pythonPlatform` finding, which was not known when it was written).
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

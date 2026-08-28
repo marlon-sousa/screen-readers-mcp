@@ -8,10 +8,17 @@
 		"bridges/nvda/buildVars.py",
 		"bridges/nvda/tests"
 	],
-	"exclude": ["**/.venv", "**/__pycache__", "**/node_modules", ".git", "bridges/nvda/sconstruct"],
+	"exclude": [
+		"**/.venv",
+		"**/__pycache__",
+		"**/node_modules",
+		".git",
+		"bridges/nvda/sconstruct"
+	],
 	"ignore": [
 		"bridges/nvda/addon/globalPlugins/nvdaMcpBridge/plugin.py",
 		"bridges/nvda/addon/globalPlugins/nvdaMcpBridge/adapters/nvda_*.py",
+		"bridges/nvda/addon/globalPlugins/nvdaMcpBridge/adapters/named_pipe_*.py",
 		"bridges/nvda/addon/globalPlugins/nvdaMcpBridge/views/",
 		"bridges/nvda/tests/integration/test_profile_override.py"
 	],
@@ -21,10 +28,10 @@
 		{
 			"root": "bridges/nvda",
 			"pythonVersion": "3.13",
-			"pythonPlatform": "Windows",
 			"reportMissingModuleSource": "none",
 			"extraPaths": [
 				"bridges/nvda/.venv/Lib/site-packages",
+				"bridges/nvda/.venv/lib/python3.13/site-packages",
 				"bridges/nvda/addon/globalPlugins",
 				"bridges/nvda/tests"
 			]
@@ -32,12 +39,18 @@
 		{
 			"root": "shared",
 			"pythonVersion": "3.11",
-			"extraPaths": ["shared/.venv/Lib/site-packages"]
+			"extraPaths": [
+				"shared/.venv/Lib/site-packages",
+				"shared/.venv/lib/python3.13/site-packages"
+			]
 		},
 		{
 			"root": "scripts",
 			"pythonVersion": "3.13",
-			"extraPaths": [".venv/Lib/site-packages"]
+			"extraPaths": [
+				".venv/Lib/site-packages",
+				".venv/lib/python3.13/site-packages"
+			]
 		}
 	]
 }

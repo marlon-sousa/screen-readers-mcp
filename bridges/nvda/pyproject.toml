@@ -14,6 +14,62 @@ dependencies = []
 # dev env but does not try to build/install this project itself.
 package = false
 
+# WHAT THIS BRIDGE NEEDS, AND WHERE IT CAN BE DONE -- read by scripts/bridges.py.
+#
+# The declaration lives HERE, with the bridge, because what a bridge needs is a
+# fact about its reader and the bridge is the only place that fact is not a
+# guess. NVDA is Windows; JAWS is Windows; VoiceOver is macOS; TalkBack is
+# Android behind a host SDK. A central list at the repo root would have to be
+# edited by every bridge that lands, which is how such a list goes stale.
+#
+# It says NOTHING about the MCP server. The server is built and tested on every
+# host unconditionally and no bridge has an opinion about it (spec 0042).
+#
+# `reason` is not decoration: it is the text `poe doctor` and `poe bridges`
+# print when they skip the tier, so a developer on the wrong host is told why
+# rather than shown a gap.
+[tool.screen-readers-mcp.bridge]
+reader = "NVDA"
+
+# The domain is stdlib-only pure Python with NVDA behind ports, so its tests run
+# anywhere a 3.13 does. Verified on macOS: 588 passed, 3 skipped.
+#
+# THE COMMANDS ARE DECLARED HERE, not in the root pyproject.toml, and that is the
+# point of the block: `poe bridge-types` used to name this directory in its own
+# command string, so "the NVDA bridge" and "a bridge" were the same thing and the
+# task ran on a machine where nobody was working this bridge at all. A bridge is
+# also not necessarily a uv project -- a VoiceOver bridge in Go or Swift will not
+# be -- so what a task IS can only be answered here.
+[tool.screen-readers-mcp.bridge.tiers.headless]
+hosts = ["*"]
+
+[tool.screen-readers-mcp.bridge.tiers.headless.tasks]
+sync = "uv run --directory bridges/nvda --python 3.13 python sync_shared.py"
+test = "uv run --directory bridges/nvda --python 3.13 --with pytest python -m pytest -q"
+types = "uv run --directory bridges/nvda --python 3.13 --with pytest --with pyright python -m pyright"
+lint = [
+	"uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff check .",
+	"uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff format --check .",
+]
+
+# scons and python-markdown are pure Python and gettext is packaged everywhere,
+# so the .nvda-addon can be BUILT on any host even though it can only be
+# INSTALLED on Windows. Verified on macOS: it produced nvdaMcpBridge-0.1.0.nvda-addon.
+[tool.screen-readers-mcp.bridge.tiers.package]
+hosts = ["*"]
+tools = ["scons", "msgfmt", "xgettext"]
+
+[tool.screen-readers-mcp.bridge.tiers.package.tasks]
+build = "scons -C bridges/nvda"
+
+[tool.screen-readers-mcp.bridge.tiers.live]
+hosts = ["windows"]
+reason = "NVDA itself runs only on Windows"
+
+[tool.screen-readers-mcp.bridge.tiers.live.tasks]
+live = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and not slow'"
+live-slow = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and slow'"
+
 [tool.pytest.ini_options]
 # The bridge domain is stdlib-only and unit-tested headlessly under desktop
 # Python 3.13. tests/conftest.py syncs the shared wire module in and puts the
@@ -112,6 +168,13 @@ ignore = [
 "tests/integration/test_live_nvda_pipe_e2e.py" = ["E402"]
 "tests/integration/test_profile_override.py" = ["E402"]
 "tests/unit/domain/controllers/commands/test_hello.py" = ["E402"]
+
+# Same shape, different reason, and the reason is a HOST rather than a sys.path
+# bootstrap: this module imports the Win32 named-pipe adapter, whose module body
+# calls ctypes.WinDLL, so it must skip itself before that import can run. A
+# marker cannot do it -- a marker deselects a test only AFTER its module has been
+# imported, by which time collection has already died. See spec 0042.
+"tests/integration/test_named_pipe_session_roundtrip.py" = ["E402"]
 
 # Same shape, different mechanism: this one installs a STUB `logHandler` module
 # into sys.modules before importing the adapter, which does `from logHandler

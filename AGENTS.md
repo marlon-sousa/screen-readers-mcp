@@ -434,6 +434,22 @@ doctor and aborts with a non-zero exit if it fails, so `poe bridge` on a broken
 environment refuses to run rather than producing a green tick you should not
 believe.
 
+**The server is built and tested on EVERY host, unconditionally. A bridge works
+where its reader does, and declares that for itself** — in its own
+`pyproject.toml`, under `[tool.screen-readers-mcp.bridge]`, split into
+`headless` / `package` / `live` tiers — **including the commands each tier
+runs**, since a bridge is not necessarily a uv project. So `poe bridge`,
+`bridge-types`, `bridge-lint`, `sync`, `build-bridge`, `live` and `live-slow` are
+one dispatcher over the selected bridges, not hard-coded paths. The doctor asks
+each selected bridge's questions and prints `SKIP`, with the bridge's own reason,
+for a tier that cannot run here; `poe live` refuses on a host with no live tier
+rather than collecting nothing, and it is the only one that refuses — having
+nothing to type-check because you are not working that bridge is a success.
+`BRIDGES=nvda` narrows the selection deliberately. The
+reasoning is [spec 0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md),
+and the practical shape is in `docs/dev-commands.md` under "The server is
+everywhere; a bridge is somewhere".
+
 **Why each of these gates exists, and what it cost to learn, is in
 [`docs/dev-commands.md`](docs/dev-commands.md)** — along with the underlying
 commands `poe` wraps, if you need one directly. Read it when a gate surprises
@@ -448,6 +464,9 @@ One definition of "green", runnable locally and in CI:
 uv run poe dev           # the doctor, then everything CI runs — ~1 min
 uv run poe ci            # what CI itself calls; same work, no machine checks
 uv run poe bridge        # bridge headless tests (the usual inner loop)
+uv run poe bridges       # ONE LETTER APART, on purpose: `bridge` RUNS the NVDA
+                         # bridge's tests; `bridges` PRINTS what every bridge
+                         # declares and which of its tiers run on this host
 uv run poe shared        # shared wire-contract tests
 uv run poe types         # pyright strict, both Python projects
 uv run poe lint          # ruff check AND format check, every Python file
@@ -455,7 +474,8 @@ uv run poe go            # go build, vet, test, -tags integration
 uv run poe gates         # schema + wire-binding drift
 uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
-uv run poe build         # both deliverables: the server binary and the .nvda-addon
+uv run poe build         # every deliverable: the server binary, and each
+                         # selected bridge's artifact (for NVDA, the .nvda-addon)
 ```
 
 ### Notes for agents specifically
@@ -480,7 +500,7 @@ uv run poe build         # both deliverables: the server binary and the .nvda-ad
     spec 0022 (option (c), 2026-08-19) retired it: every tool is advertised from
     startup, nothing is retracted when a session ends, and no
     `tools/list_changed` is emitted because nothing changes. `redeploy` still
-    kills every `screenreader-mcp.exe` and the client still silently respawns
+    kills every copy of the server binary and the client still silently respawns
     one without re-running capability discovery — but **the list it kept is
     correct**, so there is nothing to repair.
 
@@ -650,6 +670,27 @@ only needs the merged code + its spec + this file.
     is now worth acting on. `poe shared-types` / `poe bridge-types` remain the
     authority: if they ever disagree with the root, the root config has
     drifted and that is the bug.
+  - **The root config was Windows-only until 2026-08-28, in two ways that could
+    not be seen from Windows**, and it cost **331 errors** on a first macOS run
+    where the gates reported none. Both are fixed, and both are worth knowing
+    because the same shape can recur:
+    - **`extraPaths` name a venv's `site-packages` BY PATH, and that path is
+      host-shaped**: `.venv/Lib/site-packages` on Windows,
+      `.venv/lib/python3.13/site-packages` on POSIX. An execution environment
+      cannot carry its own `venv`, only `extraPaths`, so both layouts are now
+      listed — pyright ignores one that does not exist. That silence is exactly
+      why `scripts/doctor.py` now FAILS when no `site-packages` path in an
+      environment resolves on this machine.
+    - **An `executionEnvironment`'s `pythonPlatform` does not drive the
+      `sys.platform` narrowing** that gates `ctypes.WinDLL` in typeshed. Only
+      the **top-level** one does. The root config had `"pythonPlatform":
+      "Windows"` inside the `bridges/nvda` environment, where it did nothing;
+      the Win32 adapters accounted for all 132 errors that survived the
+      `extraPaths` fix. It is now top-level, and the per-environment copies were
+      deleted rather than left as settings that provably do nothing — the same
+      trap as a `[tool.pyright]` section. `shared/` is therefore analysed as
+      Windows at the root, which is safe: it contains no `sys.platform`,
+      `os.name` or `winreg` anywhere.
 - **Language servers get three things wrong here, whichever agent or editor
   drives them.** All three fail by giving a confident wrong answer, not an
   error.

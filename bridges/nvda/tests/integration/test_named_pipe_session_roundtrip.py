@@ -16,6 +16,15 @@
 
 from __future__ import annotations
 
+from support.platforms import skip_module_unless_windows
+
+# BEFORE every import below, and that ordering is the whole point: the
+# named_pipe_* adapters call ctypes.WinDLL in their module bodies, so on a
+# non-Windows host collection DIES here instead of skipping. `pytestmark` cannot
+# help -- a marker deselects a test only after its module has been imported.
+# Spec 0042, decision 6; E402 for this file is ignored in pyproject.toml.
+skip_module_unless_windows("a whole session over a REAL named pipe, which is a Win32 facility")
+
 import time
 import uuid
 from pathlib import Path

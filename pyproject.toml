@@ -103,19 +103,39 @@ cmd = "python scripts/doctor.py --fix"
 # Ungated, by the same rule as build-server and redeploy below: sconstruct's
 # sync is the REMEDIATION for the doctor's own "shared module synced" failure,
 # and a remediation gated on the condition it remediates can never run.
+# The bridge registry, printed. This is the discoverable face of "what can I
+# actually do on this machine": every bridge under bridges/, every tier it
+# declares, and RUNS or SKIP with the bridge's own reason. Ungated -- it answers
+# a question you may be asking BECAUSE the doctor is unhappy.
+[tool.poe.tasks.bridges]
+help = "What each bridge declares, and which of its tiers run on this host"
+cmd = "python scripts/bridges.py"
+
+# EVERY TASK BELOW THAT SAYS "bridge" IS DISPATCHED, not hard-coded. Each one
+# names a task that a BRIDGE declares in its own pyproject.toml, per tier, and
+# scripts/bridge_task.py runs it for every selected bridge that can do it on this
+# host -- printing SKIP, with the bridge's own reason, for one that cannot.
+#
+# They used to name `bridges/nvda` in their command strings, which made "the NVDA
+# bridge" and "a bridge" the same thing: on a machine where nobody is working
+# that bridge, `poe bridge-types` type-checked it anyway. See spec 0042.
 [tool.poe.tasks.sync]
-help = "Copy the shared wire module into the addon (what sconstruct does first)"
-cmd = "uv run --directory bridges/nvda --python 3.13 python sync_shared.py"
+help = "Copy the shared wire module into each bridge that needs it"
+cmd = "python scripts/bridge_task.py sync"
 
 [tool.poe.tasks.bridge]
-help = "Bridge headless tests (the usual inner loop)"
+help = "Headless tests for every bridge selected on this host (the usual inner loop)"
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --python 3.13 --with pytest python -m pytest -q"
+cmd = "python scripts/bridge_task.py test"
 
+# `--require` is what makes this REFUSE on a host where no selected bridge
+# declares a live tier, naming the bridge and its own reason -- rather than
+# running pytest, matching no tests, and reporting a green "0 selected" that
+# reads exactly like a pass. It is the one task that requires; see bridge_task.py.
 [tool.poe.tasks.live]
 help = "DRIVES YOUR REAL NVDA: gestures, typed text, config changes. Opt-in only."
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and not slow'"
+cmd = "python scripts/bridge_task.py live --require"
 
 # The wall-clock checks, separated because they cost minutes rather than seconds:
 # the 300 s interaction window and the 120 s inactivity watchdog cannot be hurried
@@ -125,7 +145,7 @@ cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'liv
 [tool.poe.tasks.live-slow]
 help = "The minutes-long live checks (300 s window, five-minute session). Opt-in."
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --with pytest python -m pytest -q -m 'live_nvda and slow'"
+cmd = "python scripts/bridge_task.py live-slow --require"
 
 [tool.poe.tasks.shared]
 help = "Shared wire-contract tests"
@@ -138,9 +158,9 @@ deps = ["check"]
 cmd = "uv run --directory shared --python 3.13 --with pytest --with pyright python -m pyright"
 
 [tool.poe.tasks.bridge-types]
-help = "pyright strict, the NVDA bridge"
+help = "pyright strict, every bridge selected on this host"
 deps = ["check"]
-cmd = "uv run --directory bridges/nvda --python 3.13 --with pytest --with pyright python -m pyright"
+cmd = "python scripts/bridge_task.py types"
 
 [tool.poe.tasks.types]
 help = "pyright strict, both Python projects"
@@ -160,12 +180,9 @@ sequence = [
 ]
 
 [tool.poe.tasks.bridge-lint]
-help = "ruff check + format check, the NVDA bridge"
+help = "ruff check + format check, every bridge selected on this host"
 deps = ["check"]
-sequence = [
-	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff check ." },
-	{ cmd = "uv run --directory bridges/nvda --python 3.13 --with ruff python -m ruff format --check ." },
-]
+cmd = "python scripts/bridge_task.py lint"
 
 # EVERYTHING outside shared/ and bridges/nvda/ -- today the dev scripts, tomorrow
 # whatever someone adds. Deliberately `.` and not `scripts`: see the note on
@@ -270,9 +287,13 @@ env = { GOOS = "linux" }
 # the only way to fix the failure refuses to run because of the failure. Same
 # rule as doctor/fix/check themselves: a remediation task is never gated on the
 # condition it remediates.
+# A SCRIPT rather than a `go build` line, because the output name is no longer a
+# literal: `screenreader-mcp.exe` on Windows and `screenreader-mcp` elsewhere
+# cannot be spelled in a poe cmd string. redeploy.py imports the same `build`,
+# so the two tasks can never produce different binaries. Spec 0042, decision 5.
 [tool.poe.tasks.build-server]
-help = "Rebuild the MCP server binary that .mcp.json spawns (restart the MCP connection after)"
-cmd = "go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp"
+help = "Rebuild the MCP server binary an MCP client spawns (restart the MCP connection after)"
+cmd = "python scripts/build_server.py"
 
 # Ungated for the same reason as build-server: it is the remediation for the
 # doctor's own "server binary STALE" failure.
@@ -291,15 +312,18 @@ cmd = "go -C server build -o screenreader-mcp.exe ./cmd/screenreader-mcp"
 help = "Kill every running MCP server (ALL agents') and rebuild the binary"
 cmd = "python scripts/redeploy.py"
 
-# Ungated for the same reason: sconstruct runs sync_shared.sync(), which is what
-# repairs the doctor's "shared module synced" check.
-[tool.poe.tasks.build-addon]
-help = "Build the .nvda-addon (then install it in NVDA and restart it)"
-cmd = "scons -C bridges/nvda"
+# Ungated for the same reason: the NVDA bridge's build runs sync_shared.sync(),
+# which is what repairs the doctor's "shared module synced" check.
+#
+# NOT `build-addon` any more: an "addon" is NVDA's word for its own artifact, and
+# this task builds whatever each selected bridge calls its deliverable.
+[tool.poe.tasks.build-bridge]
+help = "Build each selected bridge's shippable artifact (for NVDA, the .nvda-addon)"
+cmd = "python scripts/bridge_task.py build"
 
 [tool.poe.tasks.build]
-help = "Build both deliverables: the MCP server binary and the .nvda-addon"
-sequence = ["build-server", "build-addon"]
+help = "Build every deliverable: the MCP server binary, and each selected bridge's artifact"
+sequence = ["build-server", "build-bridge"]
 
 # -- the gates that catch generated-artifact drift ---------------------------
 

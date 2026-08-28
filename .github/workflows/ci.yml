@@ -121,3 +121,46 @@ jobs:
       # checkout and no stubs are needed.
       - name: poe ci-bridge
         run: uv run poe ci-bridge
+
+  # THE SAME DEFINITION OF GREEN, ON ANOTHER HOST. One step, `uv run poe ci`,
+  # because the portable half of this repo does not get its own task list: if a
+  # Windows-only assumption creeps back in, it fails HERE rather than on
+  # somebody's laptop three weeks later.
+  #
+  # WHAT IS AND IS NOT GUARDED, since this job is the thing that proves it. The
+  # SERVER is not guarded anywhere and must pass as-is on every host -- that is
+  # spec 0042's first decision, not an observation. The BRIDGE suite's two
+  # named-pipe modules skip themselves at import (decision 6), and everything
+  # else in it runs.
+  #
+  # ADDING LINUX IS ADDING `ubuntu-latest` TO THE MATRIX BELOW. That is the whole
+  # cost, and it is the test of whether spec 0042's structure was worth anything.
+  #
+  # NEW JOB NAMES -- GitHub renders these as `portable (macos-latest)` -- and
+  # therefore a deliberate required-status-check decision made LATER, after the
+  # job has reported once. Same rule as the conformance job's own header. The
+  # four jobs above keep their literal names and their runner, untouched.
+  portable:
+    name: portable
+    strategy:
+      # Every host reports its own result: one red leg must not hide the others,
+      # since "which hosts are broken" is the only question this job answers.
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache-dependency-path: server/go.sum
+      # The conformance tier inside `poe ci` probes for a real 3.13 to host the
+      # bridge, exactly as the conformance job above does; setup-python is what
+      # puts one on PATH.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v5
+      - name: poe ci
+        run: uv run poe ci

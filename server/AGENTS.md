@@ -80,7 +80,7 @@ fast and the Windows-only conformance run opts in explicitly.
 
 ## Rebuilding
 
-`.mcp.json` spawns `server/screenreader-mcp.exe`, so an agent that edits Go code
+`.mcp.json` spawns `server/screenreader-mcp` (`.exe` on Windows), so an agent that edits Go code
 and then drives the MCP tools is testing the OLD server against the NEW bridge.
 `uv run poe dev` rebuilds a stale binary as its first step; a bare `poe doctor`
 or `poe bridge` fails on one instead, and `uv run poe redeploy` is the fix. The
