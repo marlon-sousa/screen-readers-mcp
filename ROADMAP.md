@@ -1845,6 +1845,21 @@ rather than before it.
     is a separate, later settings edit. **Adding Linux is one word in that
     matrix** — that claim is the structure's own test, and it is a claim rather
     than a measurement: no Linux run has happened.
+    **Measured on Windows 11 25H2, NVDA 2026.1.1** — all eight checklist
+    items pass: `poe dev` green, `poe bridges` showing all three NVDA tiers
+    RUNS, the doctor at 30 PASS with `pwsh` checked rather than skipped,
+    `server/screenreader-mcp.exe` and the `.nvda-addon` both built, a dry-run
+    `redeploy` naming seven live processes by resolved path, and root pyright
+    at **223 files, 0 errors**. The Windows run also surfaced a defect macOS
+    could not: **both live-NVDA modules still asserted `pressGesture == {"ok":
+    True}`**, the reply shape spec 0025 retired when the gesture reply started
+    carrying `pressed` and `speech`. Only `poe live` reaches those modules and
+    it is opt-in, so no gate had run the assertion since 0025 landed — and the
+    TCP twin's copy is latent besides, because nothing listens on TCP. Both
+    now assert what the reply actually carries, and the tier is green at 13
+    passed, 7 skipped. The fix rides in this PR rather than a follow-up: it is
+    two lines, and a live tier that fails for a known reason is one nobody
+    reads.
     Spec: [0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md)
     (**agreed 2026-08-28**; rides in this entry's PR, with two amendments made
     while implementing — the `live` guard asks the bridge registry for a tier

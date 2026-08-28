@@ -244,7 +244,14 @@ def test_silent_session_captures_a_gesture_and_finishes() -> None:
 	try:
 		_hello(agent, "silent")
 		start = agent.result("getNextSpeechIndex")["index"]
-		assert agent.result("pressGesture", gestures=[SPEAKING_GESTURE]) == {"ok": True}
+		# Spec 0025: the reply already carries what the key caused, so it is no
+		# longer a bare {"ok": True}. `pressed` says which gestures went out and
+		# the ring span each landed in; the getSpeech below still runs because
+		# that command is what this test covers, not because it is still the way
+		# to learn what a key said.
+		pressed = agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
+		assert [press["gesture"] for press in pressed["pressed"]] == [SPEAKING_GESTURE]
+		assert pressed["speechTo"] >= pressed["speechFrom"] >= start
 		assert agent.result("waitForSpeechToFinish", timeout=3.0)["finished"] is True
 		speech = agent.result("getSpeech", sinceIndex=start)
 		spoken = "\n".join(entry["text"] for entry in speech["entries"])
