@@ -109,10 +109,21 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		self.passThrough = PassThrough(ring: ring, outputFormat: format)
 		self.scratch = UnsafeMutablePointer<Float>.allocate(capacity: scratchCapacity)
 		self.scratch.initialize(repeating: 0, count: scratchCapacity)
+		// Leave the background band, deliberately.
+		//
+		// runningboardd starts this extension at PRIO_DARWIN_BG, which throttles
+		// CPU and I/O process-wide -- a dispatch queue's QoS does not undo it.
+		// Measured: re-synthesis runs at about 7.6x realtime in an ordinary
+		// process and about 1x here, which leaves no margin at all to feed an
+		// audio thread, and long utterances glitch in the middle and recover at
+		// the end as playback falls behind and the buffer refills.
+		let clearedBackground = setpriority(PRIO_DARWIN_PROCESS, 0, 0)
+
 		try super.init(componentDescription: componentDescription, options: options)
 		self.busses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
 		note([
 			"event": "audio-unit-created",
+			"cleared_darwin_bg": clearedBackground == 0,
 			"log_path": captureLogPath,
 			"silent": FileManager.default.fileExists(atPath: silentModeMarkerPath),
 		])
@@ -194,6 +205,14 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 			"underruns": ring.underruns,
 			"overflow_drops": ring.overflowDrops,
 		]
+		fields["cb_count"] = passThrough.callbackCount
+		fields["cb_first_ms"] = passThrough.firstCallbackMS
+		fields["cb_max_gap_ms"] = passThrough.maxGapMS
+		fields["cb_frames"] = passThrough.totalFrames
+		fields["cb_span_ms"] = passThrough.spanMS
+		fields["drained_frames"] = ring.drainedTotal
+		fields["ring_left"] = ring.available
+		fields["producer_finished"] = ring.isFinished
 		if let source = passThrough.sourceFormat {
 			fields["source_rate"] = source.sampleRate
 			fields["source_channels"] = Int(source.channelCount)
@@ -228,7 +247,29 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 				buffers[0].mDataByteSize = UInt32(renderFrames * MemoryLayout<Float>.size)
 			}
 
-			let (filled, done) = ring.drain(into: destination, count: renderFrames)
+			// "Answer nothing" is not in the protocol: the render block must return
+			// exactly the frames it was asked for, and its only other channel is an
+			// OSStatus that means the utterance failed. So when the audio is not
+			// ready yet there are two honest choices -- hand back silence, which is
+			// what produced the glitching, or WAIT here for it.
+			//
+			// Waiting inside a render block is normally forbidden, because a render
+			// block runs on the audio thread against a hard deadline. Measured on
+			// macOS 15.0, this host does not pull in realtime: it asks for a whole
+			// utterance as fast as it can. There is no deadline to miss, so waiting
+			// is safe -- and it is bounded anyway, so a host that DOES pull in
+			// realtime degrades to the old behaviour rather than stalling.
+			var (filled, done) = ring.drain(into: destination, count: renderFrames)
+			if filled < renderFrames, !done {
+				let waitUntil = Date().addingTimeInterval(0.25)
+				while filled < renderFrames, !done, Date() < waitUntil {
+					usleep(500)
+					let more = ring.drain(
+						into: destination.advanced(by: filled), count: renderFrames - filled)
+					filled += more.filled
+					done = more.done
+				}
+			}
 			if filled < renderFrames {
 				destination.advanced(by: filled).update(repeating: 0, count: renderFrames - filled)
 			}

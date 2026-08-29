@@ -388,23 +388,58 @@ The system also **rewrites the voice identifier**. The unit declares
 — the extension's bundle id, then ours. Anything that resolves a provider voice
 must match by suffix, never by the identifier it declared.
 
-**A1 proper — does VOICEOVER speak through it? — NOT YET RUN.** It requires the
-maintainer to select the voice in VoiceOver Utility, and it must not be run
-before C4 works, for the reason under C2 below: with the current unit rendering
-silence, selecting it would mute the machine's only screen reader.
+**A1 proper — does VOICEOVER speak through it? (PASS)** The maintainer selected
+"Capture Spike" in VoiceOver Utility on 2026-08-28 and VoiceOver spoke through
+it. From that moment the extension received every utterance as SSML, before any
+audio existed. The premise of the entire route is confirmed on macOS 15.0.
 
-**A blocker stands in front of A2, and it is not understood yet.** Two ordinary
-clients — `say -v "Capture Spike"` and a small `AVSpeechSynthesizer` program —
-both fail to synthesize through the voice, and our unit is never asked:
-`CoreSynthesizer` logs *"Utterance encountered error, next fallback state:
-retrySameVoice / retryFallbackVoice"* and the client falls back to another voice
-without an error to the caller. The only path that reaches the unit today is
-`axassetsd`'s enumeration, which is out-of-process and works every 30 seconds.
-Whether VoiceOver uses the failing path or the working one is precisely what A1
-proper will show, so this is not a reason to stop.
+Worth recording that two ordinary clients still cannot use the voice —
+`say -v "Capture Spike"` and a small `AVSpeechSynthesizer` program both fail with
+`CoreSynthesizer` logging *"Utterance encountered error, next fallback state:
+retrySameVoice / retryFallbackVoice"*, and fall back silently. **VoiceOver uses a
+path those clients do not.** For a VoiceOver bridge that is sufficient; for
+anything wanting to test the provider without the reader, it is a trap, because
+the failure is silent and looks like the voice does not work at all.
 
-**A2, A3, A4 — not yet run**, because each needs VoiceOver to be speaking
-through the voice first.
+**A2 — is the feed complete, ordered and faithful? (PASS, and richer than
+hoped)** A real navigation session produced 62 utterances. The role and state
+words a screen-reader user hears are present *as text* — "botão", "área de
+rolagem", "tabela", "(1 de 31)", "selecionado" — and so is the full hint text.
+Nothing was consumed by VoiceOver before synthesis.
+
+It also carries what VoiceOver *means to do with its voice*:
+
+```
+<speak><prosody rate="160.00002%"><prosody pitch="-40.0%">Data de Modificação</prosody></prosody></speak>
+```
+
+The outer `rate` is the user's speech rate; the inner `pitch` is VoiceOver
+lowering its voice for a column header. `<break time="250ms"/>` and
+`<break time="60ms"/>` mark its pauses. That is *prosodic meaning* — information
+a polling read of `last phrase` discards entirely, because it is not in the
+words.
+
+**One absence matters for design: there is no `xml:lang`.** VoiceOver's SSML does
+not say what language it is speaking. Anything re-synthesizing or routing by
+language must get that from elsewhere; taking "unknown" as licence to pick a
+default is how this spike read Portuguese aloud in Arabic for several minutes.
+
+**A3 — is interruption observable? (PASS)** `cancelSpeechRequest()` fires and is
+cleanly distinguishable from completion. In practice VoiceOver cancels before
+*every* new utterance, so cancellation is the normal path rather than the
+exception — which is itself the design note: a bridge must not treat "cancelled"
+as "something went wrong".
+
+**A4 — are two identical consecutive utterances two events? (PASS)** Of 62
+utterances, 36 were distinct and **six were byte-identical to the one
+immediately before**. Each arrived as its own numbered event. Polling cannot
+distinguish those six from silence, by construction; the provider does it
+without effort.
+
+**Sequence numbers are per PROCESS, not per session.** The counter restarts
+whenever the extension is relaunched — which the system does freely. A bridge
+must number utterances on its own side, or accept that its ordering resets under
+it without warning.
 
 ### Group B — can the capture leave the extension?
 
@@ -439,11 +474,24 @@ on the app followed by `pluginkit -a` on the extension; `lsregister` alone was
 not enough. What this does *not* tell us is what distribution to anyone else
 would cost, which stays an open question for the direction RFC.
 
-**C2 — what does VoiceOver do when the provider fails? — NOT YET RUN**, and
-deliberately so. It cannot be run before pass-through audio exists, because on
-this machine the failure mode under test is "the maintainer's screen reader goes
-silent". The spike's standing safety rule applies with more force than the
-original ordering anticipated: **C4 is a precondition for C2, not a peer of it.**
+**C2 — what does VoiceOver do when the provider fails? (PASS, and the answer is
+the safe one)** Answered by accident, several times over, by killing the
+extension process while VoiceOver was using the voice: **VoiceOver falls back to
+a working voice. It does not go silent.** The macOS analogue of hard invariant 3
+holds without the bridge doing anything, which makes this route considerably less
+dangerous than the spec assumed when it insisted C4 come first.
+
+**But recovery is not automatic, and this is an operational cost with no NVDA
+equivalent.** After the provider dies, VoiceOver cannot resolve the voice again:
+it logs *"Babelfish falling back to defaults due to missing identifier"* on every
+utterance and the voice disappears from its list, while the rest of the system
+still lists it happily (`say -v '?'` and `AVSpeechSynthesisVoice.speechVoices()`
+both show it). Only **restarting VoiceOver** restores it. So:
+
+- Updating the provider means restarting the screen reader.
+- A provider crash costs the user their chosen voice until they restart it.
+- A bridge cannot repair this from outside; nothing short of a reader restart
+  re-binds the voice.
 
 **C3 — can the voice be restored programmatically? (pass, by a route the
 dictionary does not show)** The AppleScript *dictionary* exposes no speech
@@ -482,9 +530,88 @@ exist on another machine. And the language comes from the SSML's `xml:lang`, not
 from what our voice declares: VoiceOver speaks the user's language, so trusting
 our own declaration would have re-spoken Portuguese with an English voice.
 
-**What this does not yet prove** is that `AVSpeechSynthesizer` works *inside* the
-sandboxed extension, where the measurement above did not run. That, and the ~0.22
-s latency's effect on a reader in use, are answered by the same run as A1 proper.
+`AVSpeechSynthesizer` does work inside the sandboxed extension — proven by
+VoiceOver speaking through it for an hour. But making it sound *right* took six
+rounds against a live reader, and what those rounds found is the most transferable
+part of this whole spike, because none of it is guessable from the documentation.
+
+**The host does not pull audio in realtime. It renders the utterance offline, as
+fast as it can ask.**
+
+This is the finding. Everything else below is a consequence of it, and it was
+found only by measuring rather than reasoning — three plausible explanations were
+wrong first.
+
+The render block is handed a request for exactly *n* samples and must return
+exactly *n*. Its only other channel is an `OSStatus`, and a non-zero one means the
+utterance failed, not "ask again shortly". **There is no "not ready yet".** So
+when the audio does not exist, the choices are to return silence or to wait — and
+returning silence does not drop those blocks, it *bakes them into the utterance*.
+A listener hears a sentence with holes punched through it and a clean tail, since
+by the time the end is requested the audio exists. The maintainer's description,
+before any of this was understood, was "from *rolagem* until before *seta para
+cima* it glitched" — which is that shape exactly.
+
+The measurement that settled it, on an eleven-second help message:
+
+| | |
+|---|---|
+| Frames produced by the synthesizer | 242,688 (11.01 s) |
+| Frames delivered to the host | 242,688 |
+| Frames dropped, frames left over | 0, 0 |
+| Production rate | **24.4× realtime** |
+| Render calls that came up short | **923** |
+
+Production and delivery balance perfectly, so nothing is being lost — and 923
+short answers anyway. Both can only be true if the host asks faster than any
+producer could answer. **A head start cannot fix that, at any size**, which is
+why three rounds of larger buffers did not help.
+
+Two fixes follow, and the second is only legitimate *because* of the finding:
+
+1. **Wait for the whole utterance before answering.** At 24× realtime, eleven
+   seconds of speech is 0.45 s of work. Underruns went from 923 to **0**, and the
+   maintainer's verdict went from "glitched a lot" to "no glitch". Cost: ~0.42 s
+   before long sentences, which he judged acceptable.
+2. **Or wait inside the render block.** Normally forbidden — a render block runs
+   on the audio thread against a deadline, and blocking it stalls everything the
+   machine plays. But *this host has no deadline*, so waiting is safe, and it
+   starts playback as soon as the first samples exist instead of after the whole
+   sentence. It must stay bounded, so that a host which does pull in realtime
+   degrades to the old behaviour rather than stalling.
+
+**The other findings from those rounds, each of which cost a live round to
+learn:**
+
+- **The extension starts in the background CPU band.** `runningboardd` parks it
+  at `PRIO_DARWIN_BG`, and a dispatch queue's QoS does not undo it — it is
+  process-wide. Re-synthesis ran at ~1× realtime under it and **24×** after
+  `setpriority(PRIO_DARWIN_PROCESS, 0, 0)`. A provider that does real work must
+  leave that band explicitly.
+- **Do not reuse one `AVSpeechSynthesizer` across utterances.** VoiceOver cancels
+  before every utterance, so a shared instance is asked to stop and then
+  immediately to write again; that combination stalled for ~10 seconds at a time.
+  One synthesizer per utterance, with the outgoing one stopped off to the side.
+- **Completion needs a backstop.** `write(_:toBufferCallback:)` signals the end
+  with a zero-length buffer; when that does not arrive, the unit never reports
+  the utterance complete and the host pulls silence from a ring that will never
+  fill. The synthesizer's delegate says the same thing by a second route.
+- **Speech does not end at a zero crossing.** Utterances that simply stop —
+  including every cancellation, which is *every* utterance here — click audibly.
+  A ~6 ms ramp at each boundary removes it. In an attended session this is a
+  defect, not a polish item.
+- **The output format is settled by the host**, at `allocateRenderResources`, and
+  is not necessarily what the unit declared. Converting to the wrong one is heard
+  as glitching and wrong pitch rather than reported as an error. Measured here:
+  22050 Hz, mono, non-interleaved, 256 frames maximum per render call.
+
+**A correction that belongs in the record.** Partway through, this session argued
+that audio quality was a comfort property rather than a correctness one, on the
+grounds that a testing session runs silent. The maintainer rejected that: the
+design commits to **silent and non-silent modes, in attended and unattended
+scenarios**, and in an attended session a person is listening while an agent
+drives. The voice *is* the product there. Every audio fix above exists because
+that push-back was right.
 
 ### Group D — what the fallback costs
 

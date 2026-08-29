@@ -25,6 +25,10 @@ final class AudioRing {
 	private(set) var underruns = 0
 	/// Samples the producer could not fit -- the other way audio goes missing.
 	private(set) var overflowDrops = 0
+	/// Total samples actually handed to the audio thread. Compared against what
+	/// the synthesizer produced, this separates "the audio never arrived" from
+	/// "the audio played and we simply never said it was over".
+	private(set) var drainedTotal = 0
 
 	init(capacity: Int) {
 		self.capacity = capacity
@@ -64,6 +68,7 @@ final class AudioRing {
 		contentionDrops = 0
 		underruns = 0
 		overflowDrops = 0
+		drainedTotal = 0
 		os_unfair_lock_unlock(lock)
 	}
 
@@ -78,6 +83,43 @@ final class AudioRing {
 		os_unfair_lock_lock(lock)
 		defer { os_unfair_lock_unlock(lock) }
 		return producerFinished
+	}
+
+	/// Ramps the most recently written samples down to zero.
+	///
+	/// Speech does not end at a zero crossing, and an utterance that simply stops
+	/// mid-waveform is heard as a click. In an ATTENDED session -- a person
+	/// listening while an agent drives -- those clicks are the product, not a
+	/// cosmetic detail, so the ramp belongs here rather than in a "nice to have"
+	/// list.
+	func fadeOutTail(_ count: Int) {
+		os_unfair_lock_lock(lock)
+		defer { os_unfair_lock_unlock(lock) }
+		let available = (writeIndex + capacity - readIndex) % capacity
+		let ramp = min(count, available)
+		guard ramp > 1 else { return }
+		for step in 0..<ramp {
+			let index = (writeIndex - ramp + step + capacity) % capacity
+			storage[index] *= Float(ramp - 1 - step) / Float(ramp - 1)
+		}
+	}
+
+	/// Cancellation, without the click. Keeps a short ramp of what is queued,
+	/// fades it to zero and declares the utterance over, instead of cutting the
+	/// waveform off where it happens to be.
+	func truncateWithFade(_ count: Int) {
+		os_unfair_lock_lock(lock)
+		defer { os_unfair_lock_unlock(lock) }
+		let available = (writeIndex + capacity - readIndex) % capacity
+		let keep = min(count, available)
+		if keep > 1 {
+			for step in 0..<keep {
+				let index = (readIndex + step) % capacity
+				storage[index] *= Float(keep - 1 - step) / Float(keep - 1)
+			}
+		}
+		writeIndex = (readIndex + keep) % capacity
+		producerFinished = true
 	}
 
 	func markFinished() {
@@ -112,6 +154,7 @@ final class AudioRing {
 			}
 			readIndex = (readIndex + filled) % capacity
 		}
+		drainedTotal += filled
 		let done = producerFinished && readIndex == writeIndex
 		if filled < count && !done { underruns += 1 }
 		return (filled, done)

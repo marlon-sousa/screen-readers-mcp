@@ -23,8 +23,30 @@ import Foundation
 /// extension's bundle id, so anything matching it must match by SUFFIX.
 let ourVoiceIdentifier = "org.screen-readers-mcp.spike.capture"
 
+/// A completion backstop.
+///
+/// `write(_:toBufferCallback:)` signals the end of an utterance by delivering a
+/// zero-length buffer -- but if that never arrives, the audio unit never reports
+/// the utterance complete, and the host keeps pulling silence from a ring that
+/// will never fill. The delegate says the same thing by a second route.
+private final class CompletionWatcher: NSObject, AVSpeechSynthesizerDelegate {
+	let onEnd: () -> Void
+	init(onEnd: @escaping () -> Void) { self.onEnd = onEnd }
+	func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) { onEnd() }
+	func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { onEnd() }
+}
+
 final class PassThrough {
-	private let synthesizer = AVSpeechSynthesizer()
+	/// ONE SYNTHESIZER PER UTTERANCE, deliberately.
+	///
+	/// VoiceOver cancels before every new utterance, so a shared instance is asked
+	/// to stopSpeaking and then immediately to write again. Measured against a
+	/// live reader: that combination stalls for seconds at a time -- one
+	/// 191-character utterance starved the audio thread 810 times (about 9.4
+	/// seconds of silence) while a longer 289-character one, arriving without a
+	/// stop in flight, starved it not at all. A fresh synthesizer costs almost
+	/// nothing and has no stop to finish.
+	private var synthesizer = AVSpeechSynthesizer()
 	/// Re-synthesis runs here rather than on whatever thread the system called us
 	/// on. runningboardd parks this extension at PRIO_DARWIN_BG -- a background
 	/// process feeding a realtime audio callback -- so the work says out loud that
@@ -42,6 +64,23 @@ final class PassThrough {
 	/// What the chosen voice actually produced, which is not knowable in advance
 	/// and decides whether every buffer goes through a converter.
 	private(set) var sourceFormat: AVAudioFormat?
+	/// Whether this utterance has produced any audio yet, so the very first
+	/// samples can be ramped up from silence rather than starting mid-waveform.
+	private var startedAudio = false
+	private var watcher: CompletionWatcher?
+	/// Timing of the synthesizer's own callbacks, which is the only way to tell
+	/// "our buffering is wrong" from "the thing producing audio stopped for ten
+	/// seconds". Read at the end of each utterance.
+	private(set) var callbackCount = 0
+	private(set) var firstCallbackMS = -1
+	private(set) var maxGapMS = 0
+	private(set) var totalFrames = 0
+	/// Wall time from the request to the last callback. Divided into the audio
+	/// produced, this is the production RATE -- the number that decides whether
+	/// feeding a realtime consumer is possible at all.
+	private(set) var spanMS = 0
+	private var requestedAt = Date()
+	private var lastCallbackAt: Date?
 
 	init(ring: AudioRing, outputFormat: AVAudioFormat) {
 		self.ring = ring
@@ -109,6 +148,15 @@ final class PassThrough {
 		ring.reset()
 		ring.resetCounters()
 		sourceFormat = nil
+		startedAudio = false
+		callbackCount = 0
+		firstCallbackMS = -1
+		maxGapMS = 0
+		totalFrames = 0
+		spanMS = 0
+		requestedAt = Date()
+		lastCallbackAt = nil
+		synthesizer = AVSpeechSynthesizer()
 		let language = PassThrough.language(inSSML: ssml)
 		let voice = PassThrough.fallbackVoice(language: language)
 
@@ -128,9 +176,27 @@ final class PassThrough {
 	}
 
 	private func startWriting(_ utterance: AVSpeechUtterance) {
-		synthesizer.write(utterance) { [weak self] buffer in
+		let writer = synthesizer
+		let watcher = CompletionWatcher { [weak self] in
+			self?.ring.fadeOutTail(self?.fadeSamples ?? 0)
+			self?.ring.markFinished()
+		}
+		self.watcher = watcher
+		writer.delegate = watcher
+		writer.write(utterance) { [weak self] buffer in
 			guard let self else { return }
+			let now = Date()
+			if self.firstCallbackMS < 0 {
+				self.firstCallbackMS = Int(now.timeIntervalSince(self.requestedAt) * 1000)
+			}
+			if let previous = self.lastCallbackAt {
+				self.maxGapMS = max(self.maxGapMS, Int(now.timeIntervalSince(previous) * 1000))
+			}
+			self.lastCallbackAt = now
+			self.spanMS = Int(now.timeIntervalSince(self.requestedAt) * 1000)
+			self.callbackCount += 1
 			guard let pcm = buffer as? AVAudioPCMBuffer, pcm.frameLength > 0 else {
+				self.ring.fadeOutTail(self.fadeSamples)
 				self.ring.markFinished()
 				return
 			}
@@ -151,27 +217,58 @@ final class PassThrough {
 	func prebuffer() -> Int {
 		let started = Date()
 		let deadline = started.addingTimeInterval(PassThrough.prebufferBudget)
-		while ring.available < prebufferFrames, !ring.isFinished, Date() < deadline {
+		// Wait for the WHOLE utterance, not for a head start.
+		//
+		// The measurement that forced this: 242,688 frames produced, 242,688
+		// drained, none dropped, producer finished -- and 923 render calls that
+		// still came up short. That can only happen if the host is not pulling in
+		// realtime: it renders offline, as fast as it can ask, and no producer
+		// outruns that. Every short answer became silence baked into the audio.
+		//
+		// Synthesis runs about 24x realtime here, so waiting for all of it costs
+		// roughly 0.45 s for eleven seconds of speech -- less than the head start
+		// used to cost on long utterances, and it cannot starve.
+		// Wait only for the FIRST audio now, not the whole utterance: the render
+		// block waits for the rest. That trades ~0.4 s before long sentences for
+		// ~0.17 s, and the gaps stay closed because nobody answers with silence.
+		while ring.available == 0, !ring.isFinished, Date() < deadline {
 			usleep(2000)
 		}
 		return Int(Date().timeIntervalSince(started) * 1000)
 	}
 
-	/// Roughly 800 ms of audio at the output rate. Long utterances are where
-	/// starvation showed up, so the head start is generous.
-	private var prebufferFrames: Int { Int(outputFormat.sampleRate * 0.8) }
+
 	/// Never wait longer than this: a glitch traded for a hang is a bad trade on
 	/// the machine's only screen reader.
 	static let prebufferBudget: TimeInterval = 2.0
 
+	/// About 6 ms at the output rate: long enough to remove a click, short enough
+	/// that no syllable is lost to it.
+	var fadeSamples: Int { max(2, Int(outputFormat.sampleRate * 0.006)) }
+
 	func cancel() {
-		synthesizer.stopSpeaking(at: .immediate)
-		ring.reset()
+		// Let the old instance go rather than reusing it: whatever it is doing, it
+		// is doing it alone, and the next utterance gets a clean one.
+		let outgoing = synthesizer
+		synthesizer = AVSpeechSynthesizer()
+		synthesisQueue.async { outgoing.stopSpeaking(at: .immediate) }
+		ring.truncateWithFade(fadeSamples)
 	}
 
 	private func append(_ pcm: AVAudioPCMBuffer) {
 		guard let converted = convert(pcm), let channel = converted.floatChannelData?[0] else { return }
-		ring.append(channel, count: Int(converted.frameLength))
+		let frames = Int(converted.frameLength)
+		if !startedAudio {
+			startedAudio = true
+			let ramp = min(fadeSamples, frames)
+			if ramp > 1 {
+				for step in 0..<ramp {
+					channel[step] *= Float(step) / Float(ramp - 1)
+				}
+			}
+		}
+		totalFrames += frames
+		ring.append(channel, count: frames)
 	}
 
 	/// The written buffers are whatever the chosen voice produces -- sample rate,
