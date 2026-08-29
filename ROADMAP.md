@@ -25,10 +25,15 @@ notes.
 - **Marking done:** the implementing PR flips its own entry to
   "Done (PR #n, date)" as part of the PR. The mark becomes true on main exactly
   when the PR merges — no separate bookkeeping commit.
-- **Lanes:** lane 1 (bridge) and lane 2 (server) may run in parallel — at most
-  one open PR per lane, never two in the same lane. Order within a lane is
-  strict. (Entries 5 and 6 predate this rule and are grandfathered; from here
-  on it holds.)
+- **Lanes:** lane 1 (NVDA bridge), lane 2 (server) and **lane 3 (the macOS
+  VoiceOver bridge)** may run in parallel — at most one open PR per lane, never
+  two in the same lane. Order within a lane is strict. (Entries 5 and 6 predate
+  this rule and are grandfathered; from here on it holds.)
+  - **Lane 3 was opened on 2026-08-28 — Decided.** Spec 0041's spike and spec
+    0043's direction RFC were both taken with no board number precisely because
+    "where does a VoiceOver bridge sit" was unanswered. It is answered: a third
+    lane, parallel to the other two, because a VoiceOver bridge is neither the
+    NVDA bridge nor the server and blocks on neither.
 - **Manual live-NVDA checklists** and their results live in the implementing
   PR's body as checkboxes; findings are written inline on the unchecked item
   (NVDA version, expected vs observed) and spawn new iteration entries here.
@@ -267,13 +272,15 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.35** and the next free spec number is
-**0043**. Three unmerged branches account for the gap, which is exactly the case
+**0044**. Three unmerged branches account for the gap, which is exactly the case
 the paragraph above describes: 11.32, 11.33 and spec 0040 were taken on
 2026-08-27 by the observation stream, on the branch that also re-cut 0017; spec
 **0041** was taken the same day by the VoiceOver capture spike, on its own branch
 and with **no board number**, because where a VoiceOver bridge sits is a lane
 question the board has not answered and claiming a number for it would decide
-that by accident; and 11.34 with spec 0042 were taken on 2026-08-28 by the macOS
+that by accident; spec **0043** was taken on 2026-08-28 by that spike's
+direction RFC, on the same branch and likewise with **no board number**, for the
+same reason; and 11.34 with spec 0042 were taken on 2026-08-28 by the macOS
 host work, which moved this line in the same commit that spent them. (11.22–11.24 and spec 0030 were taken by the second external run on
 2026-08-18; spec 0031 by 11.22's own spec; spec 0032 by 11.10 on 2026-08-19;
 11.25 by the silence-cap fix on 2026-08-20, which is the
