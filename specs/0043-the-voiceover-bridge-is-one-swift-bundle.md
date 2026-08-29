@@ -136,6 +136,27 @@ must answer them rather than discover them.
   on 2026-08-28 alone, before any of this work started. "The reader restarts
   underneath the bridge" is normal weather on macOS, not an edge case.
 
+## The prototype is kept
+
+Spec 0041 describes its spike as disposable, and most of it is: the AppleScript
+driver, the probe tool and the measurements have done their job once they are
+written down. **The speech provider is the exception, and it is deliberately
+preserved** at `spikes/voiceover-capture/provider/`.
+
+It is not a sketch. It is a working `AVSpeechSynthesisProviderAudioUnit` that
+VoiceOver has spoken through for an hour, carrying six fixes that each cost a
+live round against a real reader to find — the offline-render wait, the
+`PRIO_DARWIN_BG` escape, one synthesizer per utterance, the completion backstop,
+the boundary ramps, and the host-settled output format. None of that is
+recoverable from documentation, and re-deriving it would cost another evening of
+the maintainer's screen reader.
+
+**The implementation spec promotes it to `bridges/voiceover/`** — with the
+`[tool.screen-readers-mcp.bridge]` declaration that spec 0042 requires, so the
+doctor and `poe bridges` see it — rather than starting from an empty directory.
+Until then it stays where it is: `bridges/` is scanned by the tooling, and a
+directory there without a declaration is reported as a bridge nobody declared.
+
 ## What this spec does not decide
 
 - **The class/file layout**, which belongs to the implementation spec.
@@ -161,7 +182,8 @@ Carried forward from spec 0041 and unchanged by this RFC:
 2. **The `nvda_mcp_wire` rename**, deferred by 0005 until the repo name settled.
    The repo is `screen-readers-mcp`, and a Swift binding of a module named
    `nvda_mcp_wire` is actively misleading.
-3. **Board placement.** Lane 1 is the NVDA bridge, lane 2 the server; this is
-   neither. This spec claims number 0043 and **no board number**, for the same
-   reason 0041 claimed none: taking one would decide the lane question by
-   accident.
+3. **Board placement — DECIDED on 2026-08-28: lane 3.** Lane 1 is the NVDA
+   bridge, lane 2 the server, and the macOS bridge is neither, so it gets its own
+   lane running parallel to both. `ROADMAP.md` carries the rule. This spec still
+   claims **no board number**: the lane exists, and its first entry belongs to
+   the implementation spec rather than to this RFC.

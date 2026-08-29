@@ -35,7 +35,11 @@ contract it advertises.** That is discovered at the live checklist, after the
 ports are cast.
 
 The spike is therefore scoped to be *disposable*: it answers questions and is
-deleted. It is versioned anyway, under `spikes/voiceover-capture/`, for the
+deleted. **Amended 2026-08-28: the speech provider is not.** The driver, the
+probe and the measurements are disposable as planned; the audio unit turned out
+to be a working component carrying six fixes that only a live reader could
+surface, so [spec 0043](0043-the-voiceover-bridge-is-one-swift-bundle.md) keeps
+it and the implementation spec promotes it to `bridges/voiceover/`. It is versioned anyway, under `spikes/voiceover-capture/`, for the
 reason the 2026-08-22 fixture incident established — evidence that cannot be
 re-run is weaker than it looks, and a measurement quoted from a scratch
 directory is not one anyone else can check.

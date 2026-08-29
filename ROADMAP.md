@@ -25,10 +25,15 @@ notes.
 - **Marking done:** the implementing PR flips its own entry to
   "Done (PR #n, date)" as part of the PR. The mark becomes true on main exactly
   when the PR merges — no separate bookkeeping commit.
-- **Lanes:** lane 1 (bridge) and lane 2 (server) may run in parallel — at most
-  one open PR per lane, never two in the same lane. Order within a lane is
-  strict. (Entries 5 and 6 predate this rule and are grandfathered; from here
-  on it holds.)
+- **Lanes:** lane 1 (NVDA bridge), lane 2 (server) and **lane 3 (the macOS
+  VoiceOver bridge)** may run in parallel — at most one open PR per lane, never
+  two in the same lane. Order within a lane is strict. (Entries 5 and 6 predate
+  this rule and are grandfathered; from here on it holds.)
+  - **Lane 3 was opened on 2026-08-28 — Decided.** Spec 0041's spike and spec
+    0043's direction RFC were both taken with no board number precisely because
+    "where does a VoiceOver bridge sit" was unanswered. It is answered: a third
+    lane, parallel to the other two, because a VoiceOver bridge is neither the
+    NVDA bridge nor the server and blocks on neither.
 - **Manual live-NVDA checklists** and their results live in the implementing
   PR's body as checkboxes; findings are written inline on the unchecked item
   (NVDA version, expected vs observed) and spawn new iteration entries here.
