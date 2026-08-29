@@ -317,7 +317,7 @@ is pre-release and this repo is the only consumer.
 
 ## Wire contract changes
 
-Amendments to `shared/nvda_mcp_wire/protocol.py`, regenerating
+Amendments to `shared/screenreader_wire/protocol.py`, regenerating
 `specs/wire/v1/schema.json`, plus prose in `specs/wire/v1/protocol.md`:
 
 | Addition | Shape |

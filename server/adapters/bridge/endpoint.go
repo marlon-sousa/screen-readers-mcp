@@ -5,12 +5,13 @@
 // refuses the endpoints we will not dial.
 // BUILT BY: adapters/bridge/handshake.go, once per endpoint it tries.
 // USED BY: the leaves it selects -- tcp_transport.go and
-// pipe_transport_{windows,other}.go.
+// local_transport_{windows,posix}.go.
 //
 // The decisions live here rather than in a leaf, which is the whole layering
-// rule: WHICH host is acceptable and WHETHER this platform has named pipes are
-// judgements, so they are unit-tested here against no OS at all, while the
-// leaves below make no judgement and do nothing but call it.
+// rule: WHICH host is acceptable is a judgement, so it is unit-tested here
+// against no OS at all, while the leaves below make no judgement and do nothing
+// but spell the local endpoint the way their platform does -- a named pipe on
+// Windows, a Unix domain socket on POSIX (spec 0044).
 package bridge
 
 import (
@@ -36,8 +37,8 @@ const DefaultConnectTimeout = 2 * time.Second
 // message can name the endpoint the user actually wrote.
 func DialerFor(endpoint entities.Endpoint) (adapterports.Dialer, error) {
 	switch endpoint.Kind {
-	case entities.TransportPipe:
-		return pipeDialer(endpoint.Address)
+	case entities.TransportLocal:
+		return localDialer(endpoint.Address)
 
 	case entities.TransportTCP:
 		if err := requireLoopback(endpoint.Address); err != nil {
@@ -45,7 +46,7 @@ func DialerFor(endpoint entities.Endpoint) (adapterports.Dialer, error) {
 		}
 		address := endpoint.Address
 		return func() (adapterports.Transport, error) {
-			return dialTCP(address, DefaultConnectTimeout)
+			return dialNet("tcp", address, DefaultConnectTimeout)
 		}, nil
 
 	default:

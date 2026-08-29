@@ -95,8 +95,8 @@ var _ ports.EndpointSource = (*Loader)(nil)
 // endpoint lists: a reader named by a higher layer takes that layer's endpoints
 // entirely, and a reader nobody mentions keeps the layer below's. Merging would
 // make it impossible to REMOVE a shipped default -- a user who moved their
-// bridge to a different pipe would still have the old one tried first, and would
-// have no way to say otherwise.
+// bridge to a different endpoint would still have the old one tried first, and
+// would have no way to say otherwise.
 //
 // Order is preserved throughout: within a reader, endpoints stay in the order
 // they were declared, because that is the order connect_reader tries them in.
@@ -179,7 +179,7 @@ func toReaders(doc document) ([]entities.ConfiguredReader, error) {
 // readersFromFlags turns repeated `--reader name=spec` values into readers.
 //
 // Repeating a name ADDS an endpoint to that reader, in flag order, so a
-// one-off override can still name a pipe and a socket. The whole flag layer for
+// one-off override can still name the local endpoint and a TCP one. The whole flag layer for
 // a given name then replaces that reader, which is what makes `--reader
 // nvda=tcp:127.0.0.1:9000` mean "only there" rather than "there as well as the
 // two shipped defaults".
@@ -190,7 +190,7 @@ func readersFromFlags(flags []string) ([]entities.ConfiguredReader, error) {
 	for _, flag := range flags {
 		name, spec, found := strings.Cut(flag, "=")
 		if !found || name == "" || spec == "" {
-			return nil, fmt.Errorf("--reader %q: want name=spec, e.g. nvda=pipe:nvdaMcpBridge", flag)
+			return nil, fmt.Errorf("--reader %q: want name=spec, e.g. nvda=local:nvdaMcpBridge", flag)
 		}
 		endpoint, err := entities.ParseEndpoint(spec)
 		if err != nil {

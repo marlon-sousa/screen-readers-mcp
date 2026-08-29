@@ -89,9 +89,9 @@ func Build(opts Options) (*Server, error) {
 	}
 
 	// Liveness: the probe decides what a name in the namespace means; the
-	// platform leaf underneath it only reads the namespace (or, off Windows,
-	// reports an empty one).
-	probe := discovery.NewPipeProbe(discovery.NewPipeDirectory())
+	// platform leaf underneath it only reads the namespace -- the named-pipe
+	// one on Windows, the directory of socket files on POSIX.
+	probe := discovery.NewLocalProbe(discovery.NewLocalDirectory())
 
 	// The dialer: bridge.DialerFor chooses the transport leaf per endpoint,
 	// and the handshake drives the ordered attempt and the `hello` exchange.

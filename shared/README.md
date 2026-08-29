@@ -1,4 +1,4 @@
-# nvda-mcp-wire — the wire contract
+# screenreader-wire — the wire contract
 
 The **canonical, stdlib-only** JSON-lines protocol that the `screenreader-mcp`
 **server** and a **bridge** speak to each other. This package is the Python
@@ -11,7 +11,7 @@ here.
 
 ## What is in it
 
-Everything both halves must agree on lives in `nvda_mcp_wire/protocol.py`:
+Everything both halves must agree on lives in `screenreader_wire/protocol.py`:
 
 - the message envelope (`Request` / `Response` / `ErrorInfo`),
 - per-command param and result dataclasses,
@@ -28,7 +28,7 @@ the same reason: an unrecognised value must degrade rather than crash.
 validation failure; and `persona` does, so the day a fourth persona is added, an
 older bridge serves its general guidance instead of refusing the handshake.
 
-Beside it, `nvda_mcp_wire/schema.py` generates
+Beside it, `screenreader_wire/schema.py` generates
 [`specs/wire/v1/schema.json`](../specs/wire/v1/schema.json) from those
 dataclasses. That file is the **published contract** — it is what a second
 implementation reads, and it is not synced into any add-on.

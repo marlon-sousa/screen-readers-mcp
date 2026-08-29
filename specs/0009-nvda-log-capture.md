@@ -64,7 +64,7 @@ to the agent at `hello`.
 All under `bridgeAddon/` unless noted. Every module carries the mandatory
 ROLE header.
 
-1. `shared/nvda_mcp_wire/protocol.py` (canonical; synced into the addon by
+1. `shared/screenreader_wire/protocol.py` (canonical; synced into the addon by
    `sync_shared.py`, never edited there directly):
    - `LogLevel(StrEnum)` — `DEBUG`, `IO`, `DEBUGWARNING`, `INFO`.
    - `HelloParams` gains `logLevel: LogLevel | None = None` — unset means
@@ -149,9 +149,9 @@ drift gate and the checklist gate staying green):
    teardown step raises — mirroring `test_teardown_stops_capture_even_when_the_transcript_raises_on_close`.
 4. `LogCapture.stop()` is a no-op if `start()` was never called (version
    mismatch never opens the transcript *or* starts capture).
-5. Wire schema regeneration (`uv run --python 3.13 python -m nvda_mcp_wire.schema`)
-   leaves `specs/wire/v1/schema.json` unchanged from what's committed (i.e. is
-   committed correctly the first time).
+5. Wire schema regeneration (`uv run --python 3.13 python -m
+   screenreader_wire.schema`) leaves `specs/wire/v1/schema.json` unchanged from
+   what's committed (i.e. is committed correctly the first time).
 6. pyright strict is clean on the domain; `nvda_log_capture.py` needs no new
    ignore-list entry (already covered by the `nvda_*.py` glob).
 

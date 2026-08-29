@@ -48,7 +48,7 @@ func newHarness(t *testing.T, readers ...entities.ConfiguredReader) *harness {
 	t.Helper()
 	if len(readers) == 0 {
 		readers = []entities.ConfiguredReader{
-			testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765"),
+			testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765"),
 		}
 	}
 
@@ -153,7 +153,7 @@ func TestTheSessionParametersReachTheDialerUnchanged(t *testing.T) {
 	}
 	// And the reader's endpoints, in declared order -- the user's transport
 	// toggle made invisible.
-	if len(calls[0].Reader.Endpoints) != 2 || calls[0].Reader.Endpoints[0].Kind != entities.TransportPipe {
+	if len(calls[0].Reader.Endpoints) != 2 || calls[0].Reader.Endpoints[0].Kind != entities.TransportLocal {
 		t.Errorf("endpoints = %v, want both, pipe first", calls[0].Reader.Endpoints)
 	}
 }
@@ -184,8 +184,8 @@ func TestConnectingWhileConnectedIsAnErrorAndLeavesTheSessionAlone(t *testing.T)
 // turn rather than costing a round trip to list_readers.
 func TestAnUnknownReaderNamesTheOnesThatExist(t *testing.T) {
 	h := newHarness(t,
-		testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"),
-		testsupport.Reader(t, "jaws", "pipe:jawsMcpBridge"),
+		testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"),
+		testsupport.Reader(t, "jaws", "local:jawsMcpBridge"),
 	)
 
 	_, err := h.controller.Connect("narrator", silent())
@@ -388,8 +388,8 @@ func TestReconnectingAfterALossOpensAFreshSession(t *testing.T) {
 
 // List joins the configured readers with the probe, and dials nothing to do it.
 func TestListJoinsTheConfiguredReadersWithTheProbe(t *testing.T) {
-	pipe := testsupport.Endpoint(t, "pipe:nvdaMcpBridge")
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	pipe := testsupport.Endpoint(t, "local:nvdaMcpBridge")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 
 	controller := controllers.NewConnection(
 		fakes.NewFakeEndpointSource(reader),

@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from nvda_mcp_wire import protocol as p
-from nvda_mcp_wire import schema as s
+from screenreader_wire import protocol as p
+from screenreader_wire import schema as s
 
 #: The committed artifact, relative to this test file (repo/shared/tests/unit).
 _COMMITTED = Path(__file__).resolve().parents[3] / "specs" / "wire" / "v1" / "schema.json"
@@ -125,5 +125,5 @@ def test_committed_schema_is_up_to_date() -> None:
 	generated = s.to_json(s.build_wire_schema())
 	assert _COMMITTED.read_text(encoding="utf-8") == generated, (
 		"specs/wire/v1/schema.json is stale; regenerate with "
-		"`python -m nvda_mcp_wire.schema > ../specs/wire/v1/schema.json`"
+		"`python -m screenreader_wire.schema > ../specs/wire/v1/schema.json`"
 	)

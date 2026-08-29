@@ -189,7 +189,7 @@ they can do.
 
 | Tool | What it does |
 |---|---|
-| `list_readers` | The readers this server can reach, their endpoints in the order they will be tried, and whether something is listening. Liveness is `listening` or `not listening` for a named pipe, and `unknown` for TCP, which cannot be tested without connecting. |
+| `list_readers` | The readers this server can reach, their endpoints in the order they will be tried, and whether something is listening. Liveness is `listening` or `not listening` for a local endpoint, and `unknown` for TCP, which cannot be tested without connecting. |
 | `connect_reader` | Opens the session. Takes the reader name, a **capture mode** and a **persona** — all three required — and optionally `normalize` and a reader log level. |
 | `disconnect_reader` | Ends the session. The reader restores everything it changed. |
 | `status` | The connection right now — and with a session live it makes a real round trip, so the answer is proof rather than a cached guess. |

@@ -194,16 +194,18 @@ scheduled. Work now proceeds in lane 2.
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
 below. **Open as of 2026-08-29**:
-11.18, 11.23, 11.35, 11.36, 11.37 —
-**five entries**, none of which has a spec yet and one of which (11.18) is on
+11.18, 11.23, 11.37 —
+**three entries**, none of which has a spec yet and one of which (11.18) is on
 hold. 11.37 is not on anyone's critical path and is recorded rather than
-scheduled. **11.35 and 11.36 are the lane head, in that order**, taken ahead of the
-other two on 2026-08-29 because lane 3 blocks on both and neither 11.18 nor
-11.23 blocks on anything — the reprioritisation this board requires to be made
-explicitly, the way 11.22 was taken before 11.6. Both are lane-2-shaped work
-that exists for lane 3's benefit: 11.35 makes the local endpoint mean something
-off Windows, and 11.36 renames the wire module before a third binding is written
-against the old name. (11.28 is Done: the flaky roundtrip now reports where
+scheduled, so the lane has no head that anything waits on. **11.35 and 11.36
+are Done**, shipped together on 2026-08-29 (specs 0044 and 0045) and taken ahead
+of the other two because lane 3 blocked on both while neither 11.18 nor 11.23
+blocks on anything — the reprioritisation this board requires to be made
+explicitly, the way 11.22 was taken before 11.6. Both were lane-2-shaped work
+that existed for lane 3's benefit: 11.35 made the local endpoint mean something
+off Windows, and 11.36 renamed the wire module before a third binding was
+written against the old name. **Lane 3's two cross-lane dependencies are
+therefore both cleared**, and 13.3 and 13.4 wait on nothing but their own lane. (11.28 is Done: the flaky roundtrip now reports where
 its budget went, spec 0039 — the flake itself is not fixed, and that is the
 claim. 11.31 was opened and closed in one documentation PR and never joined this
 list: the four READMEs had drifted behind the shipped surface, one of them still
@@ -278,8 +280,10 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.35** and the next free spec number is
-**0044**. Three unmerged branches account for the gap, which is exactly the case
+The next free board number is **11.38** and the next free spec number is
+**0046**. Specs **0044** and **0045** were spent on 2026-08-29 by 11.35 and
+11.36, which shipped in one PR and moved this line in the same commit. Three
+unmerged branches account for the rest of the gap, which is exactly the case
 the paragraph above describes: 11.32, 11.33 and spec 0040 were taken on
 2026-08-27 by the observation stream, on the branch that also re-cut 0017; spec
 **0041** was taken the same day by the VoiceOver capture spike, on its own branch
@@ -394,14 +398,19 @@ documentation. Every entry below traces to one of them.
 11.35, and 12 is lane 1's packaging entry. A fresh block is cheaper than the
 collision this board has already had twice.
 
-**Two dependencies cross lanes, and both are lane-2 entries taken first.**
-**13.3 needs 11.36**, the wire module's rename to `screenreader_wire`, because
+**Two dependencies cross lanes, and both are lane-2 entries taken first —
+both now Done (2026-08-29), so nothing in this lane waits on lane 2 any more.**
+**13.3 needed 11.36**, the wire module's rename to `screenreader_wire`, because
 13.3 is where the third binding gets written and renaming after it costs the
-rename twice. **13.4 needs 11.35**, the local endpoint resolving per platform —
-a named pipe on Windows, a Unix domain socket on POSIX — so a bridge asks for
-"the local endpoint" and the leaf decides what that means. Neither adds a
-transport and neither changes the wire shape. **13.1 and 13.2 wait for
-nothing**, so the lanes run parallel as the lane rule intends.
+rename twice; the module is now `screenreader_wire` and the Swift binding can be
+written against the name it will keep. **13.4 needed 11.35**, the local endpoint
+resolving per platform — a named pipe on Windows, a Unix domain socket on POSIX
+— so a bridge asks for "the local endpoint" and the leaf decides what that
+means; the server now dials one, `specs/wire/v1/protocol.md` §1 states where it
+lives, and a Go integration scenario establishes a session over a real socket on
+macOS. Neither added a transport and neither changed the wire shape. **13.1 and
+13.2 waited for nothing** in any case, so the lanes run parallel as the lane
+rule intends.
 
 13.1. **The implementation spec** (lane 3; a conversation, not code). The first
     entry, and the largest single piece of thinking in the lane: spec 0043
@@ -2084,8 +2093,31 @@ rather than before it.
     while implementing — the `live` guard asks the bridge registry for a tier
     rather than `platforms.py` for an OS name, and decision 7 gained the
     top-level `pythonPlatform` finding, which was not known when it was written).
-11.35. **E, the local endpoint is named after the mechanism Windows happens to
-    use** (lane 2; opens lane 3, and 13.4 waits on it). [Spec
+11.35. **Done (2026-08-29)** — E, the local endpoint was named after the
+    mechanism Windows happens to use (lane 2; opens lane 3, and 13.4 waits on
+    it). Shipped in ONE PR with 11.36, at the maintainer's request: both are
+    lane-2 work that exists to unblock lane 3, and both touch
+    `specs/wire/v1/protocol.md`. **Spec
+    [0044](specs/0044-the-local-endpoint-off-windows.md)**, whose nine decisions
+    are the ones summarised below plus three the implementation needed: the
+    POSIX derivation lives in the DOMAIN (pure, so it is tested on the Windows
+    leg of CI where the POSIX leaf is not compiled at all), only a BARE NAME is
+    judged for liveness (an absolute-path override reports unknown rather than a
+    confident wrong "not listening"), and the TCP leaf generalised to
+    `net_transport.go` so `unix` and `tcp` share one wrapper.
+    **What it is worth, measured**: before, on macOS, the shipped default set
+    was one dead entry (`pipe endpoint "nvdaMcpBridge": named pipes are
+    Windows-only`) and one live one, and every endpoint reported liveness
+    `unknown` by construction. After, a session is established over a real Unix
+    socket and the probe reports it listening — four new integration scenarios
+    that could not have been written before, on the macOS leg of CI.
+    **No live-NVDA checklist**, decided 2026-08-29: nothing on the NVDA path
+    changes but the spelling of one shipped default, and the pipe leaf and the
+    pipe scan are exercised against a real namespace by the Windows integration
+    scenario. What no automated tier proves is that `local:nvdaMcpBridge`
+    reaches a real NVDA; that is stated in the spec's Honest limits and is for
+    the next live run on Windows.
+    The reasoning as it stood when the entry was opened: [Spec
     0010](specs/0010-named-pipe-transport.md) wanted "a local endpoint that is
     not the network", and got it on Windows as a named pipe. There is no macOS
     equivalent of `\\.\pipe\nvdaMcpBridge` and there is not going to be one;
@@ -2149,8 +2181,10 @@ rather than before it.
     Still a contract change, not only a server refactor: the resolution rule is
     the *rendezvous*, so `specs/wire/v1/protocol.md` carries it and every bridge
     implements it. Nothing about the NVDA add-on's behaviour changes, but the
-    document it is written against does.
-    Spec: none yet.
+    document it is written against does. §1 is rewritten around the local
+    endpoint and §8 records the amendment; `PROTOCOL_VERSION` does not move,
+    because no frame, field, command or value changes shape.
+    Spec: [0044](specs/0044-the-local-endpoint-off-windows.md).
 11.37. **E, the endpoint name can be overridden on one side only** (both lanes
     and lane 3; **not** on lane 3's critical path). Raised by Marlon on
     2026-08-29 while 11.35 was being written, and recorded rather than
@@ -2182,8 +2216,21 @@ rather than before it.
     demonstrated on it. This is a gap in the configuration surface, not in the
     connection.
     Spec: none yet.
-11.36. **E, the wire module is named after the only reader it used to serve**
-    (both lanes; **gates lane 3's 13.3**). `nvda_mcp_wire` was named when NVDA
+11.36. **Done (2026-08-29)** — E, the wire module was named after the only
+    reader it used to serve (both lanes; **gated lane 3's 13.3**). Shipped in
+    one PR with 11.35; see that entry for why the two travelled together.
+    **Spec [0045](specs/0045-a-wire-module-named-after-the-contract.md).**
+    73 occurrences across 43 files, all mechanical, all gated. The package moved
+    with `git mv` so history follows, the distribution became
+    `screenreader-wire`, and `schema.json` came out byte-identical — which the
+    drift gate proves and is the whole claim that nothing changed. Nothing in
+    the add-on package moved: `sync_shared.py` copies one file to `protocol.py`
+    and the bridge imports it as `from . import protocol`, so only the source
+    path changed. Specs that named the old path were rewritten, because a
+    document pointing at `shared/nvda_mcp_wire/protocol.py` now points at
+    nothing; the places that recorded the DECISION rather than the path keep the
+    old name, and spec 0005's deferral gained a dated line saying it happened.
+    The reasoning as it stood when the entry was opened: `nvda_mcp_wire` was named when NVDA
     was the identity rather than the first bridge, and [spec
     0005](specs/0005-multi-reader-direction.md) deferred renaming it until the
     repo name settled. The repo is `screen-readers-mcp`, and a **Swift** binding
@@ -2215,7 +2262,7 @@ rather than before it.
     changes and `PROTOCOL_VERSION` does not move** — the wire shape is
     untouched, so this costs no version bump under the policy in
     `shared/AGENTS.md`.
-    Spec: none yet.
+    Spec: [0045](specs/0045-a-wire-module-named-after-the-contract.md).
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the

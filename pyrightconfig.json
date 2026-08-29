@@ -2,7 +2,7 @@
 	"typeCheckingMode": "strict",
 	"analyzeUnannotatedFunctions": true,
 	"include": [
-		"shared/nvda_mcp_wire",
+		"shared/screenreader_wire",
 		"shared/tests",
 		"bridges/nvda/addon/globalPlugins/nvdaMcpBridge",
 		"bridges/nvda/buildVars.py",

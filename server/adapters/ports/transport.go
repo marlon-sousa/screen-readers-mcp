@@ -6,7 +6,7 @@
 // bytes come from a leaf that makes none (the root AGENTS.md, "adapters are LAYERED so
 // the untestable part shrinks to a leaf").
 // IMPLEMENTED BY: adapters/bridge/tcp_transport.go and
-// adapters/bridge/pipe_transport_windows.go (leaves), fakes/transport.go.
+// adapters/bridge/local_transport_windows.go (leaves), fakes/transport.go.
 // USED BY: adapters/bridge/json_lines_client.go, through this interface only --
 // never a concrete transport.
 //

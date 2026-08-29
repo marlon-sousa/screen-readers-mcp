@@ -136,7 +136,7 @@ along a path that already exists.
 
 | File | Role | Change |
 |---|---|---|
-| `shared/nvda_mcp_wire/protocol.py` | the contract | `SpeechEntry`, `BrailleEntry`, `LastSpeechResult`, `SpeechMatchResult` each gain `emittedAt: str` |
+| `shared/screenreader_wire/protocol.py` | the contract | `SpeechEntry`, `BrailleEntry`, `LastSpeechResult`, `SpeechMatchResult` each gain `emittedAt: str` |
 | `specs/wire/v1/schema.json` | generated, CI drift gate | regenerated |
 | `specs/wire/v1/protocol.md` | hand-written prose | §7 gains the field and §3.2's warning about what the instant means |
 

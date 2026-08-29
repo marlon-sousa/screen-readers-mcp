@@ -262,7 +262,7 @@ all in the sections 11a touches:
   directions — it announces four of these seven today.
 
 Also stale, and corrected here: `CaptureMode.SILENT`'s docstring in
-`shared/nvda_mcp_wire/protocol.py` ("Bundled spy synth replaces the real
+`shared/screenreader_wire/protocol.py` ("Bundled spy synth replaces the real
 synth"). Docstring only — no shape change, so `schema.json` does not move.
 
 ## Out of scope

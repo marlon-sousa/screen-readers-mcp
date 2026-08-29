@@ -126,12 +126,14 @@ def _endpoint_spec(transport: str, endpoint: str) -> str:
 	"""The accepting endpoint, spelled the way the SERVER's configuration does.
 
 	The bridge reports ``127.0.0.1:8765`` or ``\\\\.\\pipe\\name``; the server's
-	``--reader`` flag wants ``tcp:127.0.0.1:8765`` or ``pipe:name``. Translating
-	here keeps the driver from having to know either spelling.
+	``--reader`` flag wants ``tcp:127.0.0.1:8765`` or ``local:name`` -- a bare
+	name, because since spec 0044 the server resolves the local endpoint per
+	platform and a named pipe is what Windows resolves it to. Translating here
+	keeps the driver from having to know either spelling.
 	"""
 	if transport == "tcp":
 		return f"tcp:{endpoint}"
-	return "pipe:" + endpoint.rsplit("\\", 1)[-1]
+	return "local:" + endpoint.rsplit("\\", 1)[-1]
 
 
 def _session_factory(logs_dir: Path) -> SessionFactory:

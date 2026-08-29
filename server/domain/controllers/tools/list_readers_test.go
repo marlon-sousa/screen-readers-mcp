@@ -50,7 +50,7 @@ func runListReaders(t *testing.T, listing entities.ReaderListing) listed {
 // The NVDA default: a pipe first, then loopback TCP. The order is what
 // connect_reader will try them in, so it has to survive the trip out.
 func TestEndpointsAreReportedInDeclaredOrder(t *testing.T) {
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 	got := runListReaders(t, entities.BuildListing([]entities.ConfiguredReader{reader}, nil))
 
 	if len(got.Readers) != 1 || got.Readers[0].Reader != "nvda" {
@@ -60,7 +60,7 @@ func TestEndpointsAreReportedInDeclaredOrder(t *testing.T) {
 	if len(endpoints) != 2 {
 		t.Fatalf("endpoints = %+v, want both", endpoints)
 	}
-	if endpoints[0].Endpoint != "pipe:nvdaMcpBridge" || endpoints[1].Endpoint != "tcp:127.0.0.1:8765" {
+	if endpoints[0].Endpoint != "local:nvdaMcpBridge" || endpoints[1].Endpoint != "tcp:127.0.0.1:8765" {
 		t.Errorf("endpoints = %+v, want the pipe first as declared", endpoints)
 	}
 }
@@ -69,8 +69,8 @@ func TestEndpointsAreReportedInDeclaredOrder(t *testing.T) {
 // listening, and TCP honestly says it cannot be known without connecting --
 // which this server will not do, since the bridge serves one session at a time.
 func TestLivenessIsReportedPerTransportKind(t *testing.T) {
-	pipe := testsupport.Endpoint(t, "pipe:nvdaMcpBridge")
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	pipe := testsupport.Endpoint(t, "local:nvdaMcpBridge")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 
 	live := runListReaders(t, entities.BuildListing(
 		[]entities.ConfiguredReader{reader}, []entities.Endpoint{pipe},

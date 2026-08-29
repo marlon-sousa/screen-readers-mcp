@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/marlon-sousa/screen-readers-mcp/server/adapters/bridge"
+	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
@@ -47,24 +48,53 @@ func TestDialerForRefusesNonLoopbackTCP(t *testing.T) {
 	}
 }
 
-// The failure is raised where the configuration is READ, not when an agent asks
-// to connect, and it says what to do instead.
-func TestDialerForPipeDependsOnThePlatform(t *testing.T) {
-	dial, err := bridge.DialerFor(testsupport.Endpoint(t, "pipe:nvdaMcpBridge"))
+// The local endpoint resolves on EVERY platform now (spec 0044): a named pipe on
+// Windows, a Unix domain socket on POSIX. Until then this test asserted the
+// opposite -- that a non-Windows host refused and pointed at TCP -- which is
+// what a bridge for a reader that does not run on Windows would have hit.
+func TestDialerForResolvesTheLocalEndpointOnEveryPlatform(t *testing.T) {
+	dial, err := bridge.DialerFor(testsupport.Endpoint(t, "local:nvdaMcpBridge"))
+	if err != nil {
+		t.Fatalf("DialerFor(local): %v", err)
+	}
+	if dial == nil {
+		t.Error("no dialer returned for a local endpoint")
+	}
+}
 
+// `pipe:` is the spelling the local endpoint had until spec 0044, and it is
+// kept forever because it is in shipped defaults, in help text, in the published
+// contract and in config files people already have.
+func TestDialerForAcceptsThePipeAlias(t *testing.T) {
+	dial, err := bridge.DialerFor(testsupport.Endpoint(t, "pipe:nvdaMcpBridge"))
+	if err != nil {
+		t.Fatalf("DialerFor(pipe alias): %v", err)
+	}
+	if dial == nil {
+		t.Error("no dialer returned for the alias of an endpoint we do dial")
+	}
+}
+
+// A socket path that cannot fit in a sockaddr_un is reported where the
+// configuration is READ, naming the endpoint the user wrote -- not at the moment
+// an agent asks to connect, where the OS answers `connect: invalid argument` and
+// names neither the limit nor the fix.
+//
+// Windows has no such limit, so the case is POSIX-only. The RULE is tested on
+// every host in domain/entities/local_socket_test.go; what this asserts is that
+// DialerFor surfaces it at build time rather than swallowing it.
+func TestDialerForRefusesAnOverlongSocketPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		if err != nil {
-			t.Fatalf("DialerFor(pipe) on Windows: %v", err)
-		}
-		if dial == nil {
-			t.Error("no dialer returned for a pipe endpoint on Windows")
-		}
-		return
+		t.Skip("sockaddr_un has no counterpart in the named-pipe namespace")
 	}
+	address := "/tmp/" + strings.Repeat("a", entities.MaxLocalSocketPath) + ".sock"
+
+	_, err := bridge.DialerFor(testsupport.Endpoint(t, "local:"+address))
+
 	if err == nil {
-		t.Fatal("DialerFor(pipe) succeeded on a platform with no named pipes")
+		t.Fatal("DialerFor succeeded on a path no unix socket can carry")
 	}
-	if !strings.Contains(err.Error(), "tcp") {
-		t.Errorf("error %q does not point at the alternative", err)
+	if !strings.Contains(err.Error(), "bytes") {
+		t.Errorf("error %q does not say what the limit is", err)
 	}
 }

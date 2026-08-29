@@ -440,8 +440,8 @@ per-host as each arrives.
   `bridge_task.py` knows how to select and how to report; it knows nothing about
   pytest.
 - **Moving `check_shared_synced` into the bridge section.** The doctor still
-  compares `shared/nvda_mcp_wire/protocol.py` against `bridges/nvda`'s copy by
-  name. It is bridge-specific and belongs with the bridge; it stays for now
+  compares `shared/screenreader_wire/protocol.py` against `bridges/nvda`'s copy
+  by name. It is bridge-specific and belongs with the bridge; it stays for now
   because the NVDA bridge cannot be deselected on any host today, so nothing is
   yet wrong. It is the first thing bridge #2 should move.
 - **Migrating a stale `screenreader-mcp.exe`** left in a POSIX checkout by an

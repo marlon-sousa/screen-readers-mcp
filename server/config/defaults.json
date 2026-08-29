@@ -3,7 +3,7 @@
     {
       "name": "nvda",
       "endpoints": [
-        "pipe:nvdaMcpBridge",
+        "local:nvdaMcpBridge",
         "tcp:127.0.0.1:8765"
       ]
     }

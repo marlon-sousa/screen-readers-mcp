@@ -66,13 +66,17 @@ The chain, top to bottom — each item talks only to the next:
 
 1. An MCP client (Claude Code, …) speaks MCP over stdio to the server.
 2. `server/` — `screenreader-mcp`, a statically linked **Go** binary — speaks
-   JSON lines to the bridge over a **local endpoint**: a named pipe
-   (`\\.\pipe\nvdaMcpBridge`) by default, or loopback TCP (`127.0.0.1:8765`),
-   chosen in the bridge's control dialog
+   JSON lines to the bridge over a **local endpoint** by default, or loopback
+   TCP (`127.0.0.1:8765`), chosen in the bridge's control dialog
    ([spec 0010](specs/0010-named-pipe-transport.md),
-   [0011](specs/0011-bridge-control-ui.md)). It never dials on its own: the
-   agent calls `connect_reader`, and the capability-gated tools appear on a
-   successful `hello` ([spec 0013](specs/0013-mcp-server.md)).
+   [0011](specs/0011-bridge-control-ui.md)). The local endpoint is a
+   *requirement*, not a mechanism: it is addressed by a bare **name**
+   (`local:nvdaMcpBridge`) which resolves to a named pipe on Windows and to a
+   Unix domain socket under `$XDG_RUNTIME_DIR` or `~` on POSIX, so one shipped
+   default works on every host ([spec
+   0044](specs/0044-the-local-endpoint-off-windows.md)). It never dials on its
+   own: the agent calls `connect_reader`, and the capability-gated tools appear
+   on a successful `hello` ([spec 0013](specs/0013-mcp-server.md)).
 3. `bridges/nvda/` — the `nvdaMcpBridge` NVDA addon (a global plugin) — drives
    NVDA itself. Silent capture registers a `filter_speechSequence` filter and
    **never swaps the synth**; the user's real synthesizer stays loaded, so a
@@ -96,7 +100,7 @@ make it cost a version bump instead — is in
 
 | Dir | What | Host / Python |
 |---|---|---|
-| `shared/` | Canonical **stdlib-only** wire protocol (`nvda-mcp-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
+| `shared/` | Canonical **stdlib-only** wire protocol (`screenreader-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
@@ -176,8 +180,8 @@ Rules that keep this honest:
   (`from ..ports.clock import Clock`) — the `__init__.py` files carry
   documentation, never re-exports, so every import names its file and a module's
   dependencies are exactly the ports it lists. This applies to
-  `shared/nvda_mcp_wire` too: import from `nvda_mcp_wire.protocol`, so both
-  halves address the wire contract through a module named `protocol`.
+  `shared/screenreader_wire` too: import from `screenreader_wire.protocol`, so
+  both halves address the wire contract through a module named `protocol`.
 - **Enumerations are `enum`, never class-of-`Final`-constants.** Wire enums
   (`CaptureMode`, `Command`) are `enum.StrEnum` in `protocol.py` (members are
   `str`, so JSON stays plain); domain-only enums (`TeardownReason`) are plain
@@ -208,7 +212,7 @@ tests/unit/domain/entities/test_speech_buffer.py
 ```
 
 The mirror applies per package, not just to the bridge:
-`shared/tests/unit/test_protocol.py` ↔ `nvda_mcp_wire/protocol.py`.
+`shared/tests/unit/test_protocol.py` ↔ `screenreader_wire/protocol.py`.
 
 **In Go the mirror is the language's own convention**, so the server renders the
 same rule differently — one test file beside each source file, `package
@@ -322,7 +326,7 @@ the three things that cost real time when driving a live NVDA.
 
 ## Hard invariants — do not break
 
-1. **`shared/nvda_mcp_wire/protocol.py` stays stdlib-only.** It is copied
+1. **`shared/screenreader_wire/protocol.py` stays stdlib-only.** It is copied
    *verbatim* into the addon (`bridges/nvda/sync_shared.py`) and runs inside
    NVDA's interpreter, sharing `sys.modules` with every other addon. No
    third-party imports, ever. (pydantic etc. were considered and rejected —
@@ -696,9 +700,10 @@ only needs the merged code + its spec + this file.
   error.
   - **No language server crosses the Go↔Python boundary.** The wire contract is
     one schema with two bindings: `specs/wire/v1/schema.json` generates
-    `server/adapters/wire/wire.gen.go`, and `shared/nvda_mcp_wire/protocol.py`
-    mirrors it. "Find references" on a Go command constant will not find its
-    Python counterpart, or the reverse — it is not dead, it is on the other
+    `server/adapters/wire/wire.gen.go`, and
+    `shared/screenreader_wire/protocol.py` mirrors it. "Find references" on a Go
+    command constant will not find its Python counterpart, or the reverse — it
+    is not dead, it is on the other
     side. For anything wire-shaped the schema is the index and
     `scripts/drift.py` is the check.
   - **The first query after the server starts can be silently truncated**,

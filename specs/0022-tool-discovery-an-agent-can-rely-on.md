@@ -663,7 +663,7 @@ Per the repo rule, every file the PR touches, with its role.
 
 | File | Change | Role |
 | --- | --- | --- |
-| `shared/nvda_mcp_wire/protocol.py` | `HelloResult` gains `guidance: str = ""` | wire dataclass |
+| `shared/screenreader_wire/protocol.py` | `HelloResult` gains `guidance: str = ""` | wire dataclass |
 | `specs/wire/v1/schema.json`, `server/adapters/wire/wire.gen.go` | regenerated | generated artifacts |
 | `specs/wire/v1/protocol.md` | §3 documents the field; §8 records the in-place amendment | contract |
 

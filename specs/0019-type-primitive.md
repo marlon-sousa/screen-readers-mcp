@@ -146,9 +146,9 @@ capability table in §4.
 
 ### Shared
 
-1. **`shared/nvda_mcp_wire/protocol.py`** — `Capability.TYPING`; `TypeParams`
-   (`text: str`); its entry in `COMMAND_SHAPES` mapping `typeText` →
-   params/`AckResult`.
+1. **`shared/screenreader_wire/protocol.py`** — `Capability.TYPING`;
+   `TypeParams` (`text: str`); its entry in `COMMAND_SHAPES` mapping
+   `typeText` → params/`AckResult`.
 
 ### Bridge (lane 1)
 

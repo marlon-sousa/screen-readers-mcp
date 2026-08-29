@@ -87,8 +87,8 @@ distinct from `null`'s "no such concept here" — exactly the ambiguity a naive
 argues against. The enum also matches `speechMode` in the same `StateResult`,
 and every role/state string elsewhere in this contract, all sent as named
 strings rather than a boolean. This is the one place this entry touches
-`shared/nvda_mcp_wire/protocol.py`; it regenerates `schema.json`, so it is the
-one part of this entry the drift gate and the conformance job will see.
+`shared/screenreader_wire/protocol.py`; it regenerates `schema.json`, so it is
+the one part of this entry the drift gate and the conformance job will see.
 
 ### The other three state values
 

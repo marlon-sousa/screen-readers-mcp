@@ -24,7 +24,7 @@ Everything here is headless; nothing touches NVDA.
 ## Wire changes (protocol v1, pre-release amendment — no bump)
 
 Protocol v1 has no external consumers yet (spec 0005), so these amendments
-are free. All in `shared/nvda_mcp_wire/protocol.py`, which stays
+are free. All in `shared/screenreader_wire/protocol.py`, which stays
 **stdlib-only** (hard invariant 1):
 
 1. **`ReaderInfo`** — frozen dataclass: `name: str` (e.g. `"nvda"`),
@@ -50,7 +50,7 @@ are free. All in `shared/nvda_mcp_wire/protocol.py`, which stays
 
 ## The schema generator
 
-`shared/nvda_mcp_wire/schema.py` — a pure builder,
+`shared/screenreader_wire/schema.py` — a pure builder,
 `build_wire_schema() -> dict[str, Any]`, walking `COMMAND_SHAPES` and the
 dataclass type hints (the same `get_type_hints` machinery `from_dict`
 validates with, run in the other direction) to emit one JSON Schema
@@ -62,7 +62,7 @@ validates with, run in the other direction) to emit one JSON Schema
   `list`/`dict` shapes — exactly the constructs `_coerce` understands.
 
 Output is **deterministic** (stable key order) so the committed file diffs
-cleanly. `python -m nvda_mcp_wire.schema` prints the canonical JSON to
+cleanly. `python -m screenreader_wire.schema` prints the canonical JSON to
 stdout; the committed artifact is `specs/wire/v1/schema.json`. The module is
 stdlib-only like its sibling and is **never synced into the addon**
 (`sync_shared.py` copies `protocol.py` only — unchanged).
@@ -110,8 +110,8 @@ specs/wire/v1/schema.json`. Code changed without regenerating → red.
 
 | File | Status | Role | Collaborators |
 |---|---|---|---|
-| `shared/nvda_mcp_wire/protocol.py` | amended | canonical wire contract (data + validator) | adds `ReaderInfo`, `Capability`, `CommandShape` + `COMMAND_SHAPES`; amends `HelloResult`. Consumed by both halves and by `schema.py`. |
-| `shared/nvda_mcp_wire/schema.py` | new | supporting construct: pure schema builder (`build_wire_schema()`), stdout emitter under `__main__` only | reads `protocol.py`'s dataclasses and `COMMAND_SHAPES`; used by CI and by whoever regenerates the committed schema. No IO outside `__main__`. |
+| `shared/screenreader_wire/protocol.py` | amended | canonical wire contract (data + validator) | adds `ReaderInfo`, `Capability`, `CommandShape` + `COMMAND_SHAPES`; amends `HelloResult`. Consumed by both halves and by `schema.py`. |
+| `shared/screenreader_wire/schema.py` | new | supporting construct: pure schema builder (`build_wire_schema()`), stdout emitter under `__main__` only | reads `protocol.py`'s dataclasses and `COMMAND_SHAPES`; used by CI and by whoever regenerates the committed schema. No IO outside `__main__`. |
 | `specs/wire/v1/protocol.md` | new | published contract, prose half | hand-written; versioned by `PROTOCOL_VERSION`. |
 | `specs/wire/v1/schema.json` | new (generated, committed) | published contract, parseable half | emitted by `schema.py`; guarded by the CI drift step. |
 | `shared/tests/unit/test_schema.py` | new | unit tests (mirror of `schema.py`) | asserts envelope + per-command coverage, determinism, closed enums, optional/nested handling. |
@@ -133,7 +133,7 @@ plus one pure builder.
 2. A test proves `COMMAND_SHAPES` has an entry for every `Command` member, so
    a new command cannot be added without declaring its shapes (and thereby
    appearing in the schema).
-3. `python -m nvda_mcp_wire.schema` output is byte-identical to the committed
+3. `python -m screenreader_wire.schema` output is byte-identical to the committed
    `specs/wire/v1/schema.json`, and the CI drift step fails when it is not.
 4. The generated schema validates representative frames: a valid
    `HelloResult` payload passes; a payload with an unknown `CaptureMode` or a

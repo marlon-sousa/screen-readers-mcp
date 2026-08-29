@@ -723,7 +723,7 @@ def check_shared_synced() -> Result:
 	every consumer. Getting either wrong turns this check into a false alarm,
 	which is worse than no check: it trains people to ignore it.
 	"""
-	source = ROOT / "shared" / "nvda_mcp_wire" / "protocol.py"
+	source = ROOT / "shared" / "screenreader_wire" / "protocol.py"
 	copy = ROOT / "bridges" / "nvda" / "addon" / "globalPlugins" / "nvdaMcpBridge" / "protocol.py"
 	if not source.is_file() or not copy.is_file():
 		return Result(WARN, "shared module synced", "one of the two copies is missing")

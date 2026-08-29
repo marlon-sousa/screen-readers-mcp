@@ -226,7 +226,7 @@ MCP tools (v1):
 ```
 nvda-mcp/
   specs/            # Numbered design specs (this file is 0001)
-  shared/           # Canonical stdlib-only wire protocol (nvda-mcp-wire)
+  shared/           # Canonical stdlib-only wire protocol (screenreader-wire)
   bridgeAddon/      # NVDA addon, scaffolded from AddonTemplate:
                     #   sconstruct (TimerForNVDA variant), buildVars.py,
                     #   manifest.ini.tpl, README.tpl.md, addon/...

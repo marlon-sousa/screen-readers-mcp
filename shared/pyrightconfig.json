@@ -1,7 +1,7 @@
 {
 	"typeCheckingMode": "strict",
 	"pythonVersion": "3.11",
-	"include": ["nvda_mcp_wire", "tests"],
+	"include": ["screenreader_wire", "tests"],
 	"venvPath": ".",
 	"venv": ".venv"
 }

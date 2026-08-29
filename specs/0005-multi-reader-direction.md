@@ -24,7 +24,7 @@ reasons, so they can be re-examined if the facts change:
   overhead — cost paid for independent teams we do not have.
 - The artifact a non-Python bridge would reuse is **not** the Python package
   (a JAWS bridge would be C#/COM, a TalkBack bridge Kotlin — neither can
-  import `nvda_mcp_wire`). What they need is the published wire contract
+  import `screenreader_wire`). What they need is the published wire contract
   (spec 0006), which lives happily inside this repo.
 - The uv workspace already gives each component its own package, and
   `git filter-repo` can extract a directory with full history, so a later
@@ -83,7 +83,7 @@ Two consequences, both already reflected in entries:
 
 ## Decided — the wire contract is two artifacts
 
-1. **The Python module** (`shared/nvda_mcp_wire/protocol.py`) stays the
+1. **The Python module** (`shared/screenreader_wire/protocol.py`) stays the
    canonical *implementation* for the all-Python era. Its same-bytes sharing
    between server and NVDA bridge is a drift guarantee worth keeping exactly
    as long as both halves are Python. Hard invariants 1–2 (stdlib-only,
@@ -148,6 +148,12 @@ discussed: descriptive (`screenreader-mcp` — free as of 2026-07-18) versus a
 brand name (the Guidepup precedent; echolocation/auscultation metaphor veins).
 Marlon is deciding. The `nvda_mcp_wire` package rename is deferred until the
 repo name settles, so both rename once, together.
+
+**Both happened.** The repo is `screen-readers-mcp`, and the deferred package
+rename followed on **2026-08-29**: `screenreader_wire`, distribution
+`screenreader-wire`, imported as `screenreader_wire.protocol`. Board entry
+**11.36**, [spec 0045](0045-a-wire-module-named-after-the-contract.md), taken
+before lane 3 writes the contract's third binding.
 
 ## Board impact
 

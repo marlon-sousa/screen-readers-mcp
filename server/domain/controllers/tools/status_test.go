@@ -103,7 +103,7 @@ func TestALiveSessionIsProvedByARealRoundTrip(t *testing.T) {
 	if answer.Session == nil {
 		t.Fatal("session = nil, want the live session described")
 	}
-	if answer.Session.Reader != "nvda" || answer.Session.Endpoint != "pipe:nvdaMcpBridge" {
+	if answer.Session.Reader != "nvda" || answer.Session.Endpoint != "local:nvdaMcpBridge" {
 		t.Errorf("session = %+v, want the reader and endpoint that answered", *answer.Session)
 	}
 	if len(answer.Session.Capabilities) != len(testsupport.EveryCapability()) {

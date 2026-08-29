@@ -744,7 +744,7 @@ No new tool, no capability change, no wire change, no bridge change.
 
 | File | Role | Change |
 |---|---|---|
-| `shared/nvda_mcp_wire/protocol.py` | the contract | `HelloParams.persona: str = ""` (4.2); `Command.GET_GUIDANCE`; `Capability.GUIDANCE`; `GetGuidanceResult{persona: str, recognised: bool, text: str}` |
+| `shared/screenreader_wire/protocol.py` | the contract | `HelloParams.persona: str = ""` (4.2); `Command.GET_GUIDANCE`; `Capability.GUIDANCE`; `GetGuidanceResult{persona: str, recognised: bool, text: str}` |
 | `specs/wire/v1/schema.json` | generated, CI drift gate | regenerated |
 | `specs/wire/v1/protocol.md` | hand-written prose | §3 gains `persona` and why it is a string; §4 gains the `guidance` capability row and the "must not reject an unknown persona" rule beside the unknown-capability one; §5 gains `getGuidance` |
 
