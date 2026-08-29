@@ -470,6 +470,121 @@ escape reports cleared; and frames produced equal frames drained with no
 overflow. The prosody spec 0041 A2 measured is still there —
 `<prosody rate="160.00002%">` and `<break time="250ms"/>` — captured intact.
 
+## Finding 13 — the direct accessibility message exists: press the button inside the cell
+
+**This section replaces a wrong conclusion.** An earlier draft of this document
+said there was no AX message that could commit the choice, and that a synthesized
+click at the element's frame was the only route. That was wrong, and the
+maintainer refused it on the right grounds — *"you are saying the Apple
+accessibility framework has a bug; it is very hard to believe. If it had such a
+flaw, everything depending on it would fail."* It does not have a bug. The probe
+was too shallow.
+
+**What is true**, and was measured:
+
+| Element | Reported settable | Actions |
+|---|---|---|
+| `AXOutline "Lista de Vozes"` | `AXFocused`, `AXSelectedRows` | *(none)* |
+| `AXRow` | `AXSelected` | `AXShowDefaultUI`, `AXShowAlternateUI` |
+| `AXCell` | `AXScrollToVisible` | *(none)* |
+| **`AXButton` inside the cell** | — | **`AXPress`** |
+
+Setting `AXSelected` on a row, or `AXSelectedRows` on the outline, does return
+`.success` and then silently does nothing — the row still reads `AXSelected = 0`.
+That part of the earlier finding stands, and it is a real trap. But it is not the
+only door, and stopping there was the error: **the row's cell contains two
+buttons — the voice and its `Falar Amostra` sample — and both expose `AXPress`.**
+Pressing the voice button selects the voice, closes the picker, and updates the
+parent button's title. No coordinates, no synthesized click.
+
+**Verified as a round trip**, in both directions, with nothing but AX messages:
+`Capture Spike` → `Reed` → `Capture Spike`, each confirmed by reading the parent
+button's title back.
+
+**The complete mechanism**, which is what entry 13.13 implements:
+
+1. Open VoiceOver Utility — VO-F8, or `open -a`. A fresh launch resets to
+   `Geral`.
+2. `AXSelected = true` on the `Voz` row of the `Categorias de Utilitários`
+   table. This one *does* take: it is a real `AXTable`.
+3. `AXPress` the main voice button — that opens the voice **settings** sheet
+   (rate, pitch, volume), not the picker.
+4. `AXPress` the inner `Voz, <voice>` button in that sheet — *this* opens the
+   picker. Matching on the voice name alone finds the outer button first.
+5. `AXFocused = true` on the picker's search field, then type the voice name.
+   **This step is not optional**: the list is virtualized, so a row that is not
+   visible does not exist in the AX tree at all — which is why the target row was
+   "not found" among 34 rows until it was filtered to 3.
+6. `AXPress` the button **inside the target row's cell** whose label is the voice
+   name.
+7. `AXPress` `OK` on the settings sheet.
+
+Only step 5 needs a keystroke, and it types into a field that was focused by
+message rather than by hoping focus was already there.
+
+**The lesson worth keeping is about the probe, not the framework.** Two of this
+document's earlier wrong turns and this one share a shape: an element was asked
+what it could do, the answer was "nothing", and the conclusion drawn was about
+*the application* rather than about *how far down the tree the question had been
+asked*.
+
+## Finding 14 — the rotor is window-independent, and still not a setter
+
+VoiceOver's speech-attribute guide is the one route that needs **no window at
+all**, which is the right property. Its bindings, read from the default
+configuration rather than guessed:
+
+| Command | Selector | Keystroke |
+|---|---|---|
+| open next speech attribute guide | `Global.interactRightCommandShift` | VO-Command-Shift-Right |
+| open previous speech attribute guide | `Global.interactLeftCommandShift` | VO-Command-Shift-Left |
+| select next option down in guide | `Global.interactDownCommandShift` | VO-Command-Shift-Down |
+| select next option up in guide | `Global.interactUpCommandShift` | VO-Command-Shift-Up |
+
+(control + option + command + shift, with the arrow characters `\uf700`–`\uf703`.)
+
+**Measured, and it does not advance.** The first press opened the guide on
+`Velocidade 60%`; a later one reached `Tom 40%`; and every press after that
+produced exactly `Fechando Menu Tom` → `Tom 40%` → the previous context. It
+closes and reopens the guide on the **same** attribute. Eight presses at 0.7 s
+and four presses as fast as `osascript` allows behaved identically. The guide is
+a **transient, timed** overlay, so driving it means racing a timeout — and the
+mechanism is **relative** (cycle) rather than absolute (set to X) in any case.
+
+**A better readback channel, found here and worth keeping.** `content of last
+phrase` raced badly during this — it returned a stale context line more often
+than the guide's announcement. The **capture feed** did not: every utterance,
+in order, with a sequence number, which is how the transcript above was
+recovered. The bridge already has the better channel; `last phrase` is the
+degraded one.
+
+## The conclusion: the bridge can set the voice, by message
+
+Four routes were tried. One works, and it is the one that sends messages rather
+than depending on where a window happens to be:
+
+| Route | Verdict |
+|---|---|
+| Write a preference | **Dead** — the reader keeps the voice in no file (finding 10) |
+| Set `AXSelected` on the row | **Dead** — accepted and silently discarded (finding 13) |
+| Drive the speech rotor | **Not a setter** — transient, timed, relative (finding 14) |
+| **`AXPress` the button inside the row's cell** | **Works**, both directions, no coordinates (finding 13) |
+
+So the bridge does **not** have to fall back to reporting an unfixable
+precondition, and it does not have to click at screen positions — the objection
+that killed that idea was correct and it no longer applies. `ProviderState`
+(13.6) still owes its *detection*, because a voice can be lost from the reader's
+picker without anything outside the reader noticing (finding 6), and the
+repair — re-register, then restart — is still the instruction. What changes is
+that selecting the voice afterwards is something the bridge can do itself.
+
+**It still depends on VoiceOver Utility being drivable**, which is a real
+dependency and should be stated rather than hidden: the app must launch, and the
+window's category list and sheets must be present. But those are *messages to
+named elements*, which fail loudly with a missing element rather than quietly
+clicking whatever is at a coordinate — and that is the difference the maintainer
+was asking for.
+
 ## What this changes
 
 | Claim | Before | After |
@@ -484,6 +599,8 @@ overflow. The prosody spec 0041 A2 measured is still there —
 | The preference write does not work | finding 2 | **dead — the reader keeps the voice nowhere we can write** |
 | The voice can be set without a human | open | **yes — through the accessibility framework, finding 11** |
 | The decomposed extension works live | untested | **verified: 33 utterances, 0 underruns** |
+| The bridge can set the voice itself | hoped | **yes — `AXPress` the button inside the row's cell** |
+| The rotor position is unsaved like the voice | assumed | **false — `SCRSpeechAttributeRotorLastRotor` IS written; the voice is deliberately elsewhere** |
 
 ## What is deliberately not built
 

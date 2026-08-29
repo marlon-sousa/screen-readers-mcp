@@ -758,14 +758,21 @@ rule intends.
     `~/Library/Application Support` or `~/Library/Group Containers` -- while the
     selection survives a full reader restart. So the write route is dead, not
     mis-aimed, and the three hypotheses above die with it.
-    **What works is the accessibility framework**, and the recipe is in the spec:
-    open the utility with VO-F8, select the `Voz` category by setting `AXSelected`
-    on its table row, `AXPress` the voice button and then the INNER
-    `Voz, <voice>` button it reveals, set `AXFocused` on the picker's search
-    field and TYPE, then **click the row at its own AX frame** -- because the
-    voice list is not an AXTable: its rows expose no press action, `AXSelected`
-    on them silently does nothing, and arrow keys do not enter it. A real click
-    at real coordinates is the only thing that commits.
+    **What works is the accessibility framework, by MESSAGE and not by
+    coordinate**, and the recipe is in the spec: open the utility with VO-F8;
+    `AXSelected` on the `Voz` category row, which does take because that is a
+    real AXTable; `AXPress` the voice button and then the INNER `Voz, <voice>`
+    button it reveals; `AXFocused` on the picker's search field and TYPE, which
+    is not optional because the list is VIRTUALIZED and an unfiltered row is
+    absent from the tree entirely; then `AXPress` **the button inside the target
+    row's cell**. Verified as a round trip, both directions.
+    An earlier draft of this entry concluded the opposite -- that only a
+    synthesized click at the row's frame could commit it, and that the bridge
+    must therefore report an unfixable precondition rather than set the voice.
+    That was wrong, and it was refused on the right grounds: a framework that
+    could not select a list item would fail everything built on it. The row and
+    the cell expose no press action; the BUTTONS INSIDE THE CELL do, and the
+    probe had stopped one level too shallow.
     So this entry's remaining work is an ADAPTER, not another measurement: a
     `ReaderVoiceControl` port over that recipe, with the reader restart from
     finding 1, and the named condition 13.6 now owes.
