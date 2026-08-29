@@ -445,14 +445,17 @@ this machine the failure mode under test is "the maintainer's screen reader goes
 silent". The spike's standing safety rule applies with more force than the
 original ordering anticipated: **C4 is a precondition for C2, not a peer of it.**
 
-**C3 — can the voice be restored programmatically? (partial: no known route
-yet)** The AppleScript dictionary exposes no speech settings at all (E2), so
-there is no scripted restore through that door. The preferences plist does not
-carry a voice key while the voice is at its default, so the key's name is not yet
-known; the cheap way to learn it is to diff `default.plist` across a manual
-change, which is the same action A1 proper needs. Until then, **restoring the
-voice is a human action in VoiceOver Utility**, and any bridge on this route must
-be designed for that.
+**C3 — can the voice be restored programmatically? (pass, by a route the
+dictionary does not show)** The AppleScript *dictionary* exposes no speech
+settings at all (E2), which is where this answer stood at first. The command
+table does: `open next speech attribute guide` /
+`open previous speech attribute guide` choose which speech attribute is being
+adjusted, and `select next option down` / `up in speech attribute guide` change
+its value. That is the voice rotor, reachable through `perform command`, so the
+voice can be set and restored without a human — subject to the large caveat that
+**issuing those particular commands is what killed the scripting channel**, under
+"the input half" below. The preferences plist still carries no voice key while
+the voice is at its default, so the stored key's name remains unknown.
 
 **C4 — does audio pass-through work? (pass, outside the extension; unproven
 inside it)** The unit no longer renders silence. Each utterance's SSML is
@@ -489,6 +492,93 @@ s latency's effect on a reader in use, are answered by the same run as A1 proper
 A2. What the dictionary already tells us (E2) is that the polling route's ceiling
 is lower than the guidepup implementation suggests: one read-only string, and no
 braille at all.
+
+### Beyond the spec's questions — the input half
+
+Not asked for by this file, which is about *capture*, and added on 2026-08-28 at
+the maintainer's request: an agent that can drive VoiceOver stops needing a human
+for several of the remaining probes. The instrument is
+`spikes/voiceover-capture/drive.sh`.
+
+**VoiceOver dispatches commands by English NAME, and the vocabulary is a table
+inside the framework.**
+`/System/Library/PrivateFrameworks/ScreenReader.framework/Versions/A/Resources/SCRStringsToCommandsMap.scrconfig`
+is an XML plist of **415 entries** on macOS 15.0, mapping a phrase to an internal
+selector — `"describe item in voiceover cursor"` to
+`SCRApplication.focusedElementOverview`, and so on. It is undocumented, and it is
+the closest thing VoiceOver has to the bridge's gesture port.
+
+It is a better primitive than key injection: the reader does its own dispatch, so
+nothing races with whatever else holds the keyboard, and **an unknown command
+fails cleanly** — `Command does not exist (6)` — which is the property this repo
+already wants from `Request.cmd`.
+
+**The two halves of input cost different permissions, and that is a design
+lever.**
+
+| Capability | Permission needed |
+|---|---|
+| `perform command`, `output`, reading `last phrase` | AppleEvents access to VoiceOver |
+| Typing text, pressing keys anywhere | **Accessibility** (`kTCCServiceAccessibility`) |
+
+Windows has no equivalent gate, so the NVDA bridge has no analogue: **a VoiceOver
+bridge that never types need not ask for Accessibility at all.** Without it,
+`System Events` refuses with *"osascript não tem permissão para acionar teclas
+(1002)"*.
+
+One wrinkle specific to remote work, recorded because it is baffling the first
+time: **when the request comes from an SSH session, macOS attributes it to
+`/usr/libexec/sshd-keygen-wrapper`**, not to the app that made it. The consent
+dialog names something that looks unrelated to what you were doing, and granting
+it grants every SSH session on the machine.
+
+With Accessibility granted, typing works — and **the target application rewrites
+what was typed**. Two lines sent to TextEdit came back autocapitalized. "Send
+this keystroke" is not "this text arrives", and a harness comparing typed input
+against observed output has to expect the app's own substitutions.
+
+**The read-back channel is fragile, and that matters more than any of the
+above.** After `open next speech attribute guide` was issued six times in a row,
+every VoiceOver-specific call began failing — `last phrase`, `text under cursor`,
+`output` and `perform command` alike, with `-1728` / `-1708` — while
+`tell application "VoiceOver" to return name` still answered, `SCREnableAppleScript`
+was still `true`, and the process was still running. **VoiceOver's scripting
+object model died without VoiceOver dying**, silently, with nothing failing until
+the next call. Escape did not recover it; quitting and restarting VoiceOver
+recovered it completely.
+
+A bridge on this route must treat "the reader answers its own name but not its
+own state" as a distinct, detectable condition and report it — rather than
+returning an empty read-back, which is what a naive implementation would do.
+
+**`last phrase` is not one phrase.** After the restart it returned the whole
+startup announcement and the focused item as a single string — *"VoiceOver
+ativado. Cortina de tela ativada Finder Sem Título janela visualização por lista
+tabela Linha 49 de 52 Xcode Aplicativo…"*. It is the last output *request*, which
+may carry an entire sequence. Richer than "one word", and still one slot.
+
+**D1, in miniature, measured by accident, and worth more than a careful run would
+have been.** Three consecutive `move right` commands, each followed by polling
+`last phrase` until it changed:
+
+| Move | Result |
+|---|---|
+| 1 | changed after **308 ms**, on the first poll |
+| 2 | **never changed** — 201 polls over 22.9 s |
+| 3 | AppleEvent timeout (`-1712`) after 124 s, blocked behind a system dialog |
+
+Move 2 is probe A4 on the real system: the new utterance was *identical* to the
+previous one, and polling cannot tell that from silence. The `walk` output shows
+it plainly — four moves produced two distinct strings. A polling bridge either
+misses repeats or invents them.
+
+**VoiceOver crashes on this machine as a matter of course.** Five crash reports
+in `~/Library/Logs/DiagnosticReports/` on 2026-08-28 alone (08:10, 08:31, 08:39,
+13:00, 17:54), all *before* this spike started, and the maintainer confirms it is
+routine. VoiceOver restarted under us at least once during these probes. So
+"the reader restarts underneath the bridge" is not an edge case to handle
+eventually on macOS; it is the normal weather, and it is a sharper requirement
+than anything NVDA imposed.
 
 ### What changed about the plan
 

@@ -48,9 +48,26 @@ final class PassThrough {
 	}
 
 	/// An ordinary system voice to re-speak with -- never ours.
+	///
+	/// Measured on macOS 15.0, and the reason this is not simply "the first voice
+	/// matching the language": `speechVoices()` LISTS voices that then fail to
+	/// synthesize. Picking `com.apple.eloquence.pt-BR.Reed` produced audio in a
+	/// completely different voice, because CoreSynthesizer logged "Utterance
+	/// encountered error, next fallback state: retrySameVoice / retryFallbackVoice"
+	/// and quietly substituted the system default. The listener hears speech, so
+	/// nothing looks wrong -- but the provider's stated choice was a fiction.
+	///
+	/// So ask the system for the language's DEFAULT voice first. That is the voice
+	/// the machine already uses and is therefore known to work here, and it is
+	/// also the one whose sound the user expects.
 	static func fallbackVoice(language: String?) -> AVSpeechSynthesisVoice? {
-		let candidates = AVSpeechSynthesisVoice.speechVoices()
-			.filter { !$0.identifier.hasSuffix(ourVoiceIdentifier) }
+		func isOurs(_ voice: AVSpeechSynthesisVoice) -> Bool {
+			voice.identifier.hasSuffix(ourVoiceIdentifier)
+		}
+		if let language, let preferred = AVSpeechSynthesisVoice(language: language), !isOurs(preferred) {
+			return preferred
+		}
+		let candidates = AVSpeechSynthesisVoice.speechVoices().filter { !isOurs($0) }
 		guard let language else { return candidates.first }
 		if let exact = candidates.first(where: { $0.language == language }) { return exact }
 		let prefix = String(language.prefix(2))
