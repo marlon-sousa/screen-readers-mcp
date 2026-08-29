@@ -451,8 +451,9 @@ rule intends.
     macOS host was measured rather than reasoned about: VoiceOver emits no
     diagnostic log of its own (52 unified-log records in an hour, every one from
     a framework it links), focus has three routes of which the obvious
-    system-wide one fails, and its 45 toggles are richly drivable and not
-    readable at all. The capability set is **speech, gestures, typing, focus,
+    system-wide one fails, and its 45 toggles are richly drivable while almost
+    none is readable — the exceptions, found in an undocumented `local.plist`,
+    are recorded in the spec and do not add up to an answerable `getState`. The capability set is **speech, gestures, typing, focus,
     interact, guidance** — six of eleven — and it is announced one entry at a
     time, so the gate always describes what works.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29).
@@ -691,9 +692,18 @@ rule intends.
 13.12. **Can VoiceOver be asked what mode it is in?** (lane 3; a measurement, not
     a feature). Taken 2026-08-29 by 13.1, in the shape of
     [spec 0041](specs/0041-can-voiceover-say-what-it-said.md) and for the same
-    reason: the alternative is to assume. One question — **does the preferences
-    plist track a toggle at the instant it fires, or only later?** — with a probe
-    and a pass condition, run against a live reader.
+    reason: the alternative is to assume. Its target is sharper than when 13.1
+    opened it: a fuller sweep on 2026-08-29 found **three** preference files with
+    three different jobs, not one — `com.apple.VoiceOver4/default.plist`
+    (persisted settings, deviations only), `com.apple.VoiceOver4/journal.plist`
+    (timestamps, refreshed on every restart and therefore NOT a change log —
+    [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md)
+    measured that), and `com.apple.VoiceOver4.local.plist` (runtime state,
+    including `SCRScreenCurtainState` and VoiceOver's own unplanned-shutdown
+    counter). Spec 0047 already diffed all three across a **voice** change and a
+    clean quit and found nothing prompt; this entry asks the remaining question —
+    **does a TOGGLE write promptly, where a voice change did not** — reusing
+    0047's method and `scripts/voiceover_settings.sh`.
     If it is live and prompt, a **read-only** `state` becomes implementable and
     earns its own entry. If it is not, the answer is written down permanently and
     nobody re-opens it. Either way lane 3 ships v1 without `state`, so this blocks

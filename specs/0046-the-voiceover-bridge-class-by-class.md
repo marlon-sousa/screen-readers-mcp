@@ -85,11 +85,17 @@ reports on 2026-08-28 alone, all before the spike started. That cannot be
 designed away, so it is **measured** instead. Four rules bind lane 3's live
 checklists, and 13.11 is the entry that must satisfy them.
 
-1. **The first and last checklist items record the crash-report census** — the
-   count and timestamps of `VoiceOver*` reports in
-   `~/Library/Logs/DiagnosticReports/` before the run and after it. A crash
-   during a run then becomes evidence with a coordinate, and a crash that was
-   going to happen anyway is not attributed to the bridge.
+1. **The first and last checklist items record the crash census, from two
+   independent sources** — the count and timestamps of `VoiceOver*` reports in
+   `~/Library/Logs/DiagnosticReports/`, **and VoiceOver's own
+   `SCRCUserDefaultsUnplannedShutdownCount`** in
+   `com.apple.VoiceOver4.local.plist`, which is the reader's own account of the
+   same events and is cheaper to read than the reports directory. A crash during
+   a run then becomes evidence with a coordinate, and a crash that was going to
+   happen anyway is not attributed to the bridge. Two sources rather than one,
+   because they can disagree: a crash report is written by the system and the
+   counter by VoiceOver, and a shutdown one records and the other does not is
+   itself a finding.
 2. **Every check is independently re-runnable from a cold start.** No check may
    depend on state a previous check left behind, because the reader restarts
    underneath the run. This is stricter than lane 1's checklists and it is the
@@ -140,6 +146,13 @@ disk. Web sources describing "enabling VoiceOver logging" name no mechanism.
 
 So **`log` is absent from the reader**, and that is measured rather than
 inferred — a stronger statement than the braille one.
+
+**One loose end, recorded rather than tidied away.** VoiceOver's
+`com.apple.VoiceOver4.local.plist` carries `SCRCUserDefaultsLastLogTime` and
+`SCRCUserDefaultsShouldMessageTrace.10`, so *some* internal tracing concept
+exists. No log file was found anywhere under `~/Library`, and nothing reached the
+unified log, so the conclusion stands — but "VoiceOver has no logging machinery
+at all" is more than was measured, and this paragraph is the difference.
 
 **The tempting alternative is declined explicitly.** The unified log *is* rich
 and system-wide, and spec 0041 used it to diagnose the provider (`AXTTSCommon`,
@@ -202,13 +215,65 @@ three commanders, hiding ignored elements. Every one is a *command*; none has a
 query. The vocabulary splits `Global` 212, `SCRWorkspace` 105, `SCRBraille` 31,
 `SCRTextElement` 23, `SCRWebArea` 21, and a long tail.
 
-**The preferences plist is not the live truth, three ways.** It records only
-deviations from default — this machine's file carries
-`SCRCUserDefaultsWebNavigationMethod => 0` and
-`SCRCUserDefaultsIndependentSingleLetterQuickNavEnabled => 0` but no arrow-key
-Quick Nav key at all, so *absent* is ambiguous between "off" and "we guessed the
-key name wrong". It sits behind `cfprefsd`, which caches. And VoiceOver holds its
-own copy in memory.
+**There are three preference files, not one, and only one of them is
+documented.** Corrected 2026-08-29 after a fuller sweep of the group container;
+an earlier draft of this spec said flatly that no state is readable, and that was
+too strong.
+
+| File | What it holds |
+|---|---|
+| `…/com.apple.VoiceOver4/default.plist` | **persisted settings** — and only *deviations from default* |
+| `…/com.apple.VoiceOver4/journal.plist` | **a per-key last-changed index**: every key in `default.plist`, mapped to the `CFAbsoluteTime` it was last written |
+| `…/com.apple.VoiceOver4.local.plist` | **runtime and session state** |
+
+Public sources describe `default.plist` and the Sequoia move into the group
+container; `journal.plist` and `local.plist` appear in none of them.
+**[Spec 0047](0047-selecting-the-capture-voice-without-a-human.md) is the
+authority on how these three behave** — it diffs all of them whole-file across a
+setting change, a second change back, and a clean quit — and this section defers
+to it rather than re-deriving it.
+
+`local.plist` is the one that carries live state, and it holds more than
+settings:
+
+```
+SCRScreenCurtainState => 1
+SCRCUserDefaultsPlannedShutdownSuccessful => 0
+SCRCUserDefaultsUnplannedShutdownCount => 0
+SCRCUserDefaultsLastLogTime => 809697900   (2026-08-29 12:05 local)
+SCRCUserDefaultsShouldMessageTrace.10 => 1
+```
+
+So **screen curtain state is readable**, which is one of the 45 toggles, and
+**VoiceOver keeps its own count of its unplanned shutdowns** — its own account of
+the crashes this lane's checklist has to live with.
+
+`journal.plist` timestamps are UTC — `SCREnableAppleScript` reads
+`809727786.655854` = **2026-08-29 17:23:06 local**, matching the file's own mtime
+— **but a fresh timestamp does not mean the setting changed.** Spec 0047's
+controlled diff found the journal refreshing timestamps **on every restart, for
+settings unrelated to what was altered**, so it cannot be read as a change log.
+An earlier version of this paragraph inferred the opposite from two data points;
+a controlled experiment beats an inference, and the inference was wrong.
+
+**None of which makes `getState` answerable, and the reasons are now narrower and
+firmer than "nothing is readable":**
+
+- **What is readable does not map.** `getState`'s four fields are `browseMode`,
+  `speechMode`, `sleepMode` and `inputHelp`. Screen curtain is none of them.
+- **The 45 toggles still have no per-toggle value.** `default.plist` records only
+  deviations, so this machine carries
+  `SCRCUserDefaultsIndependentSingleLetterQuickNavEnabled => 0` and no arrow-key
+  Quick Nav key at all — *absent* stays ambiguous between "off" and "we guessed
+  the key name wrong".
+- **Nothing here tracks a change promptly, on the evidence we have.** Spec 0047
+  measured `default.plist` and `journal.plist` showing **zero** changes across a
+  clean quit, and the only `local.plist` movement was `AllowAirPlay` and shutdown
+  bookkeeping. That experiment altered a *voice*, not a *toggle*, so board entry
+  **13.12** still has a question — but it is now the narrow one, asked against
+  three named files, with 0047's method already written.
+- And it all sits behind `cfprefsd`, which caches, while VoiceOver holds its own
+  copy in memory.
 
 **The state of the art does not solve this; it sidesteps it in a way this bridge
 must not.** Guidepup exposes `getSetting`/`getSettings`, which looked like a
@@ -813,9 +878,19 @@ and it is the more serious of the two findings.
 ### 13.12 — can VoiceOver be asked what mode it is in?
 
 A **measurement entry**, in the shape of spec 0041 and for the same reason: the
-alternative is to assume. One question — **does the preferences plist track a
-toggle at the instant it fires, or only later?** — with a probe and a pass
-condition, run against a live reader.
+alternative is to assume. It has a sharper target than it did when 13.1 opened
+it, because Part 2's sweep found **three** preference files with three different
+jobs rather than one:
+
+- `com.apple.VoiceOver4/default.plist` — persisted settings, deviations only;
+- `com.apple.VoiceOver4/journal.plist` — a per-key last-changed index, in UTC;
+- `com.apple.VoiceOver4.local.plist` — runtime state, including
+  `SCRScreenCurtainState`.
+
+The question is therefore **which of the three, if any, tracks a toggle at the
+instant it fires** — measured by toggling one whose key is known to exist and
+watching all three, with `cfprefsd` in the picture. A probe and a pass condition,
+run against a live reader, with the standing safety rule of spec 0041 in force.
 
 If it is live and prompt, a **read-only** `state` becomes implementable and earns
 its own entry. If it is not, the answer is written down permanently and nobody
@@ -855,7 +930,11 @@ a source file with no test file is a deliberate statement — all unchanged from
   behind the grant 13.8 keeps lazy, and no lane-3 entry covers it.
 - **Guidepup's portable-preferences mechanism**, which replaces the user's own
   VoiceOver configuration. Recorded in Part 2 so it is refused explicitly rather
-  than rediscovered as an idea.
+  than rediscovered as an idea. Note that **portable preferences are an Apple
+  feature**, documented in the VoiceOver User Guide — so what is refused is not a
+  hack but a supported mechanism applied to the wrong machine: substituting a
+  blind developer's live configuration is fine on a CI box and not on the
+  computer they depend on.
 - **A bridge-side panic gesture.** Command-F5 is the OS's own, and a dead
   provider falls back to a working voice rather than to silence.
 - **Generating the Swift wire binding.** Spec 0043 says hand-written; the drift
