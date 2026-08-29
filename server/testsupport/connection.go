@@ -66,7 +66,7 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 			LogPath:         `C:\logs\session.log`,
 			ProtocolVersion: 1,
 		},
-		Endpoint:  entities.Endpoint{Kind: entities.TransportPipe, Address: reader + "McpBridge"},
+		Endpoint:  entities.Endpoint{Kind: entities.TransportLocal, Address: reader + "McpBridge"},
 		Lifecycle: built.Lifecycle,
 	}
 

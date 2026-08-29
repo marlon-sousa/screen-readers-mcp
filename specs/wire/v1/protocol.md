@@ -20,25 +20,54 @@ bridge depends on it, changes go through a version bump.
 - The bridge **listens**; the server **dials**. The connection is always
   local-machine-only — never a routable interface. (An Android TalkBack
   bridge is the anticipated exception, reached over an `adb`-forwarded or
-  Wi-Fi socket; it is still the listener.) A Windows bridge may offer either
-  (or both, config-selectable) of:
+  Wi-Fi socket; it is still the listener.) A bridge may offer either (or both,
+  config-selectable) of exactly **two** transports:
   - a **TCP socket** bound to loopback (`127.0.0.1`) only. Default port:
     **8765** (`DEFAULT_PORT`).
-  - a **Windows named pipe** (spec 0010), rejecting remote clients
-    (`PIPE_REJECT_REMOTE_CLIENTS`) and restricted by DACL to the owning
-    user — the pipe analogue of the loopback-only bind. Default name:
-    `\\.\pipe\nvdaMcpBridge` (`DEFAULT_PIPE_NAME`).
+  - the **local endpoint**: an endpoint that is not the network at all,
+    reachable only from this machine and only by this user. It is a
+    *requirement*, not a mechanism — **which mechanism it is, is the host's
+    business** (spec 0044), and both sides resolve it from the same bare
+    **name** rather than agreeing on a path.
   Either way the framing and every command below are identical: the choice of
   transport is a connection-establishment detail, invisible once `hello` has
   completed.
-- **Pipe naming convention.** A bridge offering a named pipe SHOULD name it
-  `<reader>McpBridge`, where `<reader>` is the same value the bridge sends as
-  `hello`'s `reader.name`. The convention exists so that a server can ship a
-  sane default endpoint for a reader, and a user can predict the name when
-  configuring one by hand. It is a naming rule only: it confers no trust, a
-  server never infers an endpoint from the namespace, and `hello` remains the
-  sole authority on which reader actually answered. The NVDA bridge already
-  satisfies it (`\\.\pipe\nvdaMcpBridge`, `reader.name = "nvda"`).
+- **Resolving the local endpoint.** Given the endpoint name `<name>`:
+  - **Windows** — a **named pipe** at `\\.\pipe\<name>` (spec 0010),
+    rejecting remote clients (`PIPE_REJECT_REMOTE_CLIENTS`) and restricted by
+    DACL to the owning user, which is the pipe analogue of the loopback-only
+    bind. The NVDA bridge's default is `\\.\pipe\nvdaMcpBridge`
+    (`DEFAULT_PIPE_NAME`).
+  - **POSIX** — a **Unix domain socket** at
+    `$XDG_RUNTIME_DIR/screenreader-mcp/<name>.sock` when `XDG_RUNTIME_DIR` is
+    set, and at `~/.screenreader-mcp/<name>.sock` otherwise. The directory is
+    mode **0700**, and that is where the same "only this user" property comes
+    from — a filesystem path with filesystem permissions, enforced by the same
+    kernel that enforces the rest of the filesystem.
+  A server or a bridge MAY also accept an endpoint written out as a full
+  **path** instead of a name, as a deliberate override. What must not vary per
+  host is the *shipped default*, which is why the name is what travels.
+- **The listener's obligations on POSIX**, because a socket file outlives the
+  process that made it and a pipe does not:
+  - create the directory with mode `0700` if it is absent;
+  - **unlink the socket path before binding**, or a bridge cannot restart;
+  - unlink it again on exit, best effort. A file left behind by a crash reads
+    to a dialing server as *listening*, and the dial then fails; unlinking is
+    what keeps that to a crash rather than a routine outcome.
+  - keep the path within **103 bytes**. `sun_path` is 104 bytes on macOS
+    (108 on Linux) including its terminator, and the kernel's answer to a
+    longer path is `invalid argument`, which names neither the limit nor the
+    path. Both sides SHOULD check the length where the endpoint is configured
+    and say so plainly.
+- **Endpoint naming convention.** A bridge offering a local endpoint SHOULD
+  name it `<reader>McpBridge`, where `<reader>` is the same value the bridge
+  sends as `hello`'s `reader.name`. The convention exists so that a server can
+  ship a sane default endpoint for a reader — one entry that works on every
+  host — and a user can predict the name when configuring one by hand. It is a
+  naming rule only: it confers no trust, a server never infers an endpoint from
+  the namespace, and `hello` remains the sole authority on which reader actually
+  answered. The NVDA bridge already satisfies it (`nvdaMcpBridge`,
+  `reader.name = "nvda"`).
 - Framing is **JSON Lines**: each message is one JSON **object**, UTF-8 encoded,
   serialized without embedded newlines, terminated by a single `\n`. A reader
   reassembles chunks into newline-delimited frames and must drain any complete
@@ -783,6 +812,14 @@ effect land".
 
 **Amendments made in place under that rule**, newest first:
 
+- **2026-08-29** — §1 rewritten around the **local endpoint** (spec 0044): the
+  named pipe becomes one host's spelling of it, POSIX gets the Unix-socket
+  resolution rule and the listener's obligations that go with a file that
+  outlives its process. **No frame, field, command or value changes shape**, so
+  it is a rendezvous amendment rather than a wire one: a bridge built against
+  v1 before this is a bridge built against v1 after it, provided it was already
+  reachable — which every existing bridge is, since Windows resolves exactly as
+  it always did.
 - **2026-08-19** — `HelloResult.guidance` added (§3, spec 0022 A.5). Additive and
   optional, so it needed no version bump under either forward-compatibility rule
   above: a newer bridge sending it to an older server has the field ignored, and

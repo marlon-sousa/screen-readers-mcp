@@ -4,9 +4,9 @@
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // ROLE: integration scenario, Windows only -- the real-transport tier for the
-// pipe leaf, which is the transport the NVDA bridge ships listening on by
-// default. Its non-Windows sibling is simply absent, which is what the build tag
-// is for: the module still builds and unit-tests everywhere.
+// LOCAL endpoint as Windows spells it, which is what the NVDA bridge ships
+// listening on. Its POSIX sibling is connect_over_unix_socket_test.go: the same
+// scenarios against the same seam, over the mechanism that host has.
 //
 // This is the only place the pipe leaf and the pipe scan are exercised against a
 // real namespace, and it is worth having separately from the TCP scenario
@@ -59,7 +59,7 @@ func TestASessionIsEstablishedOverARealNamedPipe(t *testing.T) {
 	name := listenPipe(t, fake, "screenreaderMcpTestBridge")
 
 	connection, err := newHandshake().Dial(
-		testsupport.Reader(t, "nvda", "pipe:"+name),
+		testsupport.Reader(t, "nvda", "local:"+name),
 		ports.SessionOptions{Mode: entities.CaptureSilent},
 	)
 	if err != nil {
@@ -101,7 +101,7 @@ func TestACommandSlowerThanThePollIntervalSurvivesOverARealPipe(t *testing.T) {
 	name := listenPipe(t, fake, "screenreaderMcpSlowTestBridge")
 
 	connection, err := newHandshake().Dial(
-		testsupport.Reader(t, "nvda", "pipe:"+name),
+		testsupport.Reader(t, "nvda", "local:"+name),
 		ports.SessionOptions{Mode: entities.CaptureSilent},
 	)
 	if err != nil {
@@ -125,9 +125,9 @@ func TestTheProbeSeesARealListeningPipe(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	name := listenPipe(t, fake, "screenreaderMcpProbeTestBridge")
 
-	probe := discovery.NewPipeProbe(discovery.NewPipeDirectory())
-	listening := testsupport.Endpoint(t, "pipe:"+name)
-	absent := testsupport.Endpoint(t, "pipe:screenreaderMcpNoSuchBridge")
+	probe := discovery.NewLocalProbe(discovery.NewLocalDirectory())
+	listening := testsupport.Endpoint(t, "local:"+name)
+	absent := testsupport.Endpoint(t, "local:screenreaderMcpNoSuchBridge")
 
 	live := probe.Live([]entities.Endpoint{listening, absent})
 

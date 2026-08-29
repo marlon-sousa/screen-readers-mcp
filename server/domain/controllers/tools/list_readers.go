@@ -8,7 +8,8 @@
 //
 // Every reader this can ever return is known before the process starts: the
 // answer comes from the layered endpoint configuration, never from what happens
-// to be running. A pipe that is listening and belongs to no configured reader is
+// to be running. An endpoint that is listening and belongs to no configured
+// reader is
 // absent from it -- which is spec 0013's determinism rule, and matters more given
 // where this is heading, since a bridge is about to become something you
 // provision rather than something you stumble upon.
@@ -33,7 +34,7 @@ func (t *ListReaders) Description() string {
 	return "List the screen readers this server knows how to reach, each with its " +
 		"endpoints in the order connect_reader will try them, and whether a bridge " +
 		"is listening there. Liveness is \"listening\" or \"not listening\" for a " +
-		"named pipe, and \"unknown\" for TCP, which cannot be tested without " +
+		"local endpoint, and \"unknown\" for TCP, which cannot be tested without " +
 		"connecting. Takes no parameters. Call this first to learn the reader name " +
 		"connect_reader wants."
 }

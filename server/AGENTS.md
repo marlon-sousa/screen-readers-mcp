@@ -43,7 +43,9 @@ built:
   `screenreader://info` resource, and the middleware backstop that answers a call
   to a *retracted* tool with a capability error rather than "unknown tool"),
   `bridge/` (the JSON-lines client holding every decision, the handshake, and the
-  TCP and named-pipe transport leaves), `discovery/` (the pipe scan), `wire/`
+  TCP and per-platform local-endpoint transport leaves), `discovery/` (the
+  namespace scan behind the `LocalDirectory` seam: the named-pipe namespace on
+  Windows, the socket directory on POSIX), `wire/`
   (generated from the published schema, imported only by `bridge/`), and the
   clock and stderr-log leaves.
 - `tests/` — `architecture/` (untagged: the import boundaries, plus the rule that

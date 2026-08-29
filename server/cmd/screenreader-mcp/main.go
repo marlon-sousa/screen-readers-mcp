@@ -37,7 +37,7 @@ func main() {
 	var readers readerFlags
 	flag.Var(&readers, "reader",
 		"name=spec endpoint override, repeatable and highest precedence "+
-			"(e.g. nvda=pipe:nvdaMcpBridge or talkback=tcp:127.0.0.1:9010)")
+			"(e.g. nvda=local:nvdaMcpBridge or talkback=tcp:127.0.0.1:9010)")
 	configPath := flag.String("config", "",
 		"path to a JSON file replacing or extending the embedded reader defaults")
 	printDefaults := flag.Bool("print-default-config", false,

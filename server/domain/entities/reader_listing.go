@@ -23,7 +23,8 @@ const (
 	// LivenessUnknown: it cannot be known without connecting, which we will
 	// not do -- the bridge serves one session at a time, so a probing dial
 	// would occupy the very slot the agent wants. Every TCP endpoint reports
-	// this.
+	// this, and so does a local endpoint addressed by a path rather than by a
+	// name, since the host's listing cannot speak for it.
 	LivenessUnknown Liveness = "unknown"
 )
 
@@ -49,14 +50,14 @@ type ReaderListing struct {
 // live.
 //
 // The join is one-directional on purpose: it walks the CONFIGURED readers and
-// asks the live set about each, never the other way round. A pipe that is
-// listening but belongs to no configured reader is therefore absent from the
-// answer, which is spec 0013's determinism rule expressed as code rather than
-// as a review comment.
+// asks the live set about each, never the other way round. A local endpoint
+// that is listening but belongs to no configured reader is therefore absent
+// from the answer, which is spec 0013's determinism rule expressed as code
+// rather than as a review comment.
 //
-// Only endpoints whose kind can be probed at all are reported live-or-not; the
-// rest report LivenessUnknown, so "not listening" always means the probe
-// actually looked.
+// Only endpoints that can be probed at all are reported live-or-not; the rest
+// report LivenessUnknown, so "not listening" always means the probe actually
+// looked.
 func BuildListing(readers []ConfiguredReader, live []Endpoint) ReaderListing {
 	liveSet := make(map[Endpoint]struct{}, len(live))
 	for _, e := range live {
@@ -77,10 +78,17 @@ func BuildListing(readers []ConfiguredReader, live []Endpoint) ReaderListing {
 	return listing
 }
 
-// liveness applies the per-kind rule: a pipe can be answered for, a socket
-// cannot.
+// liveness applies the rule about what can be answered for at all: a local
+// endpoint addressed by NAME can be looked up in this host's namespace listing;
+// a TCP one cannot be tested without connecting, and neither can a local one
+// addressed by a path the listing does not cover.
+//
+// The bare-name condition is the honest half. Without it an absolute-path
+// override would be reported NOT LISTENING while its bridge was running, which
+// is worse than saying nothing -- and "not listening" must always mean the
+// probe actually looked.
 func liveness(endpoint Endpoint, live map[Endpoint]struct{}) Liveness {
-	if endpoint.Kind != TransportPipe {
+	if endpoint.Kind != TransportLocal || !IsBareName(endpoint.Address) {
 		return LivenessUnknown
 	}
 	if _, ok := live[endpoint]; ok {

@@ -14,7 +14,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// Endpoint parses one `pipe:name` / `tcp:host:port` spec, failing the test if it
+// Endpoint parses one `local:name` / `tcp:host:port` spec, failing the test if it
 // is malformed.
 //
 // Tests write the SPEC STRING rather than an Endpoint literal on purpose: it is

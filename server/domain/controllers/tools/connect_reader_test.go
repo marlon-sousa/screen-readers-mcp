@@ -229,7 +229,7 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	if got.Reader != "nvda" {
 		t.Errorf("reader = %q, want the one hello announced", got.Reader)
 	}
-	if got.Endpoint != "pipe:nvdaMcpBridge" {
+	if got.Endpoint != "local:nvdaMcpBridge" {
 		t.Errorf("endpoint = %q, want the one that answered", got.Endpoint)
 	}
 	if len(got.Capabilities) != len(testsupport.EveryCapability()) {

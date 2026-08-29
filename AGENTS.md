@@ -66,13 +66,17 @@ The chain, top to bottom — each item talks only to the next:
 
 1. An MCP client (Claude Code, …) speaks MCP over stdio to the server.
 2. `server/` — `screenreader-mcp`, a statically linked **Go** binary — speaks
-   JSON lines to the bridge over a **local endpoint**: a named pipe
-   (`\\.\pipe\nvdaMcpBridge`) by default, or loopback TCP (`127.0.0.1:8765`),
-   chosen in the bridge's control dialog
+   JSON lines to the bridge over a **local endpoint** by default, or loopback
+   TCP (`127.0.0.1:8765`), chosen in the bridge's control dialog
    ([spec 0010](specs/0010-named-pipe-transport.md),
-   [0011](specs/0011-bridge-control-ui.md)). It never dials on its own: the
-   agent calls `connect_reader`, and the capability-gated tools appear on a
-   successful `hello` ([spec 0013](specs/0013-mcp-server.md)).
+   [0011](specs/0011-bridge-control-ui.md)). The local endpoint is a
+   *requirement*, not a mechanism: it is addressed by a bare **name**
+   (`local:nvdaMcpBridge`) which resolves to a named pipe on Windows and to a
+   Unix domain socket under `$XDG_RUNTIME_DIR` or `~` on POSIX, so one shipped
+   default works on every host ([spec
+   0044](specs/0044-the-local-endpoint-off-windows.md)). It never dials on its
+   own: the agent calls `connect_reader`, and the capability-gated tools appear
+   on a successful `hello` ([spec 0013](specs/0013-mcp-server.md)).
 3. `bridges/nvda/` — the `nvdaMcpBridge` NVDA addon (a global plugin) — drives
    NVDA itself. Silent capture registers a `filter_speechSequence` filter and
    **never swaps the synth**; the user's real synthesizer stays loaded, so a

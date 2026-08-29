@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // Black-box (package bridge_test), driving the real handshake against
-// testsupport's fake bridge over an in-memory pipe: real framing, real `hello`,
+// testsupport's fake bridge over an in-memory local: real framing, real `hello`,
 // no OS. The dialer factory is the seam that makes the ordered-endpoint policy
 // testable -- a scripted factory decides which endpoint "answers".
 package bridge_test
@@ -49,9 +49,9 @@ func TestDialEstablishesASessionFromHello(t *testing.T) {
 		Synth:   "espeak",
 		LogPath: `C:\logs\session.log`,
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:nvdaMcpBridge": fake})
 
-	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -74,9 +74,9 @@ func TestDialHandsOverOnlyTheAnnouncedCapabilities(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Capabilities: []wire.Capability{wire.CapabilitySpeech, wire.CapabilityGestures, wire.CapabilityTyping},
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:reader": fake})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:reader": fake})
 
-	connection, err := handshake.Dial(testsupport.Reader(t, "reader", "pipe:reader"), silent())
+	connection, err := handshake.Dial(testsupport.Reader(t, "reader", "local:reader"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestDialFallsThroughToTheNextEndpointInDeclaredOrder(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"tcp:127.0.0.1:8765": fake})
 
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 	connection, err := handshake.Dial(reader, silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
@@ -125,13 +125,13 @@ func TestDialFallsThroughToTheNextEndpointInDeclaredOrder(t *testing.T) {
 func TestDialReportsEveryEndpointThatFailed(t *testing.T) {
 	handshake := newHandshake(t, nil)
 
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 	_, err := handshake.Dial(reader, silent())
 
 	if err == nil {
 		t.Fatal("Dial succeeded with nothing listening")
 	}
-	for _, endpoint := range []string{"pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765"} {
+	for _, endpoint := range []string{"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"} {
 		if !strings.Contains(err.Error(), endpoint) {
 			t.Errorf("error %q does not name the failed endpoint %s", err, endpoint)
 		}
@@ -145,11 +145,11 @@ func TestDialReportsAProtocolMismatchAndStopsTrying(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{ProtocolVersion: 99})
 	other := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{
-		"pipe:nvdaMcpBridge": fake,
-		"tcp:127.0.0.1:8765": other,
+		"local:nvdaMcpBridge": fake,
+		"tcp:127.0.0.1:8765":  other,
 	})
 
-	reader := testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765")
+	reader := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge", "tcp:127.0.0.1:8765")
 	_, err := handshake.Dial(reader, silent())
 
 	var mismatch *ports.ProtocolMismatchError
@@ -172,9 +172,9 @@ func TestDialReportsAProtocolMismatchAndStopsTrying(t *testing.T) {
 // that choice made by the wrong layer.
 func TestDialRefusesToInventACaptureMode(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:reader": fake})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:reader": fake})
 
-	_, err := handshake.Dial(testsupport.Reader(t, "reader", "pipe:reader"), ports.SessionOptions{})
+	_, err := handshake.Dial(testsupport.Reader(t, "reader", "local:reader"), ports.SessionOptions{})
 
 	if err == nil {
 		t.Fatal("Dial succeeded with no capture mode")
@@ -201,9 +201,9 @@ func TestDialRetainsUnknownCapabilities(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Capabilities: []wire.Capability{wire.CapabilitySpeech, "teleportation"},
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:reader": fake})
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:reader": fake})
 
-	connection, err := handshake.Dial(testsupport.Reader(t, "reader", "pipe:reader"), silent())
+	connection, err := handshake.Dial(testsupport.Reader(t, "reader", "local:reader"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -223,8 +223,8 @@ func TestTheHandshakeCarriesTheSilenceCap(t *testing.T) {
 			Enabled: true, WarnAfterSeconds: 45, LiftAfterSeconds: 90,
 		},
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
-	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -254,8 +254,8 @@ func TestTheHandshakeCarriesDeclaredAttendance(t *testing.T) {
 		},
 		Attended: &present,
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
-	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -283,8 +283,8 @@ func TestABridgeThatDeclaresNoAttendanceLeavesItNil(t *testing.T) {
 			Enabled: true, WarnAfterSeconds: 45, LiftAfterSeconds: 90,
 		},
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
-	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}
@@ -302,8 +302,8 @@ func TestABridgeThatSendsNoCapLeavesItNil(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 	})
-	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"pipe:nvdaMcpBridge": fake})
-	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "pipe:nvdaMcpBridge"), silent())
+	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:nvdaMcpBridge": fake})
+	connection, err := handshake.Dial(testsupport.Reader(t, "nvda", "local:nvdaMcpBridge"), silent())
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}

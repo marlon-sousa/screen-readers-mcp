@@ -1,8 +1,9 @@
 # screenreader-mcp — the server
 
 The program your MCP client launches. It speaks **MCP over stdio** to the client
-and **JSON lines** to one screen-reader bridge over a local endpoint — a Windows
-named pipe or loopback TCP.
+and **JSON lines** to one screen-reader bridge over a **local endpoint** — a
+named pipe on Windows, a Unix domain socket on macOS and Linux — or over
+loopback TCP.
 
 For what the tools do, see the [project README](../README.md). This document is
 about running and configuring the server itself.
@@ -103,7 +104,7 @@ session, because the reader is what fills them in.
 
 | Flag | Meaning |
 |---|---|
-| `--reader name=spec` | Repeatable, highest precedence. One endpoint for a reader, e.g. `nvda=pipe:nvdaMcpBridge` or `talkback=tcp:127.0.0.1:9010`. Repeating a name adds an endpoint to that reader, in order. |
+| `--reader name=spec` | Repeatable, highest precedence. One endpoint for a reader, e.g. `nvda=local:nvdaMcpBridge` or `talkback=tcp:127.0.0.1:9010`. Repeating a name adds an endpoint to that reader, in order. |
 | `--config <path>` | A JSON file replacing or extending the embedded defaults, per reader. |
 | `--print-default-config` | Print the embedded defaults and exit — redirect it to a file and edit it. |
 | `--version` | Print the version and exit. |
@@ -121,7 +122,7 @@ here:
     {
       "name": "nvda",
       "endpoints": [
-        "pipe:nvdaMcpBridge",
+        "local:nvdaMcpBridge",
         "tcp:127.0.0.1:8765"
       ]
     }
@@ -129,14 +130,23 @@ here:
 }
 ```
 
-Two endpoints per reader is not redundancy. The NVDA bridge's own dialog lets
-the user switch between named pipe and loopback TCP, so `connect_reader` takes a
-**reader**, tries that reader's endpoints in the declared order, and reports
-which one answered. You do not have to tell it which mode the user picked.
+`local:<name>` is a **name**, not a path, and that is why one shipped default
+works on every host: the name resolves to `\\.\pipe\<name>` on Windows and to
+`$XDG_RUNTIME_DIR/screenreader-mcp/<name>.sock` — or
+`~/.screenreader-mcp/<name>.sock` when `XDG_RUNTIME_DIR` is unset — on macOS and
+Linux. A full path is accepted in its place if you want a different location.
+`pipe:` is still read as a spelling of `local:`, so an older config file keeps
+working; what the server prints back is always `local:`.
 
-A listening pipe belonging to no configured reader is never reported and cannot
-be connected to. The reader set is known before the process starts; nothing is
-invented at runtime.
+Two endpoints per reader is not redundancy. The NVDA bridge's own dialog lets
+the user switch between the local endpoint and loopback TCP, so `connect_reader`
+takes a **reader**, tries that reader's endpoints in the declared order, and
+reports which one answered. You do not have to tell it which mode the user
+picked.
+
+A listening endpoint belonging to no configured reader is never reported and
+cannot be connected to. The reader set is known before the process starts;
+nothing is invented at runtime.
 
 ## When something does not work
 

@@ -2,7 +2,7 @@
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
 // ROLE: domain port. Liveness of endpoints we already know about.
-// IMPLEMENTED BY: adapters/discovery/pipe_probe.go.
+// IMPLEMENTED BY: adapters/discovery/local_probe.go.
 // USED BY: 10b's connection controller, which joins the answer with the
 // configured readers via entities.BuildListing.
 //
@@ -10,7 +10,7 @@
 // endpoints to ask about and answers which of THOSE are live. It is not a
 // discovery mechanism and cannot return an endpoint nobody configured. Spec
 // 0013 is explicit about why -- inferring a reader from a name found in the
-// pipe namespace would make the server's reader set depend on whatever happens
+// host's namespace would make the server's reader set depend on whatever happens
 // to be running, on a string any same-user process can choose, and would build
 // exactly the zero-configuration path that the planned shared-secret model has
 // to take away again.
@@ -26,7 +26,7 @@ type EndpointProbe interface {
 	// Live returns the subset of candidates that have a bridge listening.
 	//
 	// An endpoint absent from the answer is either not listening or not
-	// knowable -- the caller distinguishes them by kind, since only pipes can
-	// be answered for.
+	// knowable -- the caller distinguishes them by kind, since only a local
+	// endpoint addressed by NAME can be answered for.
 	Live(candidates []entities.Endpoint) []entities.Endpoint
 }

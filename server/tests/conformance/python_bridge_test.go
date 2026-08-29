@@ -54,7 +54,7 @@ const bridgeStartTimeout = 60 * time.Second
 // pythonBridge is one running real bridge.
 type pythonBridge struct {
 	// Endpoint is what the bridge is listening on, spelled the way the
-	// server's --reader flag wants it (`tcp:127.0.0.1:53422`, `pipe:name`).
+	// server's --reader flag wants it (`tcp:127.0.0.1:53422`, `local:name`).
 	Endpoint string
 
 	command *exec.Cmd

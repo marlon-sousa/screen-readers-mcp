@@ -52,7 +52,7 @@ func TestEmbeddedDefaultsShipTheNVDABridgeEndpointsInOrder(t *testing.T) {
 	}
 	// Pipe first, then loopback TCP: spec 0011's dialog lets the user switch
 	// between them, and this is the order connect_reader tries.
-	want := []string{"pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765"}
+	want := []string{"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"}
 	if diff := cmp.Diff(want, specs(readers[0])); diff != "" {
 		t.Errorf("shipped endpoints (-want +got):\n%s", diff)
 	}
@@ -73,7 +73,7 @@ func TestDefaultsJSONIsValidAndParsesBackToTheSameSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load from a copy of the defaults: %v", err)
 	}
-	if diff := cmp.Diff([]string{"pipe:nvdaMcpBridge", "tcp:127.0.0.1:8765"}, specs(loader.Readers()[0])); diff != "" {
+	if diff := cmp.Diff([]string{"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"}, specs(loader.Readers()[0])); diff != "" {
 		t.Errorf("round-tripped defaults (-want +got):\n%s", diff)
 	}
 }
@@ -106,14 +106,14 @@ func TestAConfigFileReplacesAReaderItNames(t *testing.T) {
 	loader, err := config.Load(config.Options{
 		ConfigPath: "readers.json",
 		ReadFile: files(map[string]string{"readers.json": `{
-			"readers": [{"name": "nvda", "endpoints": ["pipe:myOwnBridge"]}]
+			"readers": [{"name": "nvda", "endpoints": ["local:myOwnBridge"]}]
 		}`}),
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	if diff := cmp.Diff([]string{"pipe:myOwnBridge"}, specs(loader.Readers()[0])); diff != "" {
+	if diff := cmp.Diff([]string{"local:myOwnBridge"}, specs(loader.Readers()[0])); diff != "" {
 		t.Errorf("endpoints (-want +got):\n%s", diff)
 	}
 }
@@ -122,7 +122,7 @@ func TestReaderFlagsWinOverBothLayers(t *testing.T) {
 	loader, err := config.Load(config.Options{
 		ConfigPath: "readers.json",
 		ReadFile: files(map[string]string{"readers.json": `{
-			"readers": [{"name": "nvda", "endpoints": ["pipe:fromTheFile"]}]
+			"readers": [{"name": "nvda", "endpoints": ["local:fromTheFile"]}]
 		}`}),
 		ReaderFlags: []string{"nvda=tcp:127.0.0.1:9999"},
 	})
@@ -139,20 +139,20 @@ func TestReaderFlagsWinOverBothLayers(t *testing.T) {
 // override can still name both a pipe and a socket.
 func TestRepeatingAReaderFlagAddsEndpointsInOrder(t *testing.T) {
 	loader, err := config.Load(config.Options{
-		ReaderFlags: []string{"nvda=tcp:127.0.0.1:9999", "nvda=pipe:someOtherBridge"},
+		ReaderFlags: []string{"nvda=tcp:127.0.0.1:9999", "nvda=local:someOtherBridge"},
 	})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
-	want := []string{"tcp:127.0.0.1:9999", "pipe:someOtherBridge"}
+	want := []string{"tcp:127.0.0.1:9999", "local:someOtherBridge"}
 	if diff := cmp.Diff(want, specs(loader.Readers()[0])); diff != "" {
 		t.Errorf("endpoints (-want +got):\n%s", diff)
 	}
 }
 
 func TestANewReaderFromAFlagIsAppended(t *testing.T) {
-	loader, err := config.Load(config.Options{ReaderFlags: []string{"jaws=pipe:jawsMcpBridge"}})
+	loader, err := config.Load(config.Options{ReaderFlags: []string{"jaws=local:jawsMcpBridge"}})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestBadInputFailsAtLoadTime(t *testing.T) {
 		}},
 		{"reader with no name", config.Options{
 			ConfigPath: "readers.json",
-			ReadFile:   files(map[string]string{"readers.json": `{"readers":[{"endpoints":["pipe:x"]}]}`}),
+			ReadFile:   files(map[string]string{"readers.json": `{"readers":[{"endpoints":["local:x"]}]}`}),
 		}},
 	}
 
@@ -208,5 +208,23 @@ func TestReadersReturnsACopy(t *testing.T) {
 
 	if loader.Readers()[0].Name != "nvda" {
 		t.Error("a caller was able to modify the loader's reader set")
+	}
+}
+
+// A config file written before spec 0044 says `pipe:`, and must keep working:
+// the alias parses and normalises, so what the loader hands on -- and what
+// list_readers therefore shows -- is the canonical spelling.
+func TestLoadAcceptsThePipeAliasInAConfigFile(t *testing.T) {
+	loader, err := config.Load(config.Options{
+		ConfigPath: "readers.json",
+		ReadFile: files(map[string]string{"readers.json": `{
+			"readers": [{"name": "nvda", "endpoints": ["pipe:nvdaMcpBridge"]}]
+		}`}),
+	})
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if diff := cmp.Diff([]string{"local:nvdaMcpBridge"}, specs(loader.Readers()[0])); diff != "" {
+		t.Errorf("endpoints (-want +got):\n%s", diff)
 	}
 }
