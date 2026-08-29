@@ -387,10 +387,41 @@ across `~/Library/Preferences`, `~/Library/Application Support` and
 `~/Library/Group Containers`: **no file contains either.** And yet the selection
 **survived a full VoiceOver restart**.
 
-So the reader persists its chosen voice somewhere none of this reaches — a
-plausible candidate being the CloudKit-backed store its own preferences hint at
-(`AXCloudKitZoneCreated-com.accessibility.voiceover.punctuation`), or an opaque
-token rather than the identifier string.
+So the reader persists its chosen voice somewhere none of this reaches.
+
+**The search was then made exhaustive**, because "I did not find it" is not
+"it is not there", and the maintainer said so: *"it has to be somewhere,
+otherwise how would it know?"* — which is correct, and the right correction to a
+negative result. What was done:
+
+- The voice was changed **twice** through the UI (`Capture Spike` → `Reed` →
+  back), with whole-file diffs of `default.plist`, `journal.plist` and
+  `local.plist` either side. The only differences in the entire run are
+  `SCRSpeechAttributeRotorLastRotor` (this session's own rotor test),
+  `AllowAirPlay`, and shutdown bookkeeping. **No voice, under any key name** —
+  so this is not a case of having guessed the key wrong.
+- VoiceOver was **quit** and the files re-diffed, testing the maintainer's
+  hypothesis that a reader flushes settings on shutdown: `default.plist` and
+  `journal.plist` show **zero** changes on a clean quit.
+- A **filesystem sweep** was taken around a voice change: every file written
+  under `~/Library` in that window. `journal.plist` moves; the voice is not in
+  it.
+- Finally, `grep -r` for **both** the published identifier and the display name
+  `Capture Spike` across the **whole of `~/Library`**, plus `/Library/Preferences`
+  and `/private/var/db`. **No file contains either string.** VoiceOver Utility
+  has no sandbox container of its own.
+
+**So the value is stored in a form that is not the string** — an index, a hash,
+or an encoded record — and the plausible home is the CloudKit-backed accessibility
+store its own preferences advertise
+(`AXCloudKitZoneCreated-com.accessibility.voiceover.*`).
+
+**The consequence is a design one, and it settles a proposal.** The maintainer's
+preferred mechanism — *"patch whatever it uses before starting it"* — would be
+the safest of all if the store were a readable file: no UI, no timing, nothing to
+race. It is not available. Implementing it would mean reverse-engineering an
+encoded store and writing into it, which is both more fragile and more invasive
+than the AX route that already works. The route stays as finding 13 describes.
 
 **Three consequences.**
 
@@ -520,7 +551,9 @@ button's title back.
 7. `AXPress` `OK` on the settings sheet.
 
 Only step 5 needs a keystroke, and it types into a field that was focused by
-message rather than by hoping focus was already there.
+message rather than by hoping focus was already there. **Every element in that
+list is addressed by filter and unique-match assertion, not by index and not by
+its localized name** — see finding 15.
 
 **The lesson worth keeping is about the probe, not the framework.** Two of this
 document's earlier wrong turns and this one share a shape: an element was asked
@@ -557,6 +590,54 @@ than the guide's announcement. The **capture feed** did not: every utterance,
 in order, with a sequence number, which is how the transcript above was
 recovered. The bridge already has the better channel; `last phrase` is the
 degraded one.
+
+## Finding 15 — filter and assert; never index, never a localized name
+
+The recipe in finding 13 is correct and, as first written, was still unsafe in
+two ways the maintainer named: *"if you can avoid depending on element order, it
+will be safer"* and — implicitly, because this machine speaks Portuguese —
+depending on `"Voz"` would break on every other locale.
+
+**There is no stable identifier to fall back on, and that was measured rather
+than assumed.** `AXIdentifier` on these elements is `_NS:32`, AppKit's
+auto-generated view numbering — an index wearing a name, not a developer-set
+handle, and not stable across OS versions. `AXPath` is a **bezier drawing path**,
+not a locator. So identifier-based addressing is not available here at all.
+
+**What is available is filtering with an asserted unique match**, and it is
+enough. Measured across all eleven categories:
+
+| Category | comma-titled buttons | outlines |
+|---|---|---|
+| Geral, Verbosidade, Navegação, Web, Som, Visuais, Comandos, Atividades, Reconhecimento | 0 | 0 |
+| Braille | 0 | 1 |
+| **Voz** | **1** | **1** |
+
+So *"the category whose pane contains exactly one comma-titled button and at
+least one outline"* selects the speech pane **uniquely, without its name**.
+Braille is the near miss the conjunction exists to exclude, and it is why the
+predicate is two clauses rather than one. The voice button is then *"the unique
+button whose title contains a comma"*, and inside the picker the target is *"the
+unique button whose title is the voice's own name"* — a name we choose, so it is
+locale-independent by construction.
+
+**The rule this yields, and it is the transferable part:**
+
+1. **Filter over a subtree by role and predicate; never take the *n*th child.**
+   Positional paths — `group 2 of scroll area 1 of group 1` — encode a layout
+   that Apple may change in any release, and System Events' index-by-class makes
+   them read more stable than they are.
+2. **Assert exactly one match. Zero or many is an error, never a coin flip.**
+   This document's own `axpress` helper took `.first` of its matches, and with
+   the settings sheet open *"Reed"* matched both the outer and the inner button
+   — it picked one silently. That is the ordering bug the rule exists to prevent,
+   and it was in this session's own tooling.
+3. **Prefer structure over words.** Roles, counts and containment survive
+   translation; `"Voz"`, `"Speech"` and `"Voix"` do not.
+4. **Confirm by meaning, not by title.** `AXSheet` exposes `AXDefaultButton` —
+   though it is *unpopulated* here, so the honest fallback for the final confirm
+   is a Return keystroke, which says "confirm this sheet" without matching the
+   word `OK`.
 
 ## The conclusion: the bridge can set the voice, by message
 
