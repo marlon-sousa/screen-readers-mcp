@@ -162,7 +162,12 @@ that exist only here:
 Not objections — they are true, they are measured, and an implementation spec
 must answer them rather than discover them.
 
-- **Updating the provider costs a VoiceOver restart.** Killing the extension
+- **Updating the provider costs a VoiceOver restart.** *(Amended 2026-08-29 by
+  [spec 0047](0047-selecting-the-capture-voice-without-a-human.md): the restart
+  is scriptable — `quit` then `activate`, 13.8 s, AppleEvents only — so the cost
+  is real but it is not a manual step. The companion cost stated below, that the
+  user must select the capture voice in VoiceOver Utility, is still unresolved;
+  that spec has the three untried routes.)* Killing the extension
   makes VoiceOver fall back to a working voice — it does not go mute, which is
   the safe half — but VoiceOver then cannot resolve the voice again until it
   restarts, logging `Babelfish falling back to defaults due to missing

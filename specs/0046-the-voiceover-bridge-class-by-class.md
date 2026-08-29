@@ -800,6 +800,16 @@ settable state do not exist here.
 costs a VoiceOver restart, every time, for every user; and VoiceOver crashes
 routinely, which is why the checklist rules in Part 1(c) exist.
 
+**Amended 2026-08-29 by [spec
+0047](0047-selecting-the-capture-voice-without-a-human.md): the restart is
+SCRIPTED, not manual.** `tell application "VoiceOver" to quit` then `activate`
+completes in 13.8 s and needs only the AppleEvents grant the bridge already
+holds — never Accessibility, which is the grant 13.8 exists to keep lazy. The
+cost stands; what changes is who pays it, and this entry's documentation should
+say "the bridge restarts the reader" rather than "ask the user to restart the
+reader". The same spec records a risk that lands on **13.7** rather than here,
+and it is the more serious of the two findings.
+
 ### 13.12 — can VoiceOver be asked what mode it is in?
 
 A **measurement entry**, in the shape of spec 0041 and for the same reason: the

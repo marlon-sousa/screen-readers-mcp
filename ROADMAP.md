@@ -280,8 +280,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.13**
-in lane 3, and the next free spec number is **0047**. Spec **0046** was spent on
+The next free board number is **11.38** in the convergence series and **13.14**
+in lane 3, and the next free spec number is **0048**. Spec **0047** and board
+number **13.13** were spent on 2026-08-29 by the measurement that came out of
+asking whether the capture voice could be selected without a human; it moved this
+line in the same commit that spent both. Spec **0046** was spent on
 2026-08-29 by **13.1**, lane 3's implementation spec, which also took board
 number **13.12** for the measurement it deferred, and moved this line in the same
 commit that spent both. Specs **0044** and **0045** were spent on 2026-08-29 by
@@ -575,6 +578,19 @@ rule intends.
     `Command does not exist (6)` — which is the property this repo already wants
     from `Request.cmd`. AppleEvents only; no Accessibility grant is asked for
     here, which is what makes 13.8's laziness checkable.
+    **A MEASURED RISK, taken 2026-08-29 by [spec
+    0047](specs/0047-selecting-the-capture-voice-without-a-human.md): on the
+    maintainer's macOS 15.0, `perform command` currently fails for EVERY command
+    with error 4** -- including a deliberately bogus name, where spec 0041
+    measured `Command does not exist (6)`. So the dispatcher fails before the
+    name is looked up, and it is not a permission (`AXIsProcessTrusted` is true),
+    not the enablement flag (still set in both locations), not stale state (a
+    reader restart does not clear it) and not the syntax. Every READ channel
+    answers normally in the same breath, which is a different split from spec
+    0041's. This entry cannot be planned as if the mechanism were proven: either
+    13.13 revives it, or `pressGesture` needs a second route and the "the agent
+    loses no power" argument for putting the 45 toggles here loses its mechanism.
+    `bash scripts/voiceover_channels.sh` re-measures it in one command.
     **Carries spec 0041's sharpest requirement.** After six consecutive
     `open next speech attribute guide` commands, every VoiceOver-specific call
     began failing while `tell application "VoiceOver" to return name` still
@@ -677,6 +693,39 @@ rule intends.
     spec 0041 did.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) (Part 2 states the question; the probe itself is this
     entry's work).
+13.13. **Selecting the capture voice without a human** (lane 3; a measurement
+    first, a feature only if the measurement allows one). Opened 2026-08-29 by
+    [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md),
+    which was written against a live reader rather than against documentation.
+    **One of spec 0043's two stated costs is already retired**: restarting
+    VoiceOver is scriptable — `tell application "VoiceOver" to quit`, then
+    `activate`, 13.8 s round trip, measured six times — and it needs only the
+    AppleEvents grant the bridge already has, never Accessibility. So "updating
+    the provider means restarting the reader" stays true and stops being manual.
+    **The other cost is unresolved and has three untried routes.** The voice is a
+    single preference key, read out of the system rather than guessed:
+    `SCRCategories_SCRCategorySystemWide_SCRSpeechComponentSettings_SCRVoiceIdentifier`,
+    holding an `AVSpeechSynthesisVoice` identifier. Writing it to the file and
+    restarting did **nothing** — VoiceOver never even instantiated our voice.
+    What is still untried, cheapest first: writing the CFPreferences **domain**
+    (`com.apple.VoiceOver4/default`) rather than the file path, as Guidepup does;
+    a matching `journal.plist` entry, since that file indexes the 38 settings
+    that deviate and ours was never journalled; and the companion key
+    `SCRVoiceUseCustomizedVoiceSettings`.
+    **The maintainer's design — an activity carrying only the voice — is sound
+    and is not what spec 0046 refuses.** An activity inherits everything it does
+    not override, so it is additive, visible in VoiceOver Utility and deletable;
+    Guidepup's refused mechanism symlinks the user's preference files to a
+    mounted image and replaces their configuration wholesale. Different
+    granularity, different answer. What blocks it is ACTIVATION: Apple documents
+    three routes and no fourth — the VO-X chooser, VO-X-X previous activity, and
+    automatic binding by app or website — and the only scripted one is a
+    `perform command`, which is exactly what 13.7 now records as broken.
+    **This entry therefore owes 13.7 an answer as much as it owes itself one.**
+    It also needs one thing nobody can read from the system: an activity has to
+    EXIST before its storage shape can be described, because profiles are user
+    data and the default configuration archive holds no template.
+    Spec: [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
 ## Convergence (requires C and D both Done)
 
