@@ -241,8 +241,8 @@ invariant 6. None is settled here.
 
 1. **Spec 0005's split trigger** fires on "work on a second reader's bridge
    starting in earnest", which is this. But its stated *reasoning* was that a
-   second bridge could not import `nvda_mcp_wire` — C#/COM for JAWS, Kotlin for
-   TalkBack. A Python VoiceOver bridge can. The premise does not hold, so the
+   second bridge could not import `screenreader_wire` — C#/COM for JAWS, Kotlin
+   for TalkBack. A Python VoiceOver bridge can. The premise does not hold, so the
    trigger wants re-arguing rather than firing.
 2. **The `nvda_mcp_wire` rename**, deferred by 0005 until the repo name settled.
    The repo is now `screen-readers-mcp`, and the name becomes actively misleading

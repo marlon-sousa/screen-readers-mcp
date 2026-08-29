@@ -127,7 +127,7 @@ exercise add-on logic against it without launching NVDA at all.
 
 | Path | What |
 |---|---|
-| [`shared/`](shared/) | The **stdlib-only** Python binding of the wire protocol (`nvda-mcp-wire`), copied verbatim into the add-on and unit-tested once. |
+| [`shared/`](shared/) | The **stdlib-only** Python binding of the wire protocol (`screenreader-wire`), copied verbatim into the add-on and unit-tested once. |
 | [`specs/wire/v1/`](specs/wire/v1/) | The published wire contract: JSON Schema plus prose. What the two halves actually share. |
 | [`server/`](server/) | The MCP server (`screenreader-mcp`), in Go: MCP tool call → bridge command → result. |
 | [`bridges/nvda/`](bridges/nvda/) | The NVDA add-on (`nvdaMcpBridge`), built with scons. Its build copies `shared/`'s protocol module in, so bridge and server can never drift. |

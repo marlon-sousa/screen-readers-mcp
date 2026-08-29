@@ -356,7 +356,7 @@ settings from `BridgeConfig` and builds the `SilenceCapPolicy`;
 
 ## Part 7 — the wire
 
-`shared/nvda_mcp_wire/protocol.py`:
+`shared/screenreader_wire/protocol.py`:
 
 ```python
 @dataclass

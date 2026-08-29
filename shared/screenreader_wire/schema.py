@@ -12,7 +12,7 @@
 # Stdlib-only like its sibling, and it is NEVER synced into the addon
 # (``sync_shared.py`` copies ``protocol.py`` only -- the addon never needs to
 # emit a schema). The committed artifact ``specs/wire/v1/schema.json`` is this
-# module's stdout (``python -m nvda_mcp_wire.schema``); the ``shared`` CI job
+# module's stdout (``python -m screenreader_wire.schema``); the ``shared`` CI job
 # regenerates and diffs it, so the schema can never drift from the code.
 
 from __future__ import annotations

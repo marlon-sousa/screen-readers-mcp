@@ -117,7 +117,7 @@ jobs:
         id: notes
         run: |
           VERSION="${{ steps.tag.outputs.version }}"
-          PROTOCOL="$(python -c "import re, pathlib; print(re.search(r'^PROTOCOL_VERSION: Final = (\d+)', pathlib.Path('shared/nvda_mcp_wire/protocol.py').read_text(encoding='utf-8'), re.M).group(1))")"
+          PROTOCOL="$(python -c "import re, pathlib; print(re.search(r'^PROTOCOL_VERSION: Final = (\d+)', pathlib.Path('shared/screenreader_wire/protocol.py').read_text(encoding='utf-8'), re.M).group(1))")"
           CHANGELOG="$(cd bridges/nvda && python -c "import buildVars; print(buildVars.addon_info['addon_changelog'])")"
           NOTES="$RUNNER_TEMP/notes.md"
           {

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from nvda_mcp_wire import protocol as p
+from screenreader_wire import protocol as p
 
 # --- from_dict: happy paths --------------------------------------------------
 

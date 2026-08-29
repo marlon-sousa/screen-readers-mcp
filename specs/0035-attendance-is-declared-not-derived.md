@@ -160,7 +160,7 @@ bridge that has nothing to say omits the field.
 
 | File | Role | Collaborators |
 |---|---|---|
-| `shared/nvda_mcp_wire/protocol.py` | wire (existing) | `HelloResult.attended: bool \| None = None`, defaulting to absent so an older bridge is unchanged. `PROTOCOL_VERSION` 1 is pre-release and both halves ship from this repo, so this is a rebuild rather than a migration. |
+| `shared/screenreader_wire/protocol.py` | wire (existing) | `HelloResult.attended: bool \| None = None`, defaulting to absent so an older bridge is unchanged. `PROTOCOL_VERSION` 1 is pre-release and both halves ship from this repo, so this is a rebuild rather than a migration. |
 | `specs/wire/v1/protocol.md` | wire contract (existing) | §3, beside `silenceCap`: the three states and the rule that a consumer must not infer attendance from the cap when the field is present. |
 | `bridges/nvda/addon/.../domain/controllers/commands/hello.py` | controller (existing) | Reads `unattended` alongside the cap policy it already builds, and fills the field. |
 | `bridges/nvda/addon/.../plugin.py` | composition root (existing) | **AMENDED, replacing the `silence_cap.py` row this table first had.** `unattended` is read ONCE into a local and used twice side by side — into `SilenceCapPolicy.from_settings`, and negated into `attended`. Carrying it back OUT of the policy would have put a fact inside a structure named for something else, which is exactly the shape Part 2 rejects for the wire; the bridge entity is therefore untouched. |

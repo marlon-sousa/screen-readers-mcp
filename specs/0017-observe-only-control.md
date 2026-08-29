@@ -137,7 +137,7 @@ Regenerates `schema.json`; prose added to `protocol.md` §3 and §4.
 
 ### Shared
 
-1. **`shared/nvda_mcp_wire/protocol.py`** — `ControlMode`, the two `hello`
+1. **`shared/screenreader_wire/protocol.py`** — `ControlMode`, the two `hello`
    fields, `COMMAND_SHAPES` unchanged (no new command).
 
 ### Bridge

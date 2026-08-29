@@ -3,7 +3,7 @@
 #
 #     uv run poe gates
 #
-# Two artifacts in this repo are GENERATED from shared/nvda_mcp_wire/protocol.py
+# Two artifacts in this repo are GENERATED from shared/screenreader_wire/protocol.py
 # and committed: the JSON schema both languages are described by, and the Go
 # binding the server decodes with. Committing a generated file is only safe if
 # something proves it still matches its source -- otherwise the two sides drift
@@ -49,7 +49,7 @@ def schema_gate() -> bool:
 			str(ROOT / "shared"),
 			"python",
 			"-c",
-			"import json;from nvda_mcp_wire.schema import build_wire_schema;"
+			"import json;from screenreader_wire.schema import build_wire_schema;"
 			"print(json.dumps(build_wire_schema()))",
 		]
 	)

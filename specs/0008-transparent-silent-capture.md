@@ -95,8 +95,8 @@ swaps; the Session no longer records a `swapped_real`.
 
 ## Wire contract change (amends the published v1 contract)
 
-Adds one command and one capability to `shared/nvda_mcp_wire/protocol.py` (and the
-generated `specs/wire/v1/schema.json`):
+Adds one command and one capability to `shared/screenreader_wire/protocol.py`
+(and the generated `specs/wire/v1/schema.json`):
 
 - `Command.ANNOUNCE = "announce"`, params `AnnounceParams{text: str}`, result
   `AckResult` — a **bridge→human** hint channel, not agent-facing data.

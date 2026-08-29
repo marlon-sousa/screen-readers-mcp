@@ -27,7 +27,7 @@ _GLOBAL_PLUGINS = _ADDON_ROOT / "addon" / "globalPlugins"
 
 
 def _sync_shared_wire() -> None:
-	"""Copy shared/nvda_mcp_wire/protocol.py into the addon package (as scons does)."""
+	"""Copy shared/screenreader_wire/protocol.py into the addon package (as scons does)."""
 	spec = importlib.util.spec_from_file_location("_sync_shared", _ADDON_ROOT / "sync_shared.py")
 	assert spec is not None and spec.loader is not None
 	module = importlib.util.module_from_spec(spec)

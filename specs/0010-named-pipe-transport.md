@@ -43,7 +43,7 @@ in CI (`bridge` job, `windows-latest`) exactly like the socket scenario.
 
 ### Wire-level: `DEFAULT_PIPE_NAME`
 
-`shared/nvda_mcp_wire/protocol.py` gains one constant, next to
+`shared/screenreader_wire/protocol.py` gains one constant, next to
 `DEFAULT_PORT`:
 
 ```python
@@ -105,7 +105,7 @@ it from scratch.
 
 ## Acceptance criteria
 
-1. `DEFAULT_PIPE_NAME` added to `shared/nvda_mcp_wire/protocol.py` and
+1. `DEFAULT_PIPE_NAME` added to `shared/screenreader_wire/protocol.py` and
    asserted in `shared/tests/unit/test_protocol.py`; `specs/wire/v1/protocol.md`
    §1 amended; the schema drift gate stays green (no schema change).
 2. `NamedPipeListener`/`NamedPipeTransport` implement the `Listener`/

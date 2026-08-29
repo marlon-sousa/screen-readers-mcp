@@ -223,8 +223,8 @@ rather than in the session that took them.
 1. **Spec 0005's split trigger — DECLINED on 2026-08-29. The repo stays a
    monorepo.** The trigger fires on "a second reader's bridge starting in
    earnest", and its stated reasoning was that a second bridge could not import
-   `nvda_mcp_wire`. A Swift bridge indeed cannot, so **the premise holds where
-   spec 0041 doubted it** — and the conclusion still does not follow. The
+   `screenreader_wire`. A Swift bridge indeed cannot, so **the premise holds
+   where spec 0041 doubted it** — and the conclusion still does not follow. The
    premise argued against *sharing code*, which is already the case: the Swift
    binding is separate code whether the repo splits or not, exactly as spec 0005
    said when it ruled that what is shared between implementations is the

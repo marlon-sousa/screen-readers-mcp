@@ -3,7 +3,7 @@
 The published contract between an **MCP server** and a **screen-reader bridge**.
 This is the human half of the contract; [`schema.json`](schema.json) beside it is
 the machine half, generated from the reference Python implementation
-(`shared/nvda_mcp_wire/protocol.py`) so shapes and prose cannot disagree.
+(`shared/screenreader_wire/protocol.py`) so shapes and prose cannot disagree.
 
 A bridge author in any language implements this document plus the schema. The
 NVDA bridge (`bridges/nvda/`) is the reference implementation; JAWS and TalkBack
