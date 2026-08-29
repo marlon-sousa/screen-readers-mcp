@@ -411,10 +411,44 @@ negative result. What was done:
   and `/private/var/db`. **No file contains either string.** VoiceOver Utility
   has no sandbox container of its own.
 
-**So the value is stored in a form that is not the string** — an index, a hash,
-or an encoded record — and the plausible home is the CloudKit-backed accessibility
-store its own preferences advertise
-(`AXCloudKitZoneCreated-com.accessibility.voiceover.*`).
+**A whole-disk sweep was then run**, because the searches above were still
+scoped and the maintainer asked for the unscoped version: *"we would need a tool
+which analyses the whole disk — the moment you close VoiceOver, something has to
+change."* A marker file was timestamped, the voice was changed, VoiceOver was
+**quit**, and every file written under `/Users`, `/Library`, `/private/var/db`,
+`/private/etc` and `/Applications` in that window was listed. **Twenty-three
+files**, after filtering logging and telemetry noise. The voice is in none of
+them:
+
+- `~/Library/Accessibility/` — a directory the earlier searches never opened,
+  and the sweep's best lead. It holds exactly two CloudKit-mirrored stores,
+  `AXSSPunctuation` and `com.apple.personalaudio`. Neither concerns the voice.
+- The iCloud key-value store under `~/Library/Daemon Containers/…/com.apple.kvs`,
+  which does contain a `com.apple.VoiceOverTouch` store — and that store's only
+  keys are a `VOTLabelCache` last written in **2025** and **2014**.
+- The VoiceOver group container's three plists, already diffed whole-file.
+- The remainder is unrelated: `locationd`, `apsd`, `powerlogd`, Spotlight,
+  saved application state.
+
+**So the honest answer to "where does it save" is: nowhere that a sweep of the
+writable disk can see.** Three explanations survive, and the third is now the
+most likely because it explains more than the others:
+
+1. It is written later than the window, though the window contained a clean quit.
+2. It is in one of the `EndToEndEncrypted` key-value stores, which cannot be
+   inspected.
+3. **VoiceOver does not persist it at all — the speech subsystem does.** This
+   fits everything else measured: the voice vanished from VoiceOver's picker
+   when the *provider registration* changed (finding 6), which is speech-system
+   state and not reader state; re-registering plus a restart restored it; and
+   nothing in VoiceOver's own preferences moves when the voice is changed. On
+   that reading, VoiceOver is asking the speech catalogue rather than
+   remembering, and the thing to patch — if anything — belongs to the TTS
+   subsystem, not to the reader.
+
+**Either way the proposal is closed for now.** Patching a store before launch
+needs a store that can be found and written; a sweep of the writable disk did not
+find one.
 
 **The consequence is a design one, and it settles a proposal.** The maintainer's
 preferred mechanism — *"patch whatever it uses before starting it"* — would be
