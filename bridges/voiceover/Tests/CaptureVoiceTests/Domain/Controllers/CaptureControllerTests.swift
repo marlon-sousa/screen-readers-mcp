@@ -149,6 +149,25 @@ struct CaptureControllerTests {
 		#expect(subject.sink.field("passthrough_language", ofKind: .synthesize) == .text("pt-BR"))
 	}
 
+	@Test("the full voice list is NOT enumerated when the language's default already wins")
+	func theCommonPathDoesNotEnumerateEveryVoice() {
+		// Measured, not guessed: enumerating 191 voices per utterance cost 0.380 s
+		// to the first sample against the spike's 0.218 s. The rule stays in
+		// VoiceChoice; what this asserts is that the controller does not pay for it
+		// before VoiceChoice decides whether it is needed.
+		let subject = makeSubject()
+		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
+		#expect(subject.catalogue.allVoicesReads == 0)
+	}
+
+	@Test("the voice list IS enumerated when the default is unusable")
+	func theFallbackPathDoesEnumerate() {
+		let subject = makeSubject(defaults: ["pt-BR": CaptureControllerTests.ours])
+		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
+		#expect(subject.catalogue.allVoicesReads == 1)
+		#expect(subject.synthesizer.spoken.first?.voice == CaptureControllerTests.brazilian)
+	}
+
 	@Test("a language stated in the SSML is used and reported as stated")
 	func statedLanguageIsUsed() {
 		let subject = makeSubject(defaults: ["en-US": AvailableVoice(
@@ -172,6 +191,18 @@ struct CaptureControllerTests {
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		#expect(subject.sink.field("passthrough_voice", ofKind: .synthesize) == .text("<none>"))
 		#expect(subject.ring.isFinished)
+	}
+
+	@Test("warming up touches the catalogue and says nothing")
+	func warmUpCostsOneLookupAndEmitsNothing() {
+		// The point is a framework side effect -- the first voice lookup in a
+		// process costs ~150 ms -- so what is asserted is that it happens, and that
+		// it is not mistaken for an utterance by anything reading the feed.
+		let subject = makeSubject()
+		subject.controller.warmUp()
+		#expect(subject.catalogue.defaultLookups == ["pt-BR"])
+		#expect(subject.sink.events.isEmpty)
+		#expect(subject.synthesizer.spoken.isEmpty)
 	}
 
 	// -- cancellation, which is the ordinary path -----------------------------

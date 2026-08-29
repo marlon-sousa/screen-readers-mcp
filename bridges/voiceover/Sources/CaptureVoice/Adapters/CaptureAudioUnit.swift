@@ -115,6 +115,10 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 
 		try super.init(componentDescription: componentDescription, options: options)
 		self.busses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
+		// Off the critical path on purpose: this is construction, and the 150 ms it
+		// spends is 150 ms the first utterance will not.
+		let controller = self.controller
+		DispatchQueue.global(qos: .utility).async { controller.warmUp() }
 		controller.report(
 			CaptureEvent(
 				kind: .audioUnitCreated,

@@ -475,6 +475,35 @@ a cancel is an ordinary path and not a fault).
    `_NSExtensionMain` and the target must therefore be a library. The name was
    the spike's; the constraint is SwiftPM's.
 
+**Measured after the refactor, on 2026-08-29, on the same machine within the
+same minute** -- because a decomposition of working audio code is exactly the
+kind of change that is verified by assertion and regresses in seconds. The old
+spike's probe was rebuilt from git and interleaved with the new one, five runs
+each, same utterance:
+
+| | Old (spike) | New (decomposed) |
+|---|---|---|
+| Added latency, first sample | 0.207 -- 0.231 s | 0.219 -- 0.237 s |
+| Audio produced | 23,552 frames, peak 0.557 | identical |
+| Realtime contention drops | 0 | 0 |
+
+Parity, within noise. Two things were found by measuring rather than reasoning,
+and neither was guessable:
+
+1. **The first `AVSpeechSynthesisVoice(language:)` in a process costs about
+   150 ms; every one after it costs 0.4 ms.** The system relaunches this
+   extension freely, so without intervention the FIRST utterance after every
+   relaunch is 150 ms late -- in the one place a screen-reader user notices,
+   between a keystroke and the answer. `CaptureController.warmUp()` pays it at
+   construction instead, off the request path. The probe warms up too, or its
+   stopwatch reports a process start-up cost as per-utterance latency: that
+   mis-measurement read as a 0.35 s regression against spec 0041's 0.218 s, and
+   there was no regression at all.
+2. **`VoiceChoice.resolve` takes its candidate list as an autoclosure**, because
+   rule 2 means the common path never needs it and enumerating every voice is
+   work done inside the user's screen reader once per utterance. The rules stay
+   in one pure place; only the fallback pays.
+
 **What the promotion deliberately did NOT rename.** The app bundle
 (`VoiceOverCaptureSpike.app`), the app and extension bundle ids, and the declared
 voice identifier are all unchanged, `spike` and all. VoiceOver stores the voice a

@@ -493,6 +493,15 @@ rule intends.
     `Stub.swift` rather than `main.swift`, because SwiftPM identifies any
     `main.swift` as an executable target while an `.appex`'s entry point is
     `_NSExtensionMain`.
+    **Verified against the pre-refactor code, not only against its own tests.**
+    The old spike's probe was rebuilt from git and interleaved with the new one,
+    five runs each on the same machine within the same minute: added latency
+    0.207--0.231 s before, 0.219--0.237 s after, byte-identical audio and zero
+    contention drops on both. Two costs were found by measuring and fixed --
+    the first `AVSpeechSynthesisVoice(language:)` in a process costs ~150 ms
+    (so `warmUp()` pays it at construction rather than on the first utterance
+    after each of the system's free relaunches), and the full voice list is now
+    taken as an autoclosure so the common path never enumerates it.
     **The doctor gained a distinction it did not have**, found by this entry's
     own tier declaration: a tool that cannot be asked its version at all is not
     the same as one whose version cannot be ordered. `codesign --version` is an

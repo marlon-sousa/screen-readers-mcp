@@ -13,6 +13,9 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 	var defaults: [String: AvailableVoice]
 	var voices: [AvailableVoice]
 	private(set) var defaultLookups: [String] = []
+	/// Counted because enumerating every voice COSTS TIME on a real machine, and
+	/// the common path must not pay it. See the test that asserts this is zero.
+	private(set) var allVoicesReads = 0
 
 	init(
 		currentLanguage: String = "en-US",
@@ -29,5 +32,8 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 		return defaults[language]
 	}
 
-	func allVoices() -> [AvailableVoice] { voices }
+	func allVoices() -> [AvailableVoice] {
+		allVoicesReads += 1
+		return voices
+	}
 }

@@ -152,6 +152,21 @@ public final class CaptureController {
 		synthesizer.cancel()
 	}
 
+	/// Pays the voice catalogue's one-off cost NOW, so that no utterance pays it.
+	///
+	/// MEASURED on macOS 15.0: the first `AVSpeechSynthesisVoice(language:)` in a
+	/// process costs about 150 ms and every one after it costs 0.4 ms. The system
+	/// relaunches this extension freely, so without this the FIRST utterance after
+	/// every relaunch is 150 ms late -- and it is late in the one place a screen
+	/// reader user notices, between pressing a key and hearing the answer.
+	///
+	/// Called off the request path, from the audio unit's construction. Its result
+	/// is deliberately discarded: what is wanted is the framework's side effect,
+	/// not the voice.
+	public func warmUp() {
+		_ = catalogue.defaultVoice(for: catalogue.currentLanguage)
+	}
+
 	/// Observations the audio unit makes about itself, funnelled through the same
 	/// sink so there is ONE feed to read rather than two.
 	public func report(_ event: CaptureEvent) {

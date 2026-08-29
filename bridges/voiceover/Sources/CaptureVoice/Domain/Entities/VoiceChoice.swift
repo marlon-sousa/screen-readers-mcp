@@ -39,9 +39,21 @@ public struct VoiceChoice: Equatable, Sendable {
 	/// `candidates` is every voice on the machine. Returns nil only when the
 	/// machine has no voice that is not ours, which the caller must report by
 	/// name rather than render as silence.
-	public func resolve(languageDefault: AvailableVoice?, candidates: [AvailableVoice]) -> AvailableVoice? {
+	///
+	/// `candidates` IS AN AUTOCLOSURE, AND THAT IS A MEASUREMENT RATHER THAN A
+	/// STYLE. Enumerating every voice costs real time -- 191 of them on the
+	/// machine this was measured on -- and rule 2 means the common path never
+	/// needs the list at all. Taking it eagerly put that cost on EVERY utterance
+	/// inside the screen reader: 0.380 s to the first sample against the spike's
+	/// 0.218 s, entirely because the spike returned before making the call. This
+	/// keeps the rules in one pure place and still only pays for the fallback
+	/// when the fallback is reached.
+	public func resolve(
+		languageDefault: AvailableVoice?,
+		candidates: @autoclosure () -> [AvailableVoice]
+	) -> AvailableVoice? {
 		if let languageDefault, !isOurs(languageDefault) { return languageDefault }
-		let usable = candidates.filter { !isOurs($0) }
+		let usable = candidates().filter { !isOurs($0) }
 		if let exact = usable.first(where: { $0.language == effectiveLanguage }) { return exact }
 		// A language tag's first two characters are its language subtag, so this
 		// is "the same language, some other region" -- pt-PT for pt-BR. Better a

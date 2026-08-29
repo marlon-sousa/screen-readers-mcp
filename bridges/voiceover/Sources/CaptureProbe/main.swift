@@ -72,6 +72,11 @@ case "speak":
 		RunLoop.current.run(until: Date().addingTimeInterval(0.1))
 	}
 	print(delegate.finished ? "completed" : "TIMED OUT after 10s")
+// Handled below, each in its own block, because each was appended as its own
+// question during the spike. Named here so that a good subcommand does not print
+// a usage banner above its own output -- which reads exactly like a failure.
+case "components", "refresh", "passthrough":
+	break
 default:
 	print("usage: probe [list|speak <text>|components|refresh|passthrough]")
 }
@@ -146,8 +151,35 @@ if args.first == "passthrough" {
 		ourVoiceIdentifier: ourVoiceIdentifier
 	)
 	print("ssml: \(ssml)")
+
+	// WARM THE CATALOGUE FIRST, and the reason is the trap this line exists to
+	// close. The first AVSpeechSynthesisVoice(language:) in a process costs about
+	// 150 ms and every one after it costs 0.4 ms, so a stopwatch started before it
+	// reports a PROCESS START-UP cost as though it were per-utterance latency --
+	// 0.35 s where the same code measured 0.21 s. Spec 0041's C4 numbers were
+	// taken after the lookup, so this keeps the probe comparable to them, and the
+	// extension pays this cost at construction (CaptureController.warmUp) rather
+	// than on its first utterance.
+	controller.warmUp()
+
 	let started = Date()
-	controller.capture(ssml: ssml, requestedBy: ourVoiceIdentifier)
+	// OFF THE MAIN THREAD, and this is not a detail -- it is the difference
+	// between a measurement and a constant.
+	//
+	// `speak` waits for the first samples before returning, because the render
+	// block has no way to say "not ready yet" and somebody has to wait. In the
+	// extension that wait happens on the system's request thread, which is not a
+	// run loop thread, and the synthesizer's buffer callbacks arrive regardless.
+	// In a command-line tool the main thread IS the run loop, so waiting on it
+	// starves the very callbacks it is waiting for: every measurement came back
+	// as the 2.0 s prebuffer budget plus overhead, whatever the utterance.
+	//
+	// So the probe calls the controller the way the extension does, and pumps the
+	// run loop here while draining -- which is also what the spike's probe did,
+	// by not calling the prebuffer wait at all.
+	DispatchQueue.global(qos: .userInitiated).async {
+		controller.capture(ssml: ssml, requestedBy: ourVoiceIdentifier)
+	}
 
 	// The ADDED LATENCY is the wait before the first sample exists -- an agent
 	// driving a reader feels this on every utterance.
