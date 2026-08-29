@@ -280,9 +280,12 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** and the next free spec number is
-**0046**. Specs **0044** and **0045** were spent on 2026-08-29 by 11.35 and
-11.36, which shipped in one PR and moved this line in the same commit. Three
+The next free board number is **11.38** in the convergence series and **13.13**
+in lane 3, and the next free spec number is **0047**. Spec **0046** was spent on
+2026-08-29 by **13.1**, lane 3's implementation spec, which also took board
+number **13.12** for the measurement it deferred, and moved this line in the same
+commit that spent both. Specs **0044** and **0045** were spent on 2026-08-29 by
+11.35 and 11.36, which shipped in one PR and moved this line in the same commit. Three
 unmerged branches account for the rest of the gap, which is exactly the case
 the paragraph above describes: 11.32, 11.33 and spec 0040 were taken on
 2026-08-27 by the observation stream, on the branch that also re-cut 0017; spec
@@ -381,8 +384,10 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. **Nothing in it is Done.** Its head is
-**13.1**, and 13.1 is a spec conversation rather than code.
+its board was written on 2026-08-29. Its head is **13.2**: **13.1 is Done**, so
+the lane's next step is code against
+[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) rather than
+another conversation.
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -438,7 +443,15 @@ rule intends.
     reports on 2026-08-28 alone, before the spike started. `focus`'s two
     cursors are the fourth open question and belong to 13.9, where a live reader
     can settle them.
-    Spec: none yet.
+    **All three were answered on 2026-08-29**, and two of them moved after the
+    macOS host was measured rather than reasoned about: VoiceOver emits no
+    diagnostic log of its own (52 unified-log records in an hour, every one from
+    a framework it links), focus has three routes of which the obvious
+    system-wide one fails, and its 45 toggles are richly drivable and not
+    readable at all. The capability set is **speech, gestures, typing, focus,
+    interact, guidance** — six of eleven — and it is announced one entry at a
+    time, so the gate always describes what works.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29).
 13.2. **The bridge the tooling can see** (lane 3). Promotes
     `spikes/voiceover-capture/provider/` to `bridges/voiceover/` — spec 0043
     keeps it deliberately, because it is not a sketch but a working
@@ -449,17 +462,29 @@ rule intends.
     0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md) requires,
     with its three tiers and their own commands, so the doctor and `poe bridges`
     see a second bridge with no central list edited anywhere. Deletes the
-    disposable half of the spike — the AppleScript driver, the keyboard script
-    and the probe have done their job now that their findings are written down —
+    disposable half of the spike — the AppleScript driver and the keyboard script
+    have done their job now that their findings are written down —
     and keeps `VoiceOver.sdef`, which is the reference this repo otherwise does
-    not have.
+    not have. **Amended 2026-08-29 by 13.1: the probe is KEPT too**, as
+    `Sources/CaptureProbe/`, because it is what answers "is the capture voice
+    published?" on the live checklist, and a checklist dependency is versioned
+    rather than improvised (the 2026-08-22 rule).
+    **The extension is decomposed, not promoted as-is**, and gains its first unit
+    tests. The spike's one audio-unit class did all four of its layers at once —
+    input, processing, audio output, text output — and being realtime is not a
+    licence to leave it that way: Swift's whole-module optimization inlines across
+    files, `final` types dispatch statically, and the no-allocation/no-blocking
+    rule applies to **one function**, the render block. So the extension becomes
+    its own small hexagon with its own ports, and the six fixes that each cost a
+    live round against a real reader become assertions rather than comments —
+    which is the reason spec 0043 kept the code and not only the measurements.
     Until this entry lands the spike must stay under `spikes/`: `bridges/` is
     scanned by the tooling, and a directory there without a declaration is
     reported as a bridge nobody declared.
     Verified by the doctor itself — two bridges selected on macOS, NVDA's `live`
     tier skipped with NVDA's own reason, VoiceOver's tiers running — and by the
     mirror of that on Windows.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.3. **The wire contract's second binding** (lane 3; **needs 11.36**). Swift
     envelope,
     per-command codecs and JSON-lines framing, written against
@@ -470,7 +495,7 @@ rule intends.
     schema the way nothing else in this repo is permitted to; no language server
     crosses the Go↔Python boundary and none will cross this one either, so the
     schema is the only index the three bindings share.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.4. **Channel and session** (lane 3; **needs 11.35**). The bridge LISTENS on
     the local endpoint 11.35 taught the server to dial — a Unix domain socket on
     macOS, reached by the same bare name a Windows bridge answers on a pipe —
@@ -483,7 +508,7 @@ rule intends.
     `echo`, `bye`. Headless, the analogue of lane 1's 7a/7b.
     **This is the first entry at which the Go server can connect to a VoiceOver
     bridge at all**, and it is the only one in the lane that depends on 11.35.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.5. **The capture feed** (lane 3). A `SpeechSource` port over the extension's
     container file — which is not a fallback but the only door, since an
     extension holding `com.apple.security.network.client` is silently skipped by
@@ -499,7 +524,7 @@ rule intends.
     This is the entry the whole spike exists to make possible, and it is where
     the provider route pays for itself: the polling route cannot honour a single
     one of these five primitives (spec 0041's table of why).
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.6. **Capture mode, and hard invariant 3 in its macOS form** (lane 3). The
     marker file that flips the extension between pass-through and silence,
     driven by the mode `hello` declared, restored to pass-through on every
@@ -514,7 +539,7 @@ rule intends.
     re-binds it**. So this entry owes two detections that have no NVDA analogue —
     the capture voice not being selected, and the provider having died — each
     reported as a named condition rather than as an empty read-back.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.7. **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
     `perform command`, against the vocabulary in
     `SCRStringsToCommandsMap.scrconfig` — 415 entries on macOS 15.0 mapping an
@@ -533,7 +558,7 @@ rule intends.
     call. A bridge on this route must treat "the reader answers its own name but
     not its own state" as a distinct, detectable, reported condition — returning
     an empty read-back is what a naive implementation does, and it is wrong.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.8. **Input: typing** (lane 3). `typeText` by synthesized keystrokes, with
     **Accessibility requested lazily** — only if the session asks to type. This
     is a macOS-only design lever with no NVDA analogue, because Windows has no
@@ -544,16 +569,32 @@ rule intends.
     two lines sent to TextEdit came back autocapitalized. "Send this keystroke"
     is not "this text arrives", and anything comparing typed input against
     observed output has to expect the app's own substitutions.
-    Spec: none yet (13.1).
-13.9. **Introspection** (lane 3). `getFocusInfo` and `getState`, and with them
-    13.1's question (c) settled against a live reader rather than on paper: the
-    dictionary exposes a `vo cursor` and a separate `keyboard cursor`, each with
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+13.9. **Focus** (lane 3). `getFocusInfo` — and **`getState` is no longer part of
+    this entry**, amended 2026-08-29 by 13.1. VoiceOver's AppleScript exposes four
+    read/write properties in total and no state noun; its 45 toggles are commands
+    with no query; and its preferences plist records only deviations from default,
+    behind `cfprefsd`, with VoiceOver holding its own copy in memory. `setState`'s
+    contract needs a read BEFORE the write, and the capture feed gives a read
+    after it. So the toggles are reached through `pressGesture`, where VoiceOver's
+    own announcement of the resulting mode comes back in the result's speech, and
+    the agent — which knows the locale, the reader and the intent — does the
+    compare. No power is lost; the promise `setState` cannot keep is.
+    Focus itself has three routes: `text under cursor` of either cursor
+    (AppleEvents only), the `describe` commands read through captured speech
+    (AppleEvents only), and the accessibility tree (Accessibility). `getFocusInfo`
+    answers from the tree when the grant exists and from the VoiceOver cursor when
+    it does not, and **never requests the grant itself**. Two measured traps ride
+    with it: `AXUIElementCreateSystemWide()` fails with `-25204
+    kAXErrorCannotComplete` — not a permission error, so no grant fixes it — and
+    VoiceOver publishes no accessibility tree of its own.
+    The dictionary exposes a `vo cursor` and a separate `keyboard cursor`, each with
     its own `text under cursor`, and they are two views that only usually agree.
     Note what `last phrase` actually is, since it is the obvious-looking
     shortcut here: not one phrase but the last output *request*, which after a
     VoiceOver restart returned an entire startup announcement and the focused
     item as a single string. Richer than "one word", and still one slot.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.10. **The control dialog** (lane 3). The macOS counterpart of [spec
     0011](specs/0011-bridge-control-ui.md) — endpoint selection, connection
     state, the session's activity — plus three rows that exist only here and are
@@ -569,7 +610,7 @@ rule intends.
     **Design in an endpoint NAME field, not only a kind** — see 11.37. The
     NVDA dialog lacks one and retrofitting it is that entry's cost; a dialog
     being written from scratch pays nothing to include it.
-    Spec: none yet (13.1).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.11. **Packaging, CI, and the live run** (lane 3). `poe build` produces the
     `.app`; a macOS CI job builds and headless-tests the bridge; the
     `conformance` gate runs the real Go binary against the real Swift bridge, as
@@ -586,7 +627,31 @@ rule intends.
     reader restarts underneath the bridge" is normal weather on macOS, not an
     edge case, and it makes every check in this lane flakier than anything lane 1
     faced.
-    Spec: none yet (13.1).
+    **Gains the `guidance` capability and its documents**, amended 2026-08-29 by
+    13.1: the document can only be written against a vocabulary that already
+    works, and it is where VoiceOver's 45 undocumented toggle strings become
+    usable — the agent is told which ones matter and that each announces its own
+    result. That is the answer to "how does an agent read state on a reader that
+    cannot be asked". It also carries the third rendering of the embedded-document
+    trap: Go embeds at compile time, Python ships and reads at run time, and Swift
+    resolves through a `Bundle.module` resource bundle that `build.sh` must copy
+    into `Contents/Resources` or the failure is a runtime trap rather than a
+    compile error.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+13.12. **Can VoiceOver be asked what mode it is in?** (lane 3; a measurement, not
+    a feature). Taken 2026-08-29 by 13.1, in the shape of
+    [spec 0041](specs/0041-can-voiceover-say-what-it-said.md) and for the same
+    reason: the alternative is to assume. One question — **does the preferences
+    plist track a toggle at the instant it fires, or only later?** — with a probe
+    and a pass condition, run against a live reader.
+    If it is live and prompt, a **read-only** `state` becomes implementable and
+    earns its own entry. If it is not, the answer is written down permanently and
+    nobody re-opens it. Either way lane 3 ships v1 without `state`, so this blocks
+    nothing and is deliberately last.
+    Adds no production class, so it carries no class/file layout — exactly as
+    spec 0041 did.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) (Part 2 states the question; the probe itself is this
+    entry's work).
 
 ## Convergence (requires C and D both Done)
 
