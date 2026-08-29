@@ -1,7 +1,9 @@
 # Spec 0043 — the VoiceOver bridge is one Swift bundle
 
 **Status:** direction RFC, drafted 2026-08-28 from the measurements in
-[spec 0041](0041-can-voiceover-say-what-it-said.md), awaiting review. This is the
+[spec 0041](0041-can-voiceover-say-what-it-said.md), **agreed in conversation
+2026-08-29**. Swift for both halves is Decided; so are the two decisions this
+spec carried forward as open, both answered below. This is the
 VoiceOver analogue of [spec 0005](0005-multi-reader-direction.md): it settles
 *shape and language*, not classes. **No class/file layout is given, and that is
 not an omission** — this spec adds no production class. The layout requirement
@@ -72,6 +74,48 @@ socket** — a filesystem path with filesystem permissions, which is the propert
 spec 0010 actually wanted. **Recommended default: a Unix domain socket**, with
 **loopback TCP on `127.0.0.1` as the alternative**, chosen in the control dialog,
 mirroring the Windows split rather than copying its mechanism.
+
+**Amended 2026-08-29, and the amendment is the better shape.** This is *not* a
+third transport. The server keeps exactly two — the **local endpoint** and
+loopback TCP — and the local one **resolves per platform**: a named pipe on
+Windows, a Unix domain socket on POSIX. A caller asks for the local endpoint and
+the leaf decides what that means, which is what spec 0010 was asking for all
+along; "pipe" was only ever how Windows spells it. Three consequences, all
+Decided in conversation on 2026-08-29:
+
+- **The kind is renamed `local`.** `pipe` is false on half the hosts once this
+  lands. `pipe:` stays a parsed alias, because it appears in the shipped
+  defaults, in `--reader` help text, in `specs/wire/v1/protocol.md` and in
+  config files people already have.
+- **The address is a bare NAME in everything we ship**, so
+  `server/config/defaults.json` stays host-independent: one entry per reader,
+  resolved to `\\.\pipe\<name>` on Windows and to a socket path on POSIX.
+  **An absolute path is accepted as an override**, and that costs nothing —
+  what would fork the config per host is a path in the *defaults*, not a path
+  being expressible at all. So the derived location is pre-configured and
+  someone who wants a different one can still say so.
+- **The default socket is `$XDG_RUNTIME_DIR/screenreader-mcp/<name>.sock` when
+  that is set, otherwise `~/.screenreader-mcp/<name>.sock`**, directory mode
+  `0700` — which is where the filesystem-permission property actually comes
+  from. `sun_path` is **104 bytes** on macOS and `$TMPDIR` alone spends 49 of
+  them, so a `$TMPDIR`-based path was rejected as too tight to be safe on a
+  machine we have not seen; the length is checked at endpoint *construction*
+  anyway, matching the existing rule that a bad endpoint is reported when the
+  configuration is read rather than when an agent asks to connect.
+
+**None of the socket half reaches the NVDA bridge**, and it is worth saying so
+plainly rather than leaving it inferred. That bridge is Windows: its local
+endpoint resolves to a named pipe exactly as it always has, and no socket path
+is ever computed for it. The single thing that changes for the NVDA reader is
+the *spelling* in the configuration — `local:nvdaMcpBridge` where it used to say
+`pipe:nvdaMcpBridge`, resolving to the same `\\.\pipe\nvdaMcpBridge` — which is
+why `pipe:` is kept as an alias rather than removed.
+
+Windows keeps named pipes even though Windows 10 1803+ has `AF_UNIX`: the
+shipped add-on listens on a pipe, and changing that breaks every installed copy
+for no gain. **If that is ever revisited it is a new decision**, and this
+paragraph is where it would be recorded. The server work is `ROADMAP.md` entry
+**11.35**.
 
 **2. The extension cannot use the network, at all.** Measured: an extension
 holding `com.apple.security.network.client` is silently skipped by macOS — the
@@ -170,18 +214,46 @@ directory there without a declaration is reported as a bridge nobody declared.
   braille window has exactly one property, `enabled`. Whether a VoiceOver bridge
   advertises a braille capability at all is an open question.
 
-## Decisions this trips, still open
+## Decisions this trips — all three now taken
 
-Carried forward from spec 0041 and unchanged by this RFC:
+Carried forward from spec 0041. Two were open when this RFC was drafted; both
+were answered in conversation on 2026-08-29, and the answers are recorded here
+rather than in the session that took them.
 
-1. **Spec 0005's split trigger** fires on "a second reader's bridge starting in
-   earnest". Its stated reasoning was that a second bridge could not import
-   `nvda_mcp_wire`; a Swift bridge indeed cannot, so the trigger's premise now
-   holds where spec 0041 doubted it. It still wants arguing rather than firing by
-   default.
-2. **The `nvda_mcp_wire` rename**, deferred by 0005 until the repo name settled.
-   The repo is `screen-readers-mcp`, and a Swift binding of a module named
-   `nvda_mcp_wire` is actively misleading.
+1. **Spec 0005's split trigger — DECLINED on 2026-08-29. The repo stays a
+   monorepo.** The trigger fires on "a second reader's bridge starting in
+   earnest", and its stated reasoning was that a second bridge could not import
+   `nvda_mcp_wire`. A Swift bridge indeed cannot, so **the premise holds where
+   spec 0041 doubted it** — and the conclusion still does not follow. The
+   premise argued against *sharing code*, which is already the case: the Swift
+   binding is separate code whether the repo splits or not, exactly as spec 0005
+   said when it ruled that what is shared between implementations is the
+   contract. Against that nothing, splitting costs real things that all span the
+   halves today — the `conformance` gate runs the real Go binary against the
+   real Python bridge and will want to run against the real Swift one; the drift
+   gate compares each binding against one schema; `scripts/doctor.py` and
+   `poe bridges` read every bridge's declaration. Each would need a cross-repo
+   answer, for one maintainer on one machine. **Revisit if a second maintainer
+   or a second host appears** — that, not a second bridge, is what would make
+   the coordination cost worth paying.
+2. **The `nvda_mcp_wire` rename — DECIDED on 2026-08-29: `screenreader_wire`.**
+   Deferred by 0005 until the repo name settled; the repo is
+   `screen-readers-mcp`, and a Swift binding of a module named `nvda_mcp_wire`
+   is actively misleading. The distribution becomes `screenreader-wire` and the
+   import becomes `screenreader_wire.protocol`, so both halves still address the
+   contract through a module named `protocol`.
+   **`screenreader` rather than `screen_readers`** because it is the identifier
+   the product surface already uses: the binary is `screenreader-mcp` and every
+   MCP resource is `screenreader://guidance`, `screenreader://tools`,
+   `screenreader://reader-guidance`. The repo and Go module are plural, so the
+   two conventions were already inconsistent and one of them had to be picked.
+   **What ruled out the shorter names** is hard invariant 1: this module is
+   copied verbatim into the add-on and runs inside NVDA's interpreter, sharing
+   `sys.modules` with every other add-on. `wire` and `protocol` are collision
+   bait there, and a collision inside NVDA is not a name clash, it is somebody's
+   screen reader.
+   It must land **before** lane 3's 13.3 writes the Swift binding, or the rename
+   is paid for twice. `ROADMAP.md` entry **11.36**.
 3. **Board placement — DECIDED on 2026-08-28: lane 3.** Lane 1 is the NVDA
    bridge, lane 2 the server, and the macOS bridge is neither, so it gets its own
    lane running parallel to both. `ROADMAP.md` carries the rule. This spec still

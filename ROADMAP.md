@@ -193,10 +193,17 @@ scheduled. Work now proceeds in lane 2.
 **Lane 2's only entry is complete** as of 2026-07-23: session D is closed, and
 with lane 1 already complete, convergence is unblocked. Entries 11a and 11b (the
 real-world run) are Done; work now proceeds through the convergence entries
-below. **Open as of 2026-08-27**:
-11.18, 11.23 —
-**two entries**, and both are conversations rather than code: 11.18 is on hold
-and 11.23 has no spec yet. (11.28 is Done: the flaky roundtrip now reports where
+below. **Open as of 2026-08-29**:
+11.18, 11.23, 11.35, 11.36, 11.37 —
+**five entries**, none of which has a spec yet and one of which (11.18) is on
+hold. 11.37 is not on anyone's critical path and is recorded rather than
+scheduled. **11.35 and 11.36 are the lane head, in that order**, taken ahead of the
+other two on 2026-08-29 because lane 3 blocks on both and neither 11.18 nor
+11.23 blocks on anything — the reprioritisation this board requires to be made
+explicitly, the way 11.22 was taken before 11.6. Both are lane-2-shaped work
+that exists for lane 3's benefit: 11.35 makes the local endpoint mean something
+off Windows, and 11.36 renames the wire module before a third binding is written
+against the old name. (11.28 is Done: the flaky roundtrip now reports where
 its budget went, spec 0039 — the flake itself is not fixed, and that is the
 claim. 11.31 was opened and closed in one documentation PR and never joined this
 list: the four READMEs had drifted behind the shipped surface, one of them still
@@ -366,6 +373,211 @@ by whichever PR consumes a number.)
       reported green on main** (2026-07-23) — branch protection matches required
       checks by literal name, so pushing the workflow and flipping the setting
       are deliberately two steps, in that order.
+
+## Status board — lane 3: the macOS VoiceOver bridge
+
+**Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
+its board was written on 2026-08-29. **Nothing in it is Done.** Its head is
+**13.1**, and 13.1 is a spec conversation rather than code.
+
+The lane rests on two documents that carry **no board number**, each taken
+out-of-band for the reason it states: [spec
+0041](specs/0041-can-voiceover-say-what-it-said.md), the research spike that
+inverted "spec before code" because VoiceOver has no source to read, no plugin
+API and no published extension point for speech; and [spec
+0043](specs/0043-the-voiceover-bridge-is-one-swift-bundle.md), the direction RFC
+— the VoiceOver analogue of [spec 0005](specs/0005-multi-reader-direction.md) —
+written against that spike's measurements rather than against Apple's
+documentation. Every entry below traces to one of them.
+
+**The numbering starts at 13, not 12.** 11.x is the convergence series, up to
+11.35, and 12 is lane 1's packaging entry. A fresh block is cheaper than the
+collision this board has already had twice.
+
+**Two dependencies cross lanes, and both are lane-2 entries taken first.**
+**13.3 needs 11.36**, the wire module's rename to `screenreader_wire`, because
+13.3 is where the third binding gets written and renaming after it costs the
+rename twice. **13.4 needs 11.35**, the local endpoint resolving per platform —
+a named pipe on Windows, a Unix domain socket on POSIX — so a bridge asks for
+"the local endpoint" and the leaf decides what that means. Neither adds a
+transport and neither changes the wire shape. **13.1 and 13.2 wait for
+nothing**, so the lanes run parallel as the lane rule intends.
+
+13.1. **The implementation spec** (lane 3; a conversation, not code). The first
+    entry, and the largest single piece of thinking in the lane: spec 0043
+    settled *shape and language* and deliberately gave **no class/file layout**,
+    because it adds no production class. This entry writes the layout in full —
+    every class, its role (port / controller / entity / adapter, or a named
+    supporting construct), and its collaborators — which is the repo's review
+    gate for the decomposition itself.
+    **Four of spec 0043's six open questions were answered in conversation on
+    2026-08-29** and are recorded in that spec rather than here: Swift for both
+    halves, the rename to `screenreader_wire` (now entry 11.36), spec 0005's
+    split trigger declined so the repo stays a monorepo, and the local
+    endpoint's shape (11.35). **Three remain for this entry**, each because it
+    changes the layout rather than the code inside it:
+    (a) **which capabilities a VoiceOver bridge advertises**, given that the
+    capability gate already makes a partial bridge a first-class citizen rather
+    than a degraded one (spec 0013);
+    (b) **braille** — VoiceOver's AppleScript exposes none at all, the braille
+    window having exactly one property, `enabled`, so the honest answer is
+    likely that the capability is *absent from the reader*, not unimplemented.
+    Near self-answering, and left here rather than pre-empted because it decides
+    whether a `BrailleSource` port exists at all;
+    (c) **what the live checklist for this lane looks like**, given that
+    VoiceOver crashes on the maintainer's machine as routine weather — five
+    reports on 2026-08-28 alone, before the spike started. `focus`'s two
+    cursors are the fourth open question and belong to 13.9, where a live reader
+    can settle them.
+    Spec: none yet.
+13.2. **The bridge the tooling can see** (lane 3). Promotes
+    `spikes/voiceover-capture/provider/` to `bridges/voiceover/` — spec 0043
+    keeps it deliberately, because it is not a sketch but a working
+    `AVSpeechSynthesisProviderAudioUnit` carrying six fixes that each cost a
+    live round against a real reader to find, none of them recoverable from
+    documentation. Adds `Package.swift` and the
+    `[tool.screen-readers-mcp.bridge]` declaration that [spec
+    0042](specs/0042-the-server-is-everywhere-a-bridge-is-somewhere.md) requires,
+    with its three tiers and their own commands, so the doctor and `poe bridges`
+    see a second bridge with no central list edited anywhere. Deletes the
+    disposable half of the spike — the AppleScript driver, the keyboard script
+    and the probe have done their job now that their findings are written down —
+    and keeps `VoiceOver.sdef`, which is the reference this repo otherwise does
+    not have.
+    Until this entry lands the spike must stay under `spikes/`: `bridges/` is
+    scanned by the tooling, and a directory there without a declaration is
+    reported as a bridge nobody declared.
+    Verified by the doctor itself — two bridges selected on macOS, NVDA's `live`
+    tier skipped with NVDA's own reason, VoiceOver's tiers running — and by the
+    mirror of that on Windows.
+    Spec: none yet (13.1).
+13.3. **The wire contract's second binding** (lane 3; **needs 11.36**). Swift
+    envelope,
+    per-command codecs and JSON-lines framing, written against
+    [`specs/wire/v1/schema.json`](specs/wire/v1/schema.json) — the contract, not
+    the code, which is exactly the cost spec 0005 anticipated when it said what
+    is shared between implementations is the contract. Extends
+    `scripts/drift.py` so the Swift binding cannot fall silently behind the
+    schema the way nothing else in this repo is permitted to; no language server
+    crosses the Go↔Python boundary and none will cross this one either, so the
+    schema is the only index the three bindings share.
+    Spec: none yet (13.1).
+13.4. **Channel and session** (lane 3; **needs 11.35**). The bridge LISTENS on
+    the local endpoint 11.35 taught the server to dial — a Unix domain socket on
+    macOS, reached by the same bare name a Windows bridge answers on a pipe —
+    with loopback TCP as the alternative the dialog selects, mirroring the
+    Windows split rather than copying its mechanism. The Transport seam and its
+    endpoint leaf, `JsonLinesChannel`, and the `Session` controller —
+    handshake announcing `reader` as VoiceOver with its capability set, the
+    command-handler registry, the heartbeat and inactivity watchdogs, and a
+    teardown with the macOS form of hard invariant 3 in it. `hello`, `ping`,
+    `echo`, `bye`. Headless, the analogue of lane 1's 7a/7b.
+    **This is the first entry at which the Go server can connect to a VoiceOver
+    bridge at all**, and it is the only one in the lane that depends on 11.35.
+    Spec: none yet (13.1).
+13.5. **The capture feed** (lane 3). A `SpeechSource` port over the extension's
+    container file — which is not a fallback but the only door, since an
+    extension holding `com.apple.security.network.client` is silently skipped by
+    macOS and the only evidence is `Skipping network entitled extension` in the
+    system log (spec 0041, B1). Then the buffer entity and the five speech
+    commands: `getSpeech`, `getLastSpeech`, `getNextSpeechIndex`,
+    `waitForSpeech`, `waitForSpeechToFinish`, with timestamps per [spec
+    0028](specs/0028-when-was-that-said.md).
+    **The bridge numbers utterances on its own side.** Spec 0041 measured the
+    extension's sequence counter restarting whenever the system relaunches it,
+    which it does freely — so a bridge that trusts those numbers has its
+    ordering reset under it without warning.
+    This is the entry the whole spike exists to make possible, and it is where
+    the provider route pays for itself: the polling route cannot honour a single
+    one of these five primitives (spec 0041's table of why).
+    Spec: none yet (13.1).
+13.6. **Capture mode, and hard invariant 3 in its macOS form** (lane 3). The
+    marker file that flips the extension between pass-through and silence,
+    driven by the mode `hello` declared, restored to pass-through on every
+    teardown path — the default cannot be the setting that mutes a screen
+    reader.
+    macOS gives half of the invariant for free and takes a different price for
+    it. **VoiceOver falls back to a working voice when the provider dies; it
+    does not go silent** (spec 0041, C2), so the dangerous half holds without the
+    bridge doing anything. But recovery is not automatic: VoiceOver then cannot
+    resolve the voice again, logging *"Babelfish falling back to defaults due to
+    missing identifier"* on every utterance, and **only restarting the reader
+    re-binds it**. So this entry owes two detections that have no NVDA analogue —
+    the capture voice not being selected, and the provider having died — each
+    reported as a named condition rather than as an empty read-back.
+    Spec: none yet (13.1).
+13.7. **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
+    `perform command`, against the vocabulary in
+    `SCRStringsToCommandsMap.scrconfig` — 415 entries on macOS 15.0 mapping an
+    English phrase to an internal selector, undocumented, and the closest thing
+    VoiceOver has to the bridge's gesture port. It is a better primitive than key
+    injection: the reader does its own dispatch so nothing races with whatever
+    else holds the keyboard, and **an unknown command fails cleanly** —
+    `Command does not exist (6)` — which is the property this repo already wants
+    from `Request.cmd`. AppleEvents only; no Accessibility grant is asked for
+    here, which is what makes 13.8's laziness checkable.
+    **Carries spec 0041's sharpest requirement.** After six consecutive
+    `open next speech attribute guide` commands, every VoiceOver-specific call
+    began failing while `tell application "VoiceOver" to return name` still
+    answered and the process still ran: **the scripting object model died
+    without VoiceOver dying**, silently, with nothing failing until the next
+    call. A bridge on this route must treat "the reader answers its own name but
+    not its own state" as a distinct, detectable, reported condition — returning
+    an empty read-back is what a naive implementation does, and it is wrong.
+    Spec: none yet (13.1).
+13.8. **Input: typing** (lane 3). `typeText` by synthesized keystrokes, with
+    **Accessibility requested lazily** — only if the session asks to type. This
+    is a macOS-only design lever with no NVDA analogue, because Windows has no
+    such gate: the two halves of input cost different permissions, and keeping
+    them apart is what makes *"this bridge never asked for Accessibility"* a
+    checkable statement rather than an intention.
+    Carries the finding that **the target application rewrites what was typed** —
+    two lines sent to TextEdit came back autocapitalized. "Send this keystroke"
+    is not "this text arrives", and anything comparing typed input against
+    observed output has to expect the app's own substitutions.
+    Spec: none yet (13.1).
+13.9. **Introspection** (lane 3). `getFocusInfo` and `getState`, and with them
+    13.1's question (c) settled against a live reader rather than on paper: the
+    dictionary exposes a `vo cursor` and a separate `keyboard cursor`, each with
+    its own `text under cursor`, and they are two views that only usually agree.
+    Note what `last phrase` actually is, since it is the obvious-looking
+    shortcut here: not one phrase but the last output *request*, which after a
+    VoiceOver restart returned an entire startup announcement and the focused
+    item as a single string. Richer than "one word", and still one slot.
+    Spec: none yet (13.1).
+13.10. **The control dialog** (lane 3). The macOS counterpart of [spec
+    0011](specs/0011-bridge-control-ui.md) — endpoint selection, connection
+    state, the session's activity — plus three rows that exist only here and are
+    the reason this is its own entry rather than a corner of 13.4:
+    **whether AppleScript control of VoiceOver is enabled**, which the bridge
+    cannot enable, cannot work without, and which no API can set for the user
+    (VoiceOver Utility → General; on Sequoia written to both a Group Container
+    plist's `SCREnableAppleScript` and the legacy
+    `/private/var/db/Accessibility/.VoiceOverAppleScriptEnabled`);
+    **which permissions are granted**, with a way to trigger the requests; and
+    **whether the capture voice is selected in VoiceOver**, which the bridge can
+    detect from utterances arriving and cannot set without driving the reader.
+    **Design in an endpoint NAME field, not only a kind** — see 11.37. The
+    NVDA dialog lacks one and retrofitting it is that entry's cost; a dialog
+    being written from scratch pays nothing to include it.
+    Spec: none yet (13.1).
+13.11. **Packaging, CI, and the live run** (lane 3). `poe build` produces the
+    `.app`; a macOS CI job builds and headless-tests the bridge; the
+    `conformance` gate runs the real Go binary against the real Swift bridge, as
+    it already does against the real Python one; `server/config/defaults.json`
+    gains a `voiceover` reader so an agent does not have to configure one by
+    hand. Then the live-VoiceOver checklist in the PR body, with **its fixtures
+    versioned in the same PR** per the 2026-08-22 rule — a live checklist is this
+    repo's substitute for a CI test on the reader edge, and evidence that cannot
+    be re-run is weaker than it looks.
+    Two costs this entry inherits and must state rather than discover:
+    **updating the provider costs a VoiceOver restart**, every time, for every
+    user; and **VoiceOver crashes routinely** — five crash reports on the
+    maintainer's machine on 2026-08-28 alone, all before the spike started. "The
+    reader restarts underneath the bridge" is normal weather on macOS, not an
+    edge case, and it makes every check in this lane flakier than anything lane 1
+    faced.
+    Spec: none yet (13.1).
 
 ## Convergence (requires C and D both Done)
 
@@ -1872,6 +2084,138 @@ rather than before it.
     while implementing — the `live` guard asks the bridge registry for a tier
     rather than `platforms.py` for an OS name, and decision 7 gained the
     top-level `pythonPlatform` finding, which was not known when it was written).
+11.35. **E, the local endpoint is named after the mechanism Windows happens to
+    use** (lane 2; opens lane 3, and 13.4 waits on it). [Spec
+    0010](specs/0010-named-pipe-transport.md) wanted "a local endpoint that is
+    not the network", and got it on Windows as a named pipe. There is no macOS
+    equivalent of `\\.\pipe\nvdaMcpBridge` and there is not going to be one;
+    the macOS answer to the same requirement is a **Unix domain socket** — a
+    filesystem path with filesystem permissions, which is the property spec 0010
+    was actually asking for rather than the mechanism it happened to use.
+    **The server keeps exactly two transports, and the local one is resolved per
+    platform — Decided 2026-08-29 (Marlon).** Not a third kind. A caller asks
+    for the local endpoint or for loopback TCP, and *which* local mechanism that
+    means is the leaf's business: a named pipe on Windows, an `AF_UNIX` socket
+    on POSIX. **The code is already shaped for this** — `DialerFor` selects
+    between two leaves, and `pipe_transport_other.go` is today a refusal stub
+    (*"named pipes are Windows-only; configure a loopback tcp endpoint
+    instead"*) sitting in the exact position the real POSIX leaf belongs. That
+    stub stops refusing and starts dialing; nothing above it changes shape.
+    **The address stays a bare NAME in everything we ship, and that is the
+    load-bearing part.** It is what keeps `server/config/defaults.json`
+    host-independent: one entry per reader that works on every host, resolved to
+    `\\.\pipe\<name>` on Windows and to a socket path on POSIX. **An absolute
+    path is still accepted as an override** — that loses nothing, because what
+    would fork the shipped config per host is a path in the *defaults*, not a
+    path being expressible. The derived location is pre-configured; someone who
+    wants a different one can say so.
+    **Where that derived location is — Decided 2026-08-29:**
+    `$XDG_RUNTIME_DIR/screenreader-mcp/<name>.sock` when that is set, otherwise
+    `~/.screenreader-mcp/<name>.sock`, directory mode `0700`, which is where the
+    filesystem-permission property actually comes from. `sun_path` is **104
+    bytes** on macOS and `$TMPDIR` alone spends 49 of them, so a `$TMPDIR`-based
+    path was rejected as too tight to be safe on a machine nobody has seen; the
+    length is checked at endpoint *construction* regardless, since a long
+    username still exists somewhere. The bridge unlinks before binding, because
+    unlike a pipe the file outlives the process.
+    **None of the socket half reaches the NVDA bridge.** It is Windows: its
+    local endpoint resolves to a named pipe exactly as it always has, and no
+    socket path is ever computed for it. The one thing that changes for the NVDA
+    reader is the spelling — `local:nvdaMcpBridge` where the config used to say
+    `pipe:nvdaMcpBridge`, resolving to the same `\\.\pipe\nvdaMcpBridge`.
+    **The name `pipe` changes with it — Decided 2026-08-29: `local`.** It is
+    Windows-flavoured, and once half the hosts resolve it to something that is
+    not a pipe the name is simply false. `local:nvdaMcpBridge` is
+    mechanism-neutral, contrasts cleanly with `tcp`, and says what spec 0010
+    meant. (`ipc` was the runner-up; `socket` was rejected because TCP is a
+    socket too.) **`pipe:` is kept as a parsed alias** rather than removed,
+    because it appears in shipped defaults, in `--reader` help text, in
+    `specs/wire/v1/protocol.md` and in whatever config files people already
+    have.
+    **The discovery seam generalises the same way, and macOS gains something by
+    it.** `PipeDirectory` lists the named-pipe namespace on Windows and returns
+    an empty list everywhere else, so every endpoint on macOS reports liveness
+    *unknown* by construction. A directory of socket files answers the same
+    question honestly, so the probe starts working on the host lane 3 runs on.
+    Blast radius, small and contained: `domain/entities/endpoint.go` (the kind,
+    its parsing, its error text), `adapters/bridge/endpoint.go`,
+    `pipe_transport_other.go`, `adapters/discovery/` (the seam and both leaves),
+    `domain/entities/reader_listing.go`, `config/loader.go`, `defaults.json`,
+    `cmd/screenreader-mcp/main.go`'s help text, and `testsupport/`.
+    **Windows keeps named pipes — Decided 2026-08-29**, even though Windows 10
+    1803+ has `AF_UNIX`: the shipped NVDA add-on listens on a pipe, and changing
+    that would break every installed copy for no gain. If it is ever revisited
+    that is a new decision, not this one.
+    Still a contract change, not only a server refactor: the resolution rule is
+    the *rendezvous*, so `specs/wire/v1/protocol.md` carries it and every bridge
+    implements it. Nothing about the NVDA add-on's behaviour changes, but the
+    document it is written against does.
+    Spec: none yet.
+11.37. **E, the endpoint name can be overridden on one side only** (both lanes
+    and lane 3; **not** on lane 3's critical path). Raised by Marlon on
+    2026-08-29 while 11.35 was being written, and recorded rather than
+    remembered.
+    **The server half already exists.** `--reader nvda=local:someOtherName` and
+    a `--config` file both reach `config/loader.go`, so the dialing side can be
+    pointed anywhere. **The bridge half does not.**
+    `adapters/build_listener.py` builds its listener from
+    `protocol.DEFAULT_PIPE_NAME`, a constant, and the control dialog ([spec
+    0011](specs/0011-bridge-control-ui.md)) selects the *kind* — pipe or TCP —
+    and never the name.
+    So the override that exists today is, in practice, **a way to make the two
+    sides disagree silently.** The server dials a name nothing is listening on
+    and reports the endpoint as not listening, which is true and useless: the
+    real fault is that somebody configured a name the bridge was never able to
+    use, and nothing says so.
+    What it needs, in both bridges: a config key plus a dialog field for the
+    endpoint *name*, alongside the kind. And on the POSIX side the same field
+    accepts an absolute socket path, which 11.35 already decided the server
+    would honour — so this entry is what makes that override reachable from the
+    listening end rather than only the dialing one.
+    **Lane 3 gets it cheaply if it is designed in rather than added.** 13.10
+    builds the VoiceOver control dialog from scratch; a name field costs nothing
+    there and costs a revision later.
+    Why it is wanted at all, beyond symmetry: more than one reader on a machine,
+    more than one NVDA profile, and per-user isolation on a shared host — none
+    of which the single shipped default can express.
+    **Not blocking.** The default name works, and lane 3 can be built and
+    demonstrated on it. This is a gap in the configuration surface, not in the
+    connection.
+    Spec: none yet.
+11.36. **E, the wire module is named after the only reader it used to serve**
+    (both lanes; **gates lane 3's 13.3**). `nvda_mcp_wire` was named when NVDA
+    was the identity rather than the first bridge, and [spec
+    0005](specs/0005-multi-reader-direction.md) deferred renaming it until the
+    repo name settled. The repo is `screen-readers-mcp`, and a **Swift** binding
+    of a module named `nvda_mcp_wire` is not merely untidy, it is misleading
+    about what the contract is.
+    **Decided 2026-08-29: `screenreader_wire`**, distribution
+    `screenreader-wire`, imported as `screenreader_wire.protocol` — so both
+    halves still address the contract through a module named `protocol`, which
+    is the rule AGENTS.md states.
+    **`screenreader` rather than `screen_readers`**, because it is the
+    identifier the product surface already uses: the binary is
+    `screenreader-mcp` and every MCP resource is `screenreader://guidance`,
+    `screenreader://tools`, `screenreader://reader-guidance`. The repo and Go
+    module are plural, so the two conventions were already inconsistent and one
+    had to win.
+    **What ruled out the obvious short names** is hard invariant 1: this module
+    is copied verbatim into the add-on and runs inside NVDA's interpreter,
+    sharing `sys.modules` with every other add-on. `wire` and `protocol` are
+    collision bait there, and a collision inside NVDA is not a name clash, it is
+    somebody's screen reader.
+    **Taken before 13.3 deliberately.** 13.3 writes the Swift binding; renaming
+    afterwards means paying for the rename twice, once in each binding.
+    Blast radius, all mechanical and all gated: `shared/` (the package
+    directory, `pyproject.toml`, `schema.py`, both test modules, `README.md`),
+    `bridges/nvda/sync_shared.py` and its gitignored copy path,
+    `bridges/nvda/tests/conftest.py`, the three `pyrightconfig.json` files,
+    `scripts/doctor.py` and `scripts/drift.py`, and roughly twenty specs plus
+    `AGENTS.md`, `shared/AGENTS.md` and `CONTRIBUTING.md`. **No behaviour
+    changes and `PROTOCOL_VERSION` does not move** — the wire shape is
+    untouched, so this costs no version bump under the policy in
+    `shared/AGENTS.md`.
+    Spec: none yet.
 11.19. **Done (PR #61, 2026-08-17)** — E, personas — the persona exists and
     travels (both lanes). Live-checked against NVDA 2026.1.1 in both capture
     modes: the declaration reached `status`, `screenreader://info` and the
