@@ -122,6 +122,22 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 
 	public override var outputBusses: AUAudioUnitBusArray { busses }
 
+	/// The host settles the real format here, and it is not necessarily the one
+	/// declared at init. Logged, because a wrong assumption about sample rate is
+	/// heard as glitching rather than reported as an error.
+	public override func allocateRenderResources() throws {
+		try super.allocateRenderResources()
+		let format = outputBus.format
+		passThrough.adoptOutputFormat(format)
+		note([
+			"event": "allocate-render-resources",
+			"sample_rate": format.sampleRate,
+			"channels": Int(format.channelCount),
+			"interleaved": format.isInterleaved,
+			"max_frames": Int(maximumFramesToRender),
+		])
+	}
+
 	/// The voice this extension registers system-wide. VoiceOver lists it in
 	/// VoiceOver Utility -> Speech alongside Apple's own, which is what makes
 	/// probe A1 a question about VoiceOver rather than about AVSpeechSynthesizer.
@@ -165,13 +181,25 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 			let decision = passThrough.begin(ssml: request.ssmlRepresentation)
 			fields["passthrough_voice"] = decision.voice
 			fields["passthrough_language"] = decision.language
+			fields["prebuffer_ms"] = passThrough.prebuffer()
 		}
 		note(fields)
 	}
 
 	/// A3: is interruption observable, and distinguishable from completion?
 	public override func cancelSpeechRequest() {
-		note(["event": "cancel", "contention_drops": ring.contentionDrops])
+		var fields: [String: Any] = [
+			"event": "cancel",
+			"contention_drops": ring.contentionDrops,
+			"underruns": ring.underruns,
+			"overflow_drops": ring.overflowDrops,
+		]
+		if let source = passThrough.sourceFormat {
+			fields["source_rate"] = source.sampleRate
+			fields["source_channels"] = Int(source.channelCount)
+			fields["converted"] = source != passThrough.currentOutputFormat
+		}
+		note(fields)
 		passThrough.cancel()
 	}
 
@@ -182,22 +210,42 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		return { actionFlags, _, frameCount, _, outputData, _, _ in
 			// Realtime thread: no IO, no allocation, no logging. B3.
 			let buffers = UnsafeMutableAudioBufferListPointer(outputData)
-			guard let first = buffers.first else { return noErr }
-			let frames = min(Int(frameCount), scratchCapacity)
+			guard buffers.count > 0 else { return noErr }
+
+			// Fill the host's ENTIRE request. Capping this at the scratch size left
+			// the tail of every large block untouched -- audible as glitching, and
+			// invisible in any log.
+			let frames = Int(frameCount)
+			let usingScratch = buffers[0].mData == nil
+			let renderFrames = usingScratch ? min(frames, scratchCapacity) : frames
 
 			let destination: UnsafeMutablePointer<Float>
-			if let provided = first.mData {
+			if let provided = buffers[0].mData {
 				destination = provided.assumingMemoryBound(to: Float.self)
 			} else {
 				destination = scratch
 				buffers[0].mData = UnsafeMutableRawPointer(scratch)
-				buffers[0].mDataByteSize = UInt32(frames * MemoryLayout<Float>.size)
+				buffers[0].mDataByteSize = UInt32(renderFrames * MemoryLayout<Float>.size)
 			}
 
-			let (filled, done) = ring.drain(into: destination, count: frames)
-			if filled < frames {
-				destination.advanced(by: filled).update(repeating: 0, count: frames - filled)
+			let (filled, done) = ring.drain(into: destination, count: renderFrames)
+			if filled < renderFrames {
+				destination.advanced(by: filled).update(repeating: 0, count: renderFrames - filled)
 			}
+
+			// A host asking for more than one channel gets the same mono signal in
+			// each, rather than one channel of speech and one of silence.
+			if buffers.count > 1 {
+				for index in 1..<buffers.count {
+					if let other = buffers[index].mData {
+						other.assumingMemoryBound(to: Float.self).update(from: destination, count: renderFrames)
+					} else {
+						buffers[index].mData = UnsafeMutableRawPointer(destination)
+						buffers[index].mDataByteSize = UInt32(renderFrames * MemoryLayout<Float>.size)
+					}
+				}
+			}
+
 			if done {
 				actionFlags.pointee = .offlineUnitRenderAction_Complete
 			}

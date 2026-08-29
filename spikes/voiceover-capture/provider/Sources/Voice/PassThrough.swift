@@ -25,15 +25,37 @@ let ourVoiceIdentifier = "org.screen-readers-mcp.spike.capture"
 
 final class PassThrough {
 	private let synthesizer = AVSpeechSynthesizer()
+	/// Re-synthesis runs here rather than on whatever thread the system called us
+	/// on. runningboardd parks this extension at PRIO_DARWIN_BG -- a background
+	/// process feeding a realtime audio callback -- so the work says out loud that
+	/// it is interactive.
+	private let synthesisQueue = DispatchQueue(
+		label: "org.screen-readers-mcp.spike.synthesis", qos: .userInteractive)
 	private let ring: AudioRing
-	private let outputFormat: AVAudioFormat
+	/// NOT fixed at construction. The audio unit declares a format on its output
+	/// bus, and the HOST may then set a different one -- converting to the format
+	/// we wished for rather than the one the host will play is heard as glitching
+	/// and wrong pitch, not as an error.
+	private var outputFormat: AVAudioFormat
 	private var converter: AVAudioConverter?
 	private var converterInputFormat: AVAudioFormat?
+	/// What the chosen voice actually produced, which is not knowable in advance
+	/// and decides whether every buffer goes through a converter.
+	private(set) var sourceFormat: AVAudioFormat?
 
 	init(ring: AudioRing, outputFormat: AVAudioFormat) {
 		self.ring = ring
 		self.outputFormat = outputFormat
 	}
+
+	func adoptOutputFormat(_ format: AVAudioFormat) {
+		guard format != outputFormat else { return }
+		outputFormat = format
+		converter = nil
+		converterInputFormat = nil
+	}
+
+	var currentOutputFormat: AVAudioFormat { outputFormat }
 
 	/// Best-effort language of an utterance, read from the SSML the system handed
 	/// us. VoiceOver speaks the user's language, which is not necessarily the
@@ -64,13 +86,20 @@ final class PassThrough {
 		func isOurs(_ voice: AVSpeechSynthesisVoice) -> Bool {
 			voice.identifier.hasSuffix(ourVoiceIdentifier)
 		}
-		if let language, let preferred = AVSpeechSynthesisVoice(language: language), !isOurs(preferred) {
+		// Measured against a live VoiceOver on macOS 15.0: its SSML carries
+		// <prosody> and <break>, and NO xml:lang at all. So "the language of this
+		// utterance" is usually unknown here, and falling through to "whatever
+		// voice is first" is not a harmless default -- it picked
+		// com.apple.voice.compact.ar-001.Maged and read Portuguese aloud in
+		// Arabic. The system's CURRENT language is the honest default: it is what
+		// the reader is speaking.
+		let effective = language ?? AVSpeechSynthesisVoice.currentLanguageCode()
+		if let preferred = AVSpeechSynthesisVoice(language: effective), !isOurs(preferred) {
 			return preferred
 		}
 		let candidates = AVSpeechSynthesisVoice.speechVoices().filter { !isOurs($0) }
-		guard let language else { return candidates.first }
-		if let exact = candidates.first(where: { $0.language == language }) { return exact }
-		let prefix = String(language.prefix(2))
+		if let exact = candidates.first(where: { $0.language == effective }) { return exact }
+		let prefix = String(effective.prefix(2))
 		return candidates.first { $0.language.hasPrefix(prefix) } ?? candidates.first
 	}
 
@@ -78,6 +107,8 @@ final class PassThrough {
 	/// rather than inferred from how the audio sounds.
 	func begin(ssml: String) -> (voice: String, language: String) {
 		ring.reset()
+		ring.resetCounters()
+		sourceFormat = nil
 		let language = PassThrough.language(inSSML: ssml)
 		let voice = PassThrough.fallbackVoice(language: language)
 
@@ -90,16 +121,48 @@ final class PassThrough {
 		}
 		utterance.voice = voice
 
+		synthesisQueue.async { [weak self] in
+			self?.startWriting(utterance)
+		}
+		return (voice?.identifier ?? "<none>", language ?? "<unknown>")
+	}
+
+	private func startWriting(_ utterance: AVSpeechUtterance) {
 		synthesizer.write(utterance) { [weak self] buffer in
 			guard let self else { return }
 			guard let pcm = buffer as? AVAudioPCMBuffer, pcm.frameLength > 0 else {
 				self.ring.markFinished()
 				return
 			}
+			if self.sourceFormat == nil { self.sourceFormat = pcm.format }
 			self.append(pcm)
 		}
-		return (voice?.identifier ?? "<none>", language ?? "<unknown>")
 	}
+
+	/// Waits until playback can start without starving, and reports how long that
+	/// took. Called by the audio unit after begin(), on the system's own thread.
+	///
+	/// The host starts pulling audio in 256-frame blocks the moment synthesis is
+	/// requested, and re-synthesis has produced nothing yet. Measured against a
+	/// live VoiceOver: short utterances starved the audio thread ~10 times and a
+	/// 289-character help message starved it 955 times, with no lock contention
+	/// and no format conversion -- so the glitching was never the ring or the
+	/// converter, it was playback starting before there was anything to play.
+	func prebuffer() -> Int {
+		let started = Date()
+		let deadline = started.addingTimeInterval(PassThrough.prebufferBudget)
+		while ring.available < prebufferFrames, !ring.isFinished, Date() < deadline {
+			usleep(2000)
+		}
+		return Int(Date().timeIntervalSince(started) * 1000)
+	}
+
+	/// Roughly 800 ms of audio at the output rate. Long utterances are where
+	/// starvation showed up, so the head start is generous.
+	private var prebufferFrames: Int { Int(outputFormat.sampleRate * 0.8) }
+	/// Never wait longer than this: a glitch traded for a hang is a bad trade on
+	/// the machine's only screen reader.
+	static let prebufferBudget: TimeInterval = 2.0
 
 	func cancel() {
 		synthesizer.stopSpeaking(at: .immediate)
