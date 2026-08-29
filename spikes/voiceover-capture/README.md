@@ -18,6 +18,8 @@ number in that spec's Findings section came from something in this directory.
 | `provider/Sources/Voice/` | The audio unit and its factory: the thing macOS hands every utterance to, as SSML, before any audio exists. |
 | `provider/Sources/Stub/` | The extension executable. A stub, because the unit lives in a framework. |
 | `provider/Sources/Probe/` | A client that lists voices, speaks through ours, and enumerates speech audio components — so "the extension never ran" and "VoiceOver ignored it" stay separable. |
+| `drive.sh` | Driving VoiceOver by AppleScript: its own commands by English name, plus the read-back. Needs AppleEvents access to VoiceOver. |
+| `keyboard.sh` | Pressing keys in **any** application. Needs Accessibility — the wider grant — which is why it is a separate script from `drive.sh`. |
 
 `provider/build/` is generated and git-ignored.
 

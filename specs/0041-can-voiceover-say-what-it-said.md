@@ -668,6 +668,15 @@ what was typed**. Two lines sent to TextEdit came back autocapitalized. "Send
 this keystroke" is not "this text arrives", and a harness comparing typed input
 against observed output has to expect the app's own substitutions.
 
+That check is `spikes/voiceover-capture/keyboard.sh roundtrip`, and it is a
+separate script from `drive.sh` for the reason the permissions table above gives:
+the two halves of input cost different grants, and keeping them apart is what
+makes "this bridge never asked for Accessibility" a checkable statement rather
+than an intention. It types into a scratch TextEdit document and closes it
+without saving, so the evidence is re-runnable by someone else — which the
+first version of this finding was not, since it lived in a terminal session that
+no longer exists.
+
 **The read-back channel is fragile, and that matters more than any of the
 above.** After `open next speech attribute guide` was issued six times in a row,
 every VoiceOver-specific call began failing — `last phrase`, `text under cursor`,
