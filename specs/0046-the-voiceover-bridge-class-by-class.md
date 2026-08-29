@@ -456,6 +456,35 @@ a cancel is an ordinary path and not a fault).
 **Deleted:** `drive.sh` and `keyboard.sh`. Their findings are written into specs
 0041 and 0043, and their function is replaced by the bridge itself.
 
+**Two amendments to the table above, made while implementing 13.2 on
+2026-08-29**, each riding in the PR with its why, per the workflow rule:
+
+1. **`Adapters/CaptureEventLine.swift` is added** — a named supporting construct
+   in the adapters layer: the one rendering of a `CaptureEvent` as a JSON line,
+   used by both sinks. The table lists the two sinks and no shared renderer,
+   because in the spike the rendering lived in the single `note()` both routes
+   went through, and splitting the sinks split that. The two routes emitting the
+   **same bytes** is precisely what makes them interchangeable when the sandbox
+   denies one of them, and a property held by two copies of a function lasts
+   until somebody edits one of them. It is an adapter-layer construct and not a
+   domain one for the same reason JSON-lines framing is an adapter in the NVDA
+   bridge: JSON is a wire vocabulary. It carries a test.
+2. **The extension stub is `Sources/CaptureVoiceExtension/Stub.swift`, not
+   `main.swift`** — SwiftPM identifies *any* `main.swift` as an executable
+   target and warns about the manifest, while an `.appex`'s entry point is
+   `_NSExtensionMain` and the target must therefore be a library. The name was
+   the spike's; the constraint is SwiftPM's.
+
+**What the promotion deliberately did NOT rename.** The app bundle
+(`VoiceOverCaptureSpike.app`), the app and extension bundle ids, and the declared
+voice identifier are all unchanged, `spike` and all. VoiceOver stores the voice a
+user selected **by an identifier derived from the extension's bundle id**, so
+renaming any of it makes the selected voice vanish from VoiceOver's list and
+costs every user a trip to VoiceOver Utility. 13.2 promotes code; **13.11 owns
+packaging and identifiers**, and is where that one-time cost is paid once rather
+than twice. Everything that does not affect the published identifier *was*
+renamed — the Swift module is `CaptureVoice`, matching its SwiftPM target.
+
 **The extension gains unit tests here**, per Part 3's element 1: the spike had
 none because it was throwaway, and the six fixes that each cost a live round
 against a real reader become assertions rather than comments. This is the whole
@@ -839,4 +868,7 @@ Each rides in the PR that carries this spec, per hard invariant 6.
 - **13.11** gains the `guidance` capability and its documents, because the
   document can only be written against a vocabulary that already works.
 - **13.12** is new: the plist-liveness measurement.
-- **13.1** is marked Done by the PR that carries this file.
+- **13.1** is marked Done by the PR that carries this file, and so is **13.2**:
+  the spec and its first implementation ship together, which is what the
+  workflow's "spec before code, on the implementing PR's branch" means when the
+  spec covers a whole lane.

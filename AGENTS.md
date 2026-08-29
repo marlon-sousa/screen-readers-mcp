@@ -60,7 +60,11 @@ the identity. A "bridge" is whatever implements the wire contract for one
 screen reader (JAWS and TalkBack sketches live in the spec). The server core
 never special-cases a reader; reader identity is announced by `hello` and
 surfaced, reader vocabulary rides through as opaque data, and the repo stays
-a monorepo until a second bridge is real.
+a monorepo until a second bridge is real. **The second bridge is now real** —
+`bridges/voiceover/`, since board entry 13.2 — and the monorepo stays, which was
+decided in conversation on 2026-08-29 and recorded in
+[spec 0043](specs/0043-the-voiceover-bridge-is-one-swift-bundle.md): spec 0005's
+split trigger was declined, not merely unmet.
 
 The chain, top to bottom — each item talks only to the next:
 
@@ -103,10 +107,14 @@ make it cost a version bump instead — is in
 | `shared/` | Canonical **stdlib-only** wire protocol (`screenreader-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
+| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. Today it holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML. The session, the wire binding and the dialog are lane 3's later entries. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
 
 `shared/`, `server/` and `bridges/nvda/` each carry their own `AGENTS.md` with
-the rules specific to them; see the index above.
+the rules specific to them; see the index above. `bridges/voiceover/` carries a
+`README.md` instead, for now: everything it needs to say is about building,
+registering and removing a macOS bundle, and it gets an `AGENTS.md` when 13.4
+gives it a domain with rules of its own.
 
 ## Internal architecture — ports & adapters (bridge AND server)
 

@@ -384,10 +384,11 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.2**: **13.1 is Done**, so
-the lane's next step is code against
-[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) rather than
-another conversation.
+its board was written on 2026-08-29. Its head is **13.3**: **13.1 and 13.2 are
+both Done**, so the lane now has a declared bridge the tooling can see, a Swift
+package that compiles, and a capture voice with 51 headless tests -- and the
+next step is the wire contract's second binding, against
+[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -484,7 +485,22 @@ rule intends.
     Verified by the doctor itself — two bridges selected on macOS, NVDA's `live`
     tier skipped with NVDA's own reason, VoiceOver's tiers running — and by the
     mirror of that on Windows.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    **Two layout amendments rode in with the code**, both recorded in spec 0046
+    with their why: `Adapters/CaptureEventLine.swift` was added, because the two
+    sinks emitting the SAME bytes is what makes them interchangeable when the
+    sandbox denies one of them, and a property held by two copies of a function
+    lasts until somebody edits one of them; and the extension stub is
+    `Stub.swift` rather than `main.swift`, because SwiftPM identifies any
+    `main.swift` as an executable target while an `.appex`'s entry point is
+    `_NSExtensionMain`.
+    **The doctor gained a distinction it did not have**, found by this entry's
+    own tier declaration: a tool that cannot be asked its version at all is not
+    the same as one whose version cannot be ordered. `codesign --version` is an
+    unrecognised option that exits 2, so the doctor reported a perfectly good
+    codesign as "present, but would not report a version" — a warning about the
+    doctor wearing the clothes of a warning about the machine. `Tool` now carries
+    `version_argv`, which also retires the hard-coded `go version` special case.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29).
 13.3. **The wire contract's second binding** (lane 3; **needs 11.36**). Swift
     envelope,
     per-command codecs and JSON-lines framing, written against

@@ -201,6 +201,11 @@ doctor and `poe bridges` see it — rather than starting from an empty directory
 Until then it stays where it is: `bridges/` is scanned by the tooling, and a
 directory there without a declaration is reported as a bridge nobody declared.
 
+**Done on 2026-08-29**, by board entry 13.2 against
+[spec 0046](0046-the-voiceover-bridge-class-by-class.md): the provider is at
+`bridges/voiceover/`, decomposed into its own hexagon and carrying 51 headless
+tests, so the six fixes named above are assertions rather than comments.
+
 ## What this spec does not decide
 
 - **The class/file layout**, which belongs to the implementation spec.

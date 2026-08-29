@@ -64,8 +64,10 @@ Run `uv run poe bridges` at any time to see what your machine can actually do.
 ### Per bridge
 
 A bridge's requirements are declared in its own `pyproject.toml`, under
-`[tool.screen-readers-mcp.bridge]`, so this table follows from that file rather
-than duplicating it. Today there is one bridge.
+`[tool.screen-readers-mcp.bridge]`, so these tables follow from those files
+rather than duplicating them. Today there are two bridges, and **you only need
+the row for the one you are working on** — `uv run poe bridges` says which of
+them your machine can do anything with.
 
 | For the **NVDA** bridge | Version | Needed for |
 |---|---|---|
@@ -75,6 +77,18 @@ than duplicating it. Today there is one bridge.
 | **NVDA (installed)** | **2026.1.0** or later | The minimum supported version (`bridges/nvda/buildVars.py`, `addon_minimumNVDAVersion`). A live test needs a running copy. |
 | **NVDA source checkout** | tag `release-2026.1` | The reference for reading real NVDA APIs. See below. |
 | **PowerShell 7** (`pwsh`) | 7+ | Optional, Windows only. Windows PowerShell 5.1 has no `&&`/`||` and reports failure on exit code 0. |
+
+| For the **VoiceOver** bridge | Version | Needed for |
+|---|---|---|
+| **macOS** | 14+ (measured on 15.0) | Every tier. VoiceOver is macOS, and the bridge is Swift against macOS frameworks — there is no tier that could run elsewhere even in principle. |
+| **Swift toolchain** (`swift`) | **6.0+** | Its headless tests and its build. 6.0 is where swift-testing ships with the toolchain and where `swiftLanguageModes` exists in a package manifest, so an older one fails while *parsing* `Package.swift` rather than at a line you could read. It comes with Xcode 16 (`xcode-select -p` should name an Xcode, not just the command line tools). |
+| **`codesign`** | any | Building the bundle. It ships with the OS; the doctor checks only that it is there, because `codesign --version` is an unrecognised option. |
+| **VoiceOver (running)** | the one in your macOS | **Only** for the `live` tier. Its headless tests need no reader, no audio device and no registration. |
+
+**The Swift package fetches nothing.** `Package.swift` has no external
+dependencies, so `swift test` works offline and adds no third-party code to a
+component that is dlopened into the user's screen reader — the same argument
+that keeps the shared wire module stdlib-only, reached from the other direction.
 
 ### Setting up on macOS
 
@@ -87,6 +101,14 @@ curl -LsSf https://astral.sh/uv/install.sh | sh          # NOT brew install uv
 uv python install 3.13
 uv tool install scons --with markdown                    # only to build the .nvda-addon
 uv run poe fix && uv run poe doctor
+```
+
+For the **VoiceOver** bridge, add Xcode 16 or later from the App Store and point
+the toolchain at it — nothing else, and nothing from Homebrew:
+
+```sh
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+swift --version                                          # must report 6.0 or later
 ```
 
 A healthy macOS doctor reports **0 warnings and 2 skips** — `pwsh`, and the NVDA
