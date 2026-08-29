@@ -104,7 +104,11 @@ VoiceOver neither consumed nor removed it. It simply ignored it.
 
 Afterwards the preferences were verified **byte-identical** to the backup.
 
-**Three hypotheses remain open**, in the order this document rates them:
+**All three hypotheses below are now DEAD**, killed by finding 10: setting the
+voice by hand writes nothing to any of these files. They are kept because the
+reasoning was sound and the elimination is the useful part.
+
+Three hypotheses, in the order this document rated them:
 
 1. **The write used the wrong door.** Guidepup — the state of the art — writes
    `defaults write com.apple.VoiceOver4/default SCREnableAppleScript -bool true`,
@@ -361,6 +365,111 @@ left unselected: whether the refactor still *sounds* right is a judgement only
 the maintainer can make by ear, which is the whole reason spec 0041's six fixes
 exist.
 
+## Finding 10 — setting the voice by hand writes nothing we can find
+
+**This is the observation the maintainer asked for**, and it is a strong
+negative that settles finding 2 completely.
+
+The voice was set to `Capture Spike` through VoiceOver Utility, with the
+preferences snapshotted before and after by
+`scripts/voiceover_settings.sh`. What changed:
+
+| File | Change |
+|---|---|
+| `default.plist` | **nothing** — last written 14:48, an hour and a half before the selection |
+| `journal.plist` | only timestamps refreshed, on every restart, for settings unrelated to speech |
+| `com.apple.VoiceOver4.local.plist` | `AllowAirPlay`, `FKNHotKeySettings`, `PlannedShutdownSuccessful` — all unrelated |
+| cfprefsd domain view | unchanged |
+
+Then VoiceOver was **quit** — in case it persists on exit — and snapshotted
+again. Still nothing. Then the identifier and the display name were searched for
+across `~/Library/Preferences`, `~/Library/Application Support` and
+`~/Library/Group Containers`: **no file contains either.** And yet the selection
+**survived a full VoiceOver restart**.
+
+So the reader persists its chosen voice somewhere none of this reaches — a
+plausible candidate being the CloudKit-backed store its own preferences hint at
+(`AXCloudKitZoneCreated-com.accessibility.voiceover.punctuation`), or an opaque
+token rather than the identifier string.
+
+**Three consequences.**
+
+1. **The preference-write route is dead**, and with it all three hypotheses under
+   finding 2. It is not that we wrote to the wrong door — there is no door of
+   that kind. That also means open question 0 does not need running.
+2. **Finding 2's failure is fully explained twice over**: VoiceOver did not have
+   the voice in its catalogue (finding 6), *and* the key it was written to is not
+   where the reader keeps the answer.
+3. **`getState`-style reads of the voice are impossible from the filesystem.**
+   Anything wanting to know which voice VoiceOver is using must ask the reader's
+   own UI, which is finding 11.
+
+## Finding 11 — the accessibility framework can do it, and here is the recipe
+
+The bridge will have to set its own voice, so this is the load-bearing result.
+Driving VoiceOver Utility through `AXUIElement` works, end to end, with no
+`perform command` and no reliance on the broken command channel:
+
+1. **Open the utility** — VO-F8, `key code 100` with control and option. A fresh
+   launch resets to the `Geral` category.
+2. **Select the `Voz` category** — set `AXSelected` on its row in the
+   `Categorias de Utilitários` table. This *does* work: an `AXTable` row's
+   selection is writable.
+3. **Press the voice button** (`AXPress` on `AXButton "<voice>, <language>"`).
+   That opens the voice **settings** sheet — rate, pitch, volume — which is not
+   the picker.
+4. **Press the inner button** `AXButton "Voz, <voice>"` inside that sheet. *This*
+   opens the picker. Matching on the voice name alone finds the outer button
+   first, which is a trap worth naming.
+5. **Focus the picker's search field** by setting `AXFocused`, then **type** the
+   voice name with synthesized keystrokes.
+6. **Click the row** at the centre of its `AXPosition`/`AXSize` frame, with a
+   `CGEvent` left click.
+7. **Press `OK`** on the settings sheet.
+
+**Three ways it does not work, each failing silently**, and each of which was
+briefly mistaken for a fact about the reader:
+
+- **Setting the search field's `AXValue` does not fire the search.** The field
+  displays the new text and the list does not re-filter, so it reads as empty
+  when it is stale. Only typing works.
+- **Setting a row's `AXSelected` in the voice list does nothing.** The write
+  returns success and the outline then reports **zero** selected rows. Writing
+  `AXSelectedRows` on the outline fails the same way. The voice list is not an
+  `AXTable` like the category list; it behaves like a SwiftUI list whose
+  selection is not writable through AX.
+- **The voice rows expose no `AXPress`.** Their only actions are
+  `AXShowDefaultUI` and `AXShowAlternateUI`, so there is nothing to perform.
+  Arrow keys do not move into the list either.
+
+**What works is a real mouse click at the element's real frame** — the one
+approach that goes through the same path a person does. AX supplies the
+coordinates; the click supplies the commit.
+
+## Finding 12 — the decomposed extension, verified live
+
+With the voice selected, VoiceOver spoke through the build from PR #82 and the
+feed proves every part of the refactor:
+
+```
+synthesize  seq=15  silent=false
+   text                  "Você está em um item do tipo tabela, dentro de..."
+   utterance_language    <unknown>
+   passthrough_language  pt-BR
+   passthrough_voice     com.apple.voice.compact.pt-BR.Luciana
+cancel  prebuffer_ms=153 cb_count=52 cb_frames=13056 drained_frames=13056
+        underruns=0 contention_drops=1 overflow_drops=0
+```
+
+33 utterances in one session. Every decomposition claim holds against a live
+reader: the `SsmlDocument` plain-text extraction populates `text`; the missing
+`xml:lang` is reported as `<unknown>` rather than guessed; `VoiceChoice` falls
+back to the **system** language and picks a voice that is **not ours**, which is
+the Arabic-reading-Portuguese fix working in production; the `PRIO_DARWIN_BG`
+escape reports cleared; and frames produced equal frames drained with no
+overflow. The prosody spec 0041 A2 measured is still there —
+`<prosody rate="160.00002%">` and `<break time="250ms"/>` — captured intact.
+
 ## What this changes
 
 | Claim | Before | After |
@@ -372,7 +481,9 @@ exist.
 | `perform command` is the gesture mechanism | assumed sound | **a measured risk** |
 | The voice is published, so VoiceOver offers it | assumed equivalent | **false — they can disagree, invisibly** |
 | A reader restart restores a lost voice | spec 0041, C2 | **necessary, not sufficient; re-registration is the repair** |
-| The preference write does not work | finding 2 | **untested — the voice was not in the catalogue** |
+| The preference write does not work | finding 2 | **dead — the reader keeps the voice nowhere we can write** |
+| The voice can be set without a human | open | **yes — through the accessibility framework, finding 11** |
+| The decomposed extension works live | untested | **verified: 33 utterances, 0 underruns** |
 
 ## What is deliberately not built
 
@@ -386,12 +497,15 @@ exist.
 
 ## Open questions
 
-0. **Repeat finding 2 now that the voice is back in VoiceOver's catalogue.**
-   This displaces every question below it: the original experiment ran while
-   VoiceOver did not know the voice existed, so it tested nothing.
-1. **Does the CFPreferences *domain* write work where the file-path write did
-   not?** One experiment, and the cheapest of the three.
-2. **Does a key need a `journal.plist` entry to be honoured?**
+0. ~~Repeat finding 2's write experiment.~~ **Answered by finding 10: there is
+   nothing to repeat.** The reader does not keep its voice in any file we can
+   find, so no write to one can select it. Questions 1 and 2 below fall with it
+   and are struck for the same reason.
+1. ~~Does the CFPreferences *domain* write work?~~ Moot.
+2. ~~Does a key need a `journal.plist` entry?~~ Moot.
+2a. **WHERE does VoiceOver keep the selected voice?** It survives a restart and
+   is in no file under `~/Library`. Worth knowing only if something ever needs
+   to *read* it; the bridge does not, because it sets it.
 3. **What killed `perform command`, and is it recoverable at all?** Until this is
    answered, 13.7's mechanism is unproven on this host.
 4. **What does an activity look like in storage?** Answerable the moment one
