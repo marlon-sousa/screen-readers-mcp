@@ -240,6 +240,127 @@ session misread a capture-feed tail as fresh evidence when it was five hours old
 and only converting the timestamps caught it. **Both mistakes had the same
 shape** — a plausible reading of real data that inverts on one more check.
 
+## Finding 6 — the voice can vanish from VoiceOver's picker, and a restart does not bring it back
+
+**This is the most consequential thing measured, and it explains finding 2.**
+
+While driving VoiceOver Utility to select the voice by hand, its picker was
+searched with a control and a test:
+
+| Search | Rows |
+|---|---|
+| `Reed` (control) | 3 — `Português (Brasil)` → `Eloquence` → **Reed** |
+| `Capture` | **0** |
+
+So the capture voice was **absent from VoiceOver's own list**, at the same
+moment that `AVSpeechSynthesisVoice.speechVoices()` reported 191 voices with
+ours among them, the extension was registered, and its process was **alive**
+(pid 777). Every system-wide signal said the voice was fine.
+
+**A reader restart did not repair it.** VoiceOver had been restarted five times
+that afternoon before this was noticed. What repaired it was **re-registration**:
+
+```sh
+pluginkit -r <old>.appex
+lsregister -f <app>          # first, and not sufficient alone (spec 0041, C1)
+pluginkit -a <new>.appex
+# then restart VoiceOver
+```
+
+after which the same search returned three rows —
+`Português (Brasil)` → **`screen-readers-mcp`** → **`Capture Spike`**. The
+manufacturer string the audio unit declares becomes a **group** in the picker,
+which is worth knowing for anyone looking for the voice by eye.
+
+**This corrects spec 0041's C2.** That finding says the voice disappears from
+VoiceOver's list after the provider dies and that *"only restarting VoiceOver
+restores it"*. The first half is confirmed and the second half is **too weak**:
+a restart is necessary and **not sufficient**, and the provider had not died.
+The honest statement is that VoiceOver's binding to a provider voice can be lost
+for reasons not yet understood, that nothing observable from outside VoiceOver
+reveals it, and that re-registration plus a restart is the repair.
+
+**And it explains finding 2 without needing any of its three hypotheses.**
+Writing a voice identifier into the preferences did nothing because **VoiceOver
+did not have that voice in its catalogue at the time**. The write may well be
+sound. Question 1 is therefore not merely open, it is **untested** — the
+experiment must be repeated now that the voice is back in the list.
+
+**It is the fourth named condition this lane owes**, and the worst-shaped one:
+`ProviderState` (entry 13.6) currently distinguishes `notRegistered` →
+`registered` → `published` → `selected` → `capturing`, and this is a state
+between `published` and `selected` in which every check the bridge can make from
+outside says *published* while VoiceOver disagrees. Detecting it needs the
+reader's own list, which AppleScript does not expose — so the honest reporting is
+"published system-wide; whether VoiceOver offers it cannot be read", and the
+recovery instruction is re-register and restart.
+
+## Finding 7 — press a key, read the phrase back: the bridge's own design, proven
+
+With `perform command` dead (finding 4), VoiceOver was driven **entirely by
+synthesized keystrokes with the capture channel as feedback** — which is exactly
+what the bridge is designed to do, arrived at because the alternative was broken.
+
+Every one of these works through `System Events`, needing Accessibility:
+
+| Keys | Effect |
+|---|---|
+| VO-F8 (`key code 100` + control, option) | opens VoiceOver Utility |
+| VO-Left / VO-Right (`123`/`124` + control, option) | walk the elements |
+| VO-Space (`49` + control, option) | activate |
+| VO-Shift-Down / Up | interact with / stop interacting |
+| plain typing | goes to the focused field |
+
+and `tell application "VoiceOver" to return content of last phrase` reports what
+VoiceOver said about it, every time. That loop navigated a category table, found
+the Voz pane, reached the voice button and opened the picker.
+
+**Two things it taught that no document states.** Tab does *not* enter the
+settings pane — it cycles toolbar → category table → Help — so a bridge cannot
+rely on Tab to reach a control; VoiceOver's own VO-Left/VO-Right is the route.
+And **`content of last phrase` is only meaningful when it CHANGES**: five
+consecutive VO-Rights that returned the same phrase meant the cursor had not
+moved, not that five elements shared a name. A bridge reading this channel needs
+that rule, because the failure is silent and looks like data.
+
+## Finding 8 — the accessibility API drives the reader's own settings, with two traps
+
+Where the keyboard loop was slow, `AXUIElement` was deterministic: enumerate
+VoiceOver Utility's tree, find the voice button by title, `AXPress` it, read the
+picker's rows. This is a working prototype of entry 13.9's `AXAccessibilityTree`
+adapter, and it confirms that route on a real window.
+
+**Both traps fail silently, which is why they are recorded:**
+
+- **Setting a search field's `AXValue` does not fire the search.** The field
+  showed the new value and the results list did not change, so the list read as
+  empty when it was merely stale. Typing works; assignment does not.
+- **Setting a row's `AXSelected` does not commit the choice.** The row is marked
+  and the dialog's OK button then confirms *nothing*: the voice button still read
+  `Reed` afterwards. Selecting and choosing are different operations.
+
+Both were briefly mistaken for real answers about the reader, which is the same
+failure this document already records twice.
+
+## Finding 9 — the decomposed extension is loaded by VoiceOver's own path
+
+After re-registering the build from
+[PR #82](https://github.com/marlon-sousa/screen-readers-mcp/pull/82) and
+restarting the reader, the container file the **new** code writes —
+`voiceover-capture.jsonl`, a different name from the spike's — appeared, with:
+
+```
+15:55:22  audio-unit-created   cleared_darwin_bg = true   silent = false
+15:55:22  speech-voices-read
+```
+
+So the system instantiated the decomposed audio unit inside the reader's own
+world, the `PRIO_DARWIN_BG` escape still works after the refactor, and the two
+sinks still emit. **No `synthesize` events**, because the voice was deliberately
+left unselected: whether the refactor still *sounds* right is a judgement only
+the maintainer can make by ear, which is the whole reason spec 0041's six fixes
+exist.
+
 ## What this changes
 
 | Claim | Before | After |
@@ -249,6 +370,9 @@ shape** — a plausible reading of real data that inverts on one more check.
 | Activities could carry the voice | unknown | **true, and they inherit** |
 | An activity can be selected without a human | assumed possible | **no documented route; blocked by finding 4** |
 | `perform command` is the gesture mechanism | assumed sound | **a measured risk** |
+| The voice is published, so VoiceOver offers it | assumed equivalent | **false — they can disagree, invisibly** |
+| A reader restart restores a lost voice | spec 0041, C2 | **necessary, not sufficient; re-registration is the repair** |
+| The preference write does not work | finding 2 | **untested — the voice was not in the catalogue** |
 
 ## What is deliberately not built
 
@@ -262,6 +386,9 @@ shape** — a plausible reading of real data that inverts on one more check.
 
 ## Open questions
 
+0. **Repeat finding 2 now that the voice is back in VoiceOver's catalogue.**
+   This displaces every question below it: the original experiment ran while
+   VoiceOver did not know the voice existed, so it tested nothing.
 1. **Does the CFPreferences *domain* write work where the file-path write did
    not?** One experiment, and the cheapest of the three.
 2. **Does a key need a `journal.plist` entry to be honoured?**

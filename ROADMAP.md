@@ -567,6 +567,15 @@ rule intends.
     re-binds it**. So this entry owes two detections that have no NVDA analogue —
     the capture voice not being selected, and the provider having died — each
     reported as a named condition rather than as an empty read-back.
+    **A THIRD, added 2026-08-29 by [spec
+    0047](specs/0047-selecting-the-capture-voice-without-a-human.md), and it is
+    the one the others cannot see**: the voice published system-wide and
+    nonetheless absent from VoiceOver's own picker, with the extension registered
+    and its process alive. Nothing observable from outside the reader
+    distinguishes it from health, and VoiceOver exposes no list of its voices, so
+    `ProviderState` cannot promote `published` to `selected` on its own evidence.
+    It must say so — and name re-registration plus a reader restart as the
+    recovery, since restarts alone were measured not to be enough.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.7. **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
     `perform command`, against the vocabulary in
@@ -725,6 +734,23 @@ rule intends.
     It also needs one thing nobody can read from the system: an activity has to
     EXIST before its storage shape can be described, because profiles are user
     data and the default configuration archive holds no template.
+    **The same day found something that displaces all of the above and is the
+    entry's real first question.** The capture voice was **absent from
+    VoiceOver's own picker** while `AVSpeechSynthesisVoice.speechVoices()` listed
+    it, the extension was registered, and its process was alive — every signal
+    outside the reader said the voice was fine. Five reader restarts did not
+    repair it; `pluginkit -r`, `lsregister -f`, `pluginkit -a` and then a restart
+    did, after which the picker showed
+    `Português (Brasil)` -> `screen-readers-mcp` -> `Capture Spike`. So **the
+    preference experiment above tested nothing**: VoiceOver did not have the
+    voice in its catalogue at the time, and the write may well be sound. Repeat
+    it first.
+    It also **corrects spec 0041's C2**, which says only a reader restart
+    restores a lost voice: a restart is necessary and not sufficient. And it
+    hands **13.6** a fifth condition — published system-wide yet not offered by
+    the reader — which the bridge cannot detect, because VoiceOver exposes no
+    list of its own voices, so the honest report is "published; whether the
+    reader offers it cannot be read" with re-registration as the instruction.
     Spec: [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
 ## Convergence (requires C and D both Done)
