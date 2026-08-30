@@ -723,6 +723,105 @@ drift it will paper over.
 | `SimpleEventBus.swift` | adapter | |
 | `VoiceOverAdapterFactory.swift` | adapter | Implements `AdapterFactory`. **The only place that knows what a mode means**, because mode is known only after `hello`. |
 
+#### Amendments made while implementing 13.4, each with its why
+
+- **`ConnectionMode.swift` is the TRANSPORT choice, not silent-versus-live.**
+  The table above describes it as "silent / live, and the defaults each
+  implies" — which is the capture mode, and that already exists as `CaptureMode`
+  in the wire binding, where it belongs because it does cross the wire. What this
+  entry needs under this name is what lane 1 has under it: which of protocol.md
+  §1's two transports to accept on. The name is kept and the meaning is lane 1's.
+  It defines no `remoteTcp` case at all, unlike lane 1, which defines one and
+  greys it out — there is no dialog here yet to grey anything out in, and a case
+  nobody may select is an invitation.
+- **Two adapter seams were added, because a leaf implements something.**
+  `Ports/LocalSocketBinder.swift` and `Ports/LoopbackBinder.swift`: the table
+  names `UnixSocketBinder.swift` and `TCPBinder.swift` as leaves without naming
+  what they implement, and a leaf below no seam is a leaf nothing above it can be
+  tested against. The local one carries the filesystem verbs as well as the
+  socket ones, because on POSIX a listening socket *is* a file and splitting
+  three calls about one object across two seams would mean two fakes to say one
+  thing.
+- **The loopback seam is `LoopbackBinder` and not `TcpBinder`, and that is a
+  build constraint rather than taste.** macOS filesystems are case-insensitive by
+  default, so `Ports/TcpBinder.swift` beside `TCPBinder.swift` is **one file** as
+  far as the build is concerned: the object files collide, one silently
+  overwrites the other, and the failure arrives as an undefined protocol
+  descriptor at link time with nothing pointing at the cause. Measured here, on
+  the first build after both files existed.
+- **`SocketTransport.swift` and `SocketError.swift` were added.** The table's
+  binders each return a `Transport`, so something has to be one — lane 1 has
+  exactly this leaf. `SocketError` exists because three leaves report a POSIX
+  failure and a bare `errno` leaves out the interesting half: `bind: Address
+  already in use` is a diagnosis, `NSPOSIXErrorDomain Code=48` is a search.
+- **`Wiring.swift` lives in the adapters module.** The layout names `Wiring` as
+  the AdapterFactory's builder without giving it a file, and lane 1 puts
+  `wiring.py` beside the package rather than inside `adapters/`. SwiftPM cannot
+  import an executable target into a test target, so a Wiring in
+  `VoiceOverBridgeApp` would be unreachable from the integration scenarios — and
+  a composition root nothing can exercise is the one file where a wiring mistake
+  survives every test.
+- **`VoiceOverBridgeApp` does NOT yet depend on the domain and the adapters**,
+  though `Package.swift`'s own comment said 13.4 would give it them. Nothing at
+  this entry makes the app *do* anything — the dialog that starts and stops the
+  server is 13.10 — and `build.sh` compiles the app by handing `swiftc` one file,
+  so an unused dependency edge would break the shippable artifact in exchange for
+  nothing. 13.10 adds the edge and teaches `build.sh` the module search path in
+  the same breath.
+- **`AdapterSet` is empty, and `hello` announces NO capabilities.** Both follow
+  from this spec's own rule that capabilities arrive one entry at a time so the
+  gate always describes what works: at 13.4 the session exists and the reader
+  edge does not. Each field of the set, and each capability, is a row in a table
+  in the file that will hold it, naming the entry that supplies it. A field
+  stubbed ahead of its entry would be a collaborator that answers nothing while
+  the capability list says it does.
+- **`VoiceOverAdapterFactory` REFUSES a silent session until 13.6**, which is
+  also what makes it an adapter with a test rather than a leaf — it is its only
+  decision at this entry. `silent` is not a preference, it is a promise about a
+  human's ears: the reader keeps talking, the human hears nothing, the agent
+  reads what was said. Nothing in this build can keep any part of it. A session
+  established in silent mode would report `mode: silent` to an agent that would
+  then believe speech was being captured and withheld, while the machine talked
+  normally and nothing was recorded — a session that looks established and means
+  something else, which is exactly what the capability gate exists to prevent.
+  The refusal names the entry that lifts it and says to connect live meanwhile,
+  and 13.6 has to delete a named test to remove it.
+- **A port that can fail says so; the session guards exactly those.** Lane 1
+  wraps every teardown step in a blanket guard because a Python port that raises
+  looks like one that does not. Swift makes the claim checkable, so
+  `SessionSignals`' two cues are `throws` — a cue reaches an audio device that may
+  be gone, and a courtesy is never worth a session — while `Transcript` and
+  `MessageChannel.close` promise in their own types that they swallow their IO
+  failures. A blanket `try/catch` around those would be catching nothing.
+- **The `EventBus` port carries `ServerState` and `ServerStatus`, defined in the
+  port's own file.** Lane 1's payload is `Any` and its status type lives with
+  `BridgeServer`; typed, that would make a domain port depend on an adapter. So
+  the connection edge's *observable state* is named in the domain — it is what the
+  port carries — while the accept loop that produces it stays in the adapters
+  with its collaborators.
+- **The transcript vocabulary is only what this entry can emit** — `sessionOpened`,
+  `note`, `sessionClosed`. `speech` arrives with 13.5, `gesture` with 13.7 and
+  `typed` with 13.8, each added by the entry that first produces the event. A
+  transcript verb nothing can emit is a promise the build does not keep.
+- **`Tests/Fakes/` is a target of its own**, which is the question 13.3 left open
+  answering itself: the domain's tests, the adapters' tests and the integration
+  scenarios all need the same doubles, and three copies of a stateful fake is
+  three chances for one to drift into agreeing with the code instead of with the
+  port. `CaptureVoiceTests` keeps its own `Fakes/` directory, because
+  `CaptureVoice` depends on nothing of ours by hard rule and a shared target
+  holding both would be the first thread of that dependency.
+- **`Sources/BridgeListener/` was added** — a launcher that starts the bridge
+  listening from a terminal, prints its endpoint and stops on `^C`. The layout
+  has no entry for it, and without it nothing outside a test can make this bridge
+  listen: the control dialog is 13.10. An entry whose headline is "the bridge
+  LISTENS" needs a way to see it listen that is not a unit test, and this repo's
+  rule is that a check's dependencies are versioned rather than improvised in a
+  scratch directory. It is not copied into the `.app`, and it makes no decision
+  that is not a flag read into a `BridgeConfig`.
+- **swift-testing is the choice for the lane**, which this entry was to make once.
+  It is what 13.2 and 13.3 already used; naming it here makes it the lane's answer
+  rather than three files' habit.
+
 ### 13.5 — the capture feed
 
 | File | Role | Collaborators / why |

@@ -387,11 +387,13 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.4**: **13.1, 13.2 and 13.3
-are Done**, so the lane now has a declared bridge the tooling can see, a Swift
-package that compiles, a capture voice with 51 headless tests, and the wire
-contract's Swift binding with 124 more -- and the next step is the channel and
-the session, against
+its board was written on 2026-08-29. Its head is **13.5**: **13.1 through 13.4
+are Done**, so the lane now has a declared bridge the tooling can see, a capture
+voice, the wire contract's Swift binding, and -- since 13.4 -- a bridge that
+**listens**: a server can dial the local endpoint, complete a handshake and
+exchange commands, over 133 more headless tests. What it cannot do is read
+anything back, so `hello` announces an empty capability set; the next step is the
+capture feed, against
 [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
@@ -554,7 +556,7 @@ rule intends.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
     13.3 section carries the six layout amendments this made, each with its why.
     Done (2026-08-30).
-13.4. **Channel and session** (lane 3; **needs 11.35**). The bridge LISTENS on
+13.4. **Done** -- **Channel and session** (lane 3; **needs 11.35**). The bridge LISTENS on
     the local endpoint 11.35 taught the server to dial — a Unix domain socket on
     macOS, reached by the same bare name a Windows bridge answers on a pipe —
     with loopback TCP as the alternative the dialog selects, mirroring the
@@ -566,7 +568,40 @@ rule intends.
     `echo`, `bye`. Headless, the analogue of lane 1's 7a/7b.
     **This is the first entry at which the Go server can connect to a VoiceOver
     bridge at all**, and it is the only one in the lane that depends on 11.35.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    **Proven against the kernel, not only against a fake.** The listener's three
+    obligations are unit-tested against a fake binder because their ORDER is the
+    contract, and then a real client -- built from the raw socket API, so a round
+    trip is not our own code on both ends -- dials the derived path, handshakes,
+    echoes and says goodbye; a stale socket file left by a "crash" is replaced
+    rather than fatal; stopping unlinks it; and a second session is accepted after
+    the first. The loopback alternative gets the same scenario, which is also the
+    only place its leaf runs at all.
+    **Proven against the real Go server, not only against a Swift client.** With
+    `Sources/BridgeListener/` -- a versioned launcher, because the dialog that
+    will start the bridge is 13.10 and a check's dependencies are versioned rather
+    than improvised -- the shipped `screenreader-mcp` binary was pointed at
+    `local:voiceoverMcpBridge` and: `list_readers` reported the endpoint
+    **listening**, `connect_reader` completed the handshake and carried back
+    `reader=voiceover`, `readerVersion=macOS 15.0.0`, `capabilities=[]`, the log
+    path and `bridgeVersion`, `status` and `screenreader://info` agreed with it,
+    `disconnect_reader` closed it, and the bridge's transcript recorded SESSION
+    OPEN and SESSION CLOSE reason=client-bye. The MCP driver for that run was ad
+    hoc; making it a versioned scenario belongs to 13.11 with the rest of the live
+    run.
+    **`hello` announces NO capabilities, and that is the entry working as
+    designed** -- spec 0046 says the six arrive one at a time so the gate always
+    describes what works, and at 13.4 the session exists and the reader edge does
+    not. **A silent session is REFUSED until 13.6**: `silent` is a promise about a
+    human's ears, nothing here can keep any part of it, and a session that
+    reported `mode: silent` while the machine talked normally would be the exact
+    failure the capability gate exists to prevent. The refusal names the entry
+    that lifts it.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.4 section carries the layout amendments this made, each with its why --
+    including the one that cost a build: on a case-insensitive macOS filesystem
+    `Ports/TcpBinder.swift` and `TCPBinder.swift` are one file, and the failure
+    arrives as an undefined protocol descriptor at link time.
+    Done (2026-08-30).
 13.5. **The capture feed** (lane 3). A `SpeechSource` port over the extension's
     container file — which is not a fallback but the only door, since an
     extension holding `com.apple.security.network.client` is silently skipped by
