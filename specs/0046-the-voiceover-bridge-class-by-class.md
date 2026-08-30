@@ -1206,22 +1206,87 @@ why.
 
 | File | Role | Collaborators / why |
 |---|---|---|
-| `Ports/TextTyper.swift` | port | `type(_:)`; owns `TypingError.accessibilityNotGranted`. |
-| `Ports/PermissionBroker.swift` | port | `status(of:)` and `request(_:)`; owns `Permission` (`automationVoiceOver`, `accessibility`) and `PermissionState`. **The macOS-only port with no NVDA analogue.** |
+| `Ports/TextTyper.swift` | port | `type(_:)`; owns `TypingError`. |
+| `Ports/PermissionBroker.swift` | port | `status(of:)` and `request(_:)`; owns `Permission` and `PermissionState`. **The macOS-only port with no NVDA analogue.** |
 | `Adapters/Ports/EventPoster.swift` | adapter seam | post a key event. |
-| `Adapters/AccessibilityTextTyper.swift` | adapter | chunking, Unicode injection, and the **lazy** grant check — the request is made here and only here, on the first `typeText` of a session. |
+| `Adapters/AccessibilityTextTyper.swift` | adapter | chunking and Unicode injection. |
 | `Adapters/CGEventPoster.swift` | leaf adapter | |
-| `Adapters/TCCPermissionBroker.swift` | leaf adapter | `AXIsProcessTrustedWithOptions`, `AEDeterminePermissionToAutomateTarget`. |
-| `Commands/TypeText.swift` | controller | `graceMs` defaults to 0, as the contract says. |
+| `Adapters/TCCPermissionBroker.swift` | leaf adapter | `AXIsProcessTrustedWithOptions`. |
+| `Commands/TypeText.swift` | controller | the **lazy** grant check, then the injection. `graceMs` defaults to 0, as the contract says. |
+| `Commands/HumanWarning.swift` | supporting construct | what an unhonourable `announce` does, shared with `pressGesture`. |
 
-Its header carries the finding: **the target application rewrites what was
-typed** — two lines sent to TextEdit came back autocapitalized. "Send this
-keystroke" is not "this text arrives".
+`AccessibilityTextTyper`'s header carries the finding: **the target application
+rewrites what was typed** — two lines sent to TextEdit came back autocapitalized.
+"Send this keystroke" is not "this text arrives".
 
 **The lazy-Accessibility lever, restated precisely** now that 13.9 also wants
 the grant: *a session that only presses commands and reads speech never triggers
 an Accessibility request.* Still true, still checkable, and still something no
 NVDA bridge can say.
+
+**Amendments made while implementing 13.8 (2026-08-30), each with its why.**
+
+1. **The `PermissionBroker` goes in the `AdapterSet`, and the CONTROLLER makes
+   the request — not `AccessibilityTextTyper`.** The table above said the request
+   is made in the typer "and only here", which would put a **domain** port inside
+   an adapter and make one adapter depend on another outside an `adapters/ports/`
+   seam — the one thing the layering rule forbids. 13.7 met the identical shape
+   with `ReaderLiveness` and resolved it the other way (amendment 2 there), and
+   this follows it, for a reason 13.7 did not have: **13.10's dialog needs the
+   same broker** to draw its permission row, and a view may consume a *port* while
+   it may not reach through an adapter's private seam. The laziness is unchanged
+   and is if anything more checkable: the only call to `request` in the repository
+   is in `TypeTextHandler`, which is the handler the registry maps to `typeText`,
+   so "a session that only presses commands never asks" is asserted in that
+   handler's own test *and* end to end in
+   `Tests/Integration/SessionRoundTripTests.swift`.
+2. **`TypingError` has no `accessibilityNotGranted` case**, because nothing could
+   throw it. An event posted by an untrusted process is dropped by the window
+   server and `CGEvent.post` returns nothing, so a dropped event and a delivered
+   one are the same observable from inside the typer. That is precisely why the
+   grant is checked through the broker *before* anything is posted — and a case
+   nothing can throw would read to whoever writes the next adapter as a detection
+   this bridge performs. It is a `struct` with a description, shaped like
+   `AdapterFactoryError`.
+3. **`Permission` has one case, `accessibility`.** `automationVoiceOver` is 13.10's,
+   beside the dialog row that reads it: nothing in this build asks that question,
+   because the gesture sender learns it from the error the reader returns (`-1743`)
+   — which is the right place and needs no broker. Same rule that left
+   `SilenceCap` without lane 1's `paused`/`resumed` at 13.6: a case whose `status`
+   nothing calls is the same unkept promise as a method nothing calls.
+   `PermissionState` has two cases and not three for the same reason:
+   `AXIsProcessTrusted` answers a Bool, so "not yet asked" and "asked and refused"
+   are one observable here, and a third case would be a distinction this bridge
+   cannot make reported as though it could.
+4. **`HumanWarning` is a new supporting construct, and `PressGesture` was changed
+   to call it.** 13.7 decided what an unhonourable `announce` does — refused in a
+   silent session, noted in a live one — and held it as a private method on
+   `PressGestureHandler`. `typeText` carries the same field and must make the same
+   promise about a human's ears; written out twice the two would come to differ
+   the first time one of them was reworded. Same reason `Observation` is a file,
+   at the entry that creates the second caller.
+5. **`VoiceOverAdapterFactory` takes the broker and the event poster**, as it
+   already takes the lifecycle and the script runner. Here the injection is a
+   safety rule rather than a construction preference: **no test may build the real
+   ones** — the real broker's `request` raises a system dialog and leaves the
+   process granted with no undo, and the real poster types into whatever window
+   the developer has in front of them. `Tests/Fakes/Support/ReaderEdge.swift`
+   makes both unavailable, exactly as it already does for the provider lifecycle.
+6. **`typed` counts UNICODE SCALARS.** The field means the same number in all
+   three bindings or it means nothing: lane 1 reports Python's `len` and the
+   server's conformance scenario asserts a rune count, while Swift's `String.count`
+   counts grapheme clusters and would disagree silently on a decomposed character.
+
+**And the instrument the entry owed.** Spec 0041's typing finding cited
+`spikes/voiceover-capture/keyboard.sh roundtrip`, which no longer exists — 13.2
+promoted the spike and only `provider/` survived — so the autocapitalization
+finding was evidence nobody could re-run. It is back as
+`scripts/voiceover_keyboard.sh`, beside `voiceover_channels.sh` and shaped like
+it: safe in the same specific sense, typing into a scratch TextEdit document it
+creates and closes without saving on every exit path. **It is a separate script
+from the gesture probe on purpose**, and that is the lazy lever expressed as
+tooling: the channels probe runs on a machine that has never granted
+Accessibility, and this one cannot.
 
 ### 13.9 — focus
 

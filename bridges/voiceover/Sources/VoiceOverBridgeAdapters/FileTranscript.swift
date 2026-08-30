@@ -62,6 +62,17 @@ public final class FileTranscript: Transcript {
 		line("GESTURE \(FileTranscript.quoted(command))")
 	}
 
+	/// `TYPE length=<n>`, and the number is the whole line ON PURPOSE -- see the
+	/// port. Not quoted, because a count cannot forge a transcript line and there
+	/// is nothing here that came from another process.
+	///
+	/// The shape is lane 1's, like every other line in this file: a tester reading
+	/// a transcript should not have to learn a second format because the reader
+	/// underneath is a different one.
+	public func typed(_ length: Int) {
+		line("TYPE length=\(length)")
+	}
+
 	public func note(_ text: String) {
 		line("NOTE \(text)")
 	}

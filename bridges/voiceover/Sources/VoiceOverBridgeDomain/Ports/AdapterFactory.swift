@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// FIVE FIELDS AT 13.7, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// SEVEN FIELDS AT 13.8, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -24,8 +24,8 @@ import ScreenReaderWire
 /// |---|---|
 /// | `speechSource` | 13.5, the capture feed |
 /// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
-/// | `gestureSender`, `readerLiveness` | 13.7, input -- here |
-/// | `textTyper` | 13.8 |
+/// | `gestureSender`, `readerLiveness` | 13.7, input: commands |
+/// | `textTyper`, `permissions` | 13.8, input: typing -- here |
 /// | `focusInspector` | 13.9 |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
@@ -69,13 +69,37 @@ public struct AdapterSet {
 	/// without a seam, which is the one thing the layering rule forbids.
 	public let readerLiveness: any ReaderLiveness
 
+	/// How literal text reaches whatever holds system focus. A SECOND INPUT PORT
+	/// beside the gesture sender rather than a method on it, and the separation is
+	/// the design rather than tidiness: the two halves of input cost different
+	/// permissions on this platform (spec 0041), and one port that did both would
+	/// make "this bridge never asked for Accessibility" impossible to check.
+	public let textTyper: any TextTyper
+
+	/// What the system lets this process do, and the one place it may ask for
+	/// more. HELD BY THE SET AND COMBINED BY THE CONTROLLER, which is a layout
+	/// amendment to spec 0046's 13.8 table with its why: the spec has the TYPER
+	/// hold it, which would put a domain port inside an adapter and make one
+	/// adapter depend on another outside an `adapters/ports/` seam. 13.7 met the
+	/// same shape with `readerLiveness` and resolved it the same way. See
+	/// `PermissionBroker`, whose header carries the rest of the argument --
+	/// including the one 13.7 did not have, that 13.10's dialog needs this port
+	/// too and a view may consume a port but not an adapter's private seam.
+	///
+	/// PROCESS-SCOPED, like the provider lifecycle: it describes this process's
+	/// standing with the system, which cannot change because a socket was
+	/// accepted.
+	public let permissions: any PermissionBroker
+
 	public init(
 		mode: CaptureMode,
 		speechSource: any SpeechSource,
 		silenceControl: any SilenceControl,
 		providerLifecycle: any ProviderLifecycle,
 		gestureSender: any GestureSender,
-		readerLiveness: any ReaderLiveness
+		readerLiveness: any ReaderLiveness,
+		textTyper: any TextTyper,
+		permissions: any PermissionBroker
 	) {
 		self.mode = mode
 		self.speechSource = speechSource
@@ -83,6 +107,8 @@ public struct AdapterSet {
 		self.providerLifecycle = providerLifecycle
 		self.gestureSender = gestureSender
 		self.readerLiveness = readerLiveness
+		self.textTyper = textTyper
+		self.permissions = permissions
 	}
 }
 

@@ -46,6 +46,8 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let markerPath: String
 	private let lifecycle: any ProviderLifecycle
 	private let scripts: any AppleScriptRunner
+	private let permissions: any PermissionBroker
+	private let poster: any EventPoster
 
 	/// `capturePath` is where the capture voice appends its feed; `markerPath` is
 	/// where it reads what the bridge is asking of it. Passed in with no defaults,
@@ -61,16 +63,29 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// not per-session either. It holds no state at all -- every call is a fresh
 	/// subprocess -- so one serves every session, and building one per handshake
 	/// would be construction for its own sake.
+	///
+	/// THE PERMISSION BROKER AND THE EVENT POSTER ARE PASSED IN FOR A STRONGER
+	/// REASON THAN EITHER OF THOSE: no test may ever build the real ones. The real
+	/// broker's `request` raises a system consent dialog and leaves this process
+	/// on a list that stays granted afterwards, and the real poster types into
+	/// whatever window the developer has in front of them. Injecting both is what
+	/// lets `Tests/Fakes/Support/ReaderEdge.swift` guarantee that a test cannot
+	/// reach either by accident -- the same guarantee it already gives for the
+	/// provider lifecycle, which writes the voice VoiceOver speaks with.
 	public init(
 		capturePath: String,
 		markerPath: String,
 		lifecycle: any ProviderLifecycle,
-		scripts: any AppleScriptRunner
+		scripts: any AppleScriptRunner,
+		permissions: any PermissionBroker,
+		poster: any EventPoster
 	) {
 		self.capturePath = capturePath
 		self.markerPath = markerPath
 		self.lifecycle = lifecycle
 		self.scripts = scripts
+		self.permissions = permissions
+		self.poster = poster
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {
@@ -87,7 +102,14 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// with nothing: each is a thin wrapper over the one script runner, and
 			// the runner is what actually holds nothing.
 			gestureSender: VoiceOverGestureSender(runner: scripts),
-			readerLiveness: VoiceOverLiveness(runner: scripts)
+			readerLiveness: VoiceOverLiveness(runner: scripts),
+			textTyper: AccessibilityTextTyper(poster: poster),
+			// SHARED, LIKE THE LIFECYCLE, because it describes this PROCESS's
+			// standing with the system rather than anything about a session -- and
+			// because building one here would be the second place in the bridge that
+			// touches the permission machinery, when the whole point of 13.8 is that
+			// there is exactly one.
+			permissions: permissions
 		)
 	}
 }

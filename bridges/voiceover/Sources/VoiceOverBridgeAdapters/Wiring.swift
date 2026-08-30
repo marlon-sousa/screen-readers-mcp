@@ -106,6 +106,33 @@ public enum Wiring {
 		OSAScriptRunner(runner: runner ?? SubprocessRunner())
 	}
 
+	/// What this process is allowed to do to the machine, and the one object that
+	/// can ask for more.
+	///
+	/// ONE PER PROCESS, like the lifecycle: it describes this process's standing
+	/// with the system, which cannot change because a socket was accepted.
+	///
+	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the entry's whole
+	/// design. Wiring builds the broker at startup and never calls it; the only
+	/// call to `request` in this repository is in the TypeText handler, on the
+	/// first `typeText` of a session. That is what makes "a session that only
+	/// presses commands and reads speech never triggers an Accessibility request"
+	/// a checkable statement rather than an intention -- so nothing here, in the
+	/// factory, in the doctor or in a probe may ask it anything.
+	public static func permissionBroker() -> any PermissionBroker {
+		TCCPermissionBroker()
+	}
+
+	/// How a synthesized keystroke leaves this process: one Core Graphics event
+	/// per chunk of text.
+	///
+	/// ONE PER PROCESS, and stateless like the script runner. THE ONLY PLACE THE
+	/// REAL ONE IS BUILT -- a test that built it would type into whatever window
+	/// the developer had in front of them.
+	public static func eventPoster() -> any EventPoster {
+		CGEventPoster()
+	}
+
 	/// Which endpoint to accept on, per the configured connection mode.
 	public static func listener(
 		config: any BridgeConfig,
@@ -156,14 +183,18 @@ public enum Wiring {
 		logDirectory: String? = nil,
 		clock: any Clock = RealClock(),
 		lifecycle: (any ProviderLifecycle)? = nil,
-		scripts: (any AppleScriptRunner)? = nil
+		scripts: (any AppleScriptRunner)? = nil,
+		permissions: (any PermissionBroker)? = nil,
+		poster: (any EventPoster)? = nil
 	) -> BridgeServer {
 		let handlers = Registry.build(
 			factory: VoiceOverAdapterFactory(
 				capturePath: capturePath(),
 				markerPath: markerPath(),
 				lifecycle: lifecycle ?? providerLifecycle(),
-				scripts: scripts ?? appleScriptRunner()
+				scripts: scripts ?? appleScriptRunner(),
+				permissions: permissions ?? permissionBroker(),
+				poster: poster ?? eventPoster()
 			),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion

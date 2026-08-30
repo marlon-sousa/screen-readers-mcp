@@ -33,7 +33,10 @@
 // and `state` stays nil because this bridge announces no `state` capability.
 //
 // `announce` IS REFUSED IN A SILENT SESSION AND NOTED IN A LIVE ONE -- see
-// `announceToHuman`, which carries that argument.
+// `HumanWarning`, which carries that argument and is SHARED WITH `typeText`.
+// 13.7 held it as a private method here; 13.8 made the second caller, and two
+// commands that must not differ about a human's ears are two commands that
+// should not be able to.
 
 import Foundation
 import ScreenReaderWire
@@ -52,7 +55,7 @@ public final class PressGestureHandler: CommandHandler {
 		// Refused or noted BEFORE the vocabulary check and before any dispatch:
 		// if this session cannot tell the human what is about to happen to their
 		// machine, nothing should happen to it.
-		try announceToHuman(context, params.announce)
+		try HumanWarning.honour(context, params.announce)
 
 		// Every id, checked before the first one goes out. See the header.
 		let commands = try params.gestures.map { gesture -> String in
@@ -106,43 +109,6 @@ public final class PressGestureHandler: CommandHandler {
 			throw CommandError("a gesture was pressed before `hello` built the reader edge")
 		}
 		return adapters
-	}
-
-	/// Tell the human what is about to happen to their machine, or refuse to act.
-	///
-	/// THERE IS NO HUMAN CHANNEL IN THIS BUILD. protocol.md §5 says `announce` is
-	/// spoken to the human at the reader before the first gesture is dispatched,
-	/// on the same side channel as the `announce` command -- and that channel is
-	/// the `Announcer` port, which arrives with the control dialog at 13.10 along
-	/// with the `interact` capability. `SessionSignals` plays cues and has no real
-	/// adapter here either.
-	///
-	/// SO THE FIELD IS HANDLED BY MODE, AND THE ASYMMETRY IS THE SAME ONE THE
-	/// HANDSHAKE ALREADY MAKES. In a SILENT session `announce` is the human's only
-	/// channel -- the reader is being rendered mute on their behalf -- so a
-	/// request to warn them that cannot be honoured is refused rather than
-	/// dropped: this bridge does not half-keep a promise about somebody's ears,
-	/// which is the argument that kept silent mode itself refused until 13.6. In a
-	/// LIVE session the human hears their machine anyway, the warning is a
-	/// courtesy rather than the only signal, so it is recorded in the transcript
-	/// and the command proceeds.
-	///
-	/// Whitespace is not an announcement, so it is treated as absence.
-	private func announceToHuman(_ context: SessionContext, _ announce: String) throws {
-		let words = announce.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !words.isEmpty else { return }
-		guard context.mode != .silent else {
-			throw CommandError(
-				"this session is silent and this build has no channel to the human at the reader, "
-					+ "so `announce` cannot be spoken -- and a silent session is the one place it is "
-					+ "the only warning they would get. Send the same call with `announce` empty to "
-					+ "proceed without warning them. The human channel arrives with the control "
-					+ "dialog, which is also where the `interact` capability is announced"
-			)
-		}
-		context.transcript.note(
-			"announce (not spoken -- this build has no human channel; the session is live, so the "
-				+ "reader is audible): \(words)")
 	}
 
 	/// Turn a dispatch failure into something an agent can act on.

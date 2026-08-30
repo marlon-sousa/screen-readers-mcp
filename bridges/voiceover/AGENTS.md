@@ -78,8 +78,8 @@ the manifest. Both, usually.
 
 `hello` announces what this build actually implements, and nothing else.
 `Registry.capabilities` was empty at 13.4, `[speech]` at 13.5, `[speech,
-gestures]` at 13.7, and each later entry adds its own alongside the handlers that
-serve it. Announcing a capability
+gestures]` at 13.7 and `[speech, gestures, typing]` at 13.8, and each later entry
+adds its own alongside the handlers that serve it. Announcing a capability
 before the entry that implements it produces the one failure the capability gate
 exists to prevent: a tool the agent can see, call, and get nothing from. The
 converse costs too, and it is why `speech` landed with 13.5 rather than being
@@ -167,6 +167,22 @@ because synthesizing a keystroke needs the Accessibility grant 13.8 exists to
 keep lazy. The hyphen rule has to survive real command names that contain
 hyphens, so a hyphen counts only in an id with no spaces at all.
 
+**A gesture reaches commands and single KEYS, and NOT chords.** The vocabulary
+carries 30 commands whose name ends in `key` — `tab key`, `return key`, the four
+arrows, `f1 key` through `f12 key`, `delete key`, `forward delete key`, `fn key`
+— plus modifiers in two flavours, momentary (`command key`, `shift key`, …) and
+sticky (`toggle command key`, …). All cost no Accessibility grant, so a chord
+reachable this way would widen the lazy lever considerably. **Measured 2026-08-30
+on macOS 15.0: they do not compose.** Four runs — sticky and momentary, option
+and command — each followed by `delete key` into a scratch document removed
+exactly one character, the same as the no-modifier control, where Option-Delete
+would have taken a word and Command-Delete the line. The modifier command
+*succeeds* and changes nothing about the key that follows it, which is the worst
+shape a negative can have, so it is written down here and re-runnable as `bash
+scripts/voiceover_modifiers.sh`. Independently of that, the table has **no letter
+keys at all**, so literal text can never come out of it — which is why `typeText`
+synthesizes events and pays for the grant.
+
 **`perform command` is addressed to the `commander object`, never to
 `application "VoiceOver"`.** `VoiceOver.sdef` in this directory is the authority:
 the `application` class responds to `output`, `open`, `close menu` and `quit`,
@@ -181,6 +197,65 @@ A "simplification" back to the application target compiles, reads better, and
 restores a state in which every gesture fails identically with nothing saying
 why — so `VoiceOverGestureSenderTests` asserts the target as a **negative** as
 well as a positive.
+
+## Typing is the OTHER half of input, and it costs the grant
+
+Two commands, two ports, two capabilities, and the separation is the lane's one
+design lever rather than tidiness. `pressGesture` is an AppleEvent to the reader;
+`typeText` synthesizes system input events and needs **Accessibility**
+(`kTCCServiceAccessibility`). Windows has no equivalent gate, so lane 1 has no
+analogue and there is nothing to copy here.
+
+**THE ACCESSIBILITY GRANT IS REQUESTED FROM ONE PLACE: `TypeTextHandler`, on a
+`typeText`.** Not at construction, not in `Wiring`, not in
+`VoiceOverAdapterFactory`, not in `scripts/doctor.py`, not in a probe, and **not
+in a test**. That is what makes
+
+> a session that only presses commands and reads speech never triggers an
+> Accessibility request
+
+a *checkable statement about this bridge* rather than an intention, and the check
+is a round trip in `Tests/Integration/SessionRoundTripTests.swift` that drives a
+handshake, a gesture and a speech read past a counting broker and asserts it was
+asked nothing at all. `Wiring` **constructs** `TCCPermissionBroker` at startup and
+never calls it: constructing asks nobody anything, and only `request` raises a
+dialog. If you add a caller, you have spent the lever — the entry is worth what
+its checkability is worth.
+
+**No test may touch the real grant or post a real event.** The real broker's
+`request` raises a system consent dialog and leaves this process on a list that
+**stays granted**, with no undo; a real `CGEvent` types into whatever window the
+developer has in front of them at that moment. Both are injected into
+`VoiceOverAdapterFactory` for exactly that reason, and
+`Tests/Fakes/Support/ReaderEdge.swift` hands every test fakes — the same guarantee
+it already gives for the provider lifecycle, which writes the voice the developer
+hears.
+
+**The target application rewrites what was typed.** Two lines sent to TextEdit
+came back autocapitalized (spec 0041). "Send this keystroke" is not "this text
+arrives", and **nothing in this bridge, its tests or its documentation may compare
+typed input with observed output as though they were the same string**.
+Autocapitalization is only the measured instance; autocorrect, smart quotes and an
+application's own filtering are the same class, and they are per-application and
+per-user settings no bridge can see or turn off. A check that needs to know what
+arrived asks the application, or the reader, and compares *that*.
+`AccessibilityTextTyper`'s header carries this where whoever writes the comparison
+will read it, and `bash scripts/voiceover_keyboard.sh` is the re-runnable
+instrument — **a separate script from `voiceover_channels.sh` on purpose**, because
+the channels probe runs on a machine that has never granted Accessibility and the
+keyboard one cannot.
+
+**The text is never logged, and `typed` is a length.** protocol.md §5 says
+`typeText` is exactly how a secret is entered. The obligation lands on the
+transcript: `TYPE length=<n>`, never the words, because a transcript is a file a
+human reads afterwards and a password in it is a password on disk. `typed` counts
+**unicode scalars**, which is the number lane 1's `len` and the server's
+conformance rune count both mean; Swift's `String.count` counts grapheme clusters
+and would disagree silently on a decomposed character.
+
+**`graceMs` defaults to 0 here and 100 for a gesture**, and that is not an
+oversight: with "speak typed characters" on, typing emits one utterance per
+character and none of them is worth waiting for.
 
 ## The endpoint, and why the derivation is duplicated on purpose
 

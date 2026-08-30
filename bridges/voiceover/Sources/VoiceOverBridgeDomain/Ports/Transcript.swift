@@ -11,9 +11,9 @@
 //
 // THE VOCABULARY GROWS ONE ENTRY AT A TIME, and what is missing here is a
 // statement rather than an omission: `speech` arrived with the capture feed
-// (13.5), `gesture` with input (13.7) and `typed` comes with typing (13.8) --
-// each added by the entry that first produces the event. A transcript verb
-// nothing can emit would be a promise this build does not keep.
+// (13.5), `gesture` with input: commands (13.7) and `typed` with input: typing
+// (13.8) -- each added by the entry that first produces the event. A transcript
+// verb nothing can emit would be a promise this build does not keep.
 // NOTHING HERE THROWS, and that is the contract rather than an omission: a
 // broken log must never take down a session, still less stop the teardown that
 // gives a human their screen reader back. So an implementation swallows its own
@@ -50,6 +50,20 @@ public protocol Transcript: AnyObject {
 	/// missing from the record -- which is exactly the command anyone reading the
 	/// file afterwards is looking for.
 	func gesture(_ command: String)
+
+	/// That `length` characters were typed -- NEVER the text itself.
+	///
+	/// THE OBLIGATION protocol.md §5 PUTS ON THIS FILE. `typeText` is exactly how
+	/// a secret is entered, which is why the wire result carries a count rather
+	/// than the words; a transcript is a file a human reads afterwards, so a
+	/// password written here is a password on disk, outliving the session that
+	/// typed it. The length is all the record carries, and it is the same number
+	/// the result reports.
+	///
+	/// Recorded BEFORE the injection, for the reason `gesture` is: the call anyone
+	/// reading this file is looking for is the one that went wrong, and a record
+	/// written on success would be missing exactly that one.
+	func typed(_ length: Int)
 
 	func note(_ text: String)
 

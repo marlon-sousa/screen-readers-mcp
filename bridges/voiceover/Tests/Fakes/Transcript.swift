@@ -26,6 +26,11 @@ public final class FakeTranscript: Transcript {
 	/// property a session test asserts on, and the reason the port records it
 	/// first rather than on success.
 	public private(set) var gestures: [String] = []
+	/// Every typed LENGTH, in order -- never the text, because the port never
+	/// receives it. A test asserting on this list is asserting the obligation
+	/// protocol.md §5 puts on the transcript: the record says how much was typed
+	/// and can never say what.
+	public private(set) var typedLengths: [Int] = []
 	public private(set) var notes: [String] = []
 	public private(set) var closedReasons: [String] = []
 
@@ -47,6 +52,10 @@ public final class FakeTranscript: Transcript {
 
 	public func gesture(_ command: String) {
 		gestures.append(command)
+	}
+
+	public func typed(_ length: Int) {
+		typedLengths.append(length)
 	}
 
 	public func note(_ text: String) {
