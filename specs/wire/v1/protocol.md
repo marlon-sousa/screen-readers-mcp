@@ -760,6 +760,12 @@ emitted — the speech ring's sentinel entry, and a `waitForSpeech` miss.
   role it observes nothing at all. What is left for it is a **long deliberate
   announcement** or a say-all, where the question really is "is it still going?"
 - All timeouts are in **seconds** (number; defaults live in `schema.json`).
+- **Every default lives in `schema.json`**, not only the timeouts: a property
+  that is absent from an object's `required` list carries a `default`
+  annotation saying what its absence means. They are annotations, so a JSON
+  Schema validator ignores them — they are there because a binding author reads
+  this contract instead of anybody's source, and `graceMs` being 100 is part of
+  the shape they have to reproduce.
 
 ### 7.3 The grace window — what a result may claim
 

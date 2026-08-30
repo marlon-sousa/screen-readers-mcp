@@ -387,10 +387,11 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.3**: **13.1 and 13.2 are
-both Done**, so the lane now has a declared bridge the tooling can see, a Swift
-package that compiles, and a capture voice with 51 headless tests -- and the
-next step is the wire contract's second binding, against
+its board was written on 2026-08-29. Its head is **13.4**: **13.1, 13.2 and 13.3
+are Done**, so the lane now has a declared bridge the tooling can see, a Swift
+package that compiles, a capture voice with 51 headless tests, and the wire
+contract's Swift binding with 124 more -- and the next step is the channel and
+the session, against
 [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
@@ -515,8 +516,8 @@ rule intends.
     `version_argv`, which also retires the hard-coded `go version` special case.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29). Done (PR #82, 2026-08-29).
 13.3. **The wire contract's second binding** (lane 3; **needs 11.36**). Swift
-    envelope,
-    per-command codecs and JSON-lines framing, written against
+    envelope and
+    per-command codecs, written against
     [`specs/wire/v1/schema.json`](specs/wire/v1/schema.json) — the contract, not
     the code, which is exactly the cost spec 0005 anticipated when it said what
     is shared between implementations is the contract. Extends
@@ -524,7 +525,35 @@ rule intends.
     schema the way nothing else in this repo is permitted to; no language server
     crosses the Go↔Python boundary and none will cross this one either, so the
     schema is the only index the three bindings share.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    **JSON-lines framing is NOT here**, contrary to this entry's original
+    wording: spec 0046's layout puts it in `JsonLinesChannel`, an adapter, for
+    the same reason it is one in the NVDA bridge. It rides with 13.4.
+    **The binding renders the WHOLE contract** — 26 commands, 52 shapes — rather
+    than the six capabilities this bridge advertises, because binding the subset
+    would give the drift gate an exception list and an exception list is the
+    thing that goes stale. Each unimplemented command's file says in its header
+    that this reader cannot answer it, and why.
+    **The gate needs no Swift toolchain**, deliberately: `scripts/swift_wire_binding.py`
+    READS the source rather than building it, so `gate-swift` runs in the Windows
+    `shared` CI job — which is where a change to the contract finds out it left
+    the Swift rendering behind, instead of learning it later on the one host the
+    binding is edited on. It raises rather than skips anything it cannot parse.
+    Verified by mutation, not by assertion: nine deliberate drifts — a changed
+    default, a lost field, an invented field, a missing command, a renamed
+    vocabulary value, a required field given a default, a changed type, a bumped
+    protocol version, and a `public typealias` (the re-export facade the repo
+    bans) — each failed the gate with a message naming the file and the field.
+    **`schema.json` now publishes defaults**, and that was found rather than
+    planned: §7.2 of the contract has said "defaults live in `schema.json`" since
+    v1, and they did not. `required` says a field may be absent and never said
+    what absent MEANS, so a binding author reading only the published contract —
+    the whole point of publishing it — could not know `graceMs` is 100, and the
+    gate could not check the twenty-odd defaults the Swift source now carries.
+    They are JSON Schema `default` annotations, which validators ignore, so no
+    validation changed and `go generate` stayed a no-op.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.3 section carries the six layout amendments this made, each with its why.
+    Done (2026-08-30).
 13.4. **Channel and session** (lane 3; **needs 11.35**). The bridge LISTENS on
     the local endpoint 11.35 taught the server to dial — a Unix domain socket on
     macOS, reached by the same bare name a Windows bridge answers on a pipe —

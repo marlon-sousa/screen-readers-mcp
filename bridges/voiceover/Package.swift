@@ -8,12 +8,12 @@
 // so the dependency edges below are load-bearing rather than descriptive.
 //
 // WHAT IS NOT HERE YET, and which entry brings it:
-//   * ScreenReaderWire            -- 13.3, the wire contract's Swift binding
 //   * VoiceOverBridgeDomain       -- 13.4, ports/controllers/entities
 //   * VoiceOverBridgeAdapters     -- 13.4, the macOS/AppleScript/IO edge
-// VoiceOverBridgeApp then gains those three as dependencies. Today it is the
-// container app and nothing more, because a macOS app extension cannot be
-// installed on its own -- the .appex ships inside an app's Contents/PlugIns.
+// VoiceOverBridgeApp then gains those two and ScreenReaderWire as dependencies.
+// Today it is the container app and nothing more, because a macOS app extension
+// cannot be installed on its own -- the .appex ships inside an app's
+// Contents/PlugIns.
 //
 // PACKAGE.SWIFT IS NOT THE BUILD. SwiftPM cannot emit .app or .appex bundles,
 // so build.sh assembles them; this manifest is what `swift build` and
@@ -57,6 +57,15 @@ let package = Package(
 		// that would grow a dependency later.
 		.target(name: "CaptureVoice", path: "Sources/CaptureVoice"),
 
+		// The wire contract's Swift binding (entry 13.3). IT DEPENDS ON NOTHING,
+		// including nothing of Apple's beyond Foundation, because it is the
+		// contract rendered as value types -- the domain and the adapters both
+		// speak it, and neither may reach back through it. Hand-written per spec
+		// 0043 and gated against specs/wire/v1/schema.json by scripts/drift.py:
+		// no language server crosses the Go/Python boundary and none crosses this
+		// one either, so the schema is the only index the three bindings share.
+		.target(name: "ScreenReaderWire", path: "Sources/ScreenReaderWire"),
+
 		// The .appex stub. A LIBRARY target here, not an executable, because its
 		// entry point is _NSExtensionMain rather than main() -- build.sh passes
 		// the linker flags that make it an app extension's executable. SwiftPM's
@@ -84,13 +93,21 @@ let package = Package(
 		.executableTarget(name: "VoiceOverBridgeApp", path: "Sources/VoiceOverBridgeApp"),
 
 		// Tests/ mirrors Sources/ file for file, and the FAKES live in here rather
-		// than in a target of their own: there is exactly one test target at this
-		// entry, and a shared Fakes target is worth its indirection only once a
-		// second test target exists (13.4).
+		// than in a target of their own. 13.3 added a second test target and did
+		// NOT change that: a shared Fakes target is worth its indirection once two
+		// targets need the SAME double, and the wire binding has no ports to fake
+		// -- it is value types, tested with values. 13.4 is where the question is
+		// live again.
 		.testTarget(
 			name: "CaptureVoiceTests",
 			dependencies: ["CaptureVoice"],
 			path: "Tests/CaptureVoiceTests"
+		),
+
+		.testTarget(
+			name: "ScreenReaderWireTests",
+			dependencies: ["ScreenReaderWire"],
+			path: "Tests/ScreenReaderWireTests"
 		),
 	],
 	swiftLanguageModes: [.v5]

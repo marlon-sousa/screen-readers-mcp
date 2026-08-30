@@ -107,7 +107,7 @@ make it cost a version bump instead — is in
 | `shared/` | Canonical **stdlib-only** wire protocol (`screenreader-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
-| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. Today it holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML. The session, the wire binding and the dialog are lane 3's later entries. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
+| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. Today it holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML — and **`Sources/ScreenReaderWire/`, the contract's third binding**: hand-written Swift value types gated against `specs/wire/v1/schema.json` by `scripts/drift.py --swift`. The session and the dialog are lane 3's later entries. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
 
 `shared/`, `server/` and `bridges/nvda/` each carry their own `AGENTS.md` with
@@ -483,7 +483,7 @@ uv run poe shared        # shared wire-contract tests
 uv run poe types         # pyright strict, both Python projects
 uv run poe lint          # ruff check AND format check, every Python file
 uv run poe go            # go build, vet, test, -tags integration
-uv run poe gates         # schema + wire-binding drift
+uv run poe gates         # drift: the schema, the Go binding, the Swift binding
 uv run poe conformance   # the real Go binary against the real Python bridge
 uv run poe live          # DRIVES YOUR REAL NVDA -- opt-in, never part of ci
 uv run poe build         # every deliverable: the server binary, and each
@@ -744,14 +744,17 @@ only needs the merged code + its spec + this file.
 - **Language servers get three things wrong here, whichever agent or editor
   drives them.** All three fail by giving a confident wrong answer, not an
   error.
-  - **No language server crosses the Go↔Python boundary.** The wire contract is
-    one schema with two bindings: `specs/wire/v1/schema.json` generates
+  - **No language server crosses between the contract's three bindings.** The
+    wire contract is one schema rendered three times:
+    `shared/screenreader_wire/protocol.py` is the source, it generates
+    `specs/wire/v1/schema.json`, which generates
     `server/adapters/wire/wire.gen.go`, and
-    `shared/screenreader_wire/protocol.py` mirrors it. "Find references" on a Go
-    command constant will not find its Python counterpart, or the reverse — it
-    is not dead, it is on the other
-    side. For anything wire-shaped the schema is the index and
-    `scripts/drift.py` is the check.
+    `bridges/voiceover/Sources/ScreenReaderWire/` renders the same schema by
+    hand in Swift. "Find references" on a Go command constant will not find its
+    Python or Swift counterpart, or any reverse of that — it is not dead, it is
+    on another side. For anything wire-shaped the schema is the index and
+    `scripts/drift.py` is the check; its Swift gate needs no Swift toolchain, so
+    it runs everywhere the other two do.
   - **The first query after the server starts can be silently truncated**,
     because it answers while still indexing. Measured: "find references" on the
     bridge's `Clock` port returned **1** result cold and **15 across 8 files**

@@ -7,7 +7,8 @@
       "type": "object",
       "properties": {
         "ok": {
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         }
       },
       "additionalProperties": true
@@ -61,7 +62,8 @@
           "type": "integer"
         },
         "emittedAt": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -108,13 +110,16 @@
       "type": "object",
       "properties": {
         "fromLine": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "maxLines": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "maxChars": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         }
       },
       "additionalProperties": true
@@ -129,19 +134,23 @@
           "type": "string"
         },
         "title": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         },
         "lines": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/SnapshotLine"
-          }
+          },
+          "default": []
         },
         "fromLine": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "toLine": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "truncatedBy": {
           "type": "string",
@@ -149,7 +158,8 @@
             "none",
             "maxLines",
             "maxChars"
-          ]
+          ],
+          "default": "none"
         }
       },
       "required": [
@@ -284,7 +294,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "required": [
@@ -353,10 +364,12 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "windows": {
-          "type": "integer"
+          "type": "integer",
+          "default": 1
         },
         "sincePosition": {
           "anyOf": [
@@ -366,7 +379,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "lastSeconds": {
           "anyOf": [
@@ -376,7 +390,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "minLevel": {
           "anyOf": [
@@ -394,7 +409,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "contains": {
           "anyOf": [
@@ -407,7 +423,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "exclude": {
           "anyOf": [
@@ -420,7 +437,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "fields": {
           "anyOf": [
@@ -433,10 +451,12 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "maxEntries": {
-          "type": "integer"
+          "type": "integer",
+          "default": 200
         }
       },
       "additionalProperties": true
@@ -482,7 +502,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "normalize": {
           "anyOf": [
@@ -492,10 +513,12 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "persona": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -546,7 +569,8 @@
           "type": "string"
         },
         "bridgeVersion": {
-          "type": "string"
+          "type": "string",
+          "default": "unknown"
         },
         "guidance": {
           "anyOf": [
@@ -556,7 +580,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "silenceCap": {
           "anyOf": [
@@ -566,7 +591,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "attended": {
           "anyOf": [
@@ -576,13 +602,15 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "normalized": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/NormalizedSetting"
-          }
+          },
+          "default": []
         }
       },
       "required": [
@@ -605,10 +633,12 @@
           "type": "integer"
         },
         "logPosition": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "emittedAt": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -702,7 +732,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "toCommandId": {
           "anyOf": [
@@ -712,7 +743,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "required": [
@@ -764,7 +796,8 @@
       "type": "object",
       "properties": {
         "ok": {
-          "type": "boolean"
+          "type": "boolean",
+          "default": true
         },
         "suppressing": {
           "anyOf": [
@@ -774,7 +807,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "additionalProperties": true
@@ -789,10 +823,12 @@
           }
         },
         "graceMs": {
-          "type": "integer"
+          "type": "integer",
+          "default": 100
         },
         "announce": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -827,7 +863,8 @@
         },
         "params": {
           "type": "object",
-          "additionalProperties": {}
+          "additionalProperties": {},
+          "default": {}
         }
       },
       "required": [
@@ -842,7 +879,9 @@
         "id": {
           "type": "integer"
         },
-        "result": {},
+        "result": {
+          "default": null
+        },
         "error": {
           "anyOf": [
             {
@@ -851,7 +890,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "required": [
@@ -912,7 +952,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "additionalProperties": true
@@ -927,7 +968,8 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "default": []
         }
       },
       "required": [
@@ -984,7 +1026,8 @@
           "type": "integer"
         },
         "emittedAt": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -1053,10 +1096,12 @@
           "type": "string"
         },
         "graceMs": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "announce": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -1090,7 +1135,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "required": [
@@ -1105,7 +1151,8 @@
       "type": "object",
       "properties": {
         "timeout": {
-          "type": "number"
+          "type": "number",
+          "default": 5.0
         },
         "minLevel": {
           "anyOf": [
@@ -1123,7 +1170,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "contains": {
           "anyOf": [
@@ -1136,7 +1184,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "additionalProperties": true
@@ -1151,7 +1200,8 @@
           "type": "integer"
         },
         "text": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -1174,10 +1224,12 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "timeout": {
-          "type": "number"
+          "type": "number",
+          "default": 5.0
         }
       },
       "required": [
@@ -1198,10 +1250,12 @@
           "type": "string"
         },
         "logPosition": {
-          "type": "integer"
+          "type": "integer",
+          "default": 0
         },
         "emittedAt": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -1218,7 +1272,8 @@
           "type": "string"
         },
         "timeout": {
-          "type": "number"
+          "type": "number",
+          "default": 30.0
         }
       },
       "required": [
@@ -1233,7 +1288,8 @@
           "type": "boolean"
         },
         "text": {
-          "type": "string"
+          "type": "string",
+          "default": ""
         }
       },
       "required": [
@@ -1245,7 +1301,8 @@
       "type": "object",
       "properties": {
         "timeout": {
-          "type": "number"
+          "type": "number",
+          "default": 5.0
         }
       },
       "additionalProperties": true

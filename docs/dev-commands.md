@@ -240,6 +240,45 @@ project with no `select` enforces whatever version happens to be installed.
 Changing what this repo enforces should be a deliberate edit, not a version
 bump.
 
+## Three bindings, one contract, and a gate for each
+
+`poe gates` runs three comparisons, and they are not variations of one check —
+each asks a different question, of a different artifact, with a different
+toolchain:
+
+| Gate | Artifact | The question |
+|---|---|---|
+| `gate-schema` | `specs/wire/v1/schema.json` | does regenerating it from `protocol.py` change anything? (needs uv) |
+| `gate-binding` | `server/adapters/wire/wire.gen.go` | is `go generate` a no-op? (needs Go) |
+| `gate-swift` | `bridges/voiceover/Sources/ScreenReaderWire/` | does the hand-written source still *declare* what the schema says? (needs neither) |
+
+**The Swift gate is different in kind, because that binding is hand-written**
+(spec 0043) — there is nothing to regenerate, so it reads the source and
+compares field by field: the protocol version, the command list, every `$defs`
+shape's properties, their types, which are required, which are Optional, and
+each default. It names the schema, the file and the field, because a drift an
+agent cannot locate is a drift it will paper over.
+
+**It needs no Swift toolchain, deliberately.** It parses rather than builds, so
+it runs in the `shared` CI job on Windows — which is where a change to the
+contract finds out it left the Swift rendering behind. A gate that only ran on
+macOS would report that after the fact, to whoever next opened the repo there.
+
+The price is a style contract: the binding must be written the way
+`scripts/swift_wire_binding.py`'s header describes (one tab, `public var name:
+Type = default`). That reader **raises rather than skips** anything it cannot
+read — a drift gate that quietly ignores what it does not understand reports
+green about the half it managed to read, which is worse than no gate, because
+somebody believes it.
+
+**Defaults are part of the shape, and the schema now publishes them** (board
+13.3). `protocol.md` §7.2 had said "defaults live in `schema.json`" since v1
+while the document carried none: `required` says a field may be absent and never
+said what absent MEANS. A binding author reading only the published contract —
+which is the whole point of publishing it — could not have known that `graceMs`
+is 100. They are emitted as JSON Schema `default` annotations, which validators
+ignore, so nothing about validation changed.
+
 ## The underlying commands
 
 `poe` is a thin wrapper; these are what it runs, if you need one directly:
@@ -273,4 +312,14 @@ uv run --directory bridges/nvda pytest       # headless domain tests
 uv run --directory bridges/nvda pyright
 # builds: prefer `uv run poe build-server` / `build-bridge` (same commands, one entry point)
 cd bridges/nvda && scons        # build the .nvda-addon (needs the NVDA build deps)
+
+# VoiceOver bridge (macOS only). `swift test` builds every target on the way, so
+# it is also the architecture test: a domain file importing the adapters fails here.
+swift test --package-path bridges/voiceover
+swift test --package-path bridges/voiceover --filter ScreenReaderWireTests
+
+# The wire contract's three gates, individually. The Swift one needs no Swift.
+python scripts/drift.py --schema
+python scripts/drift.py --binding
+python scripts/drift.py --swift
 ```

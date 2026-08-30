@@ -328,7 +328,10 @@ sequence = ["build-server", "build-bridge"]
 # -- the gates that catch generated-artifact drift ---------------------------
 
 # Split along the same line as CI's jobs: the schema gate needs uv and no Go,
-# the binding gate needs Go and no uv. See scripts/drift.py's main().
+# the binding gate needs Go and no uv. The Swift gate needs NEITHER -- and no
+# Swift either, deliberately: it reads the binding's source rather than building
+# it, so a Windows session editing the contract is told about a Swift binding it
+# left behind, on the run that changed the schema. See scripts/drift.py's main().
 [tool.poe.tasks.gate-schema]
 help = "The committed schema.json still matches protocol.py"
 deps = ["check"]
@@ -339,9 +342,14 @@ help = "The committed Go wire binding still matches the schema"
 deps = ["check"]
 cmd = "python scripts/drift.py --binding"
 
+[tool.poe.tasks.gate-swift]
+help = "The hand-written Swift wire binding still matches the schema"
+deps = ["check"]
+cmd = "python scripts/drift.py --swift"
+
 [tool.poe.tasks.gates]
-help = "Schema and wire-binding drift gates"
-sequence = ["gate-schema", "gate-binding"]
+help = "Schema and wire-binding drift gates, all three bindings"
+sequence = ["gate-schema", "gate-binding", "gate-swift"]
 
 [tool.poe.tasks.conformance]
 help = "Cross-language tier: the real Go binary against the real Python bridge (slow)"
@@ -361,8 +369,8 @@ cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
 # `ci-server` has Go and no uv.
 
 [tool.poe.tasks.ci-shared]
-help = "The `shared` CI job: wire-contract tests, types, lint, schema gate"
-sequence = ["shared", "shared-types", "shared-lint", "gate-schema"]
+help = "The `shared` CI job: wire-contract tests, types, lint, schema and Swift gates"
+sequence = ["shared", "shared-types", "shared-lint", "gate-schema", "gate-swift"]
 
 [tool.poe.tasks.ci-server]
 help = "The `server` CI job: build, vet, tests, gofmt, staticcheck, binding gate, Linux build"
