@@ -387,19 +387,27 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.8**: **13.1 through 13.7
+its board was written on 2026-08-29. Its head is **13.9**: **13.1 through 13.8
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
 voice, the wire contract's Swift binding, a bridge that **listens**, one that
 **hears** -- an agent can read back what the reader said -- one that can make the
 reader **quiet** (silent sessions are established rather than refused, the bridge
 selects the capture voice itself and puts the user's own back on every teardown
 path, and the silence it holds is a **lease** that expires if the bridge dies,
-which is hard invariant 3 in its macOS form) and, since 13.7, one that can
-**drive** it: `pressGesture` dispatches VoiceOver's own English command names
-through the reader itself, asking for no Accessibility grant. `hello` announces
-`speech` and `gestures`, and their six commands answer. **13.7's "measured risk"
-is retired** -- `perform command` was never dead, it was addressed to the wrong
-object -- so the next step is typing, against
+which is hard invariant 3 in its macOS form) and, since 13.7 and 13.8, one that
+can **drive** it, by both halves of input: `pressGesture` dispatches VoiceOver's
+own English command names through the reader itself, and `typeText` synthesizes
+keystrokes into whatever holds focus. `hello` announces `speech`, `gestures` and
+`typing`, and their seven commands answer.
+
+**The two halves stay apart because they cost different permissions, and that is
+the lane's one design lever.** Pressing a command is an AppleEvent; typing is
+Accessibility -- so **the Accessibility grant is requested on the first
+`typeText` of a session and from nowhere else in the bridge**, which makes *"a
+session that only presses commands and reads speech never triggered an
+Accessibility request"* a statement the test suite checks rather than one the
+documentation asserts. Windows has no equivalent gate, so lane 1 has no analogue
+and there was nothing to copy. The next step is focus, against
 [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
@@ -756,17 +764,74 @@ rule intends.
     that pretended to would be confidently wrong.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
     Done (PR #87, 2026-08-30).
-13.8. **Input: typing** (lane 3). `typeText` by synthesized keystrokes, with
-    **Accessibility requested lazily** — only if the session asks to type. This
-    is a macOS-only design lever with no NVDA analogue, because Windows has no
-    such gate: the two halves of input cost different permissions, and keeping
-    them apart is what makes *"this bridge never asked for Accessibility"* a
-    checkable statement rather than an intention.
+13.8. **Done** -- **Input: typing** (lane 3). `typeText` by synthesized
+    keystrokes -- layout-independent Unicode injection, not a key sequence, so the
+    same text arrives on a Dvorak or an ABNT2 keyboard as on a US one -- with
+    **Accessibility requested lazily**, only if the session asks to type. This is
+    a macOS-only design lever with no NVDA analogue, because Windows has no such
+    gate: the two halves of input cost different permissions, and keeping them
+    apart is what makes *"this bridge never asked for Accessibility"* a checkable
+    statement rather than an intention.
+    **The laziness is structural, and it is checked rather than intended.** The
+    only call to `PermissionBroker.request` in the repository is in the `typeText`
+    handler: not at construction, not in `Wiring`, not in the adapter factory, not
+    in the doctor, not in a probe, and not in a test. A round trip in
+    `Tests/Integration/SessionRoundTripTests.swift` drives a handshake, a gesture
+    and a speech read past the broker and asserts it was asked **nothing at all**,
+    then types and asserts it was asked exactly once.
+    **No test may touch the real grant or post a real event**, for the reason
+    `Tests/Fakes/Support/ReaderEdge.swift` already existed: the real broker's
+    request raises a system dialog and leaves the process granted with no undo,
+    and a real `CGEvent` types into whatever window the developer has in front of
+    them. Both are injected into the adapter factory so a test cannot reach either
+    by accident.
     Carries the finding that **the target application rewrites what was typed** —
     two lines sent to TextEdit came back autocapitalized. "Send this keystroke"
     is not "this text arrives", and anything comparing typed input against
-    observed output has to expect the app's own substitutions.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    observed output has to expect the app's own substitutions. That finding cited
+    `spikes/voiceover-capture/keyboard.sh`, deleted when 13.2 promoted the spike,
+    so it was evidence nobody could re-run: it is back as
+    **`scripts/voiceover_keyboard.sh`**, beside `voiceover_channels.sh`, safe in
+    the same specific sense -- it types into a scratch TextEdit document it
+    creates and closes without saving on every exit path. **A separate script from
+    the gesture probe on purpose**: the channels probe runs on a machine that has
+    never granted Accessibility and this one cannot, which is the lane's design
+    lever expressed as tooling.
+    **The text is never logged and `typed` is a length.** protocol.md §5 says
+    `typeText` is exactly how a secret is entered; the obligation lands on the
+    transcript, which records `TYPE length=<n>` and can never record what.
+    `typed` counts unicode scalars, which is the number lane 1's `len` and the
+    server's conformance rune count both mean.
+    **AND ONE MEASUREMENT THAT BOUNDS THE LEVER RATHER THAN BLOCKING THE ENTRY.**
+    VoiceOver's own vocabulary contains real KEYS as named commands -- read off
+    the machine on 2026-08-30, `SCRStringsToCommandsMap.scrconfig` has **30** of
+    them: `tab key`, `return key`, the four arrows, `f1 key` through `f12 key`,
+    `delete key`, `forward delete key`, `fn key`, plus modifiers in two flavours,
+    momentary (`command key`, `shift key`, `option key`, `control key`, `fn key`)
+    and sticky (`toggle command key`, ...). All are dispatched by the reader over
+    AppleEvents and cost no Accessibility grant, so **if a modifier composed with
+    the key after it, a chord would be reachable through `pressGesture` alone.**
+    **Measured 2026-08-30 on macOS 15.0 (24A335): THEY DO NOT COMPOSE.** Four
+    runs -- sticky and momentary, option and command -- each followed by
+    `delete key` into a scratch TextEdit document, and every one of them deleted
+    exactly ONE CHARACTER, the same as the no-modifier control; Option-Delete
+    would have removed a word and Command-Delete the whole line. No modifier was
+    left latched. The instrument is **`scripts/voiceover_modifiers.sh`**, safe in
+    the same sense as the other two, and it clears and PROVES clear any sticky
+    modifier it set. **The bound for `typeText` is independent of that and is
+    stronger: the table contains ZERO letter keys**, so literal text could not
+    come out of it however well it composed -- which is why typing synthesizes
+    events and pays for the grant. What this changes is 13.11: the guidance
+    document must tell an agent that `pressGesture` reaches VoiceOver's commands
+    and single keys and **not** chords, rather than leaving it to discover that a
+    modifier command appears to succeed and does nothing.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.8 section carries the layout amendments this made, each with its why --
+    including the one that moved a port: `PermissionBroker` goes in the
+    `AdapterSet` and the CONTROLLER makes the request, rather than the typer
+    holding a domain port, because 13.10's dialog needs the same broker and a view
+    may consume a port but not an adapter's private seam.
+    Done (2026-08-30).
 13.9. **Focus** (lane 3). `getFocusInfo` — and **`getState` is no longer part of
     this entry**, amended 2026-08-29 by 13.1. VoiceOver's AppleScript exposes four
     read/write properties in total and no state noun; its 45 toggles are commands
@@ -834,6 +899,15 @@ rule intends.
     resolves through a `Bundle.module` resource bundle that `build.sh` must copy
     into `Contents/Resources` or the failure is a runtime trap rather than a
     compile error.
+    **And it owes 13.8's measurement a sentence**, because a negative that an
+    agent will otherwise rediscover is a negative worth writing down: the
+    vocabulary contains single KEYS (`tab key`, the arrows, `f1`-`f12`,
+    `delete key`) and modifier commands in two flavours, and **the modifiers do
+    not compose** -- measured 2026-08-30, re-runnable as
+    `bash scripts/voiceover_modifiers.sh`. A modifier command SUCCEEDS and changes
+    nothing about the key after it, so the guidance must say that `pressGesture`
+    reaches commands and single keys and not chords, and that a chord needs
+    `typeText`'s route and its grant.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.12. **Can VoiceOver be asked what mode it is in?** (lane 3; a measurement, not
     a feature). Taken 2026-08-29 by 13.1, in the shape of

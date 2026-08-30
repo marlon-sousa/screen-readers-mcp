@@ -28,6 +28,12 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// and that is invisible in the AdapterSet the handshake hands back.
 	public let gestureSender = FakeGestureSender()
 	public let readerLiveness = FakeReaderLiveness()
+	/// And 13.8's two, for the same reason -- plus one this file cannot leave
+	/// implicit: the broker records whether the Accessibility grant was ever
+	/// REQUESTED, and a session test asserting that a run of gestures never asked
+	/// for it is asserting the entry's whole claim.
+	public let textTyper = FakeTextTyper()
+	public let permissions = FakePermissionBroker()
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
@@ -48,7 +54,9 @@ public final class FakeAdapterFactory: AdapterFactory {
 			silenceControl: silenceControl,
 			providerLifecycle: providerLifecycle,
 			gestureSender: gestureSender,
-			readerLiveness: readerLiveness
+			readerLiveness: readerLiveness,
+			textTyper: textTyper,
+			permissions: permissions
 		)
 	}
 }

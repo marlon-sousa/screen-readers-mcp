@@ -42,6 +42,19 @@ struct FileTranscriptTests {
 		#expect(writer.lines == ["2026-08-30 10:00:00.000 GESTURE \"go to desktop\""])
 	}
 
+	@Test("typed text is recorded as a LENGTH, and the words are nowhere in the file")
+	func typingIsRecordedAsALengthOnly() {
+		// The obligation protocol.md §5 puts on this adapter: `typeText` is exactly
+		// how a secret is entered, and a transcript is a file a human reads
+		// afterwards -- so a password written here is a password on disk, outliving
+		// the session that typed it. The line shape is lane 1's.
+		let writer = FakeFileWriter()
+		let record = transcript(writer)
+		record.open()
+		record.typed(7)
+		#expect(writer.lines == ["2026-08-30 10:00:00.000 TYPE length=7"])
+	}
+
 	@Test("no persona is written as a dash, so every open line has the same shape")
 	func anAbsentPersonaKeepsTheShape() {
 		let writer = FakeFileWriter()

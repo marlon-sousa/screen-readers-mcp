@@ -30,7 +30,9 @@ struct SessionRoundTripTests {
 			handlers: [String: any CommandHandler]? = nil,
 			attended: Bool = true,
 			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
-			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner()
+			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner(),
+			permissions: FakePermissionBroker = FakePermissionBroker(),
+			poster: FakeEventPoster = FakeEventPoster()
 		) {
 			let (bridgeEnd, clientEnd) = LoopbackTransport.pair()
 			client = clientEnd
@@ -42,7 +44,9 @@ struct SessionRoundTripTests {
 				config: SessionConfig(readerVersion: "macOS 15.0.0", attended: attended),
 				handlers: handlers
 					?? Registry.build(
-						factory: testAdapterFactory(lifecycle: lifecycle, scripts: scripts),
+						factory: testAdapterFactory(
+							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster
+						),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
 					)
@@ -87,7 +91,7 @@ struct SessionRoundTripTests {
 		#expect(hello.mode == .live)
 		// What this build actually serves, announced end to end -- the server gates
 		// its speech tools on exactly this string arriving here.
-		#expect(hello.capabilities == [.speech, .gestures])
+		#expect(hello.capabilities == [.speech, .gestures, .typing])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
 		peer.hangUp()
@@ -287,6 +291,76 @@ struct SessionRoundTripTests {
 		let script = try #require(scripts.scripts.first)
 		#expect(script == "tell application \"VoiceOver\" to tell commander to perform command \"go to desktop\"")
 		#expect(peer.transcript.gestures == ["go to desktop"])
+		peer.hangUp()
+	}
+
+	@Test("a typeText off the wire reaches the event poster as the keystrokes it asked for")
+	func typedTextReachesTheEventPoster() throws {
+		// THE TEST THE UNITS CANNOT WRITE, and 13.6's lesson applied a second time:
+		// every unit above runs against a graph its own test assembled, so a
+		// handler wired to the wrong command name, a typer the factory never builds,
+		// or a result that does not encode would pass all of them. What is asserted
+		// here is the whole path -- a JSON frame in, the real Registry's handler,
+		// the real VoiceOverAdapterFactory's typer, and what would have gone to the
+		// window server.
+		let poster = FakeEventPoster()
+		let peer = Peer(poster: poster)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(id: 2, cmd: "typeText", params: ["text": .string("caf\u{00E9} \u{2014} 50%")])
+		let response = try peer.reply()
+		guard case .success(let value) = try response.outcome() else {
+			Issue.record("typeText failed: \(response)")
+			return
+		}
+		let result = try value.decoded(as: TypeResult.self)
+		// The LENGTH of what was sent, never the text (protocol.md §5).
+		#expect(result.typed == 10)
+		// Nothing spoke, so the window is empty -- a fact about an instant and
+		// never a claim that nothing will be said (§7.3). `state` stays nil.
+		#expect(result.speech.isEmpty)
+		#expect(result.state == nil)
+
+		// What the real typer handed the seam, off the real wire request: every
+		// character, in order, each chunk as a down and then an up.
+		#expect(poster.typedText == "caf\u{00E9} \u{2014} 50%")
+		#expect(poster.posted.count == 2)
+		#expect(poster.posted.map(\.keyDown) == [true, false])
+		// And the record says how much was typed and cannot say what.
+		#expect(peer.transcript.typedLengths == [10])
+		peer.hangUp()
+	}
+
+	@Test("A SESSION THAT ONLY PRESSES COMMANDS NEVER ASKS FOR THE ACCESSIBILITY GRANT")
+	func gesturesNeverTriggerAPermissionRequest() throws {
+		// 13.8'S WHOLE CLAIM, ASSERTED END TO END RATHER THAN INTENDED. The two
+		// halves of input cost different permissions on macOS (spec 0041) and
+		// Windows has no equivalent gate, so this is the one design lever lane 3
+		// has that lane 1 cannot have -- and it is worth only as much as its
+		// checkability. A handshake, a gesture and a speech read go past here
+		// without the broker being asked anything at all; the first `typeText`
+		// asks, and nothing else in the bridge ever does.
+		let permissions = FakePermissionBroker(state: .notGranted)
+		let peer = Peer(permissions: permissions)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: ["gestures": .array([.string("go to desktop")]), "graceMs": .int(0)])
+		_ = try peer.reply()
+		try peer.send(id: 3, cmd: "getNextSpeechIndex")
+		_ = try peer.reply()
+		#expect(permissions.requests.isEmpty)
+		#expect(permissions.statusReads.isEmpty)
+
+		// And now the one command that may ask. The grant is not held, so the
+		// reply says what to do about it rather than reporting a success that
+		// typed nothing anywhere.
+		try peer.send(id: 4, cmd: "typeText", params: ["text": .string("hello")])
+		let refused = try peer.reply()
+		#expect(try #require(refused.error).message.contains("System Settings"))
+		#expect(permissions.requests == [.accessibility])
 		peer.hangUp()
 	}
 

@@ -66,6 +66,34 @@ struct VoiceOverAdapterFactoryTests {
 		}
 	}
 
+	@Test("both modes get a text typer, and the SAME permission broker")
+	func bothModesGetTheTypingEdge() throws {
+		// The typer is per session and stateless, like the gesture sender. The
+		// BROKER is shared, because it describes this PROCESS's standing with the
+		// system rather than anything about a session -- and because the whole
+		// point of 13.8 is that there is exactly one object in the bridge that can
+		// ask for the Accessibility grant.
+		let permissions = FakePermissionBroker()
+		let factory = testAdapterFactory(permissions: permissions)
+		for mode in [CaptureMode.live, .silent] {
+			let set = try factory.build(mode: mode)
+			#expect(set.textTyper is AccessibilityTextTyper)
+			#expect(set.permissions === permissions)
+		}
+	}
+
+	@Test("BUILDING A SESSION ASKS FOR NO PERMISSION -- the request belongs to `typeText`")
+	func buildingAsksForNothing() throws {
+		// The structural half of "a session that only presses commands and reads
+		// speech never triggers an Accessibility request": the factory runs at
+		// every handshake, so a status read or a request here would happen for
+		// every session ever established, typing or not.
+		let permissions = FakePermissionBroker()
+		_ = try testAdapterFactory(permissions: permissions).build(mode: .live)
+		#expect(permissions.requests.isEmpty)
+		#expect(permissions.statusReads.isEmpty)
+	}
+
 	@Test("a silence control PER SESSION, so one session's teardown cannot lift another's")
 	func aSilenceControlPerSession() throws {
 		let factory = testAdapterFactory()

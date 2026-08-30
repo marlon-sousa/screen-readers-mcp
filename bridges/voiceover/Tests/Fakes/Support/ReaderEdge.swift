@@ -1,15 +1,24 @@
 // SCAFFOLDING, not a port double -- Support/, for the same reason CapturePath is.
 //
-// IT EXISTS TO MAKE ONE MISTAKE UNAVAILABLE. `VoiceOverAdapterFactory` takes a
-// ProviderLifecycle, and the REAL one writes the preference that decides which
-// voice VoiceOver speaks with. A test that built the real lifecycle would, on
-// the developer's own machine, change the voice their screen reader is using --
-// and if it failed half-way, leave it changed. That is not a flaky test, it is a
-// person unable to hear their computer properly until they notice.
+// IT EXISTS TO MAKE THREE MISTAKES UNAVAILABLE, and none of them is a flaky
+// test -- each one changes the developer's own machine.
 //
-// So every test that needs a factory gets one from here, with a fake lifecycle,
-// a capture path nothing writes and a marker path nothing reads. The ONLY place
-// the real lifecycle is built is Wiring, and the only thing that runs Wiring's
+//  * `VoiceOverAdapterFactory` takes a ProviderLifecycle, and the REAL one writes
+//    the preference that decides which voice VoiceOver speaks with. A test that
+//    built it would change the voice the developer's screen reader is using and,
+//    if it failed half-way, leave it changed: a person unable to hear their
+//    computer properly until they notice.
+//  * It takes a PermissionBroker, and the real one's `request` raises a system
+//    consent dialog and leaves the process on a list that STAYS granted
+//    afterwards. There is no undo, and 13.8's whole claim is that this bridge
+//    asks for that grant exactly once, from exactly one place. No test may touch
+//    the real grant.
+//  * It takes an EventPoster, and the real one types into whatever window the
+//    developer has in front of them at that moment.
+//
+// So every test that needs a factory gets one from here, with fakes for all
+// three, a capture path nothing writes and a marker path nothing reads. The ONLY
+// place the real ones are built is Wiring, and the only thing that runs Wiring's
 // version is a bridge somebody started deliberately.
 
 import Foundation
@@ -22,10 +31,17 @@ public func testAdapterFactory(
 	capturePath: String = unusedCapturePath(),
 	markerPath: String = unusedMarkerPath(),
 	lifecycle: any ProviderLifecycle = FakeProviderLifecycle(),
-	scripts: any AppleScriptRunner = FakeAppleScriptRunner()
+	scripts: any AppleScriptRunner = FakeAppleScriptRunner(),
+	permissions: any PermissionBroker = FakePermissionBroker(),
+	poster: any EventPoster = FakeEventPoster()
 ) -> VoiceOverAdapterFactory {
 	VoiceOverAdapterFactory(
-		capturePath: capturePath, markerPath: markerPath, lifecycle: lifecycle, scripts: scripts
+		capturePath: capturePath,
+		markerPath: markerPath,
+		lifecycle: lifecycle,
+		scripts: scripts,
+		permissions: permissions,
+		poster: poster
 	)
 }
 
@@ -33,15 +49,18 @@ public func testAdapterFactory(
 ///
 /// The fields arrived one entry at a time and will keep doing so, so a test that
 /// spells the initializer out is a test that has to be edited by every future
-/// entry for reasons that have nothing to do with what it asserts. Two more
-/// arrived with 13.7 and this helper is why nothing but the factory noticed.
+/// entry for reasons that have nothing to do with what it asserts. Two arrived
+/// with 13.7 and two more with 13.8, and this helper is why nothing but the
+/// factory noticed either time.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
 	silenceControl: FakeSilenceControl = FakeSilenceControl(),
 	providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
 	gestureSender: FakeGestureSender = FakeGestureSender(),
-	readerLiveness: FakeReaderLiveness = FakeReaderLiveness()
+	readerLiveness: FakeReaderLiveness = FakeReaderLiveness(),
+	textTyper: FakeTextTyper = FakeTextTyper(),
+	permissions: FakePermissionBroker = FakePermissionBroker()
 ) -> AdapterSet {
 	AdapterSet(
 		mode: mode,
@@ -49,6 +68,8 @@ public func fakeAdapterSet(
 		silenceControl: silenceControl,
 		providerLifecycle: providerLifecycle,
 		gestureSender: gestureSender,
-		readerLiveness: readerLiveness
+		readerLiveness: readerLiveness,
+		textTyper: textTyper,
+		permissions: permissions
 	)
 }

@@ -22,14 +22,14 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("it serves the four a session needs, the five `speech` promises, and `pressGesture`")
+	@Test("it serves the four a session needs, the five `speech` promises, and both halves of input")
 	func theCommandSet() {
 		#expect(
 			Set(registry().keys) == [
 				"hello", "ping", "echo", "bye",
 				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
 				"waitForSpeech", "waitForSpeechToFinish",
-				"pressGesture",
+				"pressGesture", "typeText",
 			])
 	}
 
@@ -40,9 +40,9 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces `speech` and `gestures`, because that is what this build serves")
+	@Test("it announces `speech`, `gestures` and `typing`, because that is what this build serves")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities == [.speech, .gestures])
+		#expect(Registry.capabilities == [.speech, .gestures, .typing])
 	}
 
 	@Test("every command an announced capability promises has a handler, and nothing extra")
@@ -57,6 +57,12 @@ struct RegistryTests {
 				"waitForSpeech", "waitForSpeechToFinish",
 			],
 			.gestures: ["pressGesture"],
+			// A SEPARATE CAPABILITY FROM `gestures`, AND THAT IS THE DESIGN. The two
+			// halves of input cost different permissions on macOS (spec 0041), so an
+			// agent has to be able to be told that one of them works on this machine
+			// and the other does not. Folding them into one string would make that
+			// unsayable.
+			.typing: ["typeText"],
 		]
 		let served = registry()
 		for (capability, commands) in promised {
@@ -86,15 +92,17 @@ struct RegistryTests {
 		#expect(Set(passive) == ["ping"])
 	}
 
-	@Test("`pressGesture` is the only command that moves the user's machine")
-	func exactlyOneCommandMutatesTheReader() {
+	@Test("the two input commands are the only ones that move the user's machine")
+	func exactlyTheInputCommandsMutateTheReader() {
 		// THE FLAG DEFAULTS TO `false` AND THE FAILURE MODE OF FORGETTING IS
 		// "ALLOWED", so a new mutating handler that omits it is invisible in its
-		// own test and visible only here. `typeText` joins this set at 13.8, and
-		// the assertion is the SET rather than a membership check for exactly that
-		// reason: adding a handler without the flag has to fail, not pass quietly.
+		// own test and visible only here. This assertion is the SET rather than a
+		// membership check for exactly that reason -- and it did its job at 13.8:
+		// it FAILED the moment `typeText` was registered, which is the test asking
+		// whether the new handler had opted in, and the fix was to state the new
+		// set rather than to weaken the assertion.
 		let mutating = registry().filter { $0.value.mutatesReader }.keys
-		#expect(Set(mutating) == ["pressGesture"])
+		#expect(Set(mutating) == ["pressGesture", "typeText"])
 	}
 
 	@Test("the reader identity is the one protocol.md's endpoint convention is built from")
