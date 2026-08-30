@@ -10,10 +10,12 @@
 // why each entry carries its own index rather than being counted from the start
 // of the list.
 //
-// `logPosition` IS ALWAYS 0 HERE, and that is the honest answer rather than a
-// stub: it is a coordinate into NVDA's log journal, and VoiceOver emits no
-// diagnostic log of its own to position into (spec 0046, Part 2). The field
-// stays in the shape because the shape is the contract's.
+// THE MAPPING TO WIRE ENTRIES MOVED TO `Observation` AT 13.7, when a second
+// command started assembling the same answer. `logPosition` is always 0 and
+// that is the honest answer rather than a stub -- it is a coordinate into
+// NVDA's log journal, and VoiceOver emits no diagnostic log of its own to
+// position into (spec 0046, Part 2) -- and it is now stated in ONE place, so
+// the day this reader grows a journal it cannot be half-corrected.
 
 import ScreenReaderWire
 
@@ -24,14 +26,7 @@ public final class GetSpeechHandler: CommandHandler {
 		let params = try request.params(as: GetSpeechParams.self)
 		let read = try context.speechBuffer().entriesSince(params.sinceIndex)
 		return SpeechResult(
-			entries: read.entries.map {
-				SpeechEntry(
-					text: $0.utterance.text,
-					index: $0.index,
-					logPosition: 0,
-					emittedAt: Wallclock.format($0.utterance.emittedAt)
-				)
-			},
+			entries: Observation.speechEntries(read.entries),
 			fromIndex: read.fromIndex,
 			toIndex: read.toIndex
 		)

@@ -16,15 +16,15 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// THREE FIELDS AT 13.6, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// FIVE FIELDS AT 13.7, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
 /// | Field | Entry |
 /// |---|---|
 /// | `speechSource` | 13.5, the capture feed |
-/// | `silenceControl`, `providerLifecycle` | 13.6, capture mode -- here |
-/// | `gestureSender` | 13.7 |
+/// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
+/// | `gestureSender`, `readerLiveness` | 13.7, input -- here |
 /// | `textTyper` | 13.8 |
 /// | `focusInspector` | 13.9 |
 ///
@@ -55,16 +55,34 @@ public struct AdapterSet {
 	/// Where the capture voice has got to, and how the reader is pointed at it.
 	public let providerLifecycle: any ProviderLifecycle
 
+	/// How a command reaches the reader. Present in both modes: a gesture is
+	/// dispatched identically whether or not the human can hear the result.
+	public let gestureSender: any GestureSender
+
+	/// Whether the reader is there at all, asked only when something has already
+	/// failed. IT IS A SECOND FIELD RATHER THAN A BOOLEAN THE SENDER RETURNS, and
+	/// that is a layout amendment to spec 0046's 13.7 table with its why: "the
+	/// reader answers its own name but not its own state" is a claim about TWO
+	/// channels, so the port that answers one of them and the port that answers
+	/// the other are separate, and the CONTROLLER combines them. Putting the
+	/// combination inside the sender would make one adapter depend on another
+	/// without a seam, which is the one thing the layering rule forbids.
+	public let readerLiveness: any ReaderLiveness
+
 	public init(
 		mode: CaptureMode,
 		speechSource: any SpeechSource,
 		silenceControl: any SilenceControl,
-		providerLifecycle: any ProviderLifecycle
+		providerLifecycle: any ProviderLifecycle,
+		gestureSender: any GestureSender,
+		readerLiveness: any ReaderLiveness
 	) {
 		self.mode = mode
 		self.speechSource = speechSource
 		self.silenceControl = silenceControl
 		self.providerLifecycle = providerLifecycle
+		self.gestureSender = gestureSender
+		self.readerLiveness = readerLiveness
 	}
 }
 

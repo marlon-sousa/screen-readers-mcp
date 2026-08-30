@@ -21,6 +21,11 @@ public final class FakeTranscript: Transcript {
 	/// observer is wired to this by `hello`, so an empty list after speech was
 	/// captured means the wiring is missing, not the transcript.
 	public private(set) var speeches: [String] = []
+	/// Every command dispatched to the reader, in order -- recorded BEFORE it was
+	/// sent, so a command that failed or hung is in this list too. That is the
+	/// property a session test asserts on, and the reason the port records it
+	/// first rather than on success.
+	public private(set) var gestures: [String] = []
 	public private(set) var notes: [String] = []
 	public private(set) var closedReasons: [String] = []
 
@@ -38,6 +43,10 @@ public final class FakeTranscript: Transcript {
 
 	public func speech(_ text: String) {
 		speeches.append(text)
+	}
+
+	public func gesture(_ command: String) {
+		gestures.append(command)
 	}
 
 	public func note(_ text: String) {

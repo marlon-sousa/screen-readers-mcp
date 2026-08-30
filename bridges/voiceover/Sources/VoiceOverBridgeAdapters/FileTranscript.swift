@@ -58,6 +58,10 @@ public final class FileTranscript: Transcript {
 		line("SPEECH \(FileTranscript.quoted(text))")
 	}
 
+	public func gesture(_ command: String) {
+		line("GESTURE \(FileTranscript.quoted(command))")
+	}
+
 	public func note(_ text: String) {
 		line("NOTE \(text)")
 	}

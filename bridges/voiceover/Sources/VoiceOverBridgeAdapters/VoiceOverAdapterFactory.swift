@@ -27,10 +27,11 @@
 // this factory builds collaborators, and only the handshake knows whether the
 // machine is in a state where they mean anything.
 //
-// BOTH MODES GET THE SAME THREE COLLABORATORS, and the symmetry is the route's:
+// BOTH MODES GET THE SAME COLLABORATORS, and the symmetry is the route's:
 // capture is identical either way, the marker channel carries the user's own
-// voice in both (Rule 0), and the provider lifecycle answers the same questions.
-// Only what the handshake ASKS for differs.
+// voice in both (Rule 0), the provider lifecycle answers the same questions, and
+// a command is dispatched to the reader the same way whether or not the human
+// can hear the result. Only what the handshake ASKS for differs.
 //
 // WHAT IS NOT DECIDED HERE: where any of it lives. The capture path, the marker
 // path and the lifecycle are values Wiring resolves, so this class stays the
@@ -44,6 +45,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let capturePath: String
 	private let markerPath: String
 	private let lifecycle: any ProviderLifecycle
+	private let scripts: any AppleScriptRunner
 
 	/// `capturePath` is where the capture voice appends its feed; `markerPath` is
 	/// where it reads what the bridge is asking of it. Passed in with no defaults,
@@ -55,10 +57,20 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// collaborator that is NOT per-session: it describes the machine, the same
 	/// answer for every session, and building one per handshake would run
 	/// `pluginkit` for no reason.
-	public init(capturePath: String, markerPath: String, lifecycle: any ProviderLifecycle) {
+	/// The script runner is passed in for the same reason as the lifecycle: it is
+	/// not per-session either. It holds no state at all -- every call is a fresh
+	/// subprocess -- so one serves every session, and building one per handshake
+	/// would be construction for its own sake.
+	public init(
+		capturePath: String,
+		markerPath: String,
+		lifecycle: any ProviderLifecycle,
+		scripts: any AppleScriptRunner
+	) {
 		self.capturePath = capturePath
 		self.markerPath = markerPath
 		self.lifecycle = lifecycle
+		self.scripts = scripts
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {
@@ -70,7 +82,12 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			mode: mode,
 			speechSource: ContainerFileSpeechSource(tailer: FileLineTailer(path: capturePath)),
 			silenceControl: MarkerFileSilenceControl(path: markerPath),
-			providerLifecycle: lifecycle
+			providerLifecycle: lifecycle,
+			// STATELESS, so these two are built per session at no cost and shared
+			// with nothing: each is a thin wrapper over the one script runner, and
+			// the runner is what actually holds nothing.
+			gestureSender: VoiceOverGestureSender(runner: scripts),
+			readerLiveness: VoiceOverLiveness(runner: scripts)
 		)
 	}
 }

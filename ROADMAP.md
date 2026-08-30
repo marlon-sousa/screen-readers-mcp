@@ -387,17 +387,20 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.7**: **13.1 through 13.6
+its board was written on 2026-08-29. Its head is **13.8**: **13.1 through 13.7
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
 voice, the wire contract's Swift binding, a bridge that **listens**, one that
-**hears** -- an agent can read back what the reader said -- and, since 13.6, one
-that can make the reader **quiet**: silent sessions are established rather than
-refused, the bridge selects the capture voice itself and puts the user's own back
-on every teardown path, and the silence it holds is a **lease** that expires if
-the bridge dies, which is hard invariant 3 in its macOS form. `hello` announces
-`speech`, and the five speech commands answer. The next step is input, against
-[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) -- carrying 13.7's
-measured risk that `perform command` is currently dead on the maintainer's host.
+**hears** -- an agent can read back what the reader said -- one that can make the
+reader **quiet** (silent sessions are established rather than refused, the bridge
+selects the capture voice itself and puts the user's own back on every teardown
+path, and the silence it holds is a **lease** that expires if the bridge dies,
+which is hard invariant 3 in its macOS form) and, since 13.7, one that can
+**drive** it: `pressGesture` dispatches VoiceOver's own English command names
+through the reader itself, asking for no Accessibility grant. `hello` announces
+`speech` and `gestures`, and their six commands answer. **13.7's "measured risk"
+is retired** -- `perform command` was never dead, it was addressed to the wrong
+object -- so the next step is typing, against
+[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -706,7 +709,7 @@ rule intends.
     third seam because pluginkit answers for the EXTENSION and only the machine's
     voice list answers for the VOICE.
     Done (2026-08-30).
-13.7. **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
+13.7. **Done** -- **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
     `perform command`, against the vocabulary in
     `SCRStringsToCommandsMap.scrconfig` — 415 entries on macOS 15.0 mapping an
     English phrase to an internal selector, undocumented, and the closest thing
@@ -715,20 +718,26 @@ rule intends.
     else holds the keyboard, and **an unknown command fails cleanly** —
     `Command does not exist (6)` — which is the property this repo already wants
     from `Request.cmd`. AppleEvents only; no Accessibility grant is asked for
-    here, which is what makes 13.8's laziness checkable.
-    **A MEASURED RISK, taken 2026-08-29 by [spec
-    0047](specs/0047-selecting-the-capture-voice-without-a-human.md): on the
-    maintainer's macOS 15.0, `perform command` currently fails for EVERY command
-    with error 4** -- including a deliberately bogus name, where spec 0041
-    measured `Command does not exist (6)`. So the dispatcher fails before the
-    name is looked up, and it is not a permission (`AXIsProcessTrusted` is true),
-    not the enablement flag (still set in both locations), not stale state (a
-    reader restart does not clear it) and not the syntax. Every READ channel
-    answers normally in the same breath, which is a different split from spec
-    0041's. This entry cannot be planned as if the mechanism were proven: either
-    13.13 revives it, or `pressGesture` needs a second route and the "the agent
-    loses no power" argument for putting the 45 toggles here loses its mechanism.
-    `bash scripts/voiceover_channels.sh` re-measures it in one command.
+    here, which is what makes 13.8's laziness checkable. Gesture ids are English
+    command names and nothing else, so a KEYSTROKE sent as a gesture is refused
+    by name -- both notations, `control+l` and VoiceOver's own `VO-D` -- because
+    synthesizing one needs the grant 13.8 exists to keep lazy.
+    **THE COMMAND IS ADDRESSED TO THE `commander object`, NEVER TO
+    `application "VoiceOver"`, and that one line retired this entry's measured
+    risk.** Spec 0047 recorded `perform command` as dead on the maintainer's
+    macOS 15.0 -- error 4 for every name, including a bogus one where spec 0041
+    had measured `Command does not exist (6)` -- and this entry could not be
+    planned as if its mechanism were proven. Re-measured 2026-08-30: the
+    `application` class does not respond to `perform command` at all (it is in
+    `bridges/voiceover/VoiceOver.sdef`, and was there the whole time); the
+    `commander object` does. Sending a command to an object that does not handle
+    it fails BEFORE the name is looked up, which is exactly why a good name and a
+    bad one failed identically. Addressed correctly, a valid command succeeds and
+    a bogus one returns 6. The two specs disagreed because their scripts
+    differed, not because the machine changed. Spec 0047's finding 4 is corrected
+    and its open question 3 closed in this entry's PR, and
+    `bash scripts/voiceover_channels.sh` now probes the commander while keeping
+    the application probe as a labelled control.
     **Carries spec 0041's sharpest requirement.** After six consecutive
     `open next speech attribute guide` commands, every VoiceOver-specific call
     began failing while `tell application "VoiceOver" to return name` still
@@ -737,7 +746,16 @@ rule intends.
     call. A bridge on this route must treat "the reader answers its own name but
     not its own state" as a distinct, detectable, reported condition — returning
     an empty read-back is what a naive implementation does, and it is wrong.
+    **Answered by a `ReaderLiveness` port asked only after a dispatch has already
+    failed**: a reader that answers its own name but not the command is the named
+    condition, with a reader restart as its recovery, and one that answers
+    nothing at all is a different report with a different fix. A THIRD confound
+    is documented and deliberately NOT detected -- the application under test
+    wedged while the reader is entirely healthy, measured 2026-08-30 with an
+    unresponsive Finder -- because nothing at this layer can see it, and a port
+    that pretended to would be confidently wrong.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    Done (PR #87, 2026-08-30).
 13.8. **Input: typing** (lane 3). `typeText` by synthesized keystrokes, with
     **Accessibility requested lazily** — only if the session asks to type. This
     is a macOS-only design lever with no NVDA analogue, because Windows has no
