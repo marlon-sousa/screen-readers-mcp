@@ -40,10 +40,12 @@ re-binds ours.
 | `Package.swift` | The module graph, which is the architecture test: a domain file that imports the adapters does not compile. |
 | `build.sh` | Assembles the `.app`, the `.appex` and the framework. SwiftPM cannot emit bundles, so this is the build. |
 | `Sources/CaptureVoice/` | The capture voice, as its own hexagon: `Domain/Ports`, `Domain/Entities`, `Domain/Controllers`, `Adapters`. |
+| `Sources/ScreenReaderWire/` | The wire contract's Swift binding — value types and validation, hand-written against [`specs/wire/v1/schema.json`](../../specs/wire/v1/schema.json) and gated against it by `scripts/drift.py`. Depends on nothing. |
 | `Sources/CaptureVoiceExtension/` | The `.appex` executable — a stub, because the audio unit must live in a framework. |
 | `Sources/CaptureProbe/` | A diagnostic client that answers "is the capture voice published?" without VoiceOver. |
 | `Sources/VoiceOverBridgeApp/` | The container app. An extension cannot be installed on its own. |
 | `Tests/CaptureVoiceTests/` | Mirrors `Sources/` file for file, with the port fakes under `Fakes/`. |
+| `Tests/ScreenReaderWireTests/` | Mirrors `Sources/ScreenReaderWire/` file for file. No fakes: value types are tested with values, from the JSON a peer would send. |
 | `VoiceOver.sdef` | VoiceOver's AppleScript dictionary, dumped on macOS 15.0. The reference this repo otherwise does not have. |
 
 ```mermaid

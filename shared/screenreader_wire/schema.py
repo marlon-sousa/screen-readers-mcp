@@ -33,6 +33,10 @@ from .protocol import (
 
 _NONE_TYPE = type(None)
 
+#: Sentinel for "this field has no default at all", distinct from ``None``,
+#: which is itself a default several fields declare.
+_NO_DEFAULT: Any = object()
+
 #: JSON Schema dialect the emitted document declares.
 _DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
@@ -108,12 +112,46 @@ def _schema_for(tp: Any, defs: dict[str, Any]) -> dict[str, Any]:
 	return {}
 
 
+def _default_of(f: dataclasses.Field[Any]) -> Any:
+	"""Return ``f``'s default rendered as JSON, or :data:`_NO_DEFAULT`.
+
+	Enum defaults become their wire string, and a ``default_factory`` is CALLED
+	-- every factory in this contract exists to hand out a fresh empty container,
+	and the empty container is the thing a binding author has to reproduce.
+	Anything else raises: a default this cannot render is one the schema would
+	silently omit, which is the failure this whole function exists to remove.
+	"""
+	if f.default is not dataclasses.MISSING:
+		value: Any = f.default
+	elif f.default_factory is not dataclasses.MISSING:
+		value = f.default_factory()
+	else:
+		return _NO_DEFAULT
+	if isinstance(value, enum.Enum):
+		value = cast("Any", value).value
+	if value is None or isinstance(value, (bool, int, float, str)):
+		return value
+	if isinstance(value, (list, dict)) and not cast("Any", value):
+		return cast("Any", value)
+	raise TypeError(f"field {f.name!r} has a default the schema cannot render: {value!r}")
+
+
 def _object_schema(tp: type[Any], defs: dict[str, Any]) -> dict[str, Any]:
 	"""Build the object schema for a dataclass type.
 
-	A field is ``required`` when it has no default (mirrors ``from_dict``);
+	A field is ``required`` when it has no default (mirrors ``from_dict``), and
+	when it HAS one the value is published as ``default``;
 	``additionalProperties`` is ``true`` because the validator ignores extra
 	keys for forward compatibility.
+
+	Why the defaults are published, given that ``default`` is an annotation JSON
+	Schema validators ignore: this document's whole purpose is that a non-Python
+	bridge author binds the contract WITHOUT reading Python (see this module's
+	header), and a default is part of the shape they must reproduce -- ``graceMs``
+	is 100 ms and ``timeout`` is 5 s whether or not the caller sends the key.
+	``protocol.md`` §7.2 already told them "defaults live in schema.json"; until
+	board entry 13.3 they did not, and the Swift binding was the first reader to
+	need them.
 	"""
 	if not dataclasses.is_dataclass(tp):
 		return {}
@@ -122,9 +160,11 @@ def _object_schema(tp: type[Any], defs: dict[str, Any]) -> dict[str, Any]:
 	required: list[str] = []
 	for f in dataclasses.fields(tp):
 		properties[f.name] = _schema_for(hints[f.name], defs)
-		has_default = f.default is not dataclasses.MISSING or f.default_factory is not dataclasses.MISSING
-		if not has_default:
+		default = _default_of(f)
+		if default is _NO_DEFAULT:
 			required.append(f.name)
+		else:
+			properties[f.name]["default"] = default
 	schema: dict[str, Any] = {"type": "object", "properties": properties}
 	if required:
 		schema["required"] = required

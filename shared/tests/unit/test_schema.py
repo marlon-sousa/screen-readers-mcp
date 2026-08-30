@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from screenreader_wire import protocol as p
 from screenreader_wire import schema as s
@@ -83,7 +86,10 @@ def test_hello_result_reader_is_a_ref_and_capabilities_an_enum_array() -> None:
 
 def test_optional_field_is_nullable_and_not_required() -> None:
 	wait = _defs(s.build_wire_schema())["WaitForSpeechParams"]
-	assert wait["properties"]["afterIndex"] == {"anyOf": [{"type": "integer"}, {"type": "null"}]}
+	assert wait["properties"]["afterIndex"] == {
+		"anyOf": [{"type": "integer"}, {"type": "null"}],
+		"default": None,
+	}
 	# afterIndex and timeout have defaults; only text is required.
 	assert wait["required"] == ["text"]
 
@@ -94,6 +100,51 @@ def test_required_lists_only_fields_without_defaults() -> None:
 	assert "required" not in ack
 	# ReaderInfo's two fields have no defaults -> both required.
 	assert _defs(s.build_wire_schema())["ReaderInfo"]["required"] == ["name", "version"]
+
+
+# --- defaults, which are the half of a shape `required` cannot state ---------
+#
+# Board 13.3. A binding author reading only this document has to reproduce
+# `graceMs == 100`, and until these tests existed the document did not say so
+# while protocol.md §7.4 claimed it did.
+
+
+def test_a_field_with_a_default_publishes_it() -> None:
+	press = _defs(s.build_wire_schema())["PressGestureParams"]["properties"]
+	assert press["graceMs"]["default"] == 100
+	assert press["announce"]["default"] == ""
+
+
+def test_a_required_field_publishes_no_default() -> None:
+	press = _defs(s.build_wire_schema())["PressGestureParams"]["properties"]
+	assert "default" not in press["gestures"]
+
+
+def test_a_none_default_is_published_as_null_rather_than_omitted() -> None:
+	# The distinction the sentinel exists for: `afterIndex` HAS a default and it
+	# is None, which is not the same as having none.
+	wait = _defs(s.build_wire_schema())["WaitForSpeechParams"]["properties"]
+	assert wait["afterIndex"]["default"] is None
+
+
+def test_a_default_factory_is_published_as_the_empty_container_it_makes() -> None:
+	defs = _defs(s.build_wire_schema())
+	assert defs["Request"]["properties"]["params"]["default"] == {}
+	assert defs["HelloResult"]["properties"]["normalized"]["default"] == []
+
+
+def test_an_enum_default_is_published_as_its_wire_string() -> None:
+	snapshot = _defs(s.build_wire_schema())["DocumentSnapshotResult"]["properties"]
+	assert snapshot["truncatedBy"]["default"] == "none"
+
+
+def test_a_default_the_schema_cannot_render_raises_rather_than_vanishing() -> None:
+	@dataclasses.dataclass
+	class Unrenderable:
+		trouble: list[int] = dataclasses.field(default_factory=lambda: [1])
+
+	with pytest.raises(TypeError, match="trouble"):
+		s._object_schema(Unrenderable, {})  # pyright: ignore[reportPrivateUsage]
 
 
 def test_any_field_maps_to_the_empty_schema() -> None:

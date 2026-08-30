@@ -628,10 +628,47 @@ crosses this boundary any more than it crosses the Go↔Python one.
 
 Codable conformance and validation live here; **framing does not** — that is
 `JsonLinesChannel`, an adapter, for the same reason it is one in the NVDA bridge.
+(ROADMAP 13.3's one-line summary says "and JSON-lines framing"; the layout above
+is the authority, and framing is 13.4's.)
 
 `scripts/drift.py` gains a third comparison. Its failure message names the
 schema, the binding and the field, since a drift an agent cannot locate is a
 drift it will paper over.
+
+#### Amendments made while implementing 13.3, each with its why
+
+- **`JSONValue.swift` was added** — an entity holding any JSON value. Python
+  needs none because `Any` is a type there; Swift has no Codable equivalent, and
+  the contract has six open fields (`Request.params`, `Response.result`,
+  `EchoParams.payload`, `ConfigResult.value`, `SetConfigParams.value`,
+  `NormalizedSetting`'s two). It also carries the two conversions a handler moves
+  through: typed result → open value, open params → typed shape.
+- **`Decoding.swift` was added** — one `KeyedDecodingContainer` helper, because
+  Swift's `decodeIfPresent` answers nil to both "not sent" and "sent as null"
+  while `from_dict` **raises** for a null in a field that is not nullable. Two
+  bindings that disagree about that disagree about which frames are legal, and
+  no test of either side alone would show it. Written once rather than at ~40
+  decode sites, which is how one site quietly gets it wrong.
+- **`LogLevel.swift`, `BrowseMode.swift` and `AckResult.swift` are their own
+  files**, alongside the `CaptureMode.swift` and `SpeechEntry.swift` the table
+  names. Same rule, applied: a shape more than one command's file needs does not
+  live inside one of them. `TruncatedBy` and `GesturePress`, needed by exactly
+  one command each, live with that command.
+- **The binding renders the WHOLE contract — all 26 commands and 52 shapes — not
+  the six capabilities this bridge advertises.** Binding the implemented subset
+  would give the drift gate an exception list, and an exception list is the thing
+  that goes stale. Each unimplemented command's file says so in its header.
+- **`scripts/swift_wire_binding.py` reads the declarations; `drift.py` decides
+  whether they are drift.** The reader parses rather than builds, so the gate
+  needs no Swift toolchain and runs in the Windows `shared` CI job — which is
+  where a change to the contract finds out it left the Swift rendering behind.
+  It **raises rather than skips** what it cannot read.
+- **`specs/wire/v1/schema.json` now publishes defaults**, as JSON Schema
+  `default` annotations emitted by `shared/screenreader_wire/schema.py`. §7.2 of
+  the contract had claimed "defaults live in `schema.json`" since v1 while the
+  document carried none, so a binding author reading only the published contract
+  could not know `graceMs` is 100 — and the gate could not check it. Annotations
+  are ignored by validators, so nothing about validation changed.
 
 ### 13.4 — channel and session
 

@@ -33,10 +33,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      # Wire-contract tests, pyright, ruff (lint AND format), and the gate that
-      # the committed schema.json still matches protocol.py. No Go toolchain
-      # here on purpose -- `ci-shared` must not reach for one, and this job is
-      # what proves it hasn't started to.
+      # Wire-contract tests, pyright, ruff (lint AND format), the gate that the
+      # committed schema.json still matches protocol.py, and the gate that the
+      # hand-written SWIFT binding still matches the schema. No Go toolchain here
+      # on purpose -- `ci-shared` must not reach for one, and this job is what
+      # proves it hasn't started to. No SWIFT toolchain either, and the Swift
+      # gate runs anyway: it reads that binding's source rather than building it,
+      # so this Windows job is where a schema change learns it left the Swift
+      # rendering behind -- which is exactly the job that would otherwise have no
+      # way of knowing.
       - name: poe ci-shared
         run: uv run poe ci-shared
 
