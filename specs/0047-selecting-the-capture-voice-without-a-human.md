@@ -209,7 +209,44 @@ concrete thing this document cannot do alone.
 
 ## Finding 4 — `perform command` is dead on this machine, and that is a risk to 13.7
 
+> **CORRECTED 2026-08-30, on the branch that implemented board entry 13.7. THIS
+> FINDING WAS WRONG, AND ITS CAUSE WAS A WRONG TARGET OBJECT RATHER THAN
+> ANYTHING ABOUT THE MACHINE.** `bridges/voiceover/VoiceOver.sdef` — in the repo
+> the whole time — says the `application` class responds to `output`, `open`,
+> `close menu` and `quit`, and **not** to `perform command`. The `commander
+> object` class responds to it, reached through the application's read-only
+> `commander` property. Re-measured on the same host, macOS 15.0 (24A335):
+>
+> | Script | Result |
+> |---|---|
+> | `tell application "VoiceOver" to perform command "describe item in voiceover cursor"` | **error 4** |
+> | the same with a deliberately bogus name | **error 4** |
+> | `tell application "VoiceOver" to tell commander to perform command "describe item in voiceover cursor"` | **succeeded**, and the maintainer heard it |
+> | … `to tell commander to perform command "no such command at all"` | **`Command does not exist (6)`** |
+> | … `to tell commander to perform command "go to desktop"` | **succeeded**; the VO cursor moved, and `text under cursor of vo cursor` returned real text for the first time on this host |
+>
+> **Sending a command to an object that does not handle it fails before any name
+> lookup**, which is exactly why a valid name and a bogus one failed identically
+> — the detail this finding recorded as its central puzzle and could not
+> explain. Spec 0041 measured `6` and this document measured `4` for what read
+> as the same call because **their scripts differed**, not because anything
+> changed between them.
+>
+> **What survives.** The read/dispatch split recorded below was real as
+> measured; it was a property of the script, not of the reader.
+> `ReaderLiveness` keeps its justification from spec 0041's own measurement —
+> the object model dying while `return name` still answers — which is a
+> different and independently observed condition. Everything else in this
+> finding is superseded, including the risk it placed on 13.7.
+>
+> The instrument was corrected in the same commit: `scripts/voiceover_channels.sh`
+> now probes the commander and **keeps the application probe as a labelled
+> control**, so the distinction stays visible in the tool rather than only in
+> this paragraph. The bridge's own `VoiceOverGestureSender` carries the finding
+> in its header, with a test asserting the target as a negative.
+
 Found while testing route 2 above, and it is the most consequential thing here.
+**Read the correction above first: the conclusion is withdrawn.**
 
 | Channel | Result |
 |---|---|
@@ -848,8 +885,8 @@ was asking for.
 | Updating the provider needs a reader restart | a manual cost | **true, but scriptable** |
 | The user must select the capture voice in VoiceOver Utility | assumed permanent | **unresolved; three untried routes** |
 | Activities could carry the voice | unknown | **true, and they inherit** |
-| An activity can be selected without a human | assumed possible | **no documented route; blocked by finding 4** |
-| `perform command` is the gesture mechanism | assumed sound | **a measured risk** |
+| An activity can be selected without a human | assumed possible | **no documented route; finding 4's block is withdrawn, so the route is untried rather than blocked** |
+| `perform command` is the gesture mechanism | assumed sound | **sound — addressed to the COMMANDER (finding 4, corrected 2026-08-30)** |
 | The voice is published, so VoiceOver offers it | assumed equivalent | **false — they can disagree, invisibly** |
 | A reader restart restores a lost voice | spec 0041, C2 | **necessary, not sufficient; re-registration is the repair** |
 | The preference write does not work | finding 2 | **dead — the reader keeps the voice nowhere we can write** |
@@ -884,8 +921,13 @@ was asking for.
    `VoiceOverDefaultVoiceSelections`. Not in VoiceOver's domain at all, which is
    why every search in this document looked in the wrong namespace. The bridge
    both reads and writes it.
-3. **What killed `perform command`, and is it recoverable at all?** Until this is
-   answered, 13.7's mechanism is unproven on this host.
+3. ~~**What killed `perform command`, and is it recoverable at all?**~~
+   **ANSWERED 2026-08-30, and the answer is that nothing killed it**: the command
+   was addressed to the `application` class, which does not handle it. Addressed
+   to the `commander object`, as `VoiceOver.sdef` says it must be, a valid name
+   succeeds and a bogus one returns `Command does not exist (6)` — the clean
+   failure 13.7 was designed around. See the correction on finding 4. Board entry
+   13.7 was implemented against the corrected mechanism.
 4. **What does an activity look like in storage?** Answerable the moment one
    exists.
 5. **Is an app-bound activity the right shape for the add-on-testing use case?**
@@ -897,8 +939,12 @@ was asking for.
   bridge sets its own voice by writing one preference (findings 16, 17), so 13.13
   is no longer "can it be done" but the much smaller "wire it in": read and
   restore the previous `voiceId` around a session, and carry the type trap so
-  nobody re-derives it. Questions 3 and 4 remain.
-- **13.7** gains the `perform command` risk, since it is the entry that depends
-  on it.
+  nobody re-derives it. **Amended again 2026-08-30: question 3 is answered and
+  13.6 did the wiring**, so what remains of 13.13 is question 4 and the activity
+  work alone.
+- ~~**13.7** gains the `perform command` risk, since it is the entry that depends
+  on it.~~ **WITHDRAWN 2026-08-30**: the risk did not exist. 13.7's board entry
+  drops its "A MEASURED RISK" paragraph in the same commit that implements the
+  entry, and 13.13 no longer carries question 3.
 - **13.11** keeps both costs in its documentation, but the restart is now
   described as scripted rather than manual.

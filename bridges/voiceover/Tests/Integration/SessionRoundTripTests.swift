@@ -29,7 +29,8 @@ struct SessionRoundTripTests {
 		init(
 			handlers: [String: any CommandHandler]? = nil,
 			attended: Bool = true,
-			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle()
+			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
+			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner()
 		) {
 			let (bridgeEnd, clientEnd) = LoopbackTransport.pair()
 			client = clientEnd
@@ -41,7 +42,7 @@ struct SessionRoundTripTests {
 				config: SessionConfig(readerVersion: "macOS 15.0.0", attended: attended),
 				handlers: handlers
 					?? Registry.build(
-						factory: testAdapterFactory(lifecycle: lifecycle),
+						factory: testAdapterFactory(lifecycle: lifecycle, scripts: scripts),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
 					)
@@ -86,7 +87,7 @@ struct SessionRoundTripTests {
 		#expect(hello.mode == .live)
 		// What this build actually serves, announced end to end -- the server gates
 		// its speech tools on exactly this string arriving here.
-		#expect(hello.capabilities == [.speech])
+		#expect(hello.capabilities == [.speech, .gestures])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
 		peer.hangUp()
@@ -248,6 +249,67 @@ struct SessionRoundTripTests {
 		try peer.client.sendAll(Data((hello + "\n" + ping + "\n").utf8))
 		#expect(try peer.reply().id == 1)
 		#expect(try peer.reply().id == 2)
+		peer.hangUp()
+	}
+
+	@Test("a pressGesture off the wire reaches the reader as a COMMANDER-addressed script")
+	func aGestureReachesTheReaderEdge() throws {
+		// THE TEST THE UNITS CANNOT WRITE, and 13.6's lesson applied: every unit
+		// above runs against a graph its own test assembled, so a handler wired to
+		// the wrong command name, a result that does not encode, or an adapter the
+		// factory never actually builds would pass all of them. What is asserted
+		// here is the whole path -- a JSON frame in, the real Registry's handler,
+		// the real VoiceOverAdapterFactory's sender, and the script text that would
+		// have gone to `osascript`.
+		let scripts = FakeAppleScriptRunner()
+		let peer = Peer(scripts: scripts)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: ["gestures": .array([.string("go to desktop")]), "graceMs": .int(0)])
+		let response = try peer.reply()
+		guard case .success(let value) = try response.outcome() else {
+			Issue.record("pressGesture failed: \(response)")
+			return
+		}
+		let result = try value.decoded(as: GestureResult.self)
+		#expect(result.pressed.map(\.gesture) == ["go to desktop"])
+		// Nothing spoke, so the window is empty -- which is a fact about an
+		// instant and never a claim that the command said nothing (protocol.md
+		// §7.3). And `state` stays nil: no `state` capability on this reader.
+		#expect(result.speech.isEmpty)
+		#expect(result.state == nil)
+
+		// The script the real sender built, off the real wire request. This is the
+		// end-to-end form of the finding that unblocked this entry.
+		let script = try #require(scripts.scripts.first)
+		#expect(script == "tell application \"VoiceOver\" to tell commander to perform command \"go to desktop\"")
+		#expect(peer.transcript.gestures == ["go to desktop"])
+		peer.hangUp()
+	}
+
+	@Test("an unknown command comes back as an error frame, and the session survives it")
+	func anUnknownGestureIsAnErrorFrameNotADeadSession() throws {
+		// `Command does not exist (6)` is the clean failure this whole route was
+		// chosen for, and the session tolerating it is what makes a test run
+		// survive a command the agent got wrong.
+		let scripts = FakeAppleScriptRunner()
+		scripts.failNext(number: 6, message: "Command does not exist.")
+		let peer = Peer(scripts: scripts)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture", params: ["gestures": .array([.string("no such command")])])
+		let failed = try peer.reply()
+		#expect(failed.id == 2)
+		#expect(try #require(failed.error).message.contains("no such command"))
+
+		// Still alive, which is the half that matters.
+		try peer.send(id: 3, cmd: "ping")
+		#expect(try peer.reply().id == 3)
 		peer.hangUp()
 	}
 }

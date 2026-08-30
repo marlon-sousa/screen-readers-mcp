@@ -22,13 +22,14 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("it serves the four a session needs, plus the five `speech` promises")
+	@Test("it serves the four a session needs, the five `speech` promises, and `pressGesture`")
 	func theCommandSet() {
 		#expect(
 			Set(registry().keys) == [
 				"hello", "ping", "echo", "bye",
 				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
 				"waitForSpeech", "waitForSpeechToFinish",
+				"pressGesture",
 			])
 	}
 
@@ -39,26 +40,38 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces `speech` and nothing else, because that is what this build serves")
+	@Test("it announces `speech` and `gestures`, because that is what this build serves")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities == [.speech])
+		#expect(Registry.capabilities == [.speech, .gestures])
 	}
 
-	@Test("every command `speech` promises has a handler, and no handler is announced twice")
+	@Test("every command an announced capability promises has a handler, and nothing extra")
 	func theCapabilityAndItsHandlersAgree() {
 		// THE MISTAKE THIS CATCHES is invisible in any single handler's test: a
 		// capability announced with one of its commands missing is a tool the
 		// agent can see, call, and get "unknown command" from. protocol.md §5
-		// lists what `speech` covers; this is that list.
-		let promised = [
-			"getSpeech", "getLastSpeech", "getNextSpeechIndex",
-			"waitForSpeech", "waitForSpeechToFinish",
+		// lists what each capability covers; this is that list.
+		let promised: [Capability: [String]] = [
+			.speech: [
+				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
+				"waitForSpeech", "waitForSpeechToFinish",
+			],
+			.gestures: ["pressGesture"],
 		]
 		let served = registry()
-		#expect(Registry.capabilities.contains(.speech))
-		for command in promised {
-			#expect(served[command] != nil, "`speech` promises \(command) and nothing serves it")
+		for (capability, commands) in promised {
+			#expect(Registry.capabilities.contains(capability))
+			for command in commands {
+				#expect(
+					served[command] != nil,
+					"`\(capability.rawValue)` promises \(command) and nothing serves it")
+			}
 		}
+		// AND THE CONVERSE, which is the half that would otherwise rot: nothing is
+		// announced that this table does not account for, so a capability added to
+		// `Registry.capabilities` without its handlers fails HERE rather than in a
+		// live session.
+		#expect(Set(Registry.capabilities) == Set(promised.keys))
 	}
 
 	@Test("hello is the only command legal before the handshake")
@@ -73,9 +86,15 @@ struct RegistryTests {
 		#expect(Set(passive) == ["ping"])
 	}
 
-	@Test("nothing here moves the user's machine; the input entries are the first that will")
-	func nothingMutatesTheReaderYet() {
-		#expect(registry().values.allSatisfy { !$0.mutatesReader })
+	@Test("`pressGesture` is the only command that moves the user's machine")
+	func exactlyOneCommandMutatesTheReader() {
+		// THE FLAG DEFAULTS TO `false` AND THE FAILURE MODE OF FORGETTING IS
+		// "ALLOWED", so a new mutating handler that omits it is invisible in its
+		// own test and visible only here. `typeText` joins this set at 13.8, and
+		// the assertion is the SET rather than a membership check for exactly that
+		// reason: adding a handler without the flag has to fail, not pass quietly.
+		let mutating = registry().filter { $0.value.mutatesReader }.keys
+		#expect(Set(mutating) == ["pressGesture"])
 	}
 
 	@Test("the reader identity is the one protocol.md's endpoint convention is built from")

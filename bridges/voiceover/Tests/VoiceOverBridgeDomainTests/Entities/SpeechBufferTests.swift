@@ -226,4 +226,68 @@ struct SpeechBufferTests {
 		clock.advance(speechFinishedSeconds + 0.1)
 		#expect(speech.waitToFinish(timeout: 0))
 	}
+
+	// -- the grace window ------------------------------------------------------
+
+	@Test("the grace window returns what was ALREADY there without sleeping at all")
+	func aFullBufferIsNotWaitedOn() {
+		let speech = buffer()
+		speech.append(utterance("said"))
+		let read = speech.collectSince(1, grace: 5)
+		#expect(read.entries.map(\.utterance.text) == ["said"])
+		// The predicate is checked before the first sleep, so a window over a
+		// buffer that already has words costs nothing.
+		#expect(clock.sleeps.isEmpty)
+	}
+
+	@Test("an empty window returns an empty result, having waited out the grace")
+	func anEmptyWindowIsAFactNotAClaim() {
+		// The §7.3 sentence in one assertion: nothing arrived BY THEN, which is a
+		// fact. It is not a claim that nothing will, which is why no result on
+		// this route carries a `complete` flag.
+		let speech = buffer()
+		let read = speech.collectSince(1, grace: 0.2)
+		#expect(read.entries.isEmpty)
+		#expect(read.fromIndex == 1)
+		#expect(read.toIndex == 1)
+		#expect(!clock.sleeps.isEmpty)
+	}
+
+	@Test("a zero grace reads the buffer as it stands and never sleeps")
+	func zeroGraceIsALegitimateOptOut() {
+		let speech = buffer()
+		#expect(speech.collectSince(1, grace: 0).entries.isEmpty)
+		#expect(clock.sleeps.isEmpty)
+	}
+
+	@Test("it returns EARLY on the first words, leaving the rest for the next read")
+	func itReturnsOnTheFirstWords() {
+		// The cost is stated rather than hidden: an utterance still in flight when
+		// the first one lands is left behind, and the caller can always take it,
+		// because the range it was handed says exactly where to resume.
+		let speech = buffer()
+		speech.append(utterance("first"))
+		let read = speech.collectSince(1, grace: 5)
+		#expect(read.entries.count == 1)
+		speech.append(utterance("second"))
+		#expect(speech.collectSince(read.toIndex, grace: 0).entries.map(\.utterance.text) == ["second"])
+	}
+
+	@Test("an utterance with no words does not end the window early")
+	func anEmptyUtteranceIsNotWords() {
+		// The feed carries entries that render to nothing, and the question the
+		// window asks is "has SPEECH started", not "has anything arrived".
+		let speech = buffer()
+		speech.append(utterance(""))
+		let read = speech.collectSince(1, grace: 0.2)
+		#expect(read.entries.isEmpty)
+		#expect(!clock.sleeps.isEmpty)
+	}
+
+	@Test("a stale bookmark clamps rather than raising, like every other read")
+	func aStaleBookmarkClamps() {
+		let speech = buffer()
+		speech.append(utterance("said"))
+		#expect(speech.collectSince(-5, grace: 0).fromIndex == 0)
+	}
 }

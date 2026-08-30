@@ -12,17 +12,18 @@
 // SessionContext handed to `execute` -- so one map serves every session. `hello`
 // is the exception, because it needs the factory and the identity below.
 //
-// THE CAPABILITY LIST IS ONE ENTRY LONG, AND THAT IS THE ENTRY WORKING AS
+// THE CAPABILITY LIST IS TWO ENTRIES LONG, AND THAT IS THE ENTRY WORKING AS
 // DESIGNED. Spec 0046 settles this bridge's six capabilities -- speech,
 // gestures, typing, focus, interact, guidance -- and says they are announced ONE
 // ENTRY AT A TIME, so the gate always describes what works. At 13.5 the capture
-// feed exists, so `speech` is announced beside the five handlers that serve it
-// and the server gates every other tool. Each entry below adds its own:
+// feed arrived, so `speech` was announced beside the five handlers that serve
+// it; 13.7 adds `gestures` beside the one that presses them. Each entry adds its
+// own:
 //
 // | Capability | Entry |
 // |---|---|
-// | speech | 13.5, the capture feed -- here |
-// | gestures | 13.7 |
+// | speech | 13.5, the capture feed |
+// | gestures | 13.7, input -- here |
 // | typing | 13.8 |
 // | focus | 13.9 |
 // | interact | 13.10, with the human channel |
@@ -39,7 +40,7 @@ import ScreenReaderWire
 
 public enum Registry {
 	/// What this build serves. See the header for what fills the rest.
-	public static let capabilities: [Capability] = [.speech]
+	public static let capabilities: [Capability] = [.speech, .gestures]
 
 	/// This bridge's reader identity. `name` is the value protocol.md §1's
 	/// endpoint convention is built from (`voiceoverMcpBridge`), and the version
@@ -49,9 +50,9 @@ public enum Registry {
 		ReaderInfo(name: "voiceover", version: version)
 	}
 
-	/// The command map. Nine commands today -- the four a session needs, and the
-	/// five `speech` promises; each later entry adds its own handlers here,
-	/// beside the capability it announces.
+	/// The command map. Ten commands today -- the four a session needs, the five
+	/// `speech` promises and the one `gestures` does; each later entry adds its
+	/// own handlers here, beside the capability it announces.
 	public static func build(
 		factory: any AdapterFactory,
 		readerVersion: String,
@@ -75,6 +76,9 @@ public enum Registry {
 			Command.getNextSpeechIndex.rawValue: GetNextSpeechIndexHandler(),
 			Command.waitForSpeech.rawValue: WaitForSpeechHandler(),
 			Command.waitForSpeechToFinish.rawValue: WaitForSpeechToFinishHandler(),
+			// What `gestures` announces, and the FIRST handler in this bridge that
+			// moves the user's machine -- see its `mutatesReader`.
+			Command.pressGesture.rawValue: PressGestureHandler(),
 		]
 	}
 }

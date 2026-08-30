@@ -7,17 +7,21 @@ Decided). Its class-by-class layout is
 [spec 0046](../../specs/0046-the-voiceover-bridge-class-by-class.md); the board
 entries are lane 3 in [`ROADMAP.md`](../../ROADMAP.md).
 
-**What exists today is the capture voice, the wire binding, the session and the
-capture feed** — board entries 13.2 through 13.5. The bridge **listens**: a
+**What exists today is the capture voice, the wire binding, the session, the
+capture feed, capture mode and the gesture channel** — board entries 13.2 through
+13.7. The bridge **listens**: a
 server dials the local endpoint, completes a handshake and exchanges commands.
 It also **hears**: it tails the file the capture voice appends to and answers
 `getSpeech`, `getLastSpeech`, `getNextSpeechIndex`, `waitForSpeech` and
-`waitForSpeechToFinish`, so `hello` announces the `speech` capability — and that
-one and no other, which is the honest description of a bridge whose remaining
-reader edges do not exist yet. **Since 13.6 it can also make the reader quiet**,
+`waitForSpeechToFinish`. **Since 13.6 it can also make the reader quiet**,
 and it selects the capture voice itself at the handshake and puts the user's own
 voice back at teardown, so nobody has to visit VoiceOver Utility to start or
-finish a session. The dialog that starts and stops it is
+finish a session. **Since 13.7 it can drive the reader**: `pressGesture` sends
+VoiceOver's own English command names — `go to desktop`, not a keystroke —
+through the reader's own dispatcher, which is why this bridge asks for no
+Accessibility grant. So `hello` announces `speech` and `gestures`, and those two
+and no others, which is the honest description of a bridge whose remaining reader
+edges do not exist yet. The dialog that starts and stops it is
 13.10; until then it is started from a test, from code, or from
 `swift build --product BridgeListener`.
 

@@ -77,8 +77,9 @@ the manifest. Both, usually.
 ## The capability set grows ONE ENTRY AT A TIME
 
 `hello` announces what this build actually implements, and nothing else.
-`Registry.capabilities` was empty at 13.4, is `[speech]` at 13.5, and each later
-entry adds its own alongside the handlers that serve it. Announcing a capability
+`Registry.capabilities` was empty at 13.4, `[speech]` at 13.5, `[speech,
+gestures]` at 13.7, and each later entry adds its own alongside the handlers that
+serve it. Announcing a capability
 before the entry that implements it produces the one failure the capability gate
 exists to prevent: a tool the agent can see, call, and get nothing from. The
 converse costs too, and it is why `speech` landed with 13.5 rather than being
@@ -150,6 +151,37 @@ theirs back on every teardown path. Three things must survive any edit here:
   itself as the pass-through voice, which is infinite recursion. That is Rule 0's
   first caveat and it is asserted in three places.
 
+## A gesture on this reader is a COMMAND NAME, addressed to the commander
+
+Two rules, and the second one is the finding that unblocked board entry 13.7.
+
+**Gesture ids are English command names**, from VoiceOver's own
+`SCRStringsToCommandsMap` vocabulary — 415 entries on macOS 15.0, phrases like
+`go to desktop` and `mute sound toggle`. There is no table of them in this
+repo and there must not be one: the reader does its own dispatch and answers an
+unknown name with `Command does not exist (6)`, which is a better check than any
+copy that goes stale every release. What `CommandVocabulary` refuses is a
+**keystroke sent as a gesture** — `control+l`, and VoiceOver's own `VO-D`
+notation — because that is the mistake the reader cannot diagnose usefully, and
+because synthesizing a keystroke needs the Accessibility grant 13.8 exists to
+keep lazy. The hyphen rule has to survive real command names that contain
+hyphens, so a hyphen counts only in an id with no spaces at all.
+
+**`perform command` is addressed to the `commander object`, never to
+`application "VoiceOver"`.** `VoiceOver.sdef` in this directory is the authority:
+the `application` class responds to `output`, `open`, `close menu` and `quit`,
+and not to `perform command`; the commander does, reached through the
+application's read-only `commander` property. Sending a command to an object that
+does not handle it fails **before any name lookup**, which is why spec 0047
+measured error 4 for a valid name and a bogus one alike and recorded the channel
+as dead. It was not: spec 0041 and spec 0047 disagreed because their scripts
+differed. Addressed correctly, a valid name succeeds and a bogus one returns 6.
+
+A "simplification" back to the application target compiles, reads better, and
+restores a state in which every gesture fails identically with nothing saying
+why — so `VoiceOverGestureSenderTests` asserts the target as a **negative** as
+well as a positive.
+
 ## The endpoint, and why the derivation is duplicated on purpose
 
 The bridge **listens**; the server dials
@@ -215,6 +247,17 @@ shapes:
   seconds with nothing in the logs to say why. What caught it was a session-level
   test asserting the number of renewals, not an adapter-level one. Anything whose
   value is that it happens REPEATEDLY needs a test at the layer that repeats it.
+- **A wedged application under test looks exactly like a dead reader.** Measured
+  2026-08-30: Finder stopped responding, every cursor read answered `missing
+  value`, dispatches appeared to do nothing — and VoiceOver was entirely healthy,
+  saying so out loud in the user's own language. `killall Finder` fixed it.
+  Nothing at the bridge's layer can detect this, which is why `ReaderLiveness`
+  answers one narrow question about the READER and its header says in as many
+  words that a healthy answer from it is not a claim about the machine under
+  test. Spec 0047's finding 5 is the same confound from the other end: VoiceOver
+  frontmost publishes no accessibility tree of its own, so every read looks dead
+  then too. **When reads go quiet, check what is in front before blaming the
+  reader.**
 - **A reader that runs on its own thread must ATTACH before `start()` returns.**
   `FileLineTailer` opened the feed and seeked to its end on the new thread, which
   is a race against everything the caller does next — and what the caller does

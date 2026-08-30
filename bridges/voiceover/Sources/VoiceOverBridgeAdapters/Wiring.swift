@@ -97,6 +97,15 @@ public enum Wiring {
 		)
 	}
 
+	/// How this bridge runs an AppleScript: `/usr/bin/osascript`, through the
+	/// process seam that 13.6 already built.
+	///
+	/// ONE PER PROCESS, like the lifecycle and for a simpler reason: it holds no
+	/// state whatsoever, so a second one would differ from the first in nothing.
+	public static func appleScriptRunner(runner: (any ProcessRunner)? = nil) -> any AppleScriptRunner {
+		OSAScriptRunner(runner: runner ?? SubprocessRunner())
+	}
+
 	/// Which endpoint to accept on, per the configured connection mode.
 	public static func listener(
 		config: any BridgeConfig,
@@ -146,13 +155,15 @@ public enum Wiring {
 		eventBus: (any EventBus)? = nil,
 		logDirectory: String? = nil,
 		clock: any Clock = RealClock(),
-		lifecycle: (any ProviderLifecycle)? = nil
+		lifecycle: (any ProviderLifecycle)? = nil,
+		scripts: (any AppleScriptRunner)? = nil
 	) -> BridgeServer {
 		let handlers = Registry.build(
 			factory: VoiceOverAdapterFactory(
 				capturePath: capturePath(),
 				markerPath: markerPath(),
-				lifecycle: lifecycle ?? providerLifecycle()
+				lifecycle: lifecycle ?? providerLifecycle(),
+				scripts: scripts ?? appleScriptRunner()
 			),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion

@@ -1145,6 +1145,63 @@ screen reader.
 | `Commands/PressGesture.swift` | controller | dispatch, then the grace window. |
 | `Commands/Observation.swift` | supporting construct | The grace window itself — the bookmark-dispatch-wait-report sequence shared with `typeText`. **`state` is never sampled**, because this bridge announces no `state` capability. |
 
+**Amendments made while implementing 13.7 (2026-08-30), each with its why.**
+
+1. **`OSAScriptRunner` is not a leaf, and this entry adds no untestable code at
+   all.** The table calls it "~15 lines, the only untestable part of the whole
+   AppleScript edge". It runs `/usr/bin/osascript` through the **`ProcessRunner`
+   seam 13.6 already built**, so the leaf on this edge is `SubprocessRunner`,
+   which exists and is already untested by design. The one decision the file does
+   make — recovering an error **number** from what the tool wrote — is therefore
+   an ordinary unit test rather than something only the maintainer's machine
+   could exercise. `NSAppleScript` was the alternative and was declined for a
+   second reason besides testability: it is documented as not thread-safe, and
+   everything here runs on the session's thread rather than the main one.
+2. **`AdapterSet` gains `readerLiveness` as well as `gestureSender`.** "The
+   reader answers its own name but not its own state" is a claim about **two
+   channels**, so the port that answers one and the port that answers the other
+   stay separate and the **controller** combines them. Folding liveness into the
+   sender would make one adapter depend on another without a seam, which is the
+   one thing the layering rule forbids.
+3. **`ReaderLiveness` keeps `readerAnswersItsOwnName() -> Bool`**, rather than
+   spec 0047's suggested "report which channel is alive". That suggestion was
+   made because finding 4 appeared to show a live read channel beside a dead
+   command channel; **finding 4 is corrected** — it was a wrong target object —
+   so the split it described was never real. The condition the port exists for is
+   spec 0041's, which is genuinely binary at this layer, and the *gesture sender*
+   already reports which call failed.
+4. **`Observation` carries `speechEntries` and no state sampler**, and
+   `GetSpeech` was moved onto it in the same commit. Lane 1's module of the same
+   name exists because several commands assemble one answer; the second caller
+   arrives here, so the mapping moves here rather than being written twice.
+5. **`SpeechBuffer` gains `collectSince(_:grace:)`.** The grace window needs a
+   wait-until-words-arrive primitive that the buffer did not have; it is the
+   entity's own business, mirrors lane 1's `collect_since`, and belongs beside
+   the two wait loops rather than in a controller.
+6. **`announce` is refused in a silent session and noted in a live one.** There
+   is no human channel in this build — `Announcer` and the `interact` capability
+   are 13.10 — and `announce` is the human's *only* channel precisely when the
+   reader is being rendered mute on their behalf. Refusing there rather than
+   silently dropping is the same argument that kept silent mode itself refused
+   until 13.6; proceeding in a live session is the same asymmetry the handshake
+   already makes, since the human hears their machine either way.
+7. **`CommandVocabulary` refuses two keystroke notations, not one.** `+`-joined
+   ids are NVDA's; **hyphen-joined single tokens** (`VO-D`) are how VoiceOver's
+   own documentation writes chords, and they are the form an agent reading
+   Apple's docs will send. The rule has to survive real command names that
+   contain hyphens — `toggle single-key quick nav on or off` is one of the 415 —
+   so a hyphen counts only in an id with **no spaces at all**. Both halves were
+   read off the machine's own vocabulary file rather than assumed.
+
+**And the finding that unblocked the entry, recorded here because it changes what
+the layout means.** `perform command` must be addressed to the **`commander
+object`**, never to `application "VoiceOver"` — see spec 0047's corrected finding
+4. `VoiceOverGestureSender`'s header carries the measurement, and its test suite
+asserts the target as a **negative** as well as a positive, because the
+"simplification" back to the application target compiles, reads better, and
+restores a state in which every gesture fails identically with no message saying
+why.
+
 ### 13.8 — input: typing
 
 | File | Role | Collaborators / why |

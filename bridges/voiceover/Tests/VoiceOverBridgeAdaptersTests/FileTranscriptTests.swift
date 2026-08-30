@@ -30,6 +30,18 @@ struct FileTranscriptTests {
 		)
 	}
 
+	@Test("a dispatched command is one QUOTED line, for the reason speech is")
+	func gesturesAreQuoted() {
+		// Same quoting as speech and for the same reason: a gesture id is opaque
+		// text off the wire, and the record is a line-oriented file somebody reads
+		// afterwards to work out what a run did to their machine.
+		let writer = FakeFileWriter()
+		let record = transcript(writer)
+		record.open()
+		record.gesture("go to desktop")
+		#expect(writer.lines == ["2026-08-30 10:00:00.000 GESTURE \"go to desktop\""])
+	}
+
 	@Test("no persona is written as a dash, so every open line has the same shape")
 	func anAbsentPersonaKeepsTheShape() {
 		let writer = FakeFileWriter()

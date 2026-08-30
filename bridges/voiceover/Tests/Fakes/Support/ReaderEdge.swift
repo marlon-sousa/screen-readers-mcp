@@ -21,26 +21,34 @@ import VoiceOverBridgeDomain
 public func testAdapterFactory(
 	capturePath: String = unusedCapturePath(),
 	markerPath: String = unusedMarkerPath(),
-	lifecycle: any ProviderLifecycle = FakeProviderLifecycle()
+	lifecycle: any ProviderLifecycle = FakeProviderLifecycle(),
+	scripts: any AppleScriptRunner = FakeAppleScriptRunner()
 ) -> VoiceOverAdapterFactory {
-	VoiceOverAdapterFactory(capturePath: capturePath, markerPath: markerPath, lifecycle: lifecycle)
+	VoiceOverAdapterFactory(
+		capturePath: capturePath, markerPath: markerPath, lifecycle: lifecycle, scripts: scripts
+	)
 }
 
 /// An AdapterSet of doubles, for tests that install a reader edge by hand.
 ///
-/// The three fields arrived one entry at a time and will keep doing so, so a
-/// test that spells the initializer out is a test that has to be edited by every
-/// future entry for reasons that have nothing to do with what it asserts.
+/// The fields arrived one entry at a time and will keep doing so, so a test that
+/// spells the initializer out is a test that has to be edited by every future
+/// entry for reasons that have nothing to do with what it asserts. Two more
+/// arrived with 13.7 and this helper is why nothing but the factory noticed.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
 	silenceControl: FakeSilenceControl = FakeSilenceControl(),
-	providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle()
+	providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
+	gestureSender: FakeGestureSender = FakeGestureSender(),
+	readerLiveness: FakeReaderLiveness = FakeReaderLiveness()
 ) -> AdapterSet {
 	AdapterSet(
 		mode: mode,
 		speechSource: speechSource,
 		silenceControl: silenceControl,
-		providerLifecycle: providerLifecycle
+		providerLifecycle: providerLifecycle,
+		gestureSender: gestureSender,
+		readerLiveness: readerLiveness
 	)
 }

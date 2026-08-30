@@ -24,6 +24,10 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// those are invisible in the AdapterSet itself.
 	public let silenceControl = FakeSilenceControl()
 	public let providerLifecycle: FakeProviderLifecycle
+	/// The same again for 13.7's two: a session test asserts what was DISPATCHED,
+	/// and that is invisible in the AdapterSet the handshake hands back.
+	public let gestureSender = FakeGestureSender()
+	public let readerLiveness = FakeReaderLiveness()
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
@@ -42,7 +46,9 @@ public final class FakeAdapterFactory: AdapterFactory {
 			mode: mode,
 			speechSource: speechSource,
 			silenceControl: silenceControl,
-			providerLifecycle: providerLifecycle
+			providerLifecycle: providerLifecycle,
+			gestureSender: gestureSender,
+			readerLiveness: readerLiveness
 		)
 	}
 }

@@ -53,6 +53,19 @@ struct VoiceOverAdapterFactoryTests {
 		#expect(silent.speechSource is ContainerFileSpeechSource)
 	}
 
+	@Test("both modes get a gesture sender and a liveness probe, for the same reason")
+	func bothModesGetTheInputEdge() throws {
+		// A command is dispatched to the reader identically whether or not the
+		// human can hear the result -- rendering is the extension's business and
+		// the only thing a mode changes on this route.
+		let factory = testAdapterFactory()
+		for mode in [CaptureMode.live, .silent] {
+			let set = try factory.build(mode: mode)
+			#expect(set.gestureSender is VoiceOverGestureSender)
+			#expect(set.readerLiveness is VoiceOverLiveness)
+		}
+	}
+
 	@Test("a silence control PER SESSION, so one session's teardown cannot lift another's")
 	func aSilenceControlPerSession() throws {
 		let factory = testAdapterFactory()

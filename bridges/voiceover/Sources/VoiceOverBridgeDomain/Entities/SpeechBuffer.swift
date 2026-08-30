@@ -171,6 +171,37 @@ public final class SpeechBuffer {
 		return (found, from, to)
 	}
 
+	/// Everything from `index` that arrives within `grace` seconds; then stop.
+	///
+	/// THE GRACE WINDOW OF protocol.md §7.3, and a different primitive from
+	/// `waitToFinish` rather than a shorter one. That asks "has speech STOPPED?",
+	/// which cannot be answered at the moment it is asked -- silence before speech
+	/// starts and silence after it ends are the same observable, so no constant
+	/// makes the answer true. This asks "has speech STARTED?", and reports what
+	/// had arrived by an instant the caller chose. An empty result is therefore a
+	/// FACT ("nothing by then") and never a CLAIM ("nothing"), which is the one
+	/// sentence §7.3 is built on and the reason no result on this route carries a
+	/// `complete` flag.
+	///
+	/// Returns exactly `entriesSince`'s triple, so a caller reports the half-open
+	/// range the way it always did and resumes from `toIndex`.
+	///
+	/// IT RETURNS EARLY as soon as anything with words has arrived: the common
+	/// case is one announcement shortly after a command, and waiting out the rest
+	/// of the window buys nothing. The cost of that is stated rather than hidden
+	/// -- an utterance still in flight when the first one lands is left for the
+	/// next read, which the caller can always take, because the range it was
+	/// handed says exactly where to resume.
+	///
+	/// `grace <= 0` is a legitimate opt-out: it reads the buffer as it stands and
+	/// never sleeps.
+	public func collectSince(_ index: Int, grace: Double) -> (
+		entries: [(utterance: CapturedUtterance, index: Int)], fromIndex: Int, toIndex: Int
+	) {
+		_ = wait(timeout: grace) { !self.entriesSince(index).entries.isEmpty }
+		return entriesSince(index)
+	}
+
 	/// The first index at or after `afterIndex` whose text contains `text`.
 	///
 	/// `afterIndex` IS AN INCLUSIVE LEFT EDGE, matching every other range in this
