@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// SEVEN FIELDS AT 13.8, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// EIGHT FIELDS AT 13.9, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -25,8 +25,8 @@ import ScreenReaderWire
 /// | `speechSource` | 13.5, the capture feed |
 /// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
 /// | `gestureSender`, `readerLiveness` | 13.7, input: commands |
-/// | `textTyper`, `permissions` | 13.8, input: typing -- here |
-/// | `focusInspector` | 13.9 |
+/// | `textTyper`, `permissions` | 13.8, input: typing |
+/// | `focusInspector` | 13.9, focus -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -91,6 +91,21 @@ public struct AdapterSet {
 	/// accepted.
 	public let permissions: any PermissionBroker
 
+	/// Where the focus is. Present in both modes, like the gesture sender and for
+	/// the same reason: focus is read identically whether or not the human can
+	/// hear the result.
+	///
+	/// IT DOES NOT HOLD THE PERMISSION BROKER, and that is 13.9's one layout
+	/// decision. Focus answers from the accessibility tree when this process holds
+	/// the Accessibility grant and from the VoiceOver cursor when it does not --
+	/// but choosing between two routes is a DECISION, decisions live in the upper
+	/// adapter, and a macOS permission has no place in a port's signature. So the
+	/// adapter reads the grant through an adapter seam of its own
+	/// (`AccessibilityTrust`, answered by the same leaf that answers
+	/// `permissions`), the domain never learns that focus has two routes, and
+	/// NOTHING on this path can request anything. See `FocusInspector`.
+	public let focusInspector: any FocusInspector
+
 	public init(
 		mode: CaptureMode,
 		speechSource: any SpeechSource,
@@ -99,7 +114,8 @@ public struct AdapterSet {
 		gestureSender: any GestureSender,
 		readerLiveness: any ReaderLiveness,
 		textTyper: any TextTyper,
-		permissions: any PermissionBroker
+		permissions: any PermissionBroker,
+		focusInspector: any FocusInspector
 	) {
 		self.mode = mode
 		self.speechSource = speechSource
@@ -109,6 +125,7 @@ public struct AdapterSet {
 		self.readerLiveness = readerLiveness
 		self.textTyper = textTyper
 		self.permissions = permissions
+		self.focusInspector = focusInspector
 	}
 }
 

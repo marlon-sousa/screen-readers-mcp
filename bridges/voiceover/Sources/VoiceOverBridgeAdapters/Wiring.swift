@@ -133,6 +133,39 @@ public enum Wiring {
 		CGEventPoster()
 	}
 
+	/// How this bridge reads another application's accessibility tree.
+	///
+	/// ONE PER PROCESS, and stateless like the script runner. It reads and never
+	/// writes, so unlike the poster and the broker nothing stops a test building
+	/// it -- what stops a test USING it is that its answer is whatever window the
+	/// developer has in front of them.
+	public static func accessibilityTree() -> any AccessibilityTree {
+		AXAccessibilityTree()
+	}
+
+	/// Who is in front, over NSWorkspace. ONE PER PROCESS, stateless, and free:
+	/// it costs no permission at all.
+	public static func frontmostApplication() -> any FrontmostApplication {
+		WorkspaceFrontmostApplication()
+	}
+
+	/// Whether this process may read an accessibility tree at all -- the seam
+	/// focus uses to pick its route.
+	///
+	/// THE SAME CLASS AS `permissionBroker()`, ON PURPOSE: one leaf answers the
+	/// domain's port and this seam, so there is exactly one place in the bridge
+	/// that talks to the permission machinery. The two defaults here are two
+	/// INSTANCES of it and that costs nothing -- it holds no state, and both
+	/// methods read the same system Bool -- while the identity that matters,
+	/// which class asks the system, is preserved.
+	///
+	/// IT ASKS NOBODY ANYTHING, exactly as constructing the broker does not:
+	/// `isTrusted` shows no dialog, and the only call to `request` in this
+	/// repository is in the TypeText handler.
+	public static func accessibilityTrust() -> any AccessibilityTrust {
+		TCCPermissionBroker()
+	}
+
 	/// Which endpoint to accept on, per the configured connection mode.
 	public static func listener(
 		config: any BridgeConfig,
@@ -185,7 +218,10 @@ public enum Wiring {
 		lifecycle: (any ProviderLifecycle)? = nil,
 		scripts: (any AppleScriptRunner)? = nil,
 		permissions: (any PermissionBroker)? = nil,
-		poster: (any EventPoster)? = nil
+		poster: (any EventPoster)? = nil,
+		tree: (any AccessibilityTree)? = nil,
+		frontmost: (any FrontmostApplication)? = nil,
+		trust: (any AccessibilityTrust)? = nil
 	) -> BridgeServer {
 		let handlers = Registry.build(
 			factory: VoiceOverAdapterFactory(
@@ -194,7 +230,10 @@ public enum Wiring {
 				lifecycle: lifecycle ?? providerLifecycle(),
 				scripts: scripts ?? appleScriptRunner(),
 				permissions: permissions ?? permissionBroker(),
-				poster: poster ?? eventPoster()
+				poster: poster ?? eventPoster(),
+				tree: tree ?? accessibilityTree(),
+				frontmost: frontmost ?? frontmostApplication(),
+				trust: trust ?? accessibilityTrust()
 			),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion

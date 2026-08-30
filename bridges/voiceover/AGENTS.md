@@ -78,10 +78,11 @@ the manifest. Both, usually.
 
 `hello` announces what this build actually implements, and nothing else.
 `Registry.capabilities` was empty at 13.4, `[speech]` at 13.5, `[speech,
-gestures]` at 13.7 and `[speech, gestures, typing]` at 13.8, and each later entry
-adds its own alongside the handlers that serve it. Announcing a capability
-before the entry that implements it produces the one failure the capability gate
-exists to prevent: a tool the agent can see, call, and get nothing from. The
+gestures]` at 13.7, `[speech, gestures, typing]` at 13.8 and `[speech, gestures,
+typing, focus]` at 13.9, and each later entry adds its own alongside the handlers
+that serve it. Announcing a capability before the entry that implements it
+produces the one failure the capability gate exists to prevent: a tool the agent
+can see, call, and get nothing from. The
 converse costs too, and it is why `speech` landed with 13.5 rather than being
 held back: a capture feed the server gates away is a tool nobody can call.
 
@@ -256,6 +257,53 @@ and would disagree silently on a decomposed character.
 **`graceMs` defaults to 0 here and 100 for a gesture**, and that is not an
 oversight: with "speak typed characters" on, typing emits one utterance per
 character and none of them is worth waiting for.
+
+## Focus has TWO ROUTES, and the grant picks one without ever being asked for
+
+`getFocusInfo` answers from the **accessibility tree** of the frontmost
+application when this process holds the Accessibility grant, and from
+**VoiceOver's own cursor** over AppleEvents when it does not. Four rules bind
+anyone editing this, and the first is the one that keeps the section above true.
+
+**The grant is READ, never requested, and the reading happens at the adapter
+layer.** `VoiceOverFocusInspector` holds `AccessibilityTrust` — a seam with one
+method, `isTrusted()`, answered by the same `TCCPermissionBroker` that answers
+the domain's `PermissionBroker` — and not the domain port itself. That is
+deliberate rather than incidental: focus is the one command that WANTS 13.8's
+grant, so the guarantee is made structural, by handing it an object that cannot
+request anything. `Tests/Integration/SessionRoundTripTests.swift` drives
+`getFocusInfo` down both routes past a counting broker and asserts it was asked
+nothing at all. If you ever hand the inspector the broker, you have spent the
+lever. The alternative that was declined — `focusInfo(accessibilityGranted:)`,
+with the controller passing the answer down — is recorded in spec 0046's 13.9
+section with its why.
+
+**Nothing merely empty is a fault.** Nothing focused, no title, `missing value`,
+no bundle identifier: each is an ANSWER. Spec 0047's finding 5 is the argument —
+with VoiceOver frontmost every read comes back empty because it publishes no
+accessibility tree of its own, and a bridge that reported a named reader fault
+for that would be diagnosing its own doing. What throws is a channel that refused
+the question: the AppleEvents grant missing, the reader not running, the
+accessibility API refusing outright.
+
+**`AXUIElementCreateSystemWide()` fails with `-25204 kAXErrorCannotComplete`,
+and no permission fixes it.** It is not `kAXErrorAPIDisabled` (-25211), so
+anybody who reads the number as a permission problem will spend an evening
+proving otherwise. The bridge addresses `AXUIElementCreateApplication(pid)`
+instead, which is why the tree seam takes a pid and why `FrontmostApplication` is
+a collaborator rather than a convenience. `AXAccessibilityTree`'s header carries
+the measurement where whoever tries the system-wide element will read it, and
+`bash scripts/voiceover_focus.sh` keeps it as a **labelled control that is
+expected to fail** — re-measured 2026-08-30, still `-25204`.
+
+**`role` is `AXRole` and `appModule` is a BUNDLE IDENTIFIER.** `AXRoleDescription`
+is asked for nowhere: it is `AXButton` rendered into the user's language, and a
+`role` built from it would mean a different thing per machine while looking
+perfectly reasonable. Same for the application: `localizedName` is "Editor de
+Texto" here and `com.apple.TextEdit` everywhere. Spec 0047's finding 15 is the
+same lesson for the tree itself — filter by role and predicate, assert exactly
+one match, prefer structure over words, confirm by meaning — and it is what any
+later entry that WALKS the tree has to follow.
 
 ## The endpoint, and why the derivation is duplicated on purpose
 

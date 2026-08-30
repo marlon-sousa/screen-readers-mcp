@@ -387,7 +387,7 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.9**: **13.1 through 13.8
+its board was written on 2026-08-29. Its head is **13.10**: **13.1 through 13.9
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
 voice, the wire contract's Swift binding, a bridge that **listens**, one that
 **hears** -- an agent can read back what the reader said -- one that can make the
@@ -397,8 +397,11 @@ path, and the silence it holds is a **lease** that expires if the bridge dies,
 which is hard invariant 3 in its macOS form) and, since 13.7 and 13.8, one that
 can **drive** it, by both halves of input: `pressGesture` dispatches VoiceOver's
 own English command names through the reader itself, and `typeText` synthesizes
-keystrokes into whatever holds focus. `hello` announces `speech`, `gestures` and
-`typing`, and their seven commands answer.
+keystrokes into whatever holds focus. Since 13.9 it also answers **where the
+agent is**: `getFocusInfo` reads the accessibility tree where the grant exists
+and VoiceOver's own cursor where it does not, and **never asks for the grant to
+do better**. `hello` announces `speech`, `gestures`, `typing` and `focus`, and
+their eight commands answer.
 
 **The two halves stay apart because they cost different permissions, and that is
 the lane's one design lever.** Pressing a command is an AppleEvent; typing is
@@ -407,8 +410,11 @@ Accessibility -- so **the Accessibility grant is requested on the first
 session that only presses commands and reads speech never triggered an
 Accessibility request"* a statement the test suite checks rather than one the
 documentation asserts. Windows has no equivalent gate, so lane 1 has no analogue
-and there was nothing to copy. The next step is focus, against
-[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+and there was nothing to copy. **13.9 was the entry that could have quietly spent
+that lever and did not** -- focus wants the same grant, so it reads whether the
+grant is held through a one-method adapter seam that shows no dialog, and the
+object it holds cannot request anything. The next step is the control dialog,
+against [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -855,8 +861,37 @@ rule intends.
     Note what `last phrase` actually is, since it is the obvious-looking
     shortcut here: not one phrase but the last output *request*, which after a
     VoiceOver restart returned an entire startup announcement and the focused
-    item as a single string. Richer than "one word", and still one slot.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    item as a single string. Richer than "one word", and still one slot -- and it
+    was NOT reached for here: both routes below answer a question about the
+    element, and `last phrase` answers a question about the reader's output.
+    **The route is chosen through a one-method adapter seam,
+    `AccessibilityTrust`, that `TCCPermissionBroker` also answers**, rather than
+    by handing the inspector the domain's `PermissionBroker` or by widening the
+    port to `focusInfo(accessibilityGranted:)`. So 13.8's lever survives the
+    entry that wanted the same grant, **structurally**: the object focus holds
+    cannot request a permission, and a round trip in
+    `Tests/Integration/SessionRoundTripTests.swift` drives `getFocusInfo` down
+    BOTH routes past a counting broker and asserts it was asked nothing at all.
+    `appModule` is the frontmost application's **bundle identifier** and `role`
+    is `AXRole`; `AXRoleDescription` is asked for nowhere, because it is `AXRole`
+    rendered into the user's language. And the entry's load-bearing rule is that
+    **nothing merely empty is a fault**: finding 5's confound means a bridge that
+    reported a named reader fault for an empty read would be diagnosing its own
+    doing. The instrument is back too, as `scripts/voiceover_focus.sh` --
+    read-only, showing all three views at one instant, and keeping the
+    system-wide element as a control that is expected to fail (re-measured
+    2026-08-30: still `-25204`).
+    **What this entry did NOT settle, stated rather than glossed:** how far the
+    `vo cursor` and the `keyboard cursor` actually get from each other. One live
+    run was taken on 2026-08-30 and produced a consistent healthy EMPTY --
+    `kAXErrorNoValue` from the tree, `missing value` from both cursors, with
+    TextEdit frontmost and no document open -- which proves the instrument and the
+    control and answers nothing about the two views. **13.11 owes that
+    measurement**, because its guidance document is where an agent is told which
+    to reach for.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.9 section carries the six layout amendments this made, each with its why.
+    Done (2026-08-30).
 13.10. **The control dialog** (lane 3). The macOS counterpart of [spec
     0011](specs/0011-bridge-control-ui.md) — endpoint selection, connection
     state, the session's activity — plus three rows that exist only here and are
