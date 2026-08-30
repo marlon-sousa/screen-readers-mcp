@@ -27,6 +27,20 @@ name across `~/Library`, `/Library/Preferences` and `/private/var/db`. Nothing.
 A whole-disk sweep of every file written around a change: 23 files, voice in
 none.
 
+> **This one was a tooling artifact, and it is the sharpest lesson here.**
+> Measured afterwards, on the file that turned out to be the store:
+>
+> ```
+> grep -l  "<identifier>" com.apple.SpeakSelection.plist   ->  no output, exit 1
+> grep -al "<identifier>" com.apple.SpeakSelection.plist   ->  MATCHES
+> ```
+>
+> **BSD `grep` silently skips binary files unless you pass `-a`.** The file is an
+> Apple binary property list, the identifier was in it as plain bytes the whole
+> time, and every `grep -r` we ran declined to say so — reporting absence rather
+> than refusing to look. The store was inside the scope of every sweep, all
+> evening. **On macOS, `grep -r` is not a search; `grep -ra` is.**
+
 **3. Watching the writes.** `sudo fs_usage -w -f filesys`, first filtered to
 VoiceOver, its Utility and `cfprefsd`, then **unfiltered across every process**.
 Result: during a voice change VoiceOver performs **seven writes, all to
@@ -80,9 +94,15 @@ sight.
 - **Make the differential revert.** A single A→B diff yields a long candidate
   list. A→B→A yields one, because reverting in step with a human's choice is a
   signature nothing else produces.
+- **Know what your search tool refuses to read.** This is the one that actually
+  cost the evening: `grep -r` without `-a` skips binary files, and on macOS
+  preferences are binary plists — so an exhaustive-looking search returned a
+  confident, wrong negative. A search that cannot read the format it is searching
+  reports absence, not failure.
 - **Search the namespace that owns the concept, not the one that owns the
   feature.** The voice belongs to the speech subsystem; VoiceOver only consumes
-  it. We searched "VoiceOver" for hours.
+  it. We searched "VoiceOver" for hours — though note this was a *contributing*
+  cause, not the decisive one: the file was in scope regardless.
 - **When the write appears to do nothing, check the types.** `defaults write`
   with an old-style plist literal makes every value a *string*; VoiceOver
   silently rejects the malformed record, falls back to a default, **and rewrites

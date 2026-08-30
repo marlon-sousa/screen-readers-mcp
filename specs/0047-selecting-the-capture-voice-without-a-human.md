@@ -730,7 +730,21 @@ differential — the value read `…spike.capture` with our voice selected,
 after switching back. A background daemon can change a file between two
 snapshots; none can make a value revert *in step with a human's selection*.
 
-**Why every earlier search missed it, and it is worth stating plainly:** the
+**Why every earlier search missed it — and the first reason is a tooling trap,
+measured after the fact:**
+
+```
+grep -l  "<our identifier>" com.apple.SpeakSelection.plist   ->  no output, exit 1
+grep -al "<our identifier>" com.apple.SpeakSelection.plist   ->  MATCHES
+```
+
+**BSD `grep` silently skips binary files unless given `-a`**, and macOS
+preferences are binary plists. So finding 10's "no file contains either string"
+was a *refusal to read*, not an absence: the identifier was in that file as plain
+bytes the whole time, and the file was inside the scope of every sweep. Anyone
+repeating this work on macOS must use `grep -ra`.
+
+The second reason is namespace, and it is why the file was never singled out: the
 store is not in VoiceOver's domain. It is the **system speech** domain, in plain
 `~/Library/Preferences`, keyed `VoiceOverDefaultVoiceSelections` — VoiceOver's
 voice, owned by the TTS subsystem. Finding 10's whole-disk sweep, the group
