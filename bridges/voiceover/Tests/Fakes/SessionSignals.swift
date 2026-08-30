@@ -17,6 +17,10 @@ public final class FakeSessionSignals: SessionSignals {
 
 	public private(set) var startedWith: [String] = []
 	public private(set) var endedCount = 0
+	/// The silence cap's two cues, counted separately: a warning that was never
+	/// spoken and a lift that was never marked are different failures.
+	public private(set) var warnedCount = 0
+	public private(set) var liftedCount = 0
 	/// When true, both cues throw AFTER recording that they were asked -- so a
 	/// test can assert both that the session tried and that it survived.
 	public var fails = false
@@ -30,6 +34,16 @@ public final class FakeSessionSignals: SessionSignals {
 
 	public func sessionEnded() throws {
 		endedCount += 1
+		if fails { throw CueFailed() }
+	}
+
+	public func silenceWarning() throws {
+		warnedCount += 1
+		if fails { throw CueFailed() }
+	}
+
+	public func silenceLifted() throws {
+		liftedCount += 1
 		if fails { throw CueFailed() }
 	}
 }

@@ -82,4 +82,41 @@ struct WaitForSpeechTests {
 		ctx.speech?.append(CapturedUtterance(text: "said"))
 		#expect(try result(ctx, ["text": .string("said")]).logPosition == 0)
 	}
+
+	// -- an empty answer that is not an answer (13.6) ---------------------------
+
+	@Test("A MISS ON A SESSION THAT HEARD NOTHING asks the reader edge to account for itself")
+	func anUnexplainedMissIsNamed() {
+		// "The reader did not say it" and "we were never listening to the reader"
+		// are the same empty result, and only one of them is about the software
+		// under test. Spec 0041's sharpest requirement is that a bridge on this
+		// route must not let them look alike.
+		let ctx = context()
+		ctx.adapters = fakeAdapterSet(
+			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		#expect(throws: CommandError.self) {
+			_ = try result(ctx, ["text": .string("never"), "timeout": .double(0)])
+		}
+	}
+
+	@Test("a miss on a session that HAS captured stays a result, because the miss is real")
+	func aRealMissIsStillAResult() throws {
+		let ctx = context()
+		ctx.adapters = fakeAdapterSet(providerLifecycle: FakeProviderLifecycle())
+		ctx.speech?.append(CapturedUtterance(text: "something else"))
+		let miss = try result(ctx, ["text": .string("never"), "timeout": .double(0)])
+		#expect(!miss.found)
+		// And the bookmark still comes back usable, as it always did.
+		let buffer = try #require(ctx.speech)
+		#expect(miss.index == buffer.nextIndex())
+	}
+
+	@Test("a HIT never asks: the question only arises when nothing came back")
+	func aHitAsksNothing() throws {
+		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
+		let ctx = context()
+		ctx.adapters = fakeAdapterSet(providerLifecycle: lifecycle)
+		ctx.speech?.append(CapturedUtterance(text: "said it"))
+		#expect(try result(ctx, ["text": .string("said")]).found)
+	}
 }

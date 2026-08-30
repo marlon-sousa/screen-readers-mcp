@@ -42,6 +42,14 @@ final class PrintingSignals: SessionSignals {
 	func sessionEnded() {
 		print("session ended")
 	}
+
+	func silenceWarning() {
+		print("SILENCE CAP: the human has not heard their machine for a while")
+	}
+
+	func silenceLifted() {
+		print("SILENCE CAP: LIFTED -- the machine is audible again")
+	}
 }
 
 let config = LaunchConfig()
@@ -102,4 +110,12 @@ print("listening. ^C to stop.")
 // question when nothing comes back is which file the bridge is watching --
 // and the answer is a value Wiring resolved, not a decision made here.
 print("reading speech from \(Wiring.capturePath())")
+// And where it TELLS the capture voice what to do, for the same reason: a live
+// run's second question, when the machine does not go quiet, is which file the
+// extension is reading.
+print("writing capture mode to \(Wiring.markerPath())")
+// What the machine says about the capture voice right now, so a run that is
+// going to fail says so before a human starts pressing keys -- by name, with the
+// recovery, which is the whole point of ProviderState.
+print("capture voice: \(Wiring.providerLifecycle().state().report)")
 dispatchMain()

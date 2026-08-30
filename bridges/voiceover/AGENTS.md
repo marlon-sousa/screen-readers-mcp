@@ -84,15 +84,71 @@ exists to prevent: a tool the agent can see, call, and get nothing from. The
 converse costs too, and it is why `speech` landed with 13.5 rather than being
 held back: a capture feed the server gates away is a tool nobody can call.
 
-The same rule is why **`VoiceOverAdapterFactory` refuses a silent session until
-13.6**. `silent` is not a preference, it is a promise about a human's ears — the
-reader keeps talking, the human hears nothing, the agent reads what was said —
-and a bridge that cannot keep any part of it must refuse rather than establish a
-session that means something else. **13.5 made capture work and did not soften
-the refusal**, deliberately: half a promise is the more dangerous kind, because
-capture that works is exactly what would make a claimed silence look plausible.
-When you make the promise keepable, delete the refusal and its named test in the
-same commit.
+The same rule is why `VoiceOverAdapterFactory` refused a silent session until
+13.6, and **13.6 deleted that refusal and its named test in the commit that made
+the promise keepable**, exactly as this file required. What replaced it is not
+nothing: **the refusal MOVED to the handshake**, which is the only place that can
+ask whether this machine can actually deliver silence. `silent` is not a
+preference, it is a promise about a human's ears, so a silent handshake on a
+machine where the capture voice is not registered, not published, or would not
+stick is refused **by named condition, with its recovery** — never established
+and quietly turned into something else.
+
+**A LIVE handshake in the same state is not refused**, and the asymmetry is
+deliberate rather than squeamish: writing the voice applies live, in both
+directions (spec 0047, finding 17), so a live session that starts unhealthy can
+become healthy while it runs. Silence promised at the handshake has to hold from
+the handshake.
+
+## Silence is a LEASE, and nothing may come to depend on a teardown path
+
+The single most important rule in this bridge, and the macOS form of hard
+invariant 3 (spec 0046, and `protocol.md` §6, which asks a bridge to arrange its
+interception so that losing the bridge ITSELF lifts it).
+
+NVDA gets that free — it holds extension-point handlers weakly, so killing the
+add-on drops the speech filter with it. Here the interception is a **file on
+disk** read by a process the system owns, which would go on reading it forever.
+So the marker **expires**: the session rewrites it while it lives, and the
+extension treats a marker older than `MarkerFileCaptureModeSource.lease` as
+pass-through. A bridge that is `SIGKILL`ed un-mutes the machine **by doing
+nothing at all**.
+
+Three consequences bind anyone editing this:
+
+- **The `defer` stays, and nothing may depend on it.** `Session.teardown`
+  releases the marker and restores the user's voice because that makes the
+  ordinary case immediate; a SIGKILL, a panic and a power cut all skip it, and
+  those are the cases the invariant is about.
+- **The renewal is driven by the session LOOP, not by a timer of the adapter's
+  own.** That is the safer coupling: silence then depends on the liveness of the
+  very loop that can lift it, so a session thread wedged inside a handler gives
+  the machine back instead of holding it mute with every watchdog still ticking.
+  The cost is stated in `MarkerFileSilenceControl`'s header — a single command
+  blocking longer than the lease un-mutes early, which is the safe direction.
+- **The default is never silence.** Absence, an unreadable date, contents that do
+  not parse, a question that cannot be answered: the answer is "speak", on both
+  sides of the file.
+
+## The voice is the user's, and it is put back
+
+The bridge reads `VoiceOverDefaultVoiceSelections` in the **system speech**
+domain (`com.apple.SpeakSelection`, never VoiceOver's own — spec 0047, findings
+10 and 16), records the previous `voiceId` verbatim, writes ours, and writes
+theirs back on every teardown path. Three things must survive any edit here:
+
+- **Preserve plist types.** A value written as a string where a real is expected
+  is silently rejected, and VoiceOver then overwrites the key with its own choice
+  — so the write appears to have done nothing. `scripts/voiceover_voice.py` is
+  the same mechanism as a tool and is the instrument the finding was made with.
+- **Match our published voice by SUFFIX, never by the identifier the unit
+  declared.** The system prefixes the extension's bundle id, so the published
+  string never equals what the audio unit said.
+- **A previous voice that is OURS is not the user's.** A session that died
+  without restoring leaves the reader on the capture voice; recording that as
+  "the user's own" would restore our voice at teardown and hand the extension
+  itself as the pass-through voice, which is infinite recursion. That is Rule 0's
+  first caveat and it is asserted in three places.
 
 ## The endpoint, and why the derivation is duplicated on purpose
 
@@ -150,6 +206,15 @@ shapes:
 
 ## Gotchas learned the hard way
 
+- **A `swift test` that passes does not prove the loop calls what you added.**
+  Measured on 2026-08-30: 13.6's lease renewal was written into
+  `Session.checkSilence`, and the edit that was supposed to CALL it from the
+  dispatch loop silently did not apply. Everything compiled, every unit test of
+  the adapter passed, and the marker would never have been refreshed on a real
+  machine -- so every silent session would have un-muted itself after thirty
+  seconds with nothing in the logs to say why. What caught it was a session-level
+  test asserting the number of renewals, not an adapter-level one. Anything whose
+  value is that it happens REPEATEDLY needs a test at the layer that repeats it.
 - **A reader that runs on its own thread must ATTACH before `start()` returns.**
   `FileLineTailer` opened the feed and seeked to its end on the new thread, which
   is a race against everything the caller does next — and what the caller does

@@ -14,8 +14,10 @@ It also **hears**: it tails the file the capture voice appends to and answers
 `getSpeech`, `getLastSpeech`, `getNextSpeechIndex`, `waitForSpeech` and
 `waitForSpeechToFinish`, so `hello` announces the `speech` capability — and that
 one and no other, which is the honest description of a bridge whose remaining
-reader edges do not exist yet. **A silent session is refused until 13.6**, since
-nothing here can make the reader quiet. The dialog that starts and stops it is
+reader edges do not exist yet. **Since 13.6 it can also make the reader quiet**,
+and it selects the capture voice itself at the handshake and puts the user's own
+voice back at teardown, so nobody has to visit VoiceOver Utility to start or
+finish a session. The dialog that starts and stops it is
 13.10; until then it is started from a test, from code, or from
 `swift build --product BridgeListener`.
 
@@ -35,11 +37,20 @@ SSML *before any audio exists*. Point VoiceOver at our voice and we see
 everything it says — role words, state words, hint text, and the prosody it
 means to say them with.
 
-The route costs one thing and it is stated up front: **the user must select the
-capture voice in VoiceOver Utility**, and **updating the provider means
-restarting VoiceOver**, every time. A dead provider is safe — VoiceOver falls
-back to a working voice rather than to silence — but only a reader restart
+The route costs one thing and it is stated up front: **updating the provider
+means restarting VoiceOver**, every time. A dead provider is safe — VoiceOver
+falls back to a working voice rather than to silence — but only a reader restart
 re-binds ours.
+
+Selecting the voice is no longer part of that cost. It used to read *"the user
+must select the capture voice in VoiceOver Utility"*, and
+[spec 0047](../../specs/0047-selecting-the-capture-voice-without-a-human.md)
+findings 16 and 17 retired that: the reader's chosen voice is a preference in the
+**system speech** domain, settable live in both directions with no restart, no UI
+and no Accessibility grant. Since 13.6 the bridge reads the user's own voice at
+the handshake, points the reader at the capture voice, and writes theirs back on
+every teardown path. Selecting it by hand still works and is still what the
+install steps below describe — it is just no longer required per session.
 
 ## What is here
 
@@ -210,14 +221,27 @@ The file is the one the bridge reads (entry 13.5): `BridgeListener` prints the
 path it is watching when it starts, and `VOCAPTURE_LOG` overrides it on both
 halves — set it for a `build.sh`-installed extension and for the bridge and the
 two meet on a file of your choosing, which is how the feed is exercised without a
-reader. Silence is opt-in and is requested by a marker file beside it:
+reader. Capture mode is asked for by a marker file beside it, which
+`BridgeListener` also prints and `VOCAPTURE_MARKER` overrides on both halves:
 
 ```sh
-touch ~/Library/Containers/org.screen-readers-mcp.spike.capture.voice/Data/voiceover-capture-silent
+cat ~/Library/Containers/org.screen-readers-mcp.spike.capture.voice/Data/voiceover-capture-silent
+{"silent":true,"voice":"com.apple.eloquence.pt-BR.Reed"}
 ```
 
-**Delete it to restore speech.** The default must never be the setting that
-mutes a screen reader.
+`silent` is whether the human is being kept from hearing this utterance, and
+`voice` is the one the user chose for themselves, so pass-through re-speaks in it
+rather than in a substitute they did not ask for.
+
+**SILENCE IS A LEASE, AND THAT IS THE POINT.** The bridge rewrites this file
+while a session lives; the extension treats a marker **older than 30 seconds** as
+pass-through. So a bridge that is killed, panics or loses power un-mutes the
+machine by doing nothing at all — no teardown path has to run, and no code has to
+survive the crash. Deleting the file still restores speech immediately, and that
+is the only thing deleting it buys: the guarantee is the expiry.
+
+**The default must never be the setting that mutes a screen reader**, so absence,
+an unreadable date and contents that do not parse are all "speak".
 
 When diagnosing why a voice does not appear, the useful log is not ours:
 

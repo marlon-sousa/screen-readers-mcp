@@ -23,6 +23,10 @@ public final class AVSpeechVoiceCatalogue: VoiceCatalogue {
 		AVSpeechSynthesisVoice(language: language).map(AVSpeechVoiceCatalogue.describe)
 	}
 
+	public func voice(identifier: String) -> AvailableVoice? {
+		AVSpeechSynthesisVoice(identifier: identifier).map(AVSpeechVoiceCatalogue.describe)
+	}
+
 	public func allVoices() -> [AvailableVoice] {
 		AVSpeechSynthesisVoice.speechVoices().map(AVSpeechVoiceCatalogue.describe)
 	}

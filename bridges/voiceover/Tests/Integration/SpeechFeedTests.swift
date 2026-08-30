@@ -53,7 +53,7 @@ struct SpeechFeedTests {
 				signals: FakeSessionSignals(),
 				config: SessionConfig(readerVersion: "macOS 15.0.0"),
 				handlers: Registry.build(
-					factory: VoiceOverAdapterFactory(capturePath: feedPath),
+					factory: testAdapterFactory(capturePath: feedPath),
 					readerVersion: "macOS 15.0.0",
 					bridgeVersion: "1.2.3"
 				)

@@ -26,7 +26,11 @@ struct SessionRoundTripTests {
 		let transcript = FakeTranscript()
 		let signals = FakeSessionSignals()
 
-		init(handlers: [String: any CommandHandler]? = nil, attended: Bool = true) {
+		init(
+			handlers: [String: any CommandHandler]? = nil,
+			attended: Bool = true,
+			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle()
+		) {
 			let (bridgeEnd, clientEnd) = LoopbackTransport.pair()
 			client = clientEnd
 			let session = Wiring.session(
@@ -37,7 +41,7 @@ struct SessionRoundTripTests {
 				config: SessionConfig(readerVersion: "macOS 15.0.0", attended: attended),
 				handlers: handlers
 					?? Registry.build(
-						factory: VoiceOverAdapterFactory(capturePath: unusedCapturePath()),
+						factory: testAdapterFactory(lifecycle: lifecycle),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
 					)
@@ -110,15 +114,68 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("a silent handshake is refused with a reason a human can act on")
-	func silentIsRefusedEndToEnd() throws {
+	@Test("A SILENT HANDSHAKE IS ESTABLISHED NOW, and the reply says silent")
+	func silentIsEstablishedEndToEnd() throws {
+		// The end-to-end half of 13.6: this test asserted a REFUSAL until the
+		// marker file made the promise keepable. What must be true now is that the
+		// mode the client asked for is the mode it gets -- a session that reported
+		// `mode: silent` while the machine talked normally is the exact failure the
+		// refusal existed to prevent, and the way to keep preventing it is to check
+		// that silence is actually in force.
 		let peer = Peer()
-		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
-		guard case .failure(let error) = try peer.reply().outcome() else {
-			Issue.record("expected silent mode to be refused")
+		try peer.send(
+			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
+		guard case .success(let value) = try peer.reply().outcome() else {
+			Issue.record("expected silent mode to be established")
 			return
 		}
-		#expect(error.message.contains("13.6"))
+		#expect(try value.decoded(as: HelloResult.self).mode == .silent)
+
+		// And `ping` says words are being withheld right now, which is the one
+		// channel protocol.md §6.1 gives an agent for asking.
+		try peer.send(id: 2, cmd: "ping")
+		guard case .success(let pong) = try peer.reply().outcome() else {
+			Issue.record("ping failed")
+			return
+		}
+		#expect(try pong.decoded(as: PingResult.self).suppressing == true)
+		peer.hangUp()
+	}
+
+	@Test("a silent handshake on a machine that cannot deliver silence is REFUSED, by name")
+	func silentIsRefusedWhenTheEdgeCannotDeliver() throws {
+		// The refusal did not disappear; it moved to the one place that can ask
+		// whether this machine can keep the promise. A voice that is not published
+		// cannot be selected, so nothing can be silenced -- and the agent is told
+		// which condition it is and what repairs it, rather than being handed a
+		// session that quietly means something else.
+		let peer = Peer(lifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		try peer.send(
+			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
+		guard case .failure(let error) = try peer.reply().outcome() else {
+			Issue.record("expected silent mode to be refused on an unusable reader edge")
+			return
+		}
+		#expect(error.message.contains(ReaderCondition.providerNotRunning.rawValue))
+		#expect(error.message.contains("pluginkit"))
+	}
+
+	@Test("a LIVE handshake on the same machine is NOT refused, because selecting applies live")
+	func liveSurvivesAnUnhealthyEdge() throws {
+		// Not squeamishness, and not an inconsistency: writing the voice takes
+		// effect live, in both directions (spec 0047, finding 17), so a live
+		// session that starts unhealthy can become healthy while it runs. Silence
+		// promised at the handshake has to hold from the handshake.
+		let peer = Peer(lifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		guard case .success(let value) = try peer.reply().outcome() else {
+			Issue.record("expected a live session to be established anyway")
+			return
+		}
+		#expect(try value.decoded(as: HelloResult.self).mode == .live)
+		// And the transcript says why, by name, for the human reading it later.
+		#expect(peer.transcript.notes.contains { $0.contains(ReaderCondition.providerNotRunning.rawValue) })
+		peer.hangUp()
 	}
 
 	@Test("a wrong protocol version ends the handshake, and the reply says both numbers")

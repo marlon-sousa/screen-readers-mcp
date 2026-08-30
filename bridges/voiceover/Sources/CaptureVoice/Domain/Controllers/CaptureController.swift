@@ -73,7 +73,12 @@ public final class CaptureController {
 			ssml: ssml,
 			requestingVoice: voiceIdentifier
 		)
-		let silent = mode.isSilent
+		// ONE READ, ONE ANSWER: both what the bridge is asking for and the voice it
+		// asked for it in. Read here rather than twice below, so a marker refreshed
+		// mid-utterance cannot have one half of this utterance answered from one
+		// session and the other half from the next.
+		let directive = mode.directive
+		let silent = directive.silent
 		var fields: [String: FieldValue] = [
 			"seq": .count(utterance.sequence),
 			"ssml": .text(utterance.ssml),
@@ -101,7 +106,12 @@ public final class CaptureController {
 			systemLanguage: catalogue.currentLanguage,
 			ourIdentifierSuffix: ourVoiceIdentifier
 		)
+		// Rule 0's lookup is BY IDENTIFIER and never through the list, so naming a
+		// preferred voice makes the common path shorter rather than longer -- and
+		// it is nil whenever the bridge named none, which is every utterance
+		// spoken while no session holds the marker.
 		let voice = choice.resolve(
+			preferred: directive.preferredVoice.flatMap { catalogue.voice(identifier: $0) },
 			languageDefault: catalogue.defaultVoice(for: choice.effectiveLanguage),
 			candidates: catalogue.allVoices()
 		)

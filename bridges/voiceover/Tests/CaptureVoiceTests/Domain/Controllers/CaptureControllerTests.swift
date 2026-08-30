@@ -33,6 +33,7 @@ struct CaptureControllerTests {
 
 	func makeSubject(
 		silent: Bool = false,
+		preferredVoice: String? = nil,
 		currentLanguage: String = "pt-BR",
 		defaults: [String: AvailableVoice] = ["pt-BR": brazilian],
 		voices: [AvailableVoice] = [arabic, brazilian, ours]
@@ -41,7 +42,7 @@ struct CaptureControllerTests {
 		let synthesizer = FakeSynthesizer()
 		let catalogue = FakeVoiceCatalogue(
 			currentLanguage: currentLanguage, defaults: defaults, voices: voices)
-		let mode = FakeCaptureModeSource(silent: silent)
+		let mode = FakeCaptureModeSource(silent: silent, preferredVoice: preferredVoice)
 		let ring = AudioRing(capacity: 1024)
 		return Subject(
 			controller: CaptureController(
@@ -265,5 +266,46 @@ struct CaptureControllerTests {
 		subject.controller.report(
 			CaptureEvent(kind: .audioUnitCreated, fields: ["cleared_darwin_bg": .flag(true)]))
 		#expect(subject.sink.events(ofKind: .audioUnitCreated).count == 1)
+	}
+
+	// -- Rule 0: the voice the bridge named (13.6) -----------------------------
+
+	@Test("the voice the bridge named on the marker is the one that speaks")
+	func preferredVoiceIsUsed() {
+		let subject = makeSubject(preferredVoice: CaptureControllerTests.arabic.identifier)
+		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
+		// Named in the feed rather than inferred from the audio, which is spec
+		// 0047 finding 18's whole point: the ear cannot tell these apart.
+		#expect(
+			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+				== .text(CaptureControllerTests.arabic.identifier))
+	}
+
+	@Test("a preferred voice this machine does not have degrades to the rules below it")
+	func unknownPreferredVoiceDegrades() {
+		let subject = makeSubject(preferredVoice: "com.example.a.voice.that.is.not.installed")
+		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
+		#expect(
+			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+				== .text(CaptureControllerTests.brazilian.identifier))
+	}
+
+	@Test("a preferred voice that is OURS is refused: rule 1 wins over rule 0")
+	func preferredVoiceMayNotBeOurs() {
+		let subject = makeSubject(preferredVoice: CaptureControllerTests.ours.identifier)
+		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
+		#expect(
+			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+				== .text(CaptureControllerTests.brazilian.identifier))
+	}
+
+	@Test("the marker is read ONCE per utterance, however many questions are asked of it")
+	func oneReadPerUtterance() {
+		// Both halves of the directive come from one read, so a marker refreshed
+		// mid-utterance cannot answer one half about this session and the other
+		// about the next.
+		let subject = makeSubject(preferredVoice: CaptureControllerTests.arabic.identifier)
+		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
+		#expect(subject.mode.reads == 1)
 	}
 }

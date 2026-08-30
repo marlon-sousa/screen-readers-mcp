@@ -127,7 +127,7 @@ final class PrintingSink: UtteranceSink {
 
 /// The probe never renders silence: it is asking whether re-synthesis WORKS.
 struct AlwaysSpeaking: CaptureModeSource {
-	var isSilent: Bool { false }
+	var directive: CaptureDirective { .passThrough }
 }
 
 // Exercise the re-synthesis path OUTSIDE the extension, through the REAL

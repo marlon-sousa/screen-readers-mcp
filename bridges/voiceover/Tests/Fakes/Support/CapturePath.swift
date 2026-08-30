@@ -17,3 +17,15 @@ import Foundation
 public func unusedCapturePath(_ label: String = "capture") -> String {
 	NSTemporaryDirectory() + "screen-readers-mcp-\(label)-\(UUID().uuidString).jsonl"
 }
+
+/// A marker path no capture voice reads, unique per call.
+///
+/// SAME REASON, SHARPER TEETH. A test that pointed the silence control at the
+/// real container marker would be writing the file that decides whether the
+/// developer's own screen reader speaks -- and would leave it behind when it
+/// failed. The lease means such a file would expire within thirty seconds, which
+/// is exactly the kind of "it fixed itself" that costs an afternoon to
+/// understand.
+public func unusedMarkerPath(_ label: String = "marker") -> String {
+	NSTemporaryDirectory() + "screen-readers-mcp-\(label)-\(UUID().uuidString).silent"
+}

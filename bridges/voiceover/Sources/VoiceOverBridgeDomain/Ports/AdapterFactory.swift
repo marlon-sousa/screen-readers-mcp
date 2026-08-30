@@ -16,14 +16,14 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// ONE FIELD AT 13.5, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// THREE FIELDS AT 13.6, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
 /// | Field | Entry |
 /// |---|---|
-/// | `speechSource` | 13.5, the capture feed -- here |
-/// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
+/// | `speechSource` | 13.5, the capture feed |
+/// | `silenceControl`, `providerLifecycle` | 13.6, capture mode -- here |
 /// | `gestureSender` | 13.7 |
 /// | `textTyper` | 13.8 |
 /// | `focusInspector` | 13.9 |
@@ -36,17 +36,35 @@ public struct AdapterSet {
 	/// not have to ask the session what it was built from.
 	public let mode: CaptureMode
 
-	/// Where captured speech comes from. NOT OPTIONAL, because every mode this
-	/// build accepts captures: `live` reads the feed, and `silent` is refused
-	/// outright until 13.6 can also suppress. When silent becomes buildable it
-	/// gets a source too -- capture is identical in both modes on this route, and
-	/// only rendering differs -- so the field stays required rather than
-	/// becoming a question every handler has to ask.
+	/// Where captured speech comes from. NOT OPTIONAL, because every mode
+	/// captures: capture is IDENTICAL in both modes on this route -- the same
+	/// feed, the same indices, the same stamps -- and only rendering differs,
+	/// which the extension does. So the field is required rather than a question
+	/// every handler has to ask. (It read "silent is refused outright until 13.6"
+	/// until 13.6 made the promise keepable.)
 	public let speechSource: any SpeechSource
 
-	public init(mode: CaptureMode, speechSource: any SpeechSource) {
+	/// Whether the human hears their machine, and the voice pass-through uses.
+	///
+	/// PRESENT IN BOTH MODES, like the speech source and for a related reason: a
+	/// live session still opens the channel, because the user's own voice has to
+	/// reach the extension for pass-through to be acoustically invisible (spec
+	/// 0046, "Rule 0"). Only what it is asked for differs.
+	public let silenceControl: any SilenceControl
+
+	/// Where the capture voice has got to, and how the reader is pointed at it.
+	public let providerLifecycle: any ProviderLifecycle
+
+	public init(
+		mode: CaptureMode,
+		speechSource: any SpeechSource,
+		silenceControl: any SilenceControl,
+		providerLifecycle: any ProviderLifecycle
+	) {
 		self.mode = mode
 		self.speechSource = speechSource
+		self.silenceControl = silenceControl
+		self.providerLifecycle = providerLifecycle
 	}
 }
 

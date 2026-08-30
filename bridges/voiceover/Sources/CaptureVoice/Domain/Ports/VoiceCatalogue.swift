@@ -33,6 +33,17 @@ public protocol VoiceCatalogue {
 	/// The system's preferred voice for a language, which is known to work here.
 	func defaultVoice(for language: String) -> AvailableVoice?
 
+	/// One voice by identifier, WITHOUT enumerating the list.
+	///
+	/// Added by 13.6 for Rule 0 (spec 0046): pass-through re-speaks with the
+	/// voice the user chose for themselves, and the bridge names it by
+	/// identifier. Resolving it through `allVoices()` would pay the 191-voice
+	/// enumeration on the COMMON path, which is the cost `resolve`'s autoclosure
+	/// exists to avoid; `AVSpeechSynthesisVoice(identifier:)` is a direct lookup.
+	/// Nil when this machine has no such voice, which is Rule 0 degrading rather
+	/// than assuming.
+	func voice(identifier: String) -> AvailableVoice?
+
 	/// Everything else, for when the default is ours or absent.
 	func allVoices() -> [AvailableVoice]
 }
