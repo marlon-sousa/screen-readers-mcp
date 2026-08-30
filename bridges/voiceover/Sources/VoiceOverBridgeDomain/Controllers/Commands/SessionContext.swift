@@ -43,6 +43,24 @@ public final class SessionContext {
 	/// they meant.
 	public var speech: SpeechBuffer?
 
+	/// The voice the user had chosen for themselves, read at the handshake and
+	/// put back at teardown. Nil means there is nothing to restore -- either the
+	/// store could not be read, or what it said was OUR OWN voice, which a
+	/// previous session left behind when it died without restoring. Recording
+	/// that as "the user's voice" would restore the capture voice at teardown and
+	/// hand the extension itself as the pass-through voice, which is infinite
+	/// recursion (spec 0046, Rule 0's first caveat).
+	///
+	/// SET BEFORE THE VOICE IS CHANGED, not after, so a handshake that fails
+	/// half-way still leaves teardown holding what the user had.
+	public var previousVoice: String?
+
+	/// Whether this machine bounds its silences, and by how much. A MACHINE fact
+	/// like `attended` and derived from the same one, carried here so the
+	/// handshake can report it and the session can build its third watchdog from
+	/// ONE source rather than two that agree today.
+	public let silenceCapPolicy: SilenceCapPolicy
+
 	/// What the agent declared this session is standing in for (spec 0029).
 	/// Recorded as received and never validated here: a bridge that rejected an
 	/// unfamiliar persona would refuse a session over a word.
@@ -57,11 +75,13 @@ public final class SessionContext {
 		clock: Clock,
 		transcript: Transcript,
 		attended: Bool,
+		silenceCapPolicy: SilenceCapPolicy = .attendedDefault,
 		close: @escaping (TeardownReason) -> Void
 	) {
 		self.clock = clock
 		self.transcript = transcript
 		self.attended = attended
+		self.silenceCapPolicy = silenceCapPolicy
 		self.closeSession = close
 	}
 

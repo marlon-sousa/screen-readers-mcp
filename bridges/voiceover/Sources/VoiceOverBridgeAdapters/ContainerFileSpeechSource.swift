@@ -129,5 +129,21 @@ public extension ContainerFileSpeechSource {
 /// 13.11 owns identifiers and is where that one-time cost is paid.
 public let captureExtensionBundleID = "org.screen-readers-mcp.spike.capture.voice"
 
+/// What the capture voice's audio unit DECLARES itself as -- and therefore what
+/// the identifier the system publishes ENDS with, never what it equals.
+///
+/// The system prefixes the extension's bundle id, so the published string on the
+/// machine this was measured on is
+/// `org.screen-readers-mcp.spike.capture.voice.org.screen-readers-mcp.spike.capture`
+/// (spec 0041, A1; spec 0047, finding 17). Anything resolving our voice matches
+/// by SUFFIX for that reason, and the string actually written into the reader's
+/// preference is the one the system published rather than one assembled here.
+///
+/// Duplicated from `CaptureVoice.ourVoiceIdentifier` on purpose, and frozen with
+/// it: the bridge may not import the capture voice's module -- that module
+/// depends on nothing of ours, in either direction -- and the two are one
+/// contract between two processes, like the container path above.
+public let captureVoiceIdentifierSuffix = "org.screen-readers-mcp.spike.capture"
+
 /// The feed's file name, matching `captureLogPath` in the extension.
 public let captureFileName = "voiceover-capture.jsonl"

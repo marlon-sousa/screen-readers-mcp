@@ -60,9 +60,21 @@ public let captureLogPath: String =
 	ProcessInfo.processInfo.environment["VOCAPTURE_LOG"]
 	?? NSHomeDirectory() + "/voiceover-capture.jsonl"
 
-/// Drop this file beside the log to render silence instead of speech. OPT-IN, so
-/// the default cannot be the setting that mutes a screen reader.
-public let silentModeMarkerPath = NSHomeDirectory() + "/voiceover-capture-silent"
+/// THE BRIDGE'S CHANNEL INTO THIS EXTENSION: one small JSON file, refreshed
+/// while a session lives, saying whether to render silence and in whose voice to
+/// speak when not. OPT-IN, so the default cannot be the setting that mutes a
+/// screen reader -- and a LEASE, so a bridge that died leaves the machine
+/// talking without any code of ours having to run. See
+/// MarkerFileCaptureModeSource for both halves.
+///
+/// The override exists for the same reason `VOCAPTURE_LOG`'s does, and is read
+/// the same way: a developer can point both halves at one temporary directory
+/// and exercise capture mode with no reader at all. Under the sandbox, where the
+/// system launches this extension, neither variable is set and both fall back to
+/// the container.
+public let silentModeMarkerPath: String =
+	ProcessInfo.processInfo.environment["VOCAPTURE_MARKER"]
+	?? NSHomeDirectory() + "/voiceover-capture-silent"
 
 public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 	private let format: AVAudioFormat
@@ -97,6 +109,7 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		// The wiring. Two sinks because the spike emits two ways on purpose: the
 		// container file is what the bridge reads, and os_log works when a sandbox
 		// denial makes the file write fail.
+		let modeSource = MarkerFileCaptureModeSource(path: silentModeMarkerPath)
 		self.controller = CaptureController(
 			sink: FanOutUtteranceSink([
 				ContainerFileUtteranceSink(path: captureLogPath, subsystem: captureSubsystem),
@@ -104,7 +117,7 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 			]),
 			synthesizer: synthesizer,
 			catalogue: AVSpeechVoiceCatalogue(),
-			mode: MarkerFileCaptureModeSource(path: silentModeMarkerPath),
+			mode: modeSource,
 			ring: ring,
 			ourVoiceIdentifier: ourVoiceIdentifier
 		)
@@ -125,7 +138,12 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 				fields: [
 					"cleared_darwin_bg": .flag(clearedBackground == 0),
 					"log_path": .text(captureLogPath),
-					"silent": .flag(FileManager.default.fileExists(atPath: silentModeMarkerPath)),
+					"marker_path": .text(silentModeMarkerPath),
+					// Asked of the mode source rather than of the filesystem, so this
+					// line reports what the next utterance will actually do -- a marker
+					// left behind by a dead bridge reads as pass-through here exactly
+					// as it does there.
+					"silent": .flag(modeSource.directive.silent),
 				]))
 	}
 

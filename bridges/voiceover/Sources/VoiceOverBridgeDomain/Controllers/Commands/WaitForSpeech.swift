@@ -14,6 +14,14 @@
 // comes back on a miss is a fresh bookmark, so the caller can carry on from
 // there -- but `emittedAt` is EMPTY, deliberately, because nothing was emitted
 // and reporting "now" would read as a match that happened (spec 0028).
+//
+// UNLESS NOTHING HAS EVER BEEN CAPTURED, WHICH IS A DIFFERENT ANSWER WEARING THE
+// SAME CLOTHES (13.6). "The reader did not say it" and "we were never listening
+// to the reader" are the same empty result, and only one of them is about the
+// software under test. So a miss on a session that has captured NOTHING asks the
+// reader edge to account for itself, and reports a named condition with its
+// recovery instead -- see UnheardSpeech, which holds the whole argument and the
+// reason its three neighbours do not do this.
 
 import ScreenReaderWire
 
@@ -25,6 +33,9 @@ public final class WaitForSpeechHandler: CommandHandler {
 		let outcome = try context.speechBuffer().waitFor(
 			params.text, afterIndex: params.afterIndex, timeout: params.timeout
 		)
+		if !outcome.found {
+			try UnheardSpeech.explain(context)
+		}
 		return WaitForSpeechResult(
 			found: outcome.found,
 			index: outcome.index,

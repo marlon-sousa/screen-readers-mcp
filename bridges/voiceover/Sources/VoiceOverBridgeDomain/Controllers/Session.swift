@@ -20,11 +20,22 @@
 // through. That asymmetry is deliberate: a session is not thread-safe, it is
 // thread-CONFINED with one guarded door.
 //
-// WHAT IS NOT HERE YET, and where it goes: the SILENCE CAP is the third watchdog
-// (spec 0032) and it arrives with 13.6, because a cap on a session that cannot
-// suppress anything measures nothing. Its shape in lane 1 is a check beside
-// `checkDeadline` on every path, including the timed-out one -- an agent that is
-// busy but slow is not absent, so no watchdog keyed on absence ever fires for it.
+// THREE WATCHDOGS SINCE 13.6, and the third one is not keyed on absence. The
+// heartbeat asks "is the server process alive?" and command-inactivity asks "is
+// the agent still testing?"; the SILENCE CAP (spec 0032, protocol.md §6.1) asks
+// the human's question -- how long have I been unable to hear my own machine? --
+// and it is checked beside `checkDeadline` on EVERY path, including the
+// timed-out one, because an agent that is busy but slow is not absent and no
+// watchdog keyed on absence would ever fire for it.
+//
+// THE SAME CHECK RENEWS THE SILENCE LEASE, and that coupling is deliberate
+// rather than convenient. On macOS the interception is a file the capture voice
+// reads, and it EXPIRES: the session refreshes it while it lives, so a bridge
+// that is SIGKILLed un-mutes the machine by doing nothing at all. Driving the
+// renewal from this loop -- rather than from a timer of the adapter's own --
+// means silence depends on the liveness of the very loop that can lift it, so a
+// session thread wedged inside a handler gives the machine back instead of
+// holding it mute with every watchdog still ticking.
 
 import Foundation
 import ScreenReaderWire
@@ -50,16 +61,23 @@ public struct SessionConfig: Equatable, Sendable {
 	/// a machine nobody has configured is not one we may assume is empty.
 	public var attended: Bool
 
+	/// How long a silent session may leave that human unable to hear. Derived
+	/// from the same machine setting as `attended`, in Wiring, so the handshake
+	/// and the watchdog cannot disagree about it.
+	public var silenceCap: SilenceCapPolicy
+
 	public init(
 		readerVersion: String,
 		heartbeatTimeout: Double = 30.0,
 		inactivityTimeout: Double = 120.0,
-		attended: Bool = true
+		attended: Bool = true,
+		silenceCap: SilenceCapPolicy = .attendedDefault
 	) {
 		self.readerVersion = readerVersion
 		self.heartbeatTimeout = heartbeatTimeout
 		self.inactivityTimeout = inactivityTimeout
 		self.attended = attended
+		self.silenceCap = silenceCap
 	}
 }
 
@@ -93,6 +111,11 @@ public final class Session {
 	private var reason: TeardownReason?
 	private var tornDown = false
 
+	/// The third watchdog. Nil until a SILENT session establishes: a cap on a
+	/// session that suppresses nothing would be measuring a silence that is not
+	/// happening.
+	private var silenceCap: SilenceCap?
+
 	public init(
 		channel: any MessageChannel,
 		transcript: any Transcript,
@@ -112,6 +135,7 @@ public final class Session {
 			clock: clock,
 			transcript: transcript,
 			attended: config.attended,
+			silenceCapPolicy: config.silenceCap,
 			close: { close($0) }
 		)
 		// Tied after construction because the context's close capability IS this
@@ -165,11 +189,13 @@ public final class Session {
 				// alive, so mid-session this is noted and survived; before the
 				// handshake it is not our client at all.
 				onUnreadable(error)
+				checkSilence()
 				checkDeadline()
 				continue
 			}
 
 			if read == .timedOut {
+				checkSilence()
 				checkDeadline()
 				continue
 			}
@@ -182,6 +208,7 @@ public final class Session {
 			// The peer's silence while the handler ran was our doing, not evidence
 			// that it died.
 			touchHeartbeat()
+			checkSilence()
 			checkDeadline()
 		}
 	}
@@ -219,6 +246,32 @@ public final class Session {
 		}
 		if phase == .established, now - lastCommandAt >= config.inactivityTimeout {
 			reason = .inactivityTimeout
+		}
+	}
+
+	/// Renew the silence lease, and act on the third watchdog.
+	///
+	/// RENEWAL COMES FIRST AND IS UNCONDITIONAL, because it is the cheap half and
+	/// the one whose omission is dangerous: a lease left unrenewed expires, which
+	/// is safe, while a lease renewed by a session that should have lifted is not.
+	private func checkSilence() {
+		guard let silence = context.adapters?.silenceControl else { return }
+		silence.renew()
+		guard let cap = silenceCap else { return }
+		switch cap.check(clock.monotonic()) {
+		case .none:
+			return
+		case .warn:
+			transcript.note("silence cap: warning the human that they cannot hear their machine")
+			guarded("the silence-cap warning") { try self.signals.silenceWarning() }
+		case .lift:
+			// THE GUARANTEE, not a courtesy: the human gets their machine back.
+			// Capture is untouched -- the same entries, at the same indices, with
+			// the same stamps -- so the agent loses its silence and none of its
+			// evidence (protocol.md §6.1).
+			transcript.note("silence cap: LIFTED -- the human hears their machine again")
+			guarded("lifting the silence") { try silence.passThrough() }
+			guarded("the silence-cap lift cue") { try self.signals.silenceLifted() }
 		}
 	}
 
@@ -263,10 +316,16 @@ public final class Session {
 		reply(id: request.id, result: result)
 		if preHello {
 			phase = .established
+			// The third watchdog starts HERE, seeded at the moment the session cue
+			// is about to sound -- which is honest, because that cue is itself one
+			// of the sounds that reach the human past the suppression.
+			if context.mode == .silent {
+				silenceCap = SilenceCap(policy: config.silenceCap, now: clock.monotonic())
+			}
 			// Two ascending tones, then the persona this session declared: the
 			// tones say control was taken, the words say what it was taken AS.
 			// Guarded, because a courtesy is never worth a session.
-			guarded { try self.signals.sessionStarted(persona: self.context.persona) }
+			guarded("the session-start cue") { try self.signals.sessionStarted(persona: self.context.persona) }
 		}
 	}
 
@@ -303,28 +362,55 @@ public final class Session {
 		// never started is safe to stop.
 		context.adapters?.speechSource.stop()
 
-		// WHERE 13.6's RESTORATION GOES: right here, after capture has stopped and
-		// before the transcript and the channel are closed, guarded like anything
-		// that can fail, and unconditional on how the session ended. It is left as
-		// this comment rather than as an empty guarded call, because a call that
-		// does nothing reads like a step that already works.
+		// HARD INVARIANT 3, IN ITS MACOS FORM. Both steps run on EVERY teardown
+		// path, whatever ended the session, and each is guarded so a failure in one
+		// cannot skip the other.
+		//
+		// NEITHER IS THE GUARANTEE, and that is the thing to understand before
+		// changing this block. The guarantee is that the silence marker EXPIRES: a
+		// SIGKILL, a panic and a power cut all skip every line below, and the
+		// machine still speaks again within one lease. What these two buy is that
+		// the ORDINARY case is immediate rather than up to a lease late.
+		//
+		// PASS-THROUGH FIRST, THE VOICE SECOND. If the restoration fails, a
+		// released marker still leaves the human hearing their machine through our
+		// voice -- degraded, and safe. The reverse order would leave a window where
+		// the reader is back on the user's own voice while a marker still says
+		// silence, which is nothing at all.
+		if let adapters = context.adapters {
+			// NO GUARD, AND THE TYPE IS WHY: `release` does not throw -- it is a
+			// best-effort delete over a mechanism whose guarantee is the expiry --
+			// so a try/catch here would be catching nothing.
+			adapters.silenceControl.release()
+			if let previous = context.previousVoice {
+				guarded("restoring the user's own voice") {
+					try adapters.providerLifecycle.restoreVoice(previous)
+				}
+			}
+		}
 
 		transcript.sessionClosed(reason: ending.rawValue)
 		if phase == .established {
 			// Two descending tones: control released. Only for a session that
 			// actually established -- a connection that never said hello was never
 			// announced, so there is nothing to un-announce.
-			guarded { try self.signals.sessionEnded() }
+			guarded("the session-end cue") { try self.signals.sessionEnded() }
 		}
 		channel.close()
 	}
 
-	private func guarded(_ action: () throws -> Void) {
+	/// Run one step that may fail, and never let its failure stop the others.
+	///
+	/// IT IS NOT SILENT ANY MORE, and 13.6 is why: a restoration that failed is
+	/// the one failure in this file a human needs to know about, because it is
+	/// the difference between "my machine came back" and "my machine is still on
+	/// a voice I did not choose". The step names itself so the transcript says
+	/// which one.
+	private func guarded(_ step: String, _ action: () throws -> Void) {
 		do {
 			try action()
 		} catch {
-			// Teardown must complete on every path, so a failure in one step is
-			// swallowed and the remaining steps still run.
+			transcript.note("\(step) failed: \(describe(error))")
 		}
 	}
 

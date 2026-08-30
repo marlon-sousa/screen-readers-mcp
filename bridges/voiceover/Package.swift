@@ -180,10 +180,20 @@ let package = Package(
 		// macOS, and they are what would catch a wiring mistake that every unit
 		// test passes. Live-VoiceOver scenarios are NOT here: they live behind the
 		// bridge's `live` tier and never run in CI.
+		//
+		// IT DEPENDS ON CaptureVoice, AND THAT DOES NOT WEAKEN THE RULE ABOVE. The
+		// rule is about the direction: the capture voice may import nothing of
+		// ours, because every byte of it runs inside somebody's screen reader.
+		// Nothing stops a TEST from importing both halves -- and 13.6 needs one
+		// that does, because the marker file is a contract between two processes
+		// and two halves that each pass their own tests can still disagree about
+		// the bytes. CaptureProbe already depends on it for the same kind of
+		// reason.
 		.testTarget(
 			name: "IntegrationTests",
 			dependencies: [
 				"VoiceOverBridgeAdapters", "VoiceOverBridgeDomain", "ScreenReaderWire", "Fakes",
+				"CaptureVoice",
 			],
 			path: "Tests/Integration"
 		),

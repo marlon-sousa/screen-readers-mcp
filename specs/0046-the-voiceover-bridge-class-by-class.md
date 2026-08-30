@@ -1029,6 +1029,108 @@ source (`BridgeConfig`), per §3's rule.
 path, in a `defer`, because the default must never be the setting that mutes a
 screen reader.
 
+#### Amendments made while implementing 13.6, each with its why
+
+- **`SilenceControl` has five methods, not three.** The table names `suppress()`,
+  `passThrough()` and `isSuppressing`, and a lease cannot be expressed in those:
+  it has to be *opened* (`begin(preferredVoice:)`, which is also how Rule 0's
+  value reaches the extension), *re-armed* (`renew()`) and *dropped*
+  (`release()`). The three the table names are still the ones that say what the
+  human hears; the two added are the lease's own vocabulary.
+- **The marker is a `{"silent": …, "voice": …}` OBJECT, and a live session keeps
+  one too.** The layout says "the marker file the extension reads" and Rule 0
+  says the preferred voice costs "one field on the bridge→extension channel" —
+  which together mean the file cannot be a presence flag, because the voice has
+  to arrive in **live** mode as well, where nothing is being silenced. So
+  presence is not silence: freshness is the lease, and the `silent` field is the
+  question. `MarkerFileCaptureModeSource` gained a `CaptureDirective` value and
+  the port now answers with it in ONE read rather than two properties — a marker
+  refreshed between two reads could otherwise answer half about one session and
+  half about the next.
+- **`MarkerFileSilenceControl` does its own file IO instead of sitting on
+  `FileWriter`.** That seam is an append-only writer with a long-lived handle,
+  built for the transcript: it can neither replace a file nor delete one, and
+  teaching it to would give the transcript's leaf and fake two methods that must
+  never be called. Its test drives a real file in a temporary directory, for the
+  reason `FileLineTailer`'s does (13.5's amendment): every decision here is about
+  what a real filesystem does — that a rewrite MOVES the mtime, that a replace is
+  whole, that a delete is a delete — and a fake seam would only prove they behave
+  as the fake was written to.
+- **The lease is renewed from the SESSION LOOP, not from a timer inside the
+  adapter.** A timer would survive a session thread wedged inside a handler and
+  leave a blind user mute with every watchdog still ticking; driving it from the
+  loop means silence depends on the liveness of the very loop that can lift it.
+  The cost is real and stated in the adapter's header rather than hidden: one
+  command blocking longer than the lease un-mutes early, which is the safe
+  direction and is visible in `ping`'s `suppressing`.
+- **`ProviderLifecycle` does not carry `register()` / `unregister()`.**
+  Re-registration only takes effect after the reader is RESTARTED (spec 0047,
+  finding 6), and restarting a blind person's screen reader is not a decision a
+  handshake may take. The recovery is *reported*, by name and in the order that
+  was measured — `lsregister -f` first, `pluginkit -a` second — and 13.10's
+  dialog is where a human drives it. The port's other three methods are all
+  called by this entry.
+- **`ProviderLifecycle` needs THREE seams, and one of them is new.**
+  `ProcessRunner` and the voice store are in the table; `PublishedVoices` is not,
+  and the state machine cannot be assembled without it: `pluginkit` answers
+  whether the EXTENSION is registered, and only the machine's voice list answers
+  whether the VOICE is published. Collapsing them would collapse "a build
+  problem" into "a settings problem", which is the distinction `ProviderState`
+  exists for.
+- **`SpeakSelectionVoiceStore` implements a `VoiceStore` seam rather than being
+  reached concretely**, because an adapter may depend on another adapter only
+  through a seam — and it writes through `defaults import <domain> -` on standard
+  input rather than a temporary file, which is why `ProcessRunner` carries a
+  `stdin`. The types are what matter, not the file.
+- **`ProviderState.capturing` is promoted by the CALLER, through
+  `observing(captured:)`.** The lifecycle adapter cannot see the feed, and
+  utterances arriving is the only reliable evidence (spec 0047, finding 18). A
+  state machine that claimed `capturing` from its own signals would make a dead
+  provider indistinguishable from a working one.
+- **`Controllers/Commands/UnheardSpeech.swift` was added** — a supporting
+  construct, not in the table. It is where "the reader did not say it" is
+  separated from "we were never listening to the reader", which is spec 0041's
+  sharpest requirement made operational. It is used by `waitForSpeech` **only**:
+  `getSpeech` and `getLastSpeech` report a buffer rather than wait on one, and
+  `waitForSpeechToFinish` on a quiet buffer is a legitimate first call. The probe
+  is paid for at most once per session-with-nothing-captured, because anything
+  captured at all proves the provider is capturing.
+- **The refusal moved into `Hello` rather than disappearing with the factory's.**
+  The factory builds collaborators; only the handshake can ask whether this
+  machine is in a state where they mean anything. Silent is refused there by
+  named condition; **live is not**, because selecting the voice applies live and
+  a live session that starts unhealthy can become healthy while it runs.
+- **`SessionSignals` gained `silenceWarning()` and `silenceLifted()`.** The cap
+  has to be able to reach the human past the suppression, and on macOS the
+  suppression is inside the capture voice — so a warning spoken through the
+  reader is the one thing they cannot hear. Both are cues like the other two, and
+  like the other two their real adapter is 13.10's; the transcript records the
+  same events meanwhile.
+- **`Session.guarded` now names its step and writes failures to the transcript.**
+  A failed restoration is the one failure in that file a human needs to know
+  about: it is the difference between "my machine came back" and "my machine is
+  still on a voice I did not choose".
+- **`SilenceCap` leaves out lane 1's `paused`/`resumed` and `resuppressed`.**
+  Both exist there for `announce` and `askUser`, which arrive with 13.10. A
+  method nothing can call is a promise the type makes and the build does not
+  keep — and `SilenceCapPolicy` REPAIRS an unordered pair toward the shipped
+  defaults instead of raising, because Swift's equivalent of raising is a
+  precondition and crashing is not a thing a bridge may do to somebody's screen
+  reader.
+- **`VOCAPTURE_MARKER` mirrors `VOCAPTURE_LOG`** on both halves, so a developer
+  can point the bridge and a `build.sh`-installed extension at one temporary
+  directory and exercise capture mode with no reader at all.
+- **`Tests/Integration/CaptureModeTests.swift` was added, and `IntegrationTests`
+  now depends on `CaptureVoice`.** The marker is a contract between two
+  PROCESSES, and two halves that each pass their own tests can still disagree
+  about the bytes. The hard rule is about direction — the capture voice imports
+  nothing of ours — and a test importing both halves does not weaken it, exactly
+  as `CaptureProbe` does not.
+- **`Tests/Fakes/Support/ReaderEdge.swift` was added**, and it exists to make one
+  mistake unavailable: a test that built the REAL `ProviderLifecycle` would, on
+  the developer's own machine, change the voice their screen reader speaks with —
+  and if it failed half-way, leave it changed.
+
 ### 13.7 — input: commands
 
 | File | Role | Collaborators / why |

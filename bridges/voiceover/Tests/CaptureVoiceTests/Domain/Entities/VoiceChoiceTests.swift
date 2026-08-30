@@ -111,4 +111,64 @@ struct VoiceChoiceTests {
 	func noVoicesAtAll() {
 		#expect(choice(requested: nil, system: "en-US").resolve(languageDefault: nil, candidates: []) == nil)
 	}
+
+	// -- Rule 0: the user's own voice (13.6) ----------------------------------
+
+	@Test("RULE 0: the voice the bridge named is the one that speaks")
+	func preferredVoiceWins() {
+		// The point of the rule: in an attended session pass-through is
+		// acoustically invisible, because it re-speaks in the voice the user chose
+		// for themselves rather than in a substitute they did not ask for.
+		let subject = choice(requested: nil, system: "pt-BR")
+		#expect(
+			subject.resolve(
+				preferred: VoiceChoiceTests.portuguese,
+				languageDefault: VoiceChoiceTests.brazilian,
+				candidates: [VoiceChoiceTests.brazilian, VoiceChoiceTests.portuguese]
+			) == VoiceChoiceTests.portuguese)
+	}
+
+	@Test("RULE 1 STILL WINS: a preferred voice that is OURS is refused, or we synthesize forever")
+	func preferredMayNotBeOurs() {
+		// Reachable, not theoretical: a session that died without restoring leaves
+		// OUR voice as the one the user is on, so the next session reads it back as
+		// "the user's own voice". Re-speaking with it is infinite recursion.
+		let subject = choice(requested: nil, system: "pt-BR")
+		#expect(
+			subject.resolve(
+				preferred: VoiceChoiceTests.ourPublished,
+				languageDefault: VoiceChoiceTests.brazilian,
+				candidates: [VoiceChoiceTests.brazilian]
+			) == VoiceChoiceTests.brazilian)
+	}
+
+	@Test("RULE 0 DEGRADES: no preferred voice falls through to the three rules below it")
+	func noPreferredFallsThrough() {
+		let subject = choice(requested: nil, system: "pt-BR")
+		#expect(
+			subject.resolve(
+				preferred: nil,
+				languageDefault: VoiceChoiceTests.brazilian,
+				candidates: [VoiceChoiceTests.arabic]
+			) == VoiceChoiceTests.brazilian)
+	}
+
+	@Test("a preferred voice answers WITHOUT enumerating the machine's voices")
+	func preferredSkipsTheEnumeration() {
+		// The same measurement rule 2's ordering is built on: the 191-voice list
+		// costs real time inside a screen reader, and the common path must not pay
+		// it. `candidates` is an autoclosure, so this asserts it was never called.
+		var enumerated = false
+		let subject = choice(requested: nil, system: "pt-BR")
+		let chosen = subject.resolve(
+			preferred: VoiceChoiceTests.portuguese,
+			languageDefault: nil,
+			candidates: {
+				enumerated = true
+				return [VoiceChoiceTests.brazilian]
+			}()
+		)
+		#expect(chosen == VoiceChoiceTests.portuguese)
+		#expect(enumerated == false)
+	}
 }

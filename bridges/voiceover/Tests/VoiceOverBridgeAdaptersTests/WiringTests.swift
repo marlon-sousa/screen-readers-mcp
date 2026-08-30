@@ -73,4 +73,30 @@ struct WiringTests {
 		let server = Wiring.bridgeServer(config: config, signals: FakeSessionSignals())
 		#expect(server.status.state == .stopped)
 	}
+
+	@Test("the marker path is the extension's container, and the override is honoured")
+	func theMarkerPathIsResolvedHere() {
+		// Wiring is the one place in the bridge that reads the environment, so the
+		// override belongs here and the derivation belongs in the adapter. The
+		// variable exists for the same reason VOCAPTURE_LOG's does: both halves can
+		// be pointed at one temporary directory and capture mode exercised with no
+		// reader at all.
+		let resolved = Wiring.markerPath()
+		let override = ProcessInfo.processInfo.environment["VOCAPTURE_MARKER"] ?? ""
+		if override.isEmpty {
+			#expect(resolved == MarkerFileSilenceControl.containerMarkerPath(home: NSHomeDirectory()))
+			#expect(resolved.contains(captureExtensionBundleID))
+		} else {
+			#expect(resolved == override)
+		}
+	}
+
+	@Test("the silence cap's `enabled` is the machine's `attended`, from ONE source")
+	func theCapFollowsAttendance() {
+		// protocol.md §6.2 keeps them separable for readers whose cap can be
+		// switched off on its own; this one has no such setting, so they are
+		// derived here once rather than in two places that agree today.
+		#expect(SilenceCapPolicy(enabled: FakeBridgeConfig(attended: true).attended).enabled)
+		#expect(SilenceCapPolicy(enabled: FakeBridgeConfig(attended: false).attended).enabled == false)
+	}
 }

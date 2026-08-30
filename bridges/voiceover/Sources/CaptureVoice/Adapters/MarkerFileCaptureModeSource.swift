@@ -30,11 +30,21 @@
 //
 // An unreadable modification date is also "speak", for the reason above: the
 // question could not be answered, so the answer is the safe one.
+//
+// WHAT THE FILE SAYS, since 13.6: one JSON object, `{"silent": <bool>,
+// "voice": "<identifier>"}`. The voice is the one the user chose for themselves,
+// which the bridge holds anyway because it restores it at teardown, and handing
+// it over is what lets pass-through re-speak in the user's OWN voice (spec 0046,
+// Rule 0). A FRESH MARKER IS NOT ITSELF SILENCE -- a live session keeps one too,
+// saying `silent: false`, because the voice has to reach here in both modes.
+// Contents that do not parse are pass-through with no preferred voice, for the
+// same reason an unreadable date is: an unanswerable question gets the safe
+// answer.
 
 import Foundation
 
 public final class MarkerFileCaptureModeSource: CaptureModeSource {
-	/// How stale a marker may be before it stops meaning silence.
+	/// How stale a marker may be before it stops meaning anything at all.
 	///
 	/// Chosen so that a bridge refreshing on any ordinary cadence stays well
 	/// inside it, while a dead one un-mutes the machine in a time a human would
@@ -59,11 +69,30 @@ public final class MarkerFileCaptureModeSource: CaptureModeSource {
 		self.now = now
 	}
 
-	public var isSilent: Bool {
+	public var directive: CaptureDirective {
+		let url = URL(fileURLWithPath: path)
 		guard
 			let attributes = try? FileManager.default.attributesOfItem(atPath: path),
-			let modified = attributes[.modificationDate] as? Date
-		else { return false }
-		return now().timeIntervalSince(modified) <= lease
+			let modified = attributes[.modificationDate] as? Date,
+			now().timeIntervalSince(modified) <= lease,
+			let data = try? Data(contentsOf: url)
+		else { return .passThrough }
+		return MarkerFileCaptureModeSource.parse(data)
+	}
+
+	/// The marker's contents, or the safe answer.
+	///
+	/// A pure function of bytes, so the file's own decisions above stay separable
+	/// from what it says. `silent` missing is FALSE rather than an error, which is
+	/// the same direction everything else in this file leans.
+	static func parse(_ data: Data) -> CaptureDirective {
+		guard
+			let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+		else { return .passThrough }
+		let voice = object["voice"] as? String
+		return CaptureDirective(
+			silent: object["silent"] as? Bool ?? false,
+			preferredVoice: (voice?.isEmpty ?? true) ? nil : voice
+		)
 	}
 }

@@ -68,6 +68,35 @@ public enum Wiring {
 		return ContainerFileSpeechSource.containerFilePath(home: NSHomeDirectory())
 	}
 
+	/// Where the bridge tells the capture voice what it is asking of it.
+	///
+	/// The default is the same file the extension reads, derived by the same rule
+	/// -- see `MarkerFileSilenceControl.containerMarkerPath`. The override is the
+	/// same variable the extension reads (`VOCAPTURE_MARKER`), for the reason
+	/// `VOCAPTURE_LOG`'s exists: both halves can be pointed at one temporary
+	/// directory and capture mode exercised with no reader at all.
+	public static func markerPath() -> String {
+		let override = ProcessInfo.processInfo.environment["VOCAPTURE_MARKER"] ?? ""
+		guard override.isEmpty else { return override }
+		return MarkerFileSilenceControl.containerMarkerPath(home: NSHomeDirectory())
+	}
+
+	/// The capture voice's lifecycle, over the three signals that answer for it.
+	///
+	/// ONE PER PROCESS, not one per session: it describes the MACHINE, so a
+	/// session-scoped one would run `pluginkit` again for an answer that cannot
+	/// have changed because a socket was accepted.
+	public static func providerLifecycle(runner: (any ProcessRunner)? = nil) -> any ProviderLifecycle {
+		let tools = runner ?? SubprocessRunner()
+		return PluginKitProviderLifecycle(
+			runner: tools,
+			published: SystemPublishedVoices(),
+			store: SpeakSelectionVoiceStore(runner: tools),
+			extensionBundleID: captureExtensionBundleID,
+			voiceIdentifierSuffix: captureVoiceIdentifierSuffix
+		)
+	}
+
 	/// Which endpoint to accept on, per the configured connection mode.
 	public static func listener(
 		config: any BridgeConfig,
@@ -116,14 +145,28 @@ public enum Wiring {
 		signals: any SessionSignals,
 		eventBus: (any EventBus)? = nil,
 		logDirectory: String? = nil,
-		clock: any Clock = RealClock()
+		clock: any Clock = RealClock(),
+		lifecycle: (any ProviderLifecycle)? = nil
 	) -> BridgeServer {
 		let handlers = Registry.build(
-			factory: VoiceOverAdapterFactory(capturePath: capturePath()),
+			factory: VoiceOverAdapterFactory(
+				capturePath: capturePath(),
+				markerPath: markerPath(),
+				lifecycle: lifecycle ?? providerLifecycle()
+			),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion
 		)
-		let sessionConfig = SessionConfig(readerVersion: readerVersion(), attended: config.attended)
+		// ONE SOURCE FOR THE MACHINE'S ANSWER ABOUT ITS HUMAN. `attended` and the
+		// silence cap's `enabled` are the same fact (protocol.md §6.2 keeps them
+		// separable for readers whose cap can be switched off on its own; this one
+		// has no such setting yet), so they are derived here, once, rather than in
+		// two places that agree today.
+		let sessionConfig = SessionConfig(
+			readerVersion: readerVersion(),
+			attended: config.attended,
+			silenceCap: SilenceCapPolicy(enabled: config.attended)
+		)
 		let logs = logDirectory ?? FileTranscript.defaultLogDirectory(home: NSHomeDirectory())
 		return BridgeServer(
 			listener: listener(config: config),

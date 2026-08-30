@@ -26,9 +26,16 @@ struct HelloTests {
 
 	private func makeContext(
 		transcript: FakeTranscript = FakeTranscript(),
-		attended: Bool = true
+		attended: Bool = true,
+		silenceCap: SilenceCapPolicy = .attendedDefault
 	) -> SessionContext {
-		SessionContext(clock: FakeClock(), transcript: transcript, attended: attended, close: { _ in })
+		SessionContext(
+			clock: FakeClock(),
+			transcript: transcript,
+			attended: attended,
+			silenceCapPolicy: silenceCap,
+			close: { _ in }
+		)
 	}
 
 	private func request(_ params: [String: JSONValue]) -> Request {
@@ -217,5 +224,164 @@ struct HelloTests {
 	func itIsAvailableBeforeHello() {
 		#expect(makeHandler().availableBeforeHello)
 		#expect(makeHandler().resetsInactivity)
+	}
+
+	// -- the reader edge (13.6) ------------------------------------------------
+
+	@Test("THE USER'S OWN VOICE IS RECORDED BEFORE OURS IS WRITTEN, so teardown can put it back")
+	func theUsersVoiceIsRecordedFirst() throws {
+		let factory = FakeAdapterFactory(
+			providerLifecycle: FakeProviderLifecycle(selected: "com.apple.eloquence.pt-BR.Reed"))
+		let context = makeContext()
+		_ = try makeHandler(factory: factory).execute(
+			context, request(["mode": .string("live"), "protocolVersion": .int(1)]))
+		#expect(context.previousVoice == "com.apple.eloquence.pt-BR.Reed")
+		#expect(factory.providerLifecycle.selectCalls == 1)
+	}
+
+	@Test("RULE 1: a previous session's leftover -- OUR voice -- is not recorded as the user's")
+	func ourOwnVoiceIsNotTheUsers() throws {
+		// A session that died without restoring leaves the reader on our voice.
+		// Recording that as "the user's own" would restore the capture voice at
+		// teardown and hand the extension itself as the pass-through voice, which
+		// is infinite recursion.
+		let lifecycle = FakeProviderLifecycle(selected: "org.screen-readers-mcp.capture.voice")
+		let factory = FakeAdapterFactory(providerLifecycle: lifecycle)
+		let context = makeContext()
+		_ = try makeHandler(factory: factory).execute(
+			context, request(["mode": .string("live"), "protocolVersion": .int(1)]))
+		#expect(context.previousVoice == nil)
+		// And there is nothing to select: it is already ours.
+		#expect(lifecycle.selectCalls == 0)
+	}
+
+	@Test("the marker channel is opened carrying the user's voice, in LIVE mode too")
+	func theChannelCarriesTheVoiceInLiveMode() throws {
+		// Rule 0: pass-through re-speaks in the user's own voice, so capture is
+		// acoustically invisible rather than a substitute nobody asked for.
+		let factory = FakeAdapterFactory(
+			providerLifecycle: FakeProviderLifecycle(selected: "com.apple.eloquence.pt-BR.Reed"))
+		_ = try makeHandler(factory: factory).execute(
+			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)]))
+		#expect(
+			factory.silenceControl.acts == [.begin(preferredVoice: "com.apple.eloquence.pt-BR.Reed")])
+		#expect(factory.silenceControl.isSuppressing == false)
+	}
+
+	@Test("a SILENT handshake opens the channel and then suppresses, in that order")
+	func silentSuppresses() throws {
+		let factory = FakeAdapterFactory()
+		let transcript = FakeTranscript()
+		let result = try makeHandler(factory: factory).execute(
+			makeContext(transcript: transcript),
+			request(["mode": .string("silent"), "protocolVersion": .int(1)])) as? HelloResult
+		#expect(try #require(result).mode == .silent)
+		#expect(
+			factory.silenceControl.acts
+				== [.begin(preferredVoice: "com.apple.voice.compact.pt-BR.Luciana"), .suppress])
+		#expect(factory.silenceControl.isSuppressing)
+		#expect(transcript.notes.contains { $0.contains("lease") })
+	}
+
+	@Test("A SILENT SESSION IS REFUSED when the reader edge cannot deliver silence, BY NAME")
+	func silentIsRefusedOnAnUnusableEdge() {
+		let factory = FakeAdapterFactory(
+			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		do {
+			_ = try makeHandler(factory: factory).execute(
+				makeContext(), request(["mode": .string("silent"), "protocolVersion": .int(1)]))
+			Issue.record("expected the silent handshake to be refused")
+		} catch let error as CommandError {
+			#expect(error.description.contains(ReaderCondition.providerNotRunning.rawValue))
+			#expect(error.description.contains(ReaderCondition.providerNotRunning.recovery))
+			// Nothing was suppressed on the way out: a refused promise leaves the
+			// machine exactly as it was.
+			#expect(factory.silenceControl.acts.isEmpty)
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a silent session whose voice would not STICK is refused too")
+	func silentIsRefusedWhenSelectionFails() {
+		// The write that returns cleanly and changes nothing -- the type trap, and
+		// the voice VoiceOver never offered. Both arrive here as a refusal to
+		// select, and both must stop a promise about a human's ears.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.selectionRefusal = ProviderError("the capture voice was written and did not take")
+		do {
+			_ = try makeHandler(factory: FakeAdapterFactory(providerLifecycle: lifecycle)).execute(
+				makeContext(), request(["mode": .string("silent"), "protocolVersion": .int(1)]))
+			Issue.record("expected the silent handshake to be refused")
+		} catch let error as CommandError {
+			#expect(error.description.contains("did not take"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a LIVE session on the same machine is established, and the condition is written down")
+	func liveSurvivesAnUnusableEdge() throws {
+		// Selecting the voice applies live, in both directions, so a live session
+		// that starts unhealthy can become healthy while it runs. It is told to the
+		// human rather than hidden.
+		let transcript = FakeTranscript()
+		let factory = FakeAdapterFactory(
+			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		let result = try makeHandler(factory: factory).execute(
+			makeContext(transcript: transcript),
+			request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
+		#expect(try #require(result).mode == .live)
+		#expect(transcript.notes.contains { $0.contains(ReaderCondition.providerNotRunning.rawValue) })
+	}
+
+	@Test("`synth` NAMES WHAT IS ACTUALLY SELECTED, so it cannot quietly disagree with reality")
+	func synthIsAsked() throws {
+		let ours = try makeHandler(factory: FakeAdapterFactory()).execute(
+			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
+		#expect(try #require(ours).synth == captureVoiceName)
+
+		// A machine where our voice cannot be selected reports the voice the reader
+		// is really using -- which is the honest answer, and the one that tells an
+		// agent its read-backs will be empty.
+		let elsewhere = try makeHandler(
+			factory: FakeAdapterFactory(
+				providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		).execute(makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)]))
+			as? HelloResult
+		#expect(try #require(elsewhere).synth == "com.apple.voice.compact.pt-BR.Luciana")
+	}
+
+	@Test("the silence cap travels in hello, from the same machine fact as `attended`")
+	func theCapIsReported() throws {
+		let capped = try makeHandler().execute(
+			makeContext(), request(["mode": .string("silent"), "protocolVersion": .int(1)])) as? HelloResult
+		let helloResult = try #require(capped)
+		let cap = try #require(helloResult.silenceCap)
+		#expect(cap.enabled)
+		#expect(cap.warnAfterSeconds == 45)
+		#expect(cap.liftAfterSeconds == 90)
+
+		let unattended = try makeHandler().execute(
+			makeContext(attended: false, silenceCap: SilenceCapPolicy(enabled: false)),
+			request(["mode": .string("silent"), "protocolVersion": .int(1)])) as? HelloResult
+		let unattendedResult = try #require(unattended)
+		#expect(try #require(unattendedResult.silenceCap).enabled == false)
+	}
+
+	@Test("capture is started BEFORE the reader is pointed at us, or the first utterance is lost")
+	func captureListensFirst() throws {
+		// The 13.5 lesson at the other end of the same feed: selecting the voice is
+		// what makes utterances start arriving, so the tailer has to be attached
+		// before it happens.
+		let factory = FakeAdapterFactory()
+		var selectedWhenCaptureStarted: Int?
+		factory.speechSource.onStart = {
+			selectedWhenCaptureStarted = factory.providerLifecycle.selectCalls
+		}
+		_ = try makeHandler(factory: factory).execute(
+			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)]))
+		#expect(selectedWhenCaptureStarted == 0)
+		#expect(factory.providerLifecycle.selectCalls == 1)
 	}
 }

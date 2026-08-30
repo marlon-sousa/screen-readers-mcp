@@ -116,6 +116,18 @@ public final class SpeechBuffer {
 		return entries.count - 1
 	}
 
+	/// Whether nothing has been captured in this session yet -- only the sentinel.
+	///
+	/// Its one caller asks a question that costs a subprocess (see UnheardSpeech),
+	/// so it is here rather than as `lastIndex() == 0` at the call site: what
+	/// "empty" means is the buffer's own business, and the sentinel is exactly the
+	/// convention that makes the naive spelling of it wrong.
+	public var isEmpty: Bool {
+		lock.lock()
+		defer { lock.unlock() }
+		return entries.count <= 1
+	}
+
 	/// The index the next capture will occupy: the agent's bookmark.
 	public func nextIndex() -> Int {
 		lock.lock()

@@ -387,14 +387,17 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.6**: **13.1 through 13.5
+its board was written on 2026-08-29. Its head is **13.7**: **13.1 through 13.6
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
-voice, the wire contract's Swift binding, a bridge that **listens**, and -- since
-13.5 -- one that **hears**: an agent can read back what the reader said, over 39
-more headless tests. `hello` announces `speech`, and the five speech commands
-answer. What it cannot do is make the reader quiet, so a silent session is still
-refused; the next step is capture mode and hard invariant 3's macOS form, against
-[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+voice, the wire contract's Swift binding, a bridge that **listens**, one that
+**hears** -- an agent can read back what the reader said -- and, since 13.6, one
+that can make the reader **quiet**: silent sessions are established rather than
+refused, the bridge selects the capture voice itself and puts the user's own back
+on every teardown path, and the silence it holds is a **lease** that expires if
+the bridge dies, which is hard invariant 3 in its macOS form. `hello` announces
+`speech`, and the five speech commands answer. The next step is input, against
+[spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) -- carrying 13.7's
+measured risk that `perform command` is currently dead on the maintainer's host.
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -631,7 +634,7 @@ rule intends.
     utterance an action caused is the one lost to the scheduler, and the tailer
     is an adapter with a test rather than the leaf the layout named it.
     Done (2026-08-30).
-13.6. **Capture mode, and hard invariant 3 in its macOS form** (lane 3). The
+13.6. **Done** -- **Capture mode, and hard invariant 3 in its macOS form** (lane 3). The
     marker file that flips the extension between pass-through and silence,
     driven by the mode `hello` declared, restored to pass-through on every
     teardown path — the default cannot be the setting that mutes a screen
@@ -654,7 +657,55 @@ rule intends.
     `ProviderState` cannot promote `published` to `selected` on its own evidence.
     It must say so — and name re-registration plus a reader restart as the
     recovery, since restarts alone were measured not to be enough.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    **Shipped**: `SilenceControl` over a marker file the capture voice reads once
+    per utterance, `ProviderLifecycle` over three independent signals, the
+    `ProviderState` and `ReaderCondition` entities that turn each of them into a
+    named diagnosis with its recovery, `SilenceCap` as the session's **third
+    watchdog**, and the voice work spec 0047 made possible: the bridge reads the
+    user's own voice at the handshake, points the reader at the capture voice
+    itself, and writes theirs back on every teardown path. `ping` answers
+    `suppressing` and `hello` carries `silenceCap`. **The refusal of silent mode
+    was deleted with its named test and MOVED to the handshake** -- where a
+    machine that cannot deliver silence is refused *by named condition, with its
+    recovery*, while a LIVE session in the same state is not, because writing the
+    voice applies live and an unhealthy live session can become healthy while it
+    runs.
+    **SILENCE IS A LEASE, and that is the entry's whole shape.** `protocol.md` §6
+    asks a bridge to arrange its interception so that losing the bridge ITSELF
+    lifts it; NVDA gets that from weakly-held extension points and this route
+    cannot, because the marker is a file on disk read by a process the system
+    owns. So the session refreshes it while it lives and the extension treats a
+    stale marker as pass-through: **a SIGKILLed bridge un-mutes the machine by
+    doing nothing at all**, and the `defer` that deletes the marker stays only
+    because it makes the ordinary case immediate. The renewal is driven by the
+    session LOOP rather than by a timer of the adapter's own, deliberately -- a
+    timer would keep renewing for a session thread wedged inside a handler, and
+    the loop is the thing that can lift.
+    **Rule 0 rides on the same channel**: the marker carries the voice the user
+    chose for themselves, so pass-through re-speaks in it and capture becomes
+    acoustically invisible rather than a substitute nobody asked for -- with rule
+    1 still winning, since a session that died without restoring leaves OUR voice
+    looking like the user's and re-speaking with it is infinite recursion.
+    **Found by a test rather than by a live run**, and worth recording because
+    everything else was green: the edit that made the dispatch loop CALL the
+    renewal silently did not apply, so every unit test passed while a real silent
+    session would have un-muted itself after thirty seconds with nothing in the
+    logs to explain it. A session-level test counting renewals caught it; an
+    adapter-level one never could.
+    **The read path was exercised against the real machine, read-only**: with the
+    extension registered, `BridgeListener` reported *"VoiceOver is set to the
+    capture voice, and nothing has been captured yet"* -- so pluginkit parsing,
+    the published-voice suffix match and the system speech domain read all answer
+    correctly on a live host. Nothing was written, and no reader was driven; the
+    live checklist is 13.11.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.6 section carries the layout amendments this made, each with its why --
+    including the two that changed the mechanism rather than the naming: the
+    marker is an object carrying `silent` AND the user's voice (a live session
+    keeps one too, so presence is not silence), and `ProviderLifecycle` needs a
+    third seam because pluginkit answers for the EXTENSION and only the machine's
+    voice list answers for the VOICE.
+    Done (2026-08-30).
 13.7. **Input: commands** (lane 3). `pressGesture` over VoiceOver's own
     `perform command`, against the vocabulary in
     `SCRStringsToCommandsMap.scrconfig` — 415 entries on macOS 15.0 mapping an

@@ -322,7 +322,7 @@ struct SessionTests {
 		let source = FakeSpeechSource()
 		let handler = FakeHandler(availableBeforeHello: true)
 		handler.onExecute = { context, _ in
-			context.adapters = AdapterSet(mode: .live, speechSource: source)
+			context.adapters = fakeAdapterSet(speechSource: source)
 		}
 		let outcome = run(
 			[hello(), request(2, "bye")], handlers: ["hello": handler, "bye": byeHandler()]
@@ -336,7 +336,7 @@ struct SessionTests {
 		let source = FakeSpeechSource()
 		let handler = FakeHandler(availableBeforeHello: true)
 		handler.onExecute = { context, _ in
-			context.adapters = AdapterSet(mode: .live, speechSource: source)
+			context.adapters = fakeAdapterSet(speechSource: source)
 		}
 		let clock = FakeClock()
 		let channel = FakeChannel([hello(), .quiet])
@@ -383,5 +383,189 @@ struct SessionTests {
 		#expect(signals.endedCount == 1)
 		#expect(outcome.channel.isClosed)
 		#expect(outcome.closedReason == TeardownReason.channelClosed.rawValue)
+	}
+
+	// -- hard invariant 3, in its macOS form (13.6) -----------------------------
+
+	/// A session whose handshake installs a reader edge of doubles, so teardown
+	/// can be watched.
+	private func edgeHandler(_ set: AdapterSet, mode: CaptureMode = .live) -> FakeHandler {
+		let handler = FakeHandler(availableBeforeHello: true)
+		handler.onExecute = { context, _ in
+			context.mode = mode
+			context.adapters = set
+			context.previousVoice = "com.apple.eloquence.pt-BR.Reed"
+		}
+		return handler
+	}
+
+	@Test("TEARDOWN RELEASES THE SILENCE AND PUTS THE USER'S VOICE BACK, in that order")
+	func teardownRestores() {
+		// Pass-through first: if the restoration fails, a released marker still
+		// leaves the human hearing their machine through our voice -- degraded, and
+		// safe. The reverse order leaves a window where the reader is back on the
+		// user's own voice while a marker still says silence.
+		let silence = FakeSilenceControl()
+		let lifecycle = FakeProviderLifecycle()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: lifecycle)
+		run([hello(), request(2, "bye")], handlers: ["hello": edgeHandler(set), "bye": byeHandler()])
+		#expect(silence.acts.last == .release)
+		#expect(lifecycle.restored == ["com.apple.eloquence.pt-BR.Reed"])
+	}
+
+	@Test("restoration runs however the session ended -- including a watchdog firing")
+	func teardownRestoresOnEveryPath() {
+		let silence = FakeSilenceControl()
+		let lifecycle = FakeProviderLifecycle()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: lifecycle)
+		let outcome = run(
+			[hello(), .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set)],
+			advancePerRead: 40
+		)
+		#expect(outcome.closedReason == TeardownReason.heartbeatTimeout.rawValue)
+		#expect(silence.acts.contains(.release))
+		#expect(lifecycle.restored == ["com.apple.eloquence.pt-BR.Reed"])
+	}
+
+	@Test("A FAILED RESTORATION IS WRITTEN DOWN, because a human has to know they are still on our voice")
+	func aFailedRestorationIsReported() {
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.restoreRefusal = ProviderError("the write did not take")
+		let set = fakeAdapterSet(providerLifecycle: lifecycle)
+		let outcome = run(
+			[hello(), request(2, "bye")], handlers: ["hello": edgeHandler(set), "bye": byeHandler()])
+		#expect(outcome.transcript.notes.contains { $0.contains("did not take") })
+		// And the rest of teardown still ran.
+		#expect(outcome.channel.isClosed)
+		#expect(outcome.transcript.closedReasons.count == 1)
+	}
+
+	@Test("nothing is restored when there was nothing to restore")
+	func nothingToRestore() {
+		// The reader was already on our voice when the session started, which means
+		// a previous one died without restoring. Writing our own voice back would
+		// be the bridge keeping the machine on the capture voice deliberately.
+		let lifecycle = FakeProviderLifecycle()
+		let set = fakeAdapterSet(providerLifecycle: lifecycle)
+		let handler = FakeHandler(availableBeforeHello: true)
+		handler.onExecute = { context, _ in context.adapters = set }
+		run([hello(), request(2, "bye")], handlers: ["hello": handler, "bye": byeHandler()])
+		#expect(lifecycle.restored.isEmpty)
+	}
+
+	// -- the third watchdog -----------------------------------------------------
+
+	@Test("THE LEASE IS RENEWED WHILE THE SESSION LIVES, on every wakeup including quiet ones")
+	func theLeaseIsRenewed() {
+		// This is what makes a SIGKILLed bridge un-mute the machine: the extension
+		// treats a marker nobody refreshed as pass-through, so silence survives
+		// exactly as long as this loop does.
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		run(
+			[hello(), .quiet, .quiet, request(2, "bye")],
+			handlers: ["hello": edgeHandler(set, mode: .silent), "bye": byeHandler()])
+		#expect(silence.renewals >= 3)
+	}
+
+	@Test("a LIVE session renews too: the marker carries the user's voice in both modes")
+	func liveRenewsAsWell() {
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		run(
+			[hello(), .quiet, request(2, "bye")],
+			handlers: ["hello": edgeHandler(set), "bye": byeHandler()])
+		#expect(silence.renewals >= 2)
+	}
+
+	@Test("the cap WARNS the human before it acts, once")
+	func theCapWarns() {
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		let outcome = run(
+			[hello(), .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set, mode: .silent)],
+			config: SessionConfig(readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(signals.warnedCount == 1)
+		#expect(outcome.transcript.notes.contains { $0.contains("silence cap") })
+	}
+
+	@Test("THE CAP LIFTS THE SILENCE, which is the guarantee rather than the courtesy")
+	func theCapLifts() {
+		// Capture is untouched: the same entries, at the same indices, with the
+		// same stamps. The agent loses its silence and none of its evidence.
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		run(
+			[hello(), .quiet, .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set, mode: .silent)],
+			config: SessionConfig(readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(silence.acts.contains(.passThrough))
+		#expect(signals.liftedCount == 1)
+	}
+
+	@Test("a LIVE session is never capped, because nothing is being withheld")
+	func liveIsNotCapped() {
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		run(
+			[hello(), .quiet, .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set)],
+			config: SessionConfig(readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(signals.warnedCount == 0)
+		#expect(silence.acts.contains(.passThrough) == false)
+	}
+
+	@Test("an UNATTENDED machine is never lifted: un-muting a room with nobody in it is damage")
+	func unattendedIsNotLifted() {
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		run(
+			[hello(), .quiet, .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set, mode: .silent)],
+			config: SessionConfig(
+				readerVersion: "macOS 15.0.0",
+				heartbeatTimeout: 1000,
+				attended: false,
+				silenceCap: SilenceCapPolicy(enabled: false)
+			),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(signals.liftedCount == 0)
+		#expect(silence.acts.contains(.passThrough) == false)
+		// The lease is still renewed: the silence the machine asked for holds, and
+		// it still expires if this process dies.
+		#expect(silence.renewals >= 3)
+	}
+
+	@Test("a cue that fails does not stop the lift: the guarantee outranks the courtesy")
+	func aFailedCueDoesNotStopTheLift() {
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		signals.fails = true
+		run(
+			[hello(), .quiet, .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set, mode: .silent)],
+			config: SessionConfig(readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(silence.acts.contains(.passThrough))
 	}
 }

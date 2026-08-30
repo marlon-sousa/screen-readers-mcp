@@ -16,6 +16,7 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 	/// Counted because enumerating every voice COSTS TIME on a real machine, and
 	/// the common path must not pay it. See the test that asserts this is zero.
 	private(set) var allVoicesReads = 0
+	private(set) var identifierLookups: [String] = []
 
 	init(
 		currentLanguage: String = "en-US",
@@ -30,6 +31,13 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 	func defaultVoice(for language: String) -> AvailableVoice? {
 		defaultLookups.append(language)
 		return defaults[language]
+	}
+
+	/// Looks in `voices` BY IDENTIFIER without counting an enumeration, because on
+	/// the real machine this is a direct lookup and rule 0 must not cost the list.
+	func voice(identifier: String) -> AvailableVoice? {
+		identifierLookups.append(identifier)
+		return voices.first { $0.identifier == identifier }
 	}
 
 	func allVoices() -> [AvailableVoice] {

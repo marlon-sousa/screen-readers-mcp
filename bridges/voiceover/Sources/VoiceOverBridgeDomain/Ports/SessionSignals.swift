@@ -29,4 +29,19 @@ public protocol SessionSignals: AnyObject {
 
 	/// Control released.
 	func sessionEnded() throws
+
+	/// The human has not heard their machine for a while, and the cap is about to
+	/// give it back (protocol.md §6.1).
+	///
+	/// A COURTESY, AND THE LIFT IS THE GUARANTEE. If this cue cannot be played the
+	/// session carries on and the lift still happens on time -- which is why it
+	/// throws like the other two rather than being allowed to take a session down.
+	func silenceWarning() throws
+
+	/// Silence has just been lifted: the machine is audible again.
+	///
+	/// AUDIBLY MARKED BECAUSE §6.1 SAYS SO -- a human whose machine goes quiet
+	/// again later is entitled to have heard it come back in between, or the two
+	/// windows read as one long silence.
+	func silenceLifted() throws
 }

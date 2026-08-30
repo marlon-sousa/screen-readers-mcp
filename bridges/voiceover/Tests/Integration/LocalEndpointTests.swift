@@ -108,7 +108,7 @@ struct LocalEndpointTests {
 			binder: UnixSocketBinder(acceptTimeout: 0.05, receiveTimeout: 0.05)
 		)
 		let handlers = Registry.build(
-			factory: VoiceOverAdapterFactory(capturePath: unusedCapturePath()), readerVersion: "macOS 15.0.0", bridgeVersion: "1.2.3"
+			factory: testAdapterFactory(), readerVersion: "macOS 15.0.0", bridgeVersion: "1.2.3"
 		)
 		let server = BridgeServer(
 			listener: listener,

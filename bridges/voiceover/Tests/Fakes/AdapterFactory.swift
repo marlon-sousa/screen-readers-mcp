@@ -19,16 +19,30 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// The source every set this factory builds carries, so a test can ask it
 	/// what the handshake did to it.
 	public let speechSource = FakeSpeechSource()
+	/// The same, for the two collaborators 13.6 added: the handshake opens the
+	/// marker channel and points the reader at the capture voice, and both of
+	/// those are invisible in the AdapterSet itself.
+	public let silenceControl = FakeSilenceControl()
+	public let providerLifecycle: FakeProviderLifecycle
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
-	public init(refusal: AdapterFactoryError? = nil) {
+	public init(
+		refusal: AdapterFactoryError? = nil,
+		providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle()
+	) {
 		self.refusal = refusal
+		self.providerLifecycle = providerLifecycle
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {
 		builtFor.append(mode)
 		if let refusal { throw refusal }
-		return AdapterSet(mode: mode, speechSource: speechSource)
+		return AdapterSet(
+			mode: mode,
+			speechSource: speechSource,
+			silenceControl: silenceControl,
+			providerLifecycle: providerLifecycle
+		)
 	}
 }
