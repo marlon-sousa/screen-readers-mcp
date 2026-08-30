@@ -105,7 +105,13 @@ checklists, and 13.11 is the entry that must satisfy them.
    empty answer:
    - issue `open next speech attribute guide` six times → the scripting object
      model dies while VoiceOver lives (spec 0041's sharpest finding);
-   - switch VoiceOver's voice away from the capture voice → utterances stop;
+   - switch VoiceOver's voice away from the capture voice → utterances stop.
+     **Judge this by the capture feed, never by ear**: our pass-through
+     re-synthesizes with the same system voice a failed provider falls back to,
+     so the two sound identical (spec 0047, finding 18). The registration signal
+     is `pluginkit -m -p com.apple.AudioUnit-Speech -v`, never `say -v '?'`,
+     which advertised the voice from a stale cache for an hour after the
+     extension was unregistered;
    - kill the extension → the provider dies, VoiceOver falls back to a working
      voice, and **only a reader restart re-binds ours**.
 4. **Attempts and crash references are part of the evidence.** An item may be
@@ -700,7 +706,8 @@ The container file — not a socket — is the only door: an extension holding
 | File | Role | Collaborators / why |
 |---|---|---|
 | `Ports/SilenceControl.swift` | port | `suppress()`, `passThrough()`, `isSuppressing`. Separate from `SpeechSource` because capture is **identical** in both modes here — only rendering differs, and the extension does the rendering. |
-| `Ports/ProviderLifecycle.swift` | port | **Element 2, named rather than hidden inside a health check.** `state() -> ProviderState`, `register()`, `unregister()`. Detection and installation are one component because they are one state machine, and the dialog's capture-voice row is a view of it. |
+| `Ports/ProviderLifecycle.swift` | port | **Element 2, named rather than hidden inside a health check.** `state() -> ProviderState`, `register()`, `unregister()`, **`selectedVoice()` / `selectVoice(_:)`**. Detection and installation are one component because they are one state machine, and the dialog's capture-voice row is a view of it. The two voice methods exist because spec 0047 (findings 16-17) found the reader's voice IS settable — by preference, live, with no grant — so selecting it is the bridge's job rather than the human's. |
+| `Adapters/SpeakSelectionVoiceStore.swift` | adapter | Reads and writes `VoiceOverDefaultVoiceSelections` in the **system speech** domain, `com.apple.SpeakSelection` — never VoiceOver's own, which holds no voice. **Preserves plist types**: a value written as a string where a real is expected is silently rejected, and VoiceOver then overwrites the key with the system default, so the write appears to have done nothing. Matches our published voice **by suffix**. `scripts/voiceover_voice.py` is the same mechanism as a tool. |
 | `Entities/ReaderCondition.swift` | entity | The named conditions: `scriptingChannelDead`, `captureVoiceNotSelected`, `providerNotRunning`. **This entity is spec 0041's sharpest requirement made structural** — each is reported by name, with its recovery, instead of surfacing as an empty read-back. |
 | `Entities/ProviderState.swift` | entity | The lifecycle as a state machine: `notRegistered` → `registered` → `published` → `selected` → `capturing`. Pure, and the point of it is that **each state has a different diagnosis and a different instruction for the human** — "registered but not published" is a build problem, "published but not selected" is a settings-pane problem the bridge cannot fix, and "selected but not capturing" is a dead provider that only a reader restart re-binds. One boolean would collapse three different answers into one unhelpful one. |
 | `Entities/SilenceCap.swift` | entity | `protocol.md` §6.1 — the warn and lift thresholds and the "time since the human last heard their own machine" clock. Reset only by sound the human actually hears. |
@@ -708,6 +715,49 @@ The container file — not a socket — is the only door: an extension holding
 | `Adapters/Ports/ProcessRunner.swift` | adapter seam | run a tool, return its output. |
 | `Adapters/PluginKitProviderLifecycle.swift` | adapter | Every decision: what `pluginkit` output means, that **`lsregister -f` on the app must precede `pluginkit -a` on the extension and that the first alone is not enough** (spec 0041, C1), and that the published voice identifier is the extension's bundle id followed by ours — so it is matched **by suffix, never by the identifier the unit declared**. Unit-tested against a fake runner. |
 | `Adapters/SubprocessRunner.swift` | leaf adapter | |
+
+### Silence is a LEASE, not a state — and the voice is restored
+
+**Decided in conversation 2026-08-29**, after spec 0047 findings 16-17 made the
+second half possible for the first time.
+
+`protocol.md` §6 asks a bridge to "arrange its interception so that losing the
+bridge *itself* lifts it". **The NVDA bridge gets that free and this one does
+not.** NVDA holds extension-point handlers weakly, so killing the add-on drops
+the speech filter with it. Here the marker file is on disk and the extension is a
+separate process owned by the system: it will keep reading that file forever. A
+`finally` that restores state therefore fails in exactly the cases that matter —
+`SIGKILL`, a panic, a power cut — and the failure mode is a screen reader
+rendering silence while looking perfectly healthy.
+
+So **silence expires on its own**:
+
+- the bridge writes the silence marker with an expiry, and re-arms it while the
+  session lives;
+- `MarkerFileCaptureModeSource` — which already consults the marker once per
+  utterance, on the request thread, not the audio thread — treats a **stale**
+  marker as pass-through;
+- a dead bridge therefore un-mutes the machine **by doing nothing at all**. No
+  teardown path has to run and no code has to survive the crash.
+
+That is hard invariant 3 in its macOS form, and it is strictly stronger than a
+`finally`. The `finally` stays as well, because it is free and it makes the
+ordinary case immediate.
+
+**The voice is restored too, which was impossible before spec 0047.**
+
+1. **Session start** — read `VoiceOverDefaultVoiceSelections`, record the previous
+   `voiceId` verbatim, then write ours.
+2. **Every teardown path** — write the recorded value back. One preference write,
+   applied live, no human and no Accessibility grant.
+3. **Crash** — the lease expires and pass-through resumes; the user hears their
+   machine through our voice until a session or the dialog restores theirs.
+
+**The safety ordering that falls out** is worth stating, because it says which
+half is load-bearing: *our voice still selected after a crash* is *degraded but
+safe* — the user hears re-synthesized speech, and if the provider itself dies
+VoiceOver falls back to a working voice (spec 0041, C2). The unsafe state is only
+**selected + silent + no lease**, and the lease removes it by construction.
 
 `Session` gains the **third watchdog**. macOS earns it: silent mode here renders
 silence in the provider, so the reader is *mute* rather than merely intercepted,
@@ -803,7 +853,7 @@ implement one, exactly as `views/bridge_dialog.py` does (spec 0011).
 | `Ports/Announcer.swift` | port | `announce(_:)` — the bridge→human channel. |
 | `Ports/UserPrompter.swift` | port | `askUser` / `waitForUserReply`; owns the prompt and reply types. |
 | `Ports/ReaderScriptingSetting.swift` | port | is AppleScript control of VoiceOver enabled? Returns *unknown* as a third answer. |
-| `Entities/Precondition.swift` | entity | The **unfixable precondition** vocabulary: things the bridge can observe, cannot set, and cannot work without. AppleScript enablement and capture-voice selection are both instances; naming the kind is what stops the dialog growing three unrelated ad-hoc rows. |
+| `Entities/Precondition.swift` | entity | The **unfixable precondition** vocabulary: things the bridge can observe, cannot set, and cannot work without. **AppleScript enablement is now the only true instance.** Capture-voice selection was the other until spec 0047 findings 16-17 showed the bridge can simply set it — so it moves from *report it and wait for a human* to *repair it*, and the dialog's row becomes a state rather than a plea. Naming the kind is still what stops the dialog growing unrelated ad-hoc rows. |
 | `Adapters/Ports/SpeechOut.swift` | adapter seam | speak these words on this machine. |
 | `Adapters/SynthesizerAnnouncer.swift` | adapter | **Speaks with the bridge's own synthesizer, outside VoiceOver entirely.** That is what makes `announce` audible in a silent session, where the provider is rendering the reader mute — a cleaner bypass than NVDA's, and the reason `interact` is announceable at all. Excludes our own capture voice by identifier suffix. |
 | `Adapters/AVSpeechOut.swift` | leaf adapter | |

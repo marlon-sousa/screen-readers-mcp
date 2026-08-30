@@ -712,7 +712,20 @@ rule intends.
     spec 0041 did.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) (Part 2 states the question; the probe itself is this
     entry's work).
-13.13. **Selecting the capture voice without a human** (lane 3; a measurement
+13.13. **AMENDED 2026-08-29 (late): the question is answered; what remains is
+    wiring.** The bridge sets VoiceOver's voice by writing ONE preference —
+    `VoiceOverDefaultVoiceSelections` in the **system speech** domain
+    `com.apple.SpeakSelection`, never VoiceOver's own — and it applies **live, in
+    both directions, with no reader restart, no UI, no AppleScript and no
+    Accessibility grant**. Proven end to end on 2026-08-29 against a live reader.
+    The trap that hid it for an evening: `defaults write` with an old-style plist
+    literal makes every value a STRING, VoiceOver silently rejects the record,
+    falls back to the system default AND rewrites the key — so the write looks
+    like a no-op. Preserve types (export/modify/import);
+    `scripts/voiceover_voice.py` is the mechanism. What is left for this entry is
+    to record and restore the previous voiceId around a session, per spec 0046's
+    lease-and-restore policy. Original scope follows.
+13.13a. **Selecting the capture voice without a human** (lane 3; a measurement
     first, a feature only if the measurement allows one). Opened 2026-08-29 by
     [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md),
     which was written against a live reader rather than against documentation.

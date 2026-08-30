@@ -673,6 +673,96 @@ locale-independent by construction.
    is a Return keystroke, which says "confirm this sheet" without matching the
    word `OK`.
 
+## Finding 16 — the voice IS a preference, and it lives in the SYSTEM SPEECH domain
+
+**This answers open question 2a, and it retires findings 2 and 10's conclusion.**
+Measured 2026-08-29, late, after the searches below had all failed.
+
+```
+~/Library/Preferences/com.apple.SpeakSelection.plist
+    VoiceOverDefaultVoiceSelections = (
+        "pt",
+        { _type = "Speech.VoiceSelection"; _version = 0;
+          pitch = 0.4; rate = 0.6; volume = 1;
+          voiceId = "com.apple.eloquence.pt-BR.Reed"; }
+    )
+```
+
+`voiceId` is the selected voice, per language. Confirmed by an **A/B/A**
+differential — the value read `…spike.capture` with our voice selected,
+`com.apple.eloquence.pt-BR.Reed` after switching, and `…spike.capture` again
+after switching back. A background daemon can change a file between two
+snapshots; none can make a value revert *in step with a human's selection*.
+
+**Why every earlier search missed it, and it is worth stating plainly:** the
+store is not in VoiceOver's domain. It is the **system speech** domain, in plain
+`~/Library/Preferences`, keyed `VoiceOverDefaultVoiceSelections` — VoiceOver's
+voice, owned by the TTS subsystem. Finding 10's whole-disk sweep, the group
+container diffs, the cfprefsd probe and a 37,445-file inventory all looked where a
+VoiceOver setting *ought* to live.
+
+**And it explains finding 10 exactly rather than contradicting it.** An unfiltered
+`fs_usage` over every process on the machine shows VoiceOver performing **7 writes
+during a voice change, all of them to `/dev/null`**. VoiceOver genuinely does not
+write its voice. The speech framework does, in another domain. Both halves are
+true, and finding 10's negative was correct about the thing it measured.
+
+Three further negatives from the same run, recorded so they are not re-tried:
+cfprefsd never wrote `default.plist` **once**, in either trace, all evening;
+VoiceOver Utility opened nothing for writing, so "the Utility writes and signals
+VoiceOver" is false; and `lsmp` on VoiceOver shows **no settings daemon** among
+its Mach peers — `coreaudiod`, `WindowServer`, `appleeventsd` and our own
+`CaptureVoice` (9 ports), but nothing that persists preferences.
+
+## Finding 17 — writing it works, live, in both directions — and the type trap that hides it
+
+**The bridge can set VoiceOver's voice by writing one preference.** No UI, no
+AppleScript, no Accessibility grant, and — measured — **no reader restart**: the
+change is observed and applied while VoiceOver runs, in *both* directions,
+verified by ear and by the capture feed resuming.
+
+That supersedes finding 13's `AXPress` recipe, which stays in this document as
+the fallback and as the record of what the accessibility tree can do.
+
+**The trap, which cost a live round and would cost anyone else one.**
+`defaults write` with an old-style plist literal makes **every value a string**.
+Written that way, `pitch` and `rate` arrive as `"0.4"` text where reals are
+expected; VoiceOver **silently rejects the record, falls back to the system
+default voice, and then rewrites the key with its own choice** — so the evidence
+of your own write is gone by the time you look. It presents as "the write did
+nothing", which is precisely finding 2's original conclusion.
+
+The mechanism that works preserves types — export, modify, import, through
+cfprefsd — and is `scripts/voiceover_voice.py`:
+
+```sh
+python3 scripts/voiceover_voice.py show
+python3 scripts/voiceover_voice.py set com.apple.eloquence.pt-BR.Reed
+```
+
+**Match the identifier by SUFFIX.** The system publishes our voice as the
+extension's bundle id followed by ours
+(`org.screen-readers-mcp.spike.capture.voice.org.screen-readers-mcp.spike.capture`),
+exactly as spec 0041 A1 measured.
+
+## Finding 18 — with pass-through, the ear cannot tell our voice from a fallback
+
+Raised by the maintainer while testing, and it changes how detection must work.
+
+Our provider re-synthesizes with an ordinary system voice, and on this machine
+`VoiceChoice` picks `com.apple.voice.compact.pt-BR.Luciana` — **which is also the
+pt-BR default VoiceOver falls back to when a provider fails.** So "I hear
+Luciana" is equally consistent with *our voice working perfectly* and *our voice
+having failed*. Listening cannot distinguish them.
+
+**Therefore `ProviderState` (spec 0046, 13.6) must be detected from the capture
+feed, never from audio**, and a live checklist item that says "confirm you hear
+the capture voice" is not a check at all. The reliable signal is utterances
+arriving in the container file; the authoritative registration signal is
+`pluginkit -m -p com.apple.AudioUnit-Speech -v`, never `say -v '?'`, which
+continued to advertise the voice from a stale cache for an hour after the
+extension was unregistered.
+
 ## The conclusion: the bridge can set the voice, by message
 
 Four routes were tried. One works, and it is the one that sends messages rather
@@ -680,7 +770,8 @@ than depending on where a window happens to be:
 
 | Route | Verdict |
 |---|---|
-| Write a preference | **Dead** — the reader keeps the voice in no file (finding 10) |
+| **Write the preference — in the SYSTEM SPEECH domain** | **WORKS, and is now the mechanism** — live, both directions, no restart, no UI, no AppleScript, no Accessibility (findings 16, 17) |
+| Write a preference *in VoiceOver's own domain* | **Dead** — the reader keeps the voice in no file of its own (finding 10) |
 | Set `AXSelected` on the row | **Dead** — accepted and silently discarded (finding 13) |
 | Drive the speech rotor | **Not a setter** — transient, timed, relative (finding 14) |
 | **`AXPress` the button inside the row's cell** | **Works**, both directions, no coordinates (finding 13) |
@@ -714,7 +805,10 @@ was asking for.
 | The preference write does not work | finding 2 | **dead — the reader keeps the voice nowhere we can write** |
 | The voice can be set without a human | open | **yes — through the accessibility framework, finding 11** |
 | The decomposed extension works live | untested | **verified: 33 utterances, 0 underruns** |
-| The bridge can set the voice itself | hoped | **yes — `AXPress` the button inside the row's cell** |
+| The bridge can set the voice itself | hoped | **yes — and by PREFERENCE WRITE, not `AXPress` (findings 16, 17)** |
+| Where the reader keeps the voice | unknown, and searched for all evening | **`com.apple.SpeakSelection`, the system speech domain — never VoiceOver's own** |
+| Selecting a voice needs a reader restart | assumed | **false — it applies live, both directions** |
+| Hearing the expected voice proves the provider works | assumed | **false — pass-through re-synthesizes with the same voice a failure falls back to (finding 18)** |
 | The rotor position is unsaved like the voice | assumed | **false — `SCRSpeechAttributeRotorLastRotor` IS written; the voice is deliberately elsewhere** |
 
 ## What is deliberately not built
@@ -735,9 +829,11 @@ was asking for.
    and are struck for the same reason.
 1. ~~Does the CFPreferences *domain* write work?~~ Moot.
 2. ~~Does a key need a `journal.plist` entry?~~ Moot.
-2a. **WHERE does VoiceOver keep the selected voice?** It survives a restart and
-   is in no file under `~/Library`. Worth knowing only if something ever needs
-   to *read* it; the bridge does not, because it sets it.
+2a. ~~**WHERE does VoiceOver keep the selected voice?**~~ **ANSWERED by finding
+   16**: `~/Library/Preferences/com.apple.SpeakSelection.plist`, key
+   `VoiceOverDefaultVoiceSelections`. Not in VoiceOver's domain at all, which is
+   why every search in this document looked in the wrong namespace. The bridge
+   both reads and writes it.
 3. **What killed `perform command`, and is it recoverable at all?** Until this is
    answered, 13.7's mechanism is unproven on this host.
 4. **What does an activity look like in storage?** Answerable the moment one
@@ -747,6 +843,11 @@ was asking for.
 ## Board amendments this spec makes
 
 - **13.13** is new: the follow-up work, carrying questions 1 through 4.
+  **Amended 2026-08-29 (late): its central question is already answered.** The
+  bridge sets its own voice by writing one preference (findings 16, 17), so 13.13
+  is no longer "can it be done" but the much smaller "wire it in": read and
+  restore the previous `voiceId` around a session, and carry the type trap so
+  nobody re-derives it. Questions 3 and 4 remain.
 - **13.7** gains the `perform command` risk, since it is the entry that depends
   on it.
 - **13.11** keeps both costs in its documentation, but the restart is now
