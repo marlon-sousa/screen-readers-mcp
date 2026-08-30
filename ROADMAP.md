@@ -513,7 +513,7 @@ rule intends.
     codesign as "present, but would not report a version" — a warning about the
     doctor wearing the clothes of a warning about the machine. `Tool` now carries
     `version_argv`, which also retires the hard-coded `go version` special case.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md). Done (PR #82, 2026-08-29). Done (PR #82, 2026-08-29).
 13.3. **The wire contract's second binding** (lane 3; **needs 11.36**). Swift
     envelope,
     per-command codecs and JSON-lines framing, written against
