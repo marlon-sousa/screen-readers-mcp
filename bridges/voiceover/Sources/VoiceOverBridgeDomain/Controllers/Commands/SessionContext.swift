@@ -35,6 +35,14 @@ public final class SessionContext {
 	/// later step of the handshake throws.
 	public var adapters: AdapterSet?
 
+	/// This session's captured speech. Created by the hello handler, fed by the
+	/// speech source's own thread, read by the five speech handlers.
+	///
+	/// SESSION-SCOPED, NOT PROCESS-SCOPED: a ring does not outlive the run it
+	/// belongs to, so indices always mean what the agent that took them thought
+	/// they meant.
+	public var speech: SpeechBuffer?
+
 	/// What the agent declared this session is standing in for (spec 0029).
 	/// Recorded as received and never validated here: a bridge that rejected an
 	/// unfamiliar persona would refuse a session over a word.
@@ -55,6 +63,20 @@ public final class SessionContext {
 		self.transcript = transcript
 		self.attended = attended
 		self.closeSession = close
+	}
+
+	/// The speech buffer, or a readable failure if there is none.
+	///
+	/// EVERY CALLER IS A HANDLER THAT RUNS AFTER `hello`, and `hello` always
+	/// installs a buffer, so the failure is unreachable through the dispatch
+	/// loop -- which is exactly why it is a thrown error rather than a crash: an
+	/// unreachable case that is wrong takes one command with it here, and takes
+	/// the user's screen reader with it there.
+	public func speechBuffer() throws -> SpeechBuffer {
+		guard let speech else {
+			throw CommandError("the speech buffer was read before `hello` installed it")
+		}
+		return speech
 	}
 
 	/// Ask the session to end. Cooperative: the loop honours it at its next

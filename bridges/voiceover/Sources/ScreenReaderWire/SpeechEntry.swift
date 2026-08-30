@@ -15,9 +15,14 @@
 // because the shape is the contract's, and it defaults to 0, which is what the
 // Python binding does for a reader that cannot answer it.
 //
-// `emittedAt` is ISO 8601 with a timezone (spec 0028), carried as a String
-// rather than a Date: the contract's field is a formatted instant, and parsing
-// it here would make this binding responsible for a calendar it has no use for.
+// `emittedAt` is `YYYY-MM-DD HH:MM:SS.mmm` (spec 0028, protocol.md §7.1) --
+// NOT ISO 8601, which is what this header said until 13.5 read the contract
+// beside the Python renderer that produces it. The shape is the one the session
+// transcript and NVDA's own log are written in, so a stamp can be pasted
+// straight into a search of either; that joinability is the whole reason the
+// field is a wall clock. It is carried as a String rather than a Date because
+// the contract's field is a formatted instant, and parsing it here would make
+// this binding responsible for a calendar it has no use for.
 
 public struct SpeechEntry: Codable, Equatable, Sendable {
 	public var text: String

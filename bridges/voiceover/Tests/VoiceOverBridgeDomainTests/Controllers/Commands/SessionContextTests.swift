@@ -15,7 +15,24 @@ struct SessionContextTests {
 		)
 		#expect(context.mode == nil)
 		#expect(context.adapters == nil)
+		#expect(context.speech == nil)
 		#expect(context.persona.isEmpty)
+	}
+
+	@Test("the speech buffer is a readable failure before hello, and the buffer after it")
+	func theSpeechBufferAccessor() throws {
+		// Unreachable through the dispatch loop -- every speech handler runs after
+		// hello, and hello always installs a buffer -- which is exactly why it
+		// throws rather than crashing: an unreachable case that turns out to be
+		// wrong costs one command here and the user's screen reader there.
+		let context = SessionContext(
+			clock: FakeClock(), transcript: FakeTranscript(), attended: true, close: { _ in }
+		)
+		#expect(throws: CommandError.self) { try context.speechBuffer() }
+
+		let buffer = SpeechBuffer(clock: FakeClock())
+		context.speech = buffer
+		#expect(try context.speechBuffer() === buffer)
 	}
 
 	@Test("close passes the reason through to the session, unchanged")

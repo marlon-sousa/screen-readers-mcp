@@ -17,6 +17,10 @@ public final class FakeTranscript: Transcript {
 	public var logPath: String
 	public private(set) var isOpen = false
 	public private(set) var opened: [Opened] = []
+	/// Every captured utterance the session recorded, in order. The buffer's
+	/// observer is wired to this by `hello`, so an empty list after speech was
+	/// captured means the wiring is missing, not the transcript.
+	public private(set) var speeches: [String] = []
 	public private(set) var notes: [String] = []
 	public private(set) var closedReasons: [String] = []
 
@@ -30,6 +34,10 @@ public final class FakeTranscript: Transcript {
 
 	public func sessionOpened(mode: String, voice: String, persona: String) {
 		opened.append(Opened(mode: mode, voice: voice, persona: persona))
+	}
+
+	public func speech(_ text: String) {
+		speeches.append(text)
 	}
 
 	public func note(_ text: String) {

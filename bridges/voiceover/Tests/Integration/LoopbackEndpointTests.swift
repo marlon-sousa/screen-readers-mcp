@@ -28,7 +28,7 @@ struct LoopbackEndpointTests {
 		// endpoint reports the port BOUND rather than the port asked for.
 		let listener = TCPListener(port: 0, binder: TCPBinder(acceptTimeout: 0.05, receiveTimeout: 0.05))
 		let handlers = Registry.build(
-			factory: VoiceOverAdapterFactory(), readerVersion: "macOS 15.0.0", bridgeVersion: "1.2.3"
+			factory: VoiceOverAdapterFactory(capturePath: unusedCapturePath()), readerVersion: "macOS 15.0.0", bridgeVersion: "1.2.3"
 		)
 		let bridge = BridgeServer(
 			listener: listener,

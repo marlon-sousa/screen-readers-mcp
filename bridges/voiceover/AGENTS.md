@@ -77,17 +77,22 @@ the manifest. Both, usually.
 ## The capability set grows ONE ENTRY AT A TIME
 
 `hello` announces what this build actually implements, and nothing else.
-`Registry.capabilities` is empty at 13.4 and each later entry adds its own
-alongside the handlers that serve it. Announcing a capability before the entry
-that implements it produces the one failure the capability gate exists to
-prevent: a tool the agent can see, call, and get nothing from.
+`Registry.capabilities` was empty at 13.4, is `[speech]` at 13.5, and each later
+entry adds its own alongside the handlers that serve it. Announcing a capability
+before the entry that implements it produces the one failure the capability gate
+exists to prevent: a tool the agent can see, call, and get nothing from. The
+converse costs too, and it is why `speech` landed with 13.5 rather than being
+held back: a capture feed the server gates away is a tool nobody can call.
 
 The same rule is why **`VoiceOverAdapterFactory` refuses a silent session until
 13.6**. `silent` is not a preference, it is a promise about a human's ears — the
 reader keeps talking, the human hears nothing, the agent reads what was said —
 and a bridge that cannot keep any part of it must refuse rather than establish a
-session that means something else. When you make the promise keepable, delete the
-refusal and its named test in the same commit.
+session that means something else. **13.5 made capture work and did not soften
+the refusal**, deliberately: half a promise is the more dangerous kind, because
+capture that works is exactly what would make a claimed silence look plausible.
+When you make the promise keepable, delete the refusal and its named test in the
+same commit.
 
 ## The endpoint, and why the derivation is duplicated on purpose
 
@@ -145,6 +150,14 @@ shapes:
 
 ## Gotchas learned the hard way
 
+- **A reader that runs on its own thread must ATTACH before `start()` returns.**
+  `FileLineTailer` opened the feed and seeked to its end on the new thread, which
+  is a race against everything the caller does next — and what the caller does
+  next is act on the reader. The utterance an action caused was therefore the one
+  that could be swallowed by the seek, and it failed as a `waitForSpeech` timeout
+  reading exactly like "the reader never said it". Measured on 2026-08-30, in the
+  tests, which is the only reason it was not measured live instead. Whatever a
+  background loop must not miss, capture it on the caller's thread.
 - **macOS filesystems are case-insensitive by default, so two source files whose
   names differ only in case are ONE file to the build.** `Ports/TcpBinder.swift`
   beside `TCPBinder.swift` compiled, and one object file silently overwrote the

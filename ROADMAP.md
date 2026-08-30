@@ -387,13 +387,13 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.5**: **13.1 through 13.4
+its board was written on 2026-08-29. Its head is **13.6**: **13.1 through 13.5
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
-voice, the wire contract's Swift binding, and -- since 13.4 -- a bridge that
-**listens**: a server can dial the local endpoint, complete a handshake and
-exchange commands, over 133 more headless tests. What it cannot do is read
-anything back, so `hello` announces an empty capability set; the next step is the
-capture feed, against
+voice, the wire contract's Swift binding, a bridge that **listens**, and -- since
+13.5 -- one that **hears**: an agent can read back what the reader said, over 39
+more headless tests. `hello` announces `speech`, and the five speech commands
+answer. What it cannot do is make the reader quiet, so a silent session is still
+refused; the next step is capture mode and hard invariant 3's macOS form, against
 [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 
 The lane rests on two documents that carry **no board number**, each taken
@@ -602,7 +602,7 @@ rule intends.
     `Ports/TcpBinder.swift` and `TCPBinder.swift` are one file, and the failure
     arrives as an undefined protocol descriptor at link time.
     Done (2026-08-30).
-13.5. **The capture feed** (lane 3). A `SpeechSource` port over the extension's
+13.5. **Done** -- **The capture feed** (lane 3). A `SpeechSource` port over the extension's
     container file — which is not a fallback but the only door, since an
     extension holding `com.apple.security.network.client` is silently skipped by
     macOS and the only evidence is `Skipping network entitled extension` in the
@@ -617,7 +617,20 @@ rule intends.
     This is the entry the whole spike exists to make possible, and it is where
     the provider route pays for itself: the polling route cannot honour a single
     one of these five primitives (spec 0041's table of why).
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+    **Shipped**: `SpeechSource` over a `LineTailer` seam, `SpeechBuffer` and
+    `SpeechText` as entities, `ContainerFileSpeechSource` holding every decision
+    about the feed, and the five handlers -- with `speech` announced beside them,
+    so the capability gate still describes exactly what works. **Silent mode stays
+    refused**, and capture working makes that refusal MORE necessary rather than
+    less: half a promise about a human's ears is the dangerous kind, because
+    capture that works is what would make a claimed silence look plausible.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.5 section carries the layout amendments this made, each with its why --
+    including the two that were measured rather than reasoned about: the feed's
+    tailer must attach to the file synchronously inside `start()`, or the
+    utterance an action caused is the one lost to the scheduler, and the tailer
+    is an adapter with a test rather than the leaf the layout named it.
+    Done (2026-08-30).
 13.6. **Capture mode, and hard invariant 3 in its macOS form** (lane 3). The
     marker file that flips the extension between pass-through and silence,
     driven by the mode `hello` declared, restored to pass-through on every

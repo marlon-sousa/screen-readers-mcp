@@ -37,7 +37,7 @@ struct SessionRoundTripTests {
 				config: SessionConfig(readerVersion: "macOS 15.0.0", attended: attended),
 				handlers: handlers
 					?? Registry.build(
-						factory: VoiceOverAdapterFactory(),
+						factory: VoiceOverAdapterFactory(capturePath: unusedCapturePath()),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
 					)
@@ -80,7 +80,9 @@ struct SessionRoundTripTests {
 		#expect(hello.reader.name == "voiceover")
 		#expect(hello.protocolVersion == 1)
 		#expect(hello.mode == .live)
-		#expect(hello.capabilities.isEmpty)
+		// What this build actually serves, announced end to end -- the server gates
+		// its speech tools on exactly this string arriving here.
+		#expect(hello.capabilities == [.speech])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
 		peer.hangUp()

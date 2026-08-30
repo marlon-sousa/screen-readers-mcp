@@ -837,6 +837,89 @@ drift it will paper over.
 The container file — not a socket — is the only door: an extension holding
 `com.apple.security.network.client` is silently skipped by macOS (spec 0041, B1).
 
+#### Amendments made while implementing 13.5, each with its why
+
+- **`Controllers/Commands/Wallclock.swift` was added** — a pure function, not in
+  the table above. Rendering `emittedAt` looked like a line of code and is a
+  decision: *which* format, and what an entry with no instant renders as. Three
+  handlers make it. Lane 1 extracted exactly this function, for exactly this
+  reason, after two copies had already drifted (spec 0028's own amendment).
+- **`FileLineTailer` is an ADAPTER WITH A TEST, not the leaf the table calls it.**
+  It makes three decisions and each fails silently: where to start reading (the
+  extension appends to one file across every launch of the reader, so byte zero
+  would replay days of old speech into a fresh session), where a line ends (a read
+  can land mid-line, and a split utterance is either lost or delivered twice), and
+  what "the file is not there yet" means (the extension creates it when the reader
+  first speaks through our voice, which is routinely after the session began). The
+  repo's move would be another seam beneath it so those could sit above a leaf.
+  That was declined here: every one of the three is about what a *real* file does,
+  and a fake seam would only prove they behave as the fake was written to. So its
+  test drives a real file in a temporary directory, as this lane's scenarios drive
+  real sockets for the same reason.
+  - **Measured while writing it**: attaching to the file on the tailer's own
+    thread loses whatever is appended between `start()` returning and the thread
+    being scheduled — which is precisely the utterance an action caused, the only
+    one anything is ever waiting for. The open and the seek to the end are
+    therefore done synchronously inside `start()`, before it returns.
+- **`AdapterSet.speechSource` is not optional.** Every mode this build accepts
+  captures: `live` reads the feed and `silent` is refused outright. When 13.6
+  makes silent buildable it gets a source too — capture is identical in both modes
+  on this route and only rendering differs — so the field stays required rather
+  than becoming a question every handler has to ask.
+- **The words are re-derived from the line's `ssml`, not read from its `text`.**
+  The feed carries both, because the extension renders its own. `SpeechText` is
+  the one place this half decides what an utterance says, so what an agent reads
+  back does not depend on which build of the extension happens to be installed —
+  which is what `SsmlDocument`'s header already promised from the other side. The
+  `text` field is the fallback for a line carrying no SSML at all: losing an
+  utterance is worse than rendering one the other half's way.
+- **`emittedAt` is the extension's stamp, and the bridge does not take one.**
+  Every feed line carries `at`, written as the line was, so the instant means
+  *emission* and survives the file handoff — including whatever the feed's tail
+  latency turns out to be, which is still unmeasured (open question 3). Reading
+  the clock at append time instead would have folded that latency into every
+  stamp, silently. The buffer's injected `Clock` is therefore used only for the
+  monotonic settle heuristic, which is what spec 0028 says each clock is for.
+- **`SpeechBuffer` stores the port's `CapturedUtterance` rather than an entry type
+  of its own.** The DTO already *is* the entry — text, instant, SSML, voice — and
+  a second identical struct would be two names for one value, with a mapping
+  between them to keep in step.
+- **`VoiceOverAdapterFactory` gained a `capturePath`, and `Wiring` resolves it.**
+  The factory is the only place that knows what a *mode* means; where a file lives
+  is not that. Wiring reads `VOCAPTURE_LOG` — the same variable the extension
+  reads — and otherwise derives the container path, so the two halves can be
+  pointed at one file in a temporary directory and the feed exercised with no
+  reader at all. `ContainerFileSpeechSource.containerFilePath(home:)` is the pure
+  derivation, duplicated from the extension's on purpose, for the reason
+  `LocalSocketPath` mirrors the server's `local_socket.go`.
+- **`Tests/Integration/SpeechFeedTests.swift` was added** — the real tailer, the
+  real source, the real buffer and the real handlers, driven over the wire with a
+  file standing in for the extension. It is the only tier where a line another
+  writer appended becomes an `emittedAt` an agent reads, and it is what would
+  catch a factory that built a source nobody started.
+- **`Tests/Fakes/Support/CapturePath.swift` was added** — scaffolding, not a port
+  double, so it sits in `Support/`. Tests that do not care about the feed must not
+  point a tailer at the developer's own container file, where a live reader may be
+  appending: such a test would pass or fail depending on whether VoiceOver
+  happened to be talking.
+- **The Swift binding's `SpeechEntry` header said `emittedAt` is ISO 8601. It is
+  not**, and the header is corrected: protocol.md §7.1 and the Python
+  `format_wallclock` that produces the field both say `YYYY-MM-DD HH:MM:SS.mmm`.
+  The shape is the transcript's and the reader log's, which is the whole reason
+  the field is a wall clock; an ISO renderer would have quietly forfeited that.
+- **`logPosition` is 0 on every speech result**, which the binding's header
+  already stated: it is a coordinate into NVDA's log journal and VoiceOver emits
+  no diagnostic log of its own to position into (Part 2). The field stays in the
+  shape because the shape is the contract's.
+- **`BridgeListener` prints the capture path it is reading**, because a live run's
+  first question when nothing comes back is which file the bridge is watching. It
+  is a value Wiring resolved, so the launcher still makes no decision of its own.
+- **Silent mode is still refused, and 13.5 did not soften it.** Capture now works
+  in live mode, which makes the refusal *more* necessary rather than less: half a
+  promise is the dangerous kind, because capture that works is exactly what would
+  make a claimed silence look plausible. The named test stands, and 13.6 deletes
+  it in the commit that makes the promise keepable.
+
 ### 13.6 — capture mode, hard invariant 3, and the silence cap
 
 | File | Role | Collaborators / why |

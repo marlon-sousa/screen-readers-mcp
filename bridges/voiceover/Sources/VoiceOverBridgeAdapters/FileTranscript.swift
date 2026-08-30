@@ -46,6 +46,18 @@ public final class FileTranscript: Transcript {
 		line("SESSION OPEN mode=\(mode) voice=\(voice) persona=\(persona.isEmpty ? "-" : persona)")
 	}
 
+	/// One captured utterance, QUOTED, which is the one place this vocabulary
+	/// escapes anything.
+	///
+	/// The words come from another process and are the only field here a reader
+	/// did not choose: a newline in an utterance would otherwise forge a
+	/// transcript line, and leading or trailing spaces would be invisible in a
+	/// record whose whole job is to say exactly what was said. Lane 1 writes
+	/// Python's `repr` for the same reason, and this is the same shape.
+	public func speech(_ text: String) {
+		line("SPEECH \(FileTranscript.quoted(text))")
+	}
+
 	public func note(_ text: String) {
 		line("NOTE \(text)")
 	}
@@ -59,6 +71,18 @@ public final class FileTranscript: Transcript {
 	private func line(_ text: String) {
 		guard isOpen else { return }
 		writer.writeLine("\(timestamp()) \(text)")
+	}
+
+	/// `"…"` with backslashes, quotes and newlines escaped, so one utterance is
+	/// always one line and always ends where it says it does.
+	static func quoted(_ text: String) -> String {
+		let escaped =
+			text
+			.replacingOccurrences(of: "\\", with: "\\\\")
+			.replacingOccurrences(of: "\"", with: "\\\"")
+			.replacingOccurrences(of: "\n", with: "\\n")
+			.replacingOccurrences(of: "\r", with: "\\r")
+		return "\"\(escaped)\""
 	}
 
 	public static func wallclock() -> String {

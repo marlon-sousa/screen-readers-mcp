@@ -22,9 +22,14 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("it serves exactly the four commands a session needs before a reader edge exists")
+	@Test("it serves the four a session needs, plus the five `speech` promises")
 	func theCommandSet() {
-		#expect(Set(registry().keys) == ["hello", "ping", "echo", "bye"])
+		#expect(
+			Set(registry().keys) == [
+				"hello", "ping", "echo", "bye",
+				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
+				"waitForSpeech", "waitForSpeechToFinish",
+			])
 	}
 
 	@Test("every key is a command the contract defines -- no invented names")
@@ -34,9 +39,26 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces nothing, because nothing capability-gated is implemented yet")
+	@Test("it announces `speech` and nothing else, because that is what this build serves")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities.isEmpty)
+		#expect(Registry.capabilities == [.speech])
+	}
+
+	@Test("every command `speech` promises has a handler, and no handler is announced twice")
+	func theCapabilityAndItsHandlersAgree() {
+		// THE MISTAKE THIS CATCHES is invisible in any single handler's test: a
+		// capability announced with one of its commands missing is a tool the
+		// agent can see, call, and get "unknown command" from. protocol.md §5
+		// lists what `speech` covers; this is that list.
+		let promised = [
+			"getSpeech", "getLastSpeech", "getNextSpeechIndex",
+			"waitForSpeech", "waitForSpeechToFinish",
+		]
+		let served = registry()
+		#expect(Registry.capabilities.contains(.speech))
+		for command in promised {
+			#expect(served[command] != nil, "`speech` promises \(command) and nothing serves it")
+		}
 	}
 
 	@Test("hello is the only command legal before the handshake")

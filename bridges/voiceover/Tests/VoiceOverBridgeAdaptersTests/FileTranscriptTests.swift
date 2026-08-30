@@ -39,6 +39,41 @@ struct FileTranscriptTests {
 		#expect(writer.lines[0].hasSuffix("persona=-"))
 	}
 
+	@Test("a captured utterance is one QUOTED line, so the words cannot forge another")
+	func speechIsQuoted() {
+		let writer = FakeFileWriter()
+		let record = transcript(writer)
+		record.open()
+		record.speech("Documents, folder")
+		record.speech("a line\nand another")
+		#expect(
+			writer.lines == [
+				"2026-08-30 10:00:00.000 SPEECH \"Documents, folder\"",
+				// The newline is escaped rather than written: the words come from
+				// another process, and one utterance must stay one line.
+				"2026-08-30 10:00:00.000 SPEECH \"a line\\nand another\"",
+			]
+		)
+	}
+
+	@Test("a quote inside an utterance is escaped, not left to close the record early")
+	func quotesAreEscaped() {
+		let writer = FakeFileWriter()
+		let record = transcript(writer)
+		record.open()
+		record.speech("she said \"hello\"")
+		#expect(writer.lines[0].hasSuffix("SPEECH \"she said \\\"hello\\\"\""))
+	}
+
+	@Test("speech outside an open session is dropped, like every other event")
+	func speechBeforeOpen() {
+		// There is no session for a reader of the file to attach it to, so it is
+		// dropped rather than buffered -- the same rule the other verbs follow.
+		let writer = FakeFileWriter()
+		transcript(writer).speech("said")
+		#expect(writer.lines.isEmpty)
+	}
+
 	@Test("a note is one line, timestamped like the rest")
 	func notes() {
 		let writer = FakeFileWriter()

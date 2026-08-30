@@ -50,6 +50,24 @@ public enum Wiring {
 		)
 	}
 
+	/// Where the capture voice's feed is read from, for THIS process.
+	///
+	/// The default is the extension's own container, derived by the same rule the
+	/// extension derives it from -- see `ContainerFileSpeechSource`. The override
+	/// is the same environment variable the extension reads (`VOCAPTURE_LOG`), so
+	/// a developer can point both halves at one file in a temporary directory and
+	/// exercise the feed with no reader at all: append a `synthesize` line and it
+	/// arrives in the session's buffer.
+	///
+	/// The environment is read HERE and nowhere below, which is the same rule the
+	/// endpoint's derivation follows: everything under this line is a pure
+	/// function of values.
+	public static func capturePath() -> String {
+		let override = ProcessInfo.processInfo.environment["VOCAPTURE_LOG"] ?? ""
+		guard override.isEmpty else { return override }
+		return ContainerFileSpeechSource.containerFilePath(home: NSHomeDirectory())
+	}
+
 	/// Which endpoint to accept on, per the configured connection mode.
 	public static func listener(
 		config: any BridgeConfig,
@@ -101,7 +119,7 @@ public enum Wiring {
 		clock: any Clock = RealClock()
 	) -> BridgeServer {
 		let handlers = Registry.build(
-			factory: VoiceOverAdapterFactory(),
+			factory: VoiceOverAdapterFactory(capturePath: capturePath()),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion
 		)

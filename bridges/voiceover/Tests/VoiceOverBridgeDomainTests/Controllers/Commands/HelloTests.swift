@@ -48,13 +48,72 @@ struct HelloTests {
 		#expect(hello.mode == .live)
 	}
 
-	@Test("it announces exactly the capabilities it was built with -- none, at this entry")
+	@Test("it announces exactly the capabilities it was built with, and nothing more")
 	func capabilitiesAreWhatThisBuildServes() throws {
+		// The handler is handed the list rather than knowing one, which is what
+		// keeps "what this build serves" a single statement in the Registry.
 		let context = makeContext()
-		let result = try makeHandler().execute(
+		let result = try makeHandler(capabilities: [.speech]).execute(
 			context, request(["mode": .string("live"), "protocolVersion": .int(1)])
 		) as? HelloResult
-		#expect(try #require(result).capabilities.isEmpty)
+		#expect(try #require(result).capabilities == [.speech])
+	}
+
+	@Test("it creates the session's speech buffer and STARTS capture into that same buffer")
+	func captureIsStarted() throws {
+		let factory = FakeAdapterFactory()
+		let context = makeContext()
+		_ = try makeHandler(factory: factory).execute(
+			context, request(["mode": .string("live"), "protocolVersion": .int(1)])
+		)
+		let buffer = try #require(context.speech)
+		// The SAME buffer, not merely a buffer: a source started against one the
+		// context does not hold would capture everything into a ring no handler
+		// can read, and every speech read would answer empty forever.
+		#expect(factory.speechSource.started.count == 1)
+		#expect(factory.speechSource.started.first === buffer)
+	}
+
+	@Test("the adapter set is installed BEFORE capture starts, so teardown can stop it")
+	func theSetIsInstalledFirst() throws {
+		// The order is the point. If a start threw with the set not yet on the
+		// context, teardown would have nothing to stop and the source would run
+		// on past the session that started it.
+		let factory = FakeAdapterFactory()
+		let context = makeContext()
+		var setWhenStarted: AdapterSet?
+		factory.speechSource.onStart = { setWhenStarted = context.adapters }
+		_ = try makeHandler(factory: factory).execute(
+			context, request(["mode": .string("live"), "protocolVersion": .int(1)])
+		)
+		#expect(setWhenStarted != nil)
+	}
+
+	@Test("captured speech reaches the transcript, so a run records itself unasked")
+	func theTranscriptObservesSpeech() throws {
+		let transcript = FakeTranscript()
+		let factory = FakeAdapterFactory()
+		let context = makeContext(transcript: transcript)
+		_ = try makeHandler(factory: factory).execute(
+			context, request(["mode": .string("live"), "protocolVersion": .int(1)])
+		)
+		factory.speechSource.emit("Documents, folder")
+		// Bridge-side and unconditional: this is the only account a run leaves if
+		// the agent crashed before it ever read the buffer.
+		#expect(transcript.speeches == ["Documents, folder"])
+	}
+
+	@Test("a refused mode leaves no buffer and starts nothing")
+	func aRefusalStartsNothing() throws {
+		let factory = FakeAdapterFactory(refusal: AdapterFactoryError("no silence until 13.6"))
+		let context = makeContext()
+		#expect(throws: CommandError.self) {
+			try makeHandler(factory: factory).execute(
+				context, request(["mode": .string("silent"), "protocolVersion": .int(1)])
+			)
+		}
+		#expect(context.speech == nil)
+		#expect(factory.speechSource.started.isEmpty)
 	}
 
 	@Test("a version this binding does not speak is refused BEFORE anything is built")

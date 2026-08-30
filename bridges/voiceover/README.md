@@ -7,13 +7,17 @@ Decided). Its class-by-class layout is
 [spec 0046](../../specs/0046-the-voiceover-bridge-class-by-class.md); the board
 entries are lane 3 in [`ROADMAP.md`](../../ROADMAP.md).
 
-**What exists today is the capture voice, the wire binding and the session** —
-board entries 13.2, 13.3 and 13.4. The bridge now **listens**: a server can dial
-the local endpoint, complete a handshake and exchange commands. What it cannot
-yet do is read anything back — the capture feed is 13.5 — so `hello` announces an
-**empty capability set**, which is the honest description of a bridge whose
-reader edge does not exist. The dialog that starts and stops it is 13.10; until
-then it is started from a test or from code.
+**What exists today is the capture voice, the wire binding, the session and the
+capture feed** — board entries 13.2 through 13.5. The bridge **listens**: a
+server dials the local endpoint, completes a handshake and exchanges commands.
+It also **hears**: it tails the file the capture voice appends to and answers
+`getSpeech`, `getLastSpeech`, `getNextSpeechIndex`, `waitForSpeech` and
+`waitForSpeechToFinish`, so `hello` announces the `speech` capability — and that
+one and no other, which is the honest description of a bridge whose remaining
+reader edges do not exist yet. **A silent session is refused until 13.6**, since
+nothing here can make the reader quiet. The dialog that starts and stops it is
+13.10; until then it is started from a test, from code, or from
+`swift build --product BridgeListener`.
 
 This is not a sketch that grew. It is the spike from
 [spec 0041](../../specs/0041-can-voiceover-say-what-it-said.md) — a working
@@ -202,8 +206,11 @@ log stream --predicate 'subsystem == "org.screen-readers-mcp.voiceover"' --style
 tail -f ~/Library/Containers/org.screen-readers-mcp.spike.capture.voice/Data/voiceover-capture.jsonl
 ```
 
-The file is the one the bridge will read (entry 13.5). Silence is opt-in and is
-requested by a marker file beside it:
+The file is the one the bridge reads (entry 13.5): `BridgeListener` prints the
+path it is watching when it starts, and `VOCAPTURE_LOG` overrides it on both
+halves — set it for a `build.sh`-installed extension and for the bridge and the
+two meet on a file of your choosing, which is how the feed is exercised without a
+reader. Silence is opt-in and is requested by a marker file beside it:
 
 ```sh
 touch ~/Library/Containers/org.screen-readers-mcp.spike.capture.voice/Data/voiceover-capture-silent

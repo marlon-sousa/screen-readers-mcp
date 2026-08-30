@@ -5,6 +5,7 @@
 // a capture mode means. 13.6 is the entry that removes the refusal, and it should
 // have to delete a named test to do it.
 
+import Fakes
 import ScreenReaderWire
 import Testing
 
@@ -15,7 +16,7 @@ import Testing
 struct VoiceOverAdapterFactoryTests {
 	@Test("a live session is built, and the set remembers the mode it was built for")
 	func liveIsBuilt() throws {
-		let set = try VoiceOverAdapterFactory().build(mode: .live)
+		let set = try VoiceOverAdapterFactory(capturePath: unusedCapturePath()).build(mode: .live)
 		#expect(set.mode == .live)
 	}
 
@@ -28,14 +29,14 @@ struct VoiceOverAdapterFactoryTests {
 		// exists to prevent -- a session that looks established and means
 		// something else.
 		#expect(throws: AdapterFactoryError.self) {
-			try VoiceOverAdapterFactory().build(mode: .silent)
+			try VoiceOverAdapterFactory(capturePath: unusedCapturePath()).build(mode: .silent)
 		}
 	}
 
 	@Test("the refusal names the entry that will lift it, and what to do meanwhile")
 	func theRefusalIsActionable() {
 		do {
-			_ = try VoiceOverAdapterFactory().build(mode: .silent)
+			_ = try VoiceOverAdapterFactory(capturePath: unusedCapturePath()).build(mode: .silent)
 			Issue.record("expected silent mode to be refused")
 		} catch let error as AdapterFactoryError {
 			#expect(error.description.contains("13.6"))
