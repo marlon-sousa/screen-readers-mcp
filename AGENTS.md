@@ -22,6 +22,7 @@ session working there picks it up without carrying the rest:
 | [`shared/AGENTS.md`](shared/AGENTS.md) | The wire contract: the stdlib-only rule, and the policy that a `PROTOCOL_VERSION` 1 shape may still be changed in place. |
 | [`server/AGENTS.md`](server/AGENTS.md) | The Go half: its ports/entities/controllers/adapters inventory, the Go mechanics of the shared rules, build tags and the Go-only test rules. |
 | [`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md) | The NVDA bridge: its architecture, the command-handler dispatch layer, its test shapes, the rules for driving a live NVDA, and the NVDA gotchas. |
+| [`bridges/voiceover/AGENTS.md`](bridges/voiceover/AGENTS.md) | The VoiceOver bridge: its five elements, how the repo's rules render in Swift, what the module graph enforces, the endpoint's duplicated derivation, and the macOS gotchas. |
 | [`docs/dev-commands.md`](docs/dev-commands.md) | Why each gate in the task list exists and what it cost to learn, plus the underlying commands `poe` wraps. |
 
 Each project file assumes this one and does not repeat it. Nothing below is
@@ -107,14 +108,15 @@ make it cost a version bump instead — is in
 | `shared/` | Canonical **stdlib-only** wire protocol (`screenreader-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
-| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. Today it holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML — and **`Sources/ScreenReaderWire/`, the contract's third binding**: hand-written Swift value types gated against `specs/wire/v1/schema.json` by `scripts/drift.py --swift`. The session and the dialog are lane 3's later entries. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
+| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. It holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML — **`Sources/ScreenReaderWire/`, the contract's third binding** (hand-written Swift value types gated against `specs/wire/v1/schema.json` by `scripts/drift.py --swift`), and, since 13.4, **the bridge session**: `VoiceOverBridgeDomain` (ports, `Session`, handlers, entities) and `VoiceOverBridgeAdapters` (the two listeners, the JSON-lines channel, `Wiring`). It **listens** on the local endpoint the server dials, and announces an empty capability set until the reader edge exists. The dialog is 13.10. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
 
-`shared/`, `server/` and `bridges/nvda/` each carry their own `AGENTS.md` with
-the rules specific to them; see the index above. `bridges/voiceover/` carries a
-`README.md` instead, for now: everything it needs to say is about building,
-registering and removing a macOS bundle, and it gets an `AGENTS.md` when 13.4
-gives it a domain with rules of its own.
+`shared/`, `server/`, `bridges/nvda/` and `bridges/voiceover/` each carry their
+own `AGENTS.md` with the rules specific to them; see the index above. The
+VoiceOver one arrived with **13.4**, which is what gave that bridge a domain with
+rules of its own; its `README.md` stays beside it and is the document for
+*using* the bundle — building it, registering and removing the capture voice —
+while the `AGENTS.md` is the document for changing it.
 
 ## Internal architecture — ports & adapters (bridge AND server)
 

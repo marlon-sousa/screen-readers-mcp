@@ -7,9 +7,13 @@ Decided). Its class-by-class layout is
 [spec 0046](../../specs/0046-the-voiceover-bridge-class-by-class.md); the board
 entries are lane 3 in [`ROADMAP.md`](../../ROADMAP.md).
 
-**What exists today is the capture voice** — board entry 13.2. The session, the
-wire binding and the dialog arrive in 13.3, 13.4 and 13.10; until then this
-directory builds a speech provider and a probe, and nothing dials or listens.
+**What exists today is the capture voice, the wire binding and the session** —
+board entries 13.2, 13.3 and 13.4. The bridge now **listens**: a server can dial
+the local endpoint, complete a handshake and exchange commands. What it cannot
+yet do is read anything back — the capture feed is 13.5 — so `hello` announces an
+**empty capability set**, which is the honest description of a bridge whose
+reader edge does not exist. The dialog that starts and stops it is 13.10; until
+then it is started from a test or from code.
 
 This is not a sketch that grew. It is the spike from
 [spec 0041](../../specs/0041-can-voiceover-say-what-it-said.md) — a working
@@ -40,12 +44,18 @@ re-binds ours.
 | `Package.swift` | The module graph, which is the architecture test: a domain file that imports the adapters does not compile. |
 | `build.sh` | Assembles the `.app`, the `.appex` and the framework. SwiftPM cannot emit bundles, so this is the build. |
 | `Sources/CaptureVoice/` | The capture voice, as its own hexagon: `Domain/Ports`, `Domain/Entities`, `Domain/Controllers`, `Adapters`. |
+| `Sources/VoiceOverBridgeDomain/` | The bridge session's pure core: ports, the `Session` controller, the command handlers, the entities. No frameworks, no sockets, no JSON framing. |
+| `Sources/VoiceOverBridgeAdapters/` | The IO edge: the two listeners and their leaves, the JSON-lines channel, the transcript, the event bus, and `Wiring.swift`, the composition root. |
 | `Sources/ScreenReaderWire/` | The wire contract's Swift binding — value types and validation, hand-written against [`specs/wire/v1/schema.json`](../../specs/wire/v1/schema.json) and gated against it by `scripts/drift.py`. Depends on nothing. |
 | `Sources/CaptureVoiceExtension/` | The `.appex` executable — a stub, because the audio unit must live in a framework. |
 | `Sources/CaptureProbe/` | A diagnostic client that answers "is the capture voice published?" without VoiceOver. |
+| `Sources/BridgeListener/` | A launcher that starts the bridge listening from a terminal. Not shipped in the `.app`; see "Making it listen". |
 | `Sources/VoiceOverBridgeApp/` | The container app. An extension cannot be installed on its own. |
 | `Tests/CaptureVoiceTests/` | Mirrors `Sources/` file for file, with the port fakes under `Fakes/`. |
 | `Tests/ScreenReaderWireTests/` | Mirrors `Sources/ScreenReaderWire/` file for file. No fakes: value types are tested with values, from the JSON a peer would send. |
+| `Tests/VoiceOverBridgeDomainTests/`, `Tests/VoiceOverBridgeAdaptersTests/` | Mirror their sources file for file. |
+| `Tests/Fakes/` | The port doubles the domain's, the adapters' and the integration tests all share, plus `Support/` for scaffolding that stands in for no port. |
+| `Tests/Integration/` | Headless scenarios: the whole session stack over a loopback transport, and over a **real** Unix socket and a real loopback socket dialled by a client built from the raw socket API. |
 | `VoiceOver.sdef` | VoiceOver's AppleScript dictionary, dumped on macOS 15.0. The reference this repo otherwise does not have. |
 
 ```mermaid
@@ -81,7 +91,48 @@ bash bridges/voiceover/build.sh
 ```
 
 The tests run in well under a second and need no reader, no audio device and no
-registration. That is the point of the decomposition.
+registration. That is the point of the decomposition. The integration scenarios
+bind real sockets, in a home directory they invent under `/tmp`, so they never
+touch the endpoint a developer's own bridge listens on.
+
+## Making it listen
+
+Until the control dialog lands (13.10), the bridge is started by a small
+launcher, kept in the repo because anything a check depends on is versioned
+rather than improvised:
+
+```sh
+swift build --package-path bridges/voiceover --product BridgeListener
+./bridges/voiceover/.build/debug/BridgeListener            # the local endpoint
+./bridges/voiceover/.build/debug/BridgeListener --tcp 8765 # loopback instead
+```
+
+It prints the endpoint it bound and every state change, and stops on `^C`,
+unlinking the socket. It is **not** part of the shipped `.app`: `build.sh` does
+not copy it.
+
+With it running, the real MCP server connects:
+
+```sh
+./server/screenreader-mcp --reader voiceover=local:voiceoverMcpBridge
+```
+
+## The endpoint the bridge listens on
+
+The server dials; the bridge listens (`specs/wire/v1/protocol.md` §1). By
+default that is the **local endpoint**, addressed by the bare name
+`voiceoverMcpBridge`, which on macOS resolves to
+`$XDG_RUNTIME_DIR/screenreader-mcp/voiceoverMcpBridge.sock` when that variable is
+set and to `~/.screenreader-mcp/voiceoverMcpBridge.sock` otherwise. The directory
+is created mode `0700`, and that permission is the whole of the endpoint's "only
+this user" property. Loopback TCP is the alternative; remote TCP is not offered
+at all.
+
+The derivation is computed in `Entities/LocalSocketPath.swift`, deliberately
+mirroring the server's own `server/domain/entities/local_socket.go`: both halves
+must derive the same path from the same published rule or they never meet, and
+the failure mode is a refused connection on a machine where the bridge is plainly
+running.
 
 ## Registering the capture voice
 

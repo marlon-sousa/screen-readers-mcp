@@ -1,0 +1,38 @@
+// ROLE: port -- the human-readable record of everything a session did.
+//
+// IMPLEMENTED BY: FileTranscript (adapters) over the FileWriter seam;
+// FakeTranscript (Tests/Fakes), which records the same lines in memory.
+// USED BY: the Session controller, which reports each event as it happens, and
+// by the hello handler, which hands `logPath` back to the agent.
+//
+// A silent run is an audio blackout: nobody hears what the reader "said", so
+// this file is how a tester reconstructs the run afterwards. It is written
+// bridge-side, so it is complete even for speech the agent never fetched.
+//
+// THE VOCABULARY GROWS ONE ENTRY AT A TIME, and what is missing here is a
+// statement rather than an omission: `speech` arrives with the capture feed
+// (13.5), `gesture` with input (13.7) and `typed` with typing (13.8) -- each
+// added by the entry that first produces the event. A transcript verb nothing
+// can emit would be a promise this build does not keep.
+// NOTHING HERE THROWS, and that is the contract rather than an omission: a
+// broken log must never take down a session, still less stop the teardown that
+// gives a human their screen reader back. So an implementation swallows its own
+// IO failures, exactly as the FileWriter seam beneath it does, and the session
+// needs no guard around a call that cannot fail.
+public protocol Transcript: AnyObject {
+	/// Where the record can be read; returned to the agent at `hello`.
+	var logPath: String { get }
+
+	func open()
+
+	/// A session began, and what it is standing in for.
+	///
+	/// `persona` is spec 0029's declaration, written down because this file is
+	/// read AFTERWARDS to work out what a run meant: the same observation is a
+	/// pass from one stance and a finding from another.
+	func sessionOpened(mode: String, voice: String, persona: String)
+
+	func note(_ text: String)
+
+	func sessionClosed(reason: String)
+}

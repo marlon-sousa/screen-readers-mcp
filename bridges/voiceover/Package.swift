@@ -7,13 +7,15 @@
 // not depend on does not compile. That is a better rendering of the same rule,
 // so the dependency edges below are load-bearing rather than descriptive.
 //
-// WHAT IS NOT HERE YET, and which entry brings it:
-//   * VoiceOverBridgeDomain       -- 13.4, ports/controllers/entities
-//   * VoiceOverBridgeAdapters     -- 13.4, the macOS/AppleScript/IO edge
-// VoiceOverBridgeApp then gains those two and ScreenReaderWire as dependencies.
-// Today it is the container app and nothing more, because a macOS app extension
-// cannot be installed on its own -- the .appex ships inside an app's
-// Contents/PlugIns.
+// VoiceOverBridgeApp DOES NOT YET DEPEND ON THE DOMAIN OR THE ADAPTERS, and
+// this comment used to say 13.4 would give it them. It does not, deliberately:
+// nothing in 13.4 makes the app DO anything -- the control dialog that starts
+// and stops the server is 13.10 -- and build.sh compiles the app by handing
+// swiftc one file, so an unused dependency edge here would break the shippable
+// artifact in exchange for nothing. 13.10 adds the edge and teaches build.sh the
+// module search path in the same breath. Today the app is the container and
+// nothing more, because a macOS app extension cannot be installed on its own:
+// the .appex ships inside an app's Contents/PlugIns.
 //
 // PACKAGE.SWIFT IS NOT THE BUILD. SwiftPM cannot emit .app or .appex bundles,
 // so build.sh assembles them; this manifest is what `swift build` and
@@ -44,6 +46,11 @@ let package = Package(
 		// synthesis failed silently.
 		.library(name: "CaptureVoice", targets: ["CaptureVoice"]),
 		.executable(name: "CaptureProbe", targets: ["CaptureProbe"]),
+		// The headless launcher. NOT part of the shipped bundle -- build.sh does
+		// not copy it -- because it exists to make the bridge listen from a
+		// terminal, which is what a live check needs and what nothing else can do
+		// until the control dialog lands in 13.10.
+		.executable(name: "BridgeListener", targets: ["BridgeListener"]),
 	],
 	targets: [
 		// ELEMENT 1 of the five (spec 0046, part 3): the speech provider, its own
@@ -66,6 +73,32 @@ let package = Package(
 		// one either, so the schema is the only index the three bindings share.
 		.target(name: "ScreenReaderWire", path: "Sources/ScreenReaderWire"),
 
+		// ELEMENT 3, the bridge session -- and THE HEXAGON'S PURE CORE. Ports,
+		// controllers and entities, and nothing else: no AppKit, no AVFoundation,
+		// no sockets, no JSON framing. It depends on the wire binding because the
+		// contract is the vocabulary it speaks, and on nothing else of ours.
+		//
+		// THE EDGE THAT DOES NOT COMPILE IS THE ARCHITECTURE TEST. A domain file
+		// that imported VoiceOverBridgeAdapters would fail to build, which is a
+		// better rendering of lane 1's convention-and-review rule and costs
+		// nothing.
+		.target(
+			name: "VoiceOverBridgeDomain",
+			dependencies: ["ScreenReaderWire"],
+			path: "Sources/VoiceOverBridgeDomain"
+		),
+
+		// The only place macOS frameworks, the filesystem and real IO live -- plus
+		// Wiring, the composition root, which is here rather than in the app
+		// because SwiftPM cannot import an executable target into a test target
+		// and a composition root nothing can exercise is where a wiring mistake
+		// would survive every test.
+		.target(
+			name: "VoiceOverBridgeAdapters",
+			dependencies: ["VoiceOverBridgeDomain", "ScreenReaderWire"],
+			path: "Sources/VoiceOverBridgeAdapters"
+		),
+
 		// The .appex stub. A LIBRARY target here, not an executable, because its
 		// entry point is _NSExtensionMain rather than main() -- build.sh passes
 		// the linker flags that make it an app extension's executable. SwiftPM's
@@ -87,17 +120,36 @@ let package = Package(
 			path: "Sources/CaptureProbe"
 		),
 
+		// The launcher, kept for the same reason the probe is: a check's
+		// dependencies are versioned rather than improvised in a scratch directory.
+		.executableTarget(
+			name: "BridgeListener",
+			dependencies: ["VoiceOverBridgeAdapters", "VoiceOverBridgeDomain"],
+			path: "Sources/BridgeListener"
+		),
+
 		// The container app. It exists because the system registers an .appex from
 		// inside an app's Contents/PlugIns, so "the voice did not appear" is never
 		// ambiguous between a broken app and a broken extension.
 		.executableTarget(name: "VoiceOverBridgeApp", path: "Sources/VoiceOverBridgeApp"),
 
-		// Tests/ mirrors Sources/ file for file, and the FAKES live in here rather
-		// than in a target of their own. 13.3 added a second test target and did
-		// NOT change that: a shared Fakes target is worth its indirection once two
-		// targets need the SAME double, and the wire binding has no ports to fake
-		// -- it is value types, tested with values. 13.4 is where the question is
-		// live again.
+		// Tests/ mirrors Sources/ file for file. THE FAKES NOW LIVE IN A TARGET OF
+		// THEIR OWN, which is the question 13.3 left open answering itself: the
+		// domain's tests and the adapters' tests and the integration scenarios all
+		// need the SAME doubles -- a fake clock, a fake channel, a fake transcript
+		// -- and three copies of a stateful fake is three chances for one of them
+		// to drift into agreeing with the code instead of with the port.
+		//
+		// CaptureVoiceTests keeps its own Fakes/ directory, and that is not an
+		// oversight: CaptureVoice depends on nothing of ours by hard rule, so its
+		// doubles stand in for ITS ports and nothing outside that module may use
+		// them. A shared target holding both would be the first thread of the
+		// dependency that rule exists to prevent.
+		.target(
+			name: "Fakes",
+			dependencies: ["VoiceOverBridgeDomain", "VoiceOverBridgeAdapters", "ScreenReaderWire"],
+			path: "Tests/Fakes"
+		),
 		.testTarget(
 			name: "CaptureVoiceTests",
 			dependencies: ["CaptureVoice"],
@@ -108,6 +160,32 @@ let package = Package(
 			name: "ScreenReaderWireTests",
 			dependencies: ["ScreenReaderWire"],
 			path: "Tests/ScreenReaderWireTests"
+		),
+
+		.testTarget(
+			name: "VoiceOverBridgeDomainTests",
+			dependencies: ["VoiceOverBridgeDomain", "ScreenReaderWire", "Fakes"],
+			path: "Tests/VoiceOverBridgeDomainTests"
+		),
+
+		.testTarget(
+			name: "VoiceOverBridgeAdaptersTests",
+			dependencies: ["VoiceOverBridgeAdapters", "VoiceOverBridgeDomain", "ScreenReaderWire", "Fakes"],
+			path: "Tests/VoiceOverBridgeAdaptersTests"
+		),
+
+		// HEADLESS SCENARIOS THAT DRIVE THE REAL STACK -- the real Session over the
+		// real JsonLinesChannel over a loopback transport, with a fake reader edge.
+		// They are the analogue of lane 1's tests/integration/, they run in CI on
+		// macOS, and they are what would catch a wiring mistake that every unit
+		// test passes. Live-VoiceOver scenarios are NOT here: they live behind the
+		// bridge's `live` tier and never run in CI.
+		.testTarget(
+			name: "IntegrationTests",
+			dependencies: [
+				"VoiceOverBridgeAdapters", "VoiceOverBridgeDomain", "ScreenReaderWire", "Fakes",
+			],
+			path: "Tests/Integration"
 		),
 	],
 	swiftLanguageModes: [.v5]

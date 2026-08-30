@@ -7,9 +7,9 @@ every other agent, and it is the manual. Claude Code does not read `AGENTS.md`
 on its own, so this file imports it — that import is the only reason the manual
 reaches a Claude session at all, and it must stay at the top.
 
-The manual is split by project: `shared/`, `server/` and `bridges/nvda/` each
-carry their own `AGENTS.md`, and each is imported by a one-line `CLAUDE.md`
-beside it, for exactly the reason this file exists. Those nested files load on
+The manual is split by project: `shared/`, `server/`, `bridges/nvda/` and
+`bridges/voiceover/` each carry their own `AGENTS.md`, and each is imported by a
+one-line `CLAUDE.md` beside it, for exactly the reason this file exists. Those nested files load on
 demand when you read something in that directory, so a session working on the
 bridge picks up the bridge's rules without carrying the server's. The root
 [`AGENTS.md`](AGENTS.md) stays self-contained, and its index names every one of
