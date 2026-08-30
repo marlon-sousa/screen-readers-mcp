@@ -501,7 +501,7 @@ visible. `Sources/CaptureVoice/`:
 | `Domain/Ports/CaptureModeSource.swift` | port | is silence in force right now? |
 | `Domain/Entities/Utterance.swift` | entity | **Input, made a value**: the SSML, the plain text, the language, the requesting voice, and the bridge-assigned sequence. |
 | `Domain/Entities/SsmlDocument.swift` | entity | **Processing.** Parses the SSML: plain text, and `xml:lang` when present. Pure, and carries the finding that **VoiceOver's SSML has no `xml:lang` at all** — so "unknown" is the normal answer and must not be read as licence to pick a default. |
-| `Domain/Entities/VoiceChoice.swift` | entity | **Processing.** Picks the re-speaking voice: never one whose identifier ends in ours (re-entrancy excluded by construction, not by naming an Apple voice that may not exist elsewhere), the language's **default** voice first because a listed voice can fail to synthesize, and the system's current language when the utterance does not say. Pure; this is where the Arabic-reading-Portuguese bug is a test. |
+| `Domain/Entities/VoiceChoice.swift` | entity | **Processing.** Picks the re-speaking voice. **Rule 0 (13.6): the voice the user was already using**, supplied by the bridge — see below. Then: never one whose identifier ends in ours (re-entrancy excluded by construction, not by naming an Apple voice that may not exist elsewhere), the language's **default** voice first because a listed voice can fail to synthesize, and the system's current language when the utterance does not say. Pure; this is where the Arabic-reading-Portuguese bug is a test. |
 | `Domain/Entities/AudioRing.swift` | entity | **Audio output.** Single-producer/single-consumer ring; the consumer uses `trylock` and never waits. `final`, so the render block's call is statically dispatched. |
 | `Domain/Controllers/CaptureController.swift` | controller | **The orchestrator, and the class the spike did not have.** One utterance in; text out through `UtteranceSink` **always**; re-synthesis started through `Synthesizer` into the ring **only when not silent**. Unit-tested end to end against four fakes, with no audio device and no VoiceOver. |
 | `Adapters/CaptureAudioUnit.swift` | adapter | The AudioToolbox edge, and now thin: bus and format negotiation, the request and cancel entry points, and the render block. Keeps the `PRIO_DARWIN_BG` escape, the host-settled output format read at `allocateRenderResources`, and the bounded wait inside the render block. Its only collaborator there is the concrete `AudioRing`. |
@@ -510,7 +510,7 @@ visible. `Sources/CaptureVoice/`:
 | `Adapters/ContainerFileUtteranceSink.swift` | adapter | JSON lines into the extension's own container — the only door, since a network-entitled extension is silently skipped. |
 | `Adapters/OsLogUtteranceSink.swift` | adapter | the second route, which works under the sandbox when the file does not. |
 | `Adapters/FanOutUtteranceSink.swift` | adapter | both of the above, so "emit two ways" is a composition rather than an `if`. |
-| `Adapters/MarkerFileCaptureModeSource.swift` | adapter | the marker file 13.6 writes. Silence stays **opt-in**: the default cannot be the setting that mutes a screen reader. |
+| `Adapters/MarkerFileCaptureModeSource.swift` | adapter | the marker file 13.6 writes. Silence stays **opt-in**: the default cannot be the setting that mutes a screen reader. **It also enforces the lease** — a marker older than 30 s, or one whose date cannot be read, means pass-through — so it is no longer a leaf and carries a test file. Implemented ahead of 13.6, deliberately: the read side must be fail-safe *before* anything exists that can write the marker. |
 | `Adapters/AudioUnitFactory.swift` | adapter | the extension's principal class. |
 | `Sources/CaptureVoiceExtension/main.swift` | leaf | The stub that anchors the framework — the audio unit must live in a framework or in-process loading cannot find it. |
 | `Sources/CaptureProbe/main.swift` | diagnostic (**kept**) | Lists voices and enumerates speech audio components, so *"the extension never ran"* and *"VoiceOver ignored it"* stay separable. |
@@ -758,6 +758,46 @@ half is load-bearing: *our voice still selected after a crash* is *degraded but
 safe* — the user hears re-synthesized speech, and if the provider itself dies
 VoiceOver falls back to a working voice (spec 0041, C2). The unsafe state is only
 **selected + silent + no lease**, and the lease removes it by construction.
+
+### Rule 0 — pass-through uses the user's OWN voice
+
+**Decided in conversation 2026-08-29.** The bridge must read the previous
+`voiceId` at session start anyway, because that is what it restores at teardown.
+So it already holds exactly the value the extension needs, and handing it over
+costs one field on the bridge→extension channel 13.6 is building for the marker.
+
+The effect is the point: in a **live** session, pass-through re-synthesizes with
+the voice the user chose, so capture becomes **acoustically invisible** rather
+than a substitute voice they did not ask for. That is spec 0041's correction
+honoured — in an attended session a person is listening while an agent drives,
+and the voice *is* the product there.
+
+`VoiceChoice` gains it as a rule **ahead of** the existing three, and three
+things must survive:
+
+1. **Rule 1 still wins over it.** If a previous session died without restoring,
+   the "previous voice" **is ours**, and re-speaking with our own voice is
+   infinite recursion. The identifier-suffix exclusion applies to the preferred
+   voice exactly as to the fallbacks.
+2. **It must degrade, never assume.** `speechVoices()` lists voices that then
+   fail to synthesize while CoreSynthesizer substitutes silently — that is rule
+   2's whole reason — and the user's voice may be another third-party provider
+   that does not work from inside our sandbox. Rule 0 falls through to rules 1-3.
+   Which voice actually spoke stays observable: the capture feed already records
+   `passthrough_voice`.
+3. **It makes the common path faster.** A preferred voice resolves before the
+   `candidates()` autoclosure is called, so it skips the 191-voice enumeration
+   that rule 2's ordering exists to avoid.
+
+**Only the voice identity is taken, not its rate and pitch.** The same
+`Speech.VoiceSelection` dict carries `pitch`, `rate` and `volume`, and VoiceOver
+already encodes the user's rate and pitch into the SSML as `<prosody>` (spec
+0041, A2). Applying both would double them.
+
+**And it sharpens finding 18 rather than softening it.** Pass-through on the
+user's own voice is *deliberately* indistinguishable from normal operation, which
+is exactly why `ProviderState` is detected from the capture feed and never from
+audio.
 
 `Session` gains the **third watchdog**. macOS earns it: silent mode here renders
 silence in the provider, so the reader is *mute* rather than merely intercepted,

@@ -6,6 +6,32 @@ alternative is to assume. Taken on **2026-08-29**, on **macOS 15.0 (24A335)**,
 against the maintainer's live VoiceOver. It adds no production class and
 therefore carries no class/file layout, exactly as spec 0041 did.
 
+## The answer, first
+
+**The bridge sets VoiceOver's voice by writing one preference.** Live, in both
+directions, with no reader restart, no UI, no AppleScript and no Accessibility
+grant:
+
+```
+~/Library/Preferences/com.apple.SpeakSelection.plist
+    VoiceOverDefaultVoiceSelections = ( "<lang>", { … voiceId = "<voice>" } )
+```
+
+`scripts/voiceover_voice.py` is that mechanism. **Preserve plist types** — see
+finding 17 for the trap that makes a correct-looking write vanish.
+
+**How to read the rest.** This document is the record of a live investigation,
+and it is deliberately kept in the order the machine answered rather than the
+order that would read best, because the *failures* are the transferable part:
+four instruments each returned a confident negative before the store was found
+one namespace away from where every one of them looked. Findings 1–15 are that
+investigation, and two of them (**2** and **10**) reach conclusions that
+**findings 16–18 overturn** — each says so where it stands, so no reader is left
+holding a superseded answer. The method itself is written up separately in
+[`docs/how-we-found-the-voice-store.md`](../docs/how-we-found-the-voice-store.md).
+
+## Why this measurement was taken
+
 It exists because [spec 0043](0043-the-voiceover-bridge-is-one-swift-bundle.md)
 states two costs and does not test them:
 
@@ -62,7 +88,12 @@ Accessibility at all.
 `******** Launching VoiceOver from starter application ********`. There is no
 launch-time configuration switch of any kind.
 
-## Finding 2 — the voice is one preference key, and writing it does nothing
+## Finding 2 — the key in VoiceOver's OWN domain is not the voice
+
+> **Superseded by finding 16.** This finding's measurement stands — that key is
+> not the voice and writing it changes nothing — but its implied conclusion, that
+> the voice is not a writable preference, is wrong. It is one, in a different
+> domain. Read on; the mistake was the namespace, not the mechanism.
 
 The key was **read out of the system rather than guessed**, which matters because
 spec 0046 already records that *absent* is ambiguous between "off" and "we
@@ -365,7 +396,12 @@ left unselected: whether the refactor still *sounds* right is a judgement only
 the maintainer can make by ear, which is the whole reason spec 0041's six fixes
 exist.
 
-## Finding 10 — setting the voice by hand writes nothing we can find
+## Finding 10 — setting the voice writes nothing in VoiceOver's own files
+
+> **Correct as measured, and superseded in scope by finding 16.** Everything
+> below is true: no file *of VoiceOver's* records the voice, and VoiceOver itself
+> writes nothing. The store is in the system speech domain, which none of the
+> searches below covered.
 
 **This is the observation the maintainer asked for**, and it is a strong
 negative that settles finding 2 completely.
