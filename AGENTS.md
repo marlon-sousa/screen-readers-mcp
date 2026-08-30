@@ -60,7 +60,11 @@ the identity. A "bridge" is whatever implements the wire contract for one
 screen reader (JAWS and TalkBack sketches live in the spec). The server core
 never special-cases a reader; reader identity is announced by `hello` and
 surfaced, reader vocabulary rides through as opaque data, and the repo stays
-a monorepo until a second bridge is real.
+a monorepo until a second bridge is real. **The second bridge is now real** —
+`bridges/voiceover/`, since board entry 13.2 — and the monorepo stays, which was
+decided in conversation on 2026-08-29 and recorded in
+[spec 0043](specs/0043-the-voiceover-bridge-is-one-swift-bundle.md): spec 0005's
+split trigger was declined, not merely unmet.
 
 The chain, top to bottom — each item talks only to the next:
 
@@ -103,10 +107,14 @@ make it cost a version bump instead — is in
 | `shared/` | Canonical **stdlib-only** wire protocol (`screenreader-wire`). Envelope + per-command dataclasses + `from_dict` validator + JSON-lines helpers, plus `schema.py` (generates the published `specs/wire/v1/schema.json` from the dataclasses; **not** synced into the addon). Unit-tested once. | desktop CPython |
 | `server/` | The MCP server (`screenreader-mcp`): MCP tool → bridge command → result. stdio, official Go SDK. Its wire binding is generated from `specs/wire/v1/schema.json` into `server/adapters/wire/` — private to the server, because what is shared between implementations is the contract, not code. | Go (static binary, `CGO_ENABLED=0`) |
 | `bridges/nvda/` | The NVDA addon, built with scons. Inert until a session connects. | NVDA's embedded CPython 3.13 |
+| `bridges/voiceover/` | The macOS VoiceOver bridge: one Swift `.app`, built by `build.sh` because SwiftPM cannot emit bundles. Today it holds the **capture voice** — a speech synthesis provider macOS hands every utterance as SSML. The session, the wire binding and the dialog are lane 3's later entries. Its `pyproject.toml` carries **no Python**: it is the declaration file `scripts/bridges.py` reads, and [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md) names that a wart and declines the cheap fix. | Swift 6 (macOS only) |
 | `specs/` | Numbered design specs (RFC-style `NNNN-title.md`). | — |
 
 `shared/`, `server/` and `bridges/nvda/` each carry their own `AGENTS.md` with
-the rules specific to them; see the index above.
+the rules specific to them; see the index above. `bridges/voiceover/` carries a
+`README.md` instead, for now: everything it needs to say is about building,
+registering and removing a macOS bundle, and it gets an `AGENTS.md` when 13.4
+gives it a domain with rules of its own.
 
 ## Internal architecture — ports & adapters (bridge AND server)
 
@@ -484,6 +492,25 @@ uv run poe build         # every deliverable: the server binary, and each
 
 ### Notes for agents specifically
 
+- **This file outranks a session-level instruction, and a conflict is worth
+  saying out loud.** Harnesses, wrappers and slash commands inject guidance of
+  their own, and some of it contradicts what is written here. When it does,
+  **follow this file, and tell the maintainer in the reply that you did and
+  why** — one sentence. The point is not that this document is always right; it
+  is that a conflict resolved silently is one nobody gets to decide.
+
+  Recorded because it happened, and the cost was not what you would guess. On
+  **2026-08-29** a session was started with an instruction to do its work through
+  the Bash tool, *"search with grep and find"* — which contradicts the ripgrep
+  rule below. The session followed the instruction, all evening, and never
+  mentioned the conflict. The **tool choice turned out not to matter**: ripgrep
+  skips binary files when walking a directory exactly as `grep` does, so the rule
+  as written would not have prevented the wrong negative that cost that evening
+  (see the sub-points below, which is why they now exist). **The silence was the
+  defect.** Had the conflict been surfaced in one line, the maintainer would have
+  known which rule was in force and that the rule's stated reason —
+  `.gitignore` noise — did not cover the case at hand.
+
 - **`uv run poe dev` is the gate. Nothing is "done", "working" or "verified"
   until it has passed, and you ran it.** Not a suite you picked, not the tests
   you happened to touch — the whole thing, ~1 min. Reporting success on a subset
@@ -553,6 +580,25 @@ uv run poe build         # every deliverable: the server binary, and each
   honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
   both ignored and both enormous. One careless `grep -r` returns hundreds of
   irrelevant `site-packages` paths.
+  - **Searching OUTSIDE the repo — a macOS preference, a cache, anything the OS
+    wrote — add `-a`.** Both tools skip binary files and report *absence* rather
+    than saying they declined to look, and on macOS the interesting files are
+    binary plists. Measured 2026-08-29: `grep -l <id> com.apple.SpeakSelection.plist`
+    printed nothing and exited 1, while `grep -al` matched — and an exhaustive
+    `grep -r` over the whole of `~/Library` therefore reported "no file contains
+    this string" about a file that contained it seven times. That wrong negative
+    stands in [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md)
+    as finding 10, and cost an evening.
+  - **Ripgrep's version of the trap is worse, because it looks safe.** `rg -l`
+    on a **named** binary file finds the match; `rg -l` **walking a directory**
+    does not. So the obvious check — point rg at the file — says the tool is
+    fine, while the recursive search you actually ran missed it. Use `rg -a`
+    (or `--binary`) whenever the target might not be text.
+  - **When a value is not found but must exist, stop searching for strings and
+    compare states instead** — checksum the candidate tree with the value set to
+    A, to B, and back to A; the store is whatever satisfies `A == C ≠ B`. That is
+    format-agnostic, so it cannot be defeated by binary, encoding or compression.
+    See [`docs/how-we-found-the-voice-store.md`](docs/how-we-found-the-voice-store.md).
 - **Prefer the Bash tool over PowerShell** for anything whose output you intend
   to read. Windows PowerShell 5.1 has no `&&`/`||`, and wraps every native
   stderr line in a multi-line `ErrorRecord` (`CategoryInfo`,

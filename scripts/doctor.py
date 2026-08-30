@@ -108,6 +108,15 @@ class Tool:
 	minimum: tuple[int, ...] | None
 	why: str
 	fix: str
+	#: How this tool is asked its version -- `("--version",)` for almost
+	#: everything, `("version",)` for go. **None means it cannot be asked at
+	#: all**, and that is not the same as `minimum = None`: msgfmt answers with a
+	#: banner nobody can order, while `codesign --version` is an unrecognised
+	#: option that exits 2 and prints a usage screen. Without this distinction the
+	#: doctor reported a perfectly good codesign as "present, but would not report
+	#: a version" -- a warning about the doctor, dressed as a warning about the
+	#: machine.
+	version_argv: tuple[str, ...] | None = ("--version",)
 
 
 TOOLS: dict[str, Tool] = {
@@ -120,6 +129,7 @@ TOOLS: dict[str, Tool] = {
 		(1, 25, 0),
 		"builds and tests the MCP server; the minimum is server/go.mod's own",
 		"https://go.dev/dl/",
+		version_argv=("version",),
 	),
 	"git": Tool((2, 30), "version control", "https://git-scm.com/downloads"),
 	"rg": Tool(
@@ -153,6 +163,24 @@ TOOLS: dict[str, Tool] = {
 		"winget install GnuWin32.GetText  |  brew install gettext",
 	),
 	"xgettext": Tool(None, "gettext: extracts a bridge's translatable strings", "same as msgfmt"),
+	"swift": Tool(
+		# 6.0 is where swift-testing ships with the toolchain and where
+		# `swiftLanguageModes` exists in a manifest -- both of which the VoiceOver
+		# bridge's Package.swift uses, so an older toolchain fails at manifest
+		# parsing rather than at a line anyone could read.
+		(6, 0),
+		"builds and tests a Swift bridge; `swift --version` reports the toolchain",
+		"install Xcode 16 or later, then `xcode-select --install`",
+	),
+	"codesign": Tool(
+		None,
+		"signs a bridge's bundle; a speech provider that is not signed and "
+		"sandboxed is not rejected -- it registers and never appears",
+		"comes with the macOS command line tools",
+		# It has no version flag AT ALL: `codesign --version` is an unrecognised
+		# option, exits 2, and prints usage. Presence is the whole check.
+		version_argv=None,
+	),
 }
 
 #: (tool, required, hosts) -- what the REPO needs, whatever bridge you work on.
@@ -196,8 +224,9 @@ def _check_tool(name: str, required: bool, label: str | None = None) -> Result:
 	shown = label or name
 	if shutil.which(name) is None:
 		return Result(FAIL if required else WARN, shown, f"not on PATH -- {spec.why}", spec.fix)
-	# `go` spells it `go version`, not `go --version`.
-	code, banner = _run([name, "version"] if name == "go" else [name, "--version"])
+	if spec.version_argv is None:
+		return Result(OK, shown, f"present at {shutil.which(name)}")
+	code, banner = _run([name, *spec.version_argv])
 	if code != 0 or not banner:
 		return Result(WARN, shown, "present, but would not report a version", spec.fix)
 	first = banner.splitlines()[0].strip()

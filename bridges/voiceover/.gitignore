@@ -1,0 +1,9 @@
+# build.sh assembles the .app, the .appex and the framework here, and SwiftPM
+# writes .build/. Both are generated: everything that describes them is the
+# script and Package.swift, which are the reviewable artefacts.
+#
+# The repo-root .gitignore already carries a bare `build/` (inherited from the
+# Python template), so this file is belt and braces -- kept because a reader
+# standing in this directory should not have to know that.
+build/
+.build/

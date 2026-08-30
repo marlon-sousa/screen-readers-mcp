@@ -1,0 +1,61 @@
+# THIS FILE CONTAINS NO PYTHON, AND NEVER WILL.
+#
+# It exists for one reason: `scripts/bridges.py` reads a bridge's declaration
+# from `<bridge>/pyproject.toml`, so that is where the declaration goes. The
+# VoiceOver bridge is Swift (spec 0043) -- its build manifest is Package.swift
+# beside this file and its build script is build.sh.
+#
+# Spec 0046 names this a wart and declines the cheap fix on purpose: teaching
+# bridges.py to accept a `bridge.toml` as well would be a change to SHARED
+# tooling made for a single case. If a second non-Python bridge appears, that is
+# the moment to make it -- not before.
+#
+# There is deliberately NO [project] table, no [tool.uv], and no dependency
+# group. A `[project]` here would make uv treat this directory as a Python
+# project it can install, which is exactly the misreading the wart invites.
+
+# WHAT THIS BRIDGE NEEDS, AND WHERE IT CAN BE DONE -- read by scripts/bridges.py.
+#
+# The declaration lives HERE, with the bridge, because what a bridge needs is a
+# fact about its reader and the bridge is the only place that fact is not a
+# guess (spec 0042, decision 2). `reason` is not decoration: it is the text
+# `poe doctor` and `poe bridges` print when they skip a tier, so a developer on
+# the wrong host is told why rather than shown a gap.
+[tool.screen-readers-mcp.bridge]
+reader = "VoiceOver"
+
+# ALL THREE TIERS ARE macOS, AND THE REASON IS THE SAME ONE EACH TIME.
+#
+# Unlike the NVDA bridge -- whose domain is stdlib-only Python and so tests
+# anywhere -- nothing here is host-portable: the capture voice is an
+# AVSpeechSynthesisProviderAudioUnit, the tests compile against AVFoundation and
+# AudioToolbox, and the artifact is a codesigned .app. There is no tier that
+# could run on Windows or Linux even in principle, which is why the reason is
+# repeated rather than being narrowed to the live tier.
+[tool.screen-readers-mcp.bridge.tiers.headless]
+hosts = ["macos"]
+tools = ["swift"]
+reason = "VoiceOver is macOS, and the bridge is Swift against macOS frameworks."
+
+# `swift test` builds every target in Package.swift on the way to running the
+# tests, so this task is also the architecture test: a domain file that imports
+# the adapters module would fail here (spec 0046, part 3).
+[tool.screen-readers-mcp.bridge.tiers.headless.tasks]
+test = "swift test --package-path bridges/voiceover"
+
+[tool.screen-readers-mcp.bridge.tiers.package]
+hosts = ["macos"]
+tools = ["swift", "codesign"]
+reason = "VoiceOver is macOS, and the bridge is Swift against macOS frameworks."
+
+# SwiftPM cannot emit .app or .appex bundles, so the shippable artifact is
+# assembled by build.sh and Package.swift alone is not the build.
+[tool.screen-readers-mcp.bridge.tiers.package.tasks]
+build = "bash bridges/voiceover/build.sh"
+
+# No `live` TASKS yet, deliberately: entry 13.2 has no session to drive, and a
+# task name that ran nothing would make `poe live` report a pass. The tier is
+# declared so the doctor can say what this host CAN do; 13.11 fills it in.
+[tool.screen-readers-mcp.bridge.tiers.live]
+hosts = ["macos"]
+reason = "VoiceOver is macOS, and the bridge is Swift against macOS frameworks."

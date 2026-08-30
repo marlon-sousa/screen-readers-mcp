@@ -259,9 +259,14 @@ below is true of that version and that machine; where a result is known to be
 version-sensitive it says so. Probes that have not run yet say so explicitly
 rather than being omitted, so the gaps are visible.
 
-The instrument is `spikes/voiceover-capture/`: the dictionary dump, and a
-speech-synthesis provider (`provider/`) built by a 120-line shell script with no
-Xcode project, so every bundle key and signing decision is readable in the diff.
+The instrument was `spikes/voiceover-capture/`: the dictionary dump, and a
+speech-synthesis provider (`provider/`) built by a shell script with no Xcode
+project, so every bundle key and signing decision is readable in the diff.
+**It now lives at `bridges/voiceover/`**, promoted by board entry 13.2 on
+2026-08-29 and decomposed into its own hexagon there; the disposable half
+(`drive.sh`, `keyboard.sh`) was deleted, its findings having been written down
+below. Paths in this document are the ones the measurements were made against
+and are left as they were.
 
 ### Group E — the environment
 
