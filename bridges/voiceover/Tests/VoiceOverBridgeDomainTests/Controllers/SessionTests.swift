@@ -313,6 +313,54 @@ struct SessionTests {
 		#expect(outcome.signals.endedCount == 1)
 	}
 
+	@Test("teardown STOPS what the handshake started")
+	func teardownStopsCapture() {
+		// The reader edge is started by hello and must be stopped on every exit
+		// path, however the session ended. A source left running would go on
+		// appending into a buffer nobody will ever read, holding the feed's file
+		// open past the session that opened it.
+		let source = FakeSpeechSource()
+		let handler = FakeHandler(availableBeforeHello: true)
+		handler.onExecute = { context, _ in
+			context.adapters = AdapterSet(mode: .live, speechSource: source)
+		}
+		let outcome = run(
+			[hello(), request(2, "bye")], handlers: ["hello": handler, "bye": byeHandler()]
+		)
+		#expect(source.stopCount == 1)
+		#expect(outcome.transcript.closedReasons.count == 1)
+	}
+
+	@Test("a session torn down from another thread stops capture just the same")
+	func anExternalTeardownStopsCapture() {
+		let source = FakeSpeechSource()
+		let handler = FakeHandler(availableBeforeHello: true)
+		handler.onExecute = { context, _ in
+			context.adapters = AdapterSet(mode: .live, speechSource: source)
+		}
+		let clock = FakeClock()
+		let channel = FakeChannel([hello(), .quiet])
+		let session = Session(
+			channel: channel,
+			transcript: FakeTranscript(),
+			clock: clock,
+			config: SessionConfig(readerVersion: "macOS 15.0.0"),
+			handlers: ["hello": handler],
+			signals: FakeSessionSignals()
+		)
+		channel.onRead = { session.requestTeardown(.external) }
+		session.run()
+		#expect(source.stopCount == 1)
+	}
+
+	@Test("a session that never got past the handshake has nothing to stop, and does not try")
+	func teardownWithoutAHandshake() {
+		// Naturally skipped rather than guarded: the adapter set is nil until
+		// hello installs one, which is what the optional on the context buys.
+		let outcome = run([.closed])
+		#expect(outcome.closedReason == TeardownReason.channelClosed.rawValue)
+	}
+
 	@Test("a session that never established gets no end cue")
 	func noEndCueWithoutAStart() {
 		let outcome = run([.closed])

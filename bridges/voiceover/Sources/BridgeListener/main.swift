@@ -98,4 +98,8 @@ do {
 	exit(1)
 }
 print("listening. ^C to stop.")
+// Where captured speech is read from, printed because a live run's first
+// question when nothing comes back is which file the bridge is watching --
+// and the answer is a value Wiring resolved, not a decision made here.
+print("reading speech from \(Wiring.capturePath())")
 dispatchMain()

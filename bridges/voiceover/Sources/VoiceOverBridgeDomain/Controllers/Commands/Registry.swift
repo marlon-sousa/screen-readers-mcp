@@ -12,16 +12,16 @@
 // SessionContext handed to `execute` -- so one map serves every session. `hello`
 // is the exception, because it needs the factory and the identity below.
 //
-// THE CAPABILITY LIST IS EMPTY, AND THAT IS THE ENTRY WORKING AS DESIGNED.
-// Spec 0046 settles this bridge's six capabilities -- speech, gestures, typing,
-// focus, interact, guidance -- and says they are announced ONE ENTRY AT A TIME,
-// so the gate always describes what works. At 13.4 the session exists and no
-// reader edge does, so it advertises nothing and the server gates every tool but
-// the four ungated ones. Each entry below adds its own:
+// THE CAPABILITY LIST IS ONE ENTRY LONG, AND THAT IS THE ENTRY WORKING AS
+// DESIGNED. Spec 0046 settles this bridge's six capabilities -- speech,
+// gestures, typing, focus, interact, guidance -- and says they are announced ONE
+// ENTRY AT A TIME, so the gate always describes what works. At 13.5 the capture
+// feed exists, so `speech` is announced beside the five handlers that serve it
+// and the server gates every other tool. Each entry below adds its own:
 //
 // | Capability | Entry |
 // |---|---|
-// | speech | 13.5, the capture feed |
+// | speech | 13.5, the capture feed -- here |
 // | gestures | 13.7 |
 // | typing | 13.8 |
 // | focus | 13.9 |
@@ -31,14 +31,15 @@
 //
 // Announcing a capability before the entry that implements it would produce the
 // one failure the capability gate exists to prevent: a tool the agent can see
-// and call, that answers nothing.
+// and call, that answers nothing. The converse is a real cost too, and it is why
+// `speech` goes in HERE rather than being held back to 13.6: a capture feed the
+// server gates away is a tool nobody can call.
 
 import ScreenReaderWire
 
 public enum Registry {
-	/// What this build serves. See the header for why it is empty and what fills
-	/// it.
-	public static let capabilities: [Capability] = []
+	/// What this build serves. See the header for what fills the rest.
+	public static let capabilities: [Capability] = [.speech]
 
 	/// This bridge's reader identity. `name` is the value protocol.md §1's
 	/// endpoint convention is built from (`voiceoverMcpBridge`), and the version
@@ -48,8 +49,9 @@ public enum Registry {
 		ReaderInfo(name: "voiceover", version: version)
 	}
 
-	/// The command map. Four commands today; each later entry adds its own
-	/// handlers here, beside the capability it announces.
+	/// The command map. Nine commands today -- the four a session needs, and the
+	/// five `speech` promises; each later entry adds its own handlers here,
+	/// beside the capability it announces.
 	public static func build(
 		factory: any AdapterFactory,
 		readerVersion: String,
@@ -65,6 +67,14 @@ public enum Registry {
 			Command.ping.rawValue: PingHandler(),
 			Command.echo.rawValue: EchoHandler(),
 			Command.bye.rawValue: ByeHandler(),
+			// The five `speech` announces. One handler per command, in the order
+			// protocol.md §7 lists them: read a range, read the last, take a
+			// bookmark, wait for words, wait for quiet.
+			Command.getSpeech.rawValue: GetSpeechHandler(),
+			Command.getLastSpeech.rawValue: GetLastSpeechHandler(),
+			Command.getNextSpeechIndex.rawValue: GetNextSpeechIndexHandler(),
+			Command.waitForSpeech.rawValue: WaitForSpeechHandler(),
+			Command.waitForSpeechToFinish.rawValue: WaitForSpeechToFinishHandler(),
 		]
 	}
 }

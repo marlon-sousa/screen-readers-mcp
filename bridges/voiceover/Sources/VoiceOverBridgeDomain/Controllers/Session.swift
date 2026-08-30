@@ -293,11 +293,21 @@ public final class Session {
 		tornDown = true
 		let ending = reason ?? .external
 
-		// WHERE 13.6's RESTORATION GOES: right here, before the transcript is
-		// closed and before the channel is, guarded like everything else, and
-		// unconditional on how the session ended. It is left as this comment
-		// rather than as an empty guarded call, because a call that does nothing
-		// reads like a step that already works.
+		// Stop what the handshake started. Unconditional on how the session
+		// ended, and naturally skipped when `hello` never ran, because the
+		// adapter set is nil until it does.
+		//
+		// NO GUARD, AND THE TYPE IS WHY: `SpeechSource.stop` does not throw --
+		// see the port for both halves of that argument -- so a try/catch here
+		// would be catching nothing. It is also idempotent, so a source that was
+		// never started is safe to stop.
+		context.adapters?.speechSource.stop()
+
+		// WHERE 13.6's RESTORATION GOES: right here, after capture has stopped and
+		// before the transcript and the channel are closed, guarded like anything
+		// that can fail, and unconditional on how the session ended. It is left as
+		// this comment rather than as an empty guarded call, because a call that
+		// does nothing reads like a step that already works.
 
 		transcript.sessionClosed(reason: ending.rawValue)
 		if phase == .established {

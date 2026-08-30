@@ -59,11 +59,27 @@ public final class HelloHandler: CommandHandler {
 		// one it refuses today and why. Translated into a CommandError here
 		// because the port may not depend on this layer, and because the agent
 		// should read one vocabulary of failure rather than two.
+		let adapters: AdapterSet
 		do {
-			context.adapters = try factory.build(mode: params.mode)
+			adapters = try factory.build(mode: params.mode)
 		} catch let refusal as AdapterFactoryError {
 			throw CommandError(refusal.description)
 		}
+		// INSTALLED BEFORE CAPTURE STARTS, so teardown can stop what was started
+		// even if a later step of this handshake throws. The order is the whole
+		// reason the field is set here rather than at the end.
+		context.adapters = adapters
+
+		// The buffer belongs to the session, so it is created here rather than
+		// wired once in the composition root: indices that outlived a session
+		// would mean something different to the next agent that read them.
+		let speech = SpeechBuffer(clock: context.clock)
+		// Bridge-side recording, wired before anything can be captured. A run that
+		// crashed before the agent fetched anything still leaves a record of what
+		// the reader said, which is the only account a silent run leaves at all.
+		speech.setObserver { [transcript = context.transcript] text in transcript.speech(text) }
+		context.speech = speech
+		adapters.speechSource.start(speech)
 
 		context.transcript.sessionOpened(
 			mode: params.mode.rawValue,

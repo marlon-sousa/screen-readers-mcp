@@ -10,10 +10,10 @@
 // bridge-side, so it is complete even for speech the agent never fetched.
 //
 // THE VOCABULARY GROWS ONE ENTRY AT A TIME, and what is missing here is a
-// statement rather than an omission: `speech` arrives with the capture feed
-// (13.5), `gesture` with input (13.7) and `typed` with typing (13.8) -- each
-// added by the entry that first produces the event. A transcript verb nothing
-// can emit would be a promise this build does not keep.
+// statement rather than an omission: `speech` arrived with the capture feed
+// (13.5), `gesture` comes with input (13.7) and `typed` with typing (13.8) --
+// each added by the entry that first produces the event. A transcript verb
+// nothing can emit would be a promise this build does not keep.
 // NOTHING HERE THROWS, and that is the contract rather than an omission: a
 // broken log must never take down a session, still less stop the teardown that
 // gives a human their screen reader back. So an implementation swallows its own
@@ -31,6 +31,14 @@ public protocol Transcript: AnyObject {
 	/// read AFTERWARDS to work out what a run meant: the same observation is a
 	/// pass from one stance and a finding from another.
 	func sessionOpened(mode: String, voice: String, persona: String)
+
+	/// One captured utterance, recorded as it arrives.
+	///
+	/// Wired to the SpeechBuffer's observer by `hello`, so the record is complete
+	/// even for speech the agent never fetched -- and it is written on the
+	/// capture thread, outside the buffer's lock, which is why an implementation
+	/// must not block on anything but its own append.
+	func speech(_ text: String)
 
 	func note(_ text: String)
 

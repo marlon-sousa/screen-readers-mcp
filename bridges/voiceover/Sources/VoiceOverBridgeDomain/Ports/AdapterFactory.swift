@@ -16,13 +16,13 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// EMPTY AT 13.4, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam exists
-/// because `hello` is where a reader edge is built and 13.4 is where `hello`
-/// lands; what goes in it arrives with the entry that can supply it:
+/// ONE FIELD AT 13.5, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// exists because `hello` is where a reader edge is built; what goes in it
+/// arrives with the entry that can supply it:
 ///
 /// | Field | Entry |
 /// |---|---|
-/// | `speechSource` | 13.5, the capture feed |
+/// | `speechSource` | 13.5, the capture feed -- here |
 /// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
 /// | `gestureSender` | 13.7 |
 /// | `textTyper` | 13.8 |
@@ -36,8 +36,17 @@ public struct AdapterSet {
 	/// not have to ask the session what it was built from.
 	public let mode: CaptureMode
 
-	public init(mode: CaptureMode) {
+	/// Where captured speech comes from. NOT OPTIONAL, because every mode this
+	/// build accepts captures: `live` reads the feed, and `silent` is refused
+	/// outright until 13.6 can also suppress. When silent becomes buildable it
+	/// gets a source too -- capture is identical in both modes on this route, and
+	/// only rendering differs -- so the field stays required rather than
+	/// becoming a question every handler has to ask.
+	public let speechSource: any SpeechSource
+
+	public init(mode: CaptureMode, speechSource: any SpeechSource) {
 		self.mode = mode
+		self.speechSource = speechSource
 	}
 }
 
