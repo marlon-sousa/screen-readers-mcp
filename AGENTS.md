@@ -561,6 +561,25 @@ uv run poe build         # every deliverable: the server binary, and each
   honours `.gitignore`; `grep -r` does not, and `.venv/` and `__pycache__/` are
   both ignored and both enormous. One careless `grep -r` returns hundreds of
   irrelevant `site-packages` paths.
+  - **Searching OUTSIDE the repo — a macOS preference, a cache, anything the OS
+    wrote — add `-a`.** Both tools skip binary files and report *absence* rather
+    than saying they declined to look, and on macOS the interesting files are
+    binary plists. Measured 2026-08-29: `grep -l <id> com.apple.SpeakSelection.plist`
+    printed nothing and exited 1, while `grep -al` matched — and an exhaustive
+    `grep -r` over the whole of `~/Library` therefore reported "no file contains
+    this string" about a file that contained it seven times. That wrong negative
+    stands in [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md)
+    as finding 10, and cost an evening.
+  - **Ripgrep's version of the trap is worse, because it looks safe.** `rg -l`
+    on a **named** binary file finds the match; `rg -l` **walking a directory**
+    does not. So the obvious check — point rg at the file — says the tool is
+    fine, while the recursive search you actually ran missed it. Use `rg -a`
+    (or `--binary`) whenever the target might not be text.
+  - **When a value is not found but must exist, stop searching for strings and
+    compare states instead** — checksum the candidate tree with the value set to
+    A, to B, and back to A; the store is whatever satisfies `A == C ≠ B`. That is
+    format-agnostic, so it cannot be defeated by binary, encoding or compression.
+    See [`docs/how-we-found-the-voice-store.md`](docs/how-we-found-the-voice-store.md).
 - **Prefer the Bash tool over PowerShell** for anything whose output you intend
   to read. Windows PowerShell 5.1 has no `&&`/`||`, and wraps every native
   stderr line in a multi-line `ErrorRecord` (`CategoryInfo`,
