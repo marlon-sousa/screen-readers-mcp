@@ -12,20 +12,21 @@
 // SessionContext handed to `execute` -- so one map serves every session. `hello`
 // is the exception, because it needs the factory and the identity below.
 //
-// THE CAPABILITY LIST IS THREE ENTRIES LONG, AND THAT IS THE ENTRY WORKING AS
+// THE CAPABILITY LIST IS FOUR ENTRIES LONG, AND THAT IS THE ENTRY WORKING AS
 // DESIGNED. Spec 0046 settles this bridge's six capabilities -- speech,
 // gestures, typing, focus, interact, guidance -- and says they are announced ONE
 // ENTRY AT A TIME, so the gate always describes what works. At 13.5 the capture
 // feed arrived, so `speech` was announced beside the five handlers that serve
-// it; 13.7 added `gestures` beside the one that presses them, and 13.8 adds
-// `typing` beside the one that types. Each entry adds its own:
+// it; 13.7 added `gestures` beside the one that presses them, 13.8 added
+// `typing` beside the one that types, and 13.9 adds `focus` beside the one that
+// answers where the agent is. Each entry adds its own:
 //
 // | Capability | Entry |
 // |---|---|
 // | speech | 13.5, the capture feed |
 // | gestures | 13.7, input: commands |
-// | typing | 13.8, input: typing -- here |
-// | focus | 13.9 |
+// | typing | 13.8, input: typing |
+// | focus | 13.9, focus -- here |
 // | interact | 13.10, with the human channel |
 // | guidance | 13.11, whose document can only be written against a vocabulary
 // |           | that already works |
@@ -40,7 +41,7 @@ import ScreenReaderWire
 
 public enum Registry {
 	/// What this build serves. See the header for what fills the rest.
-	public static let capabilities: [Capability] = [.speech, .gestures, .typing]
+	public static let capabilities: [Capability] = [.speech, .gestures, .typing, .focus]
 
 	/// This bridge's reader identity. `name` is the value protocol.md §1's
 	/// endpoint convention is built from (`voiceoverMcpBridge`), and the version
@@ -50,10 +51,10 @@ public enum Registry {
 		ReaderInfo(name: "voiceover", version: version)
 	}
 
-	/// The command map. Eleven commands today -- the four a session needs, the
-	/// five `speech` promises, the one `gestures` does and the one `typing` does;
-	/// each later entry adds its own handlers here, beside the capability it
-	/// announces.
+	/// The command map. Twelve commands today -- the four a session needs, the
+	/// five `speech` promises, the one `gestures` does, the one `typing` does and
+	/// the one `focus` does; each later entry adds its own handlers here, beside
+	/// the capability it announces.
 	public static func build(
 		factory: any AdapterFactory,
 		readerVersion: String,
@@ -85,6 +86,11 @@ public enum Registry {
 			// this platform, which is what lets an agent be told that one of them
 			// works here and the other does not.
 			Command.typeText.rawValue: TypeTextHandler(),
+			// What `focus` announces. IT DOES NOT MUTATE THE READER and it asks for
+			// no permission: it answers richer where typing's grant is already held
+			// and thinner where it is not, which is what lets an observe-only session
+			// ask where it is.
+			Command.getFocusInfo.rawValue: GetFocusInfoHandler(),
 		]
 	}
 }

@@ -16,8 +16,14 @@
 //  * It takes an EventPoster, and the real one types into whatever window the
 //    developer has in front of them at that moment.
 //
-// So every test that needs a factory gets one from here, with fakes for all
-// three, a capture path nothing writes and a marker path nothing reads. The ONLY
+// AND SINCE 13.9 IT MAKES A FOURTH MISTAKE UNAVAILABLE, which is a different
+// kind: the focus trio (`tree`, `frontmost`, `trust`) changes nothing on the
+// machine, but the real ones answer with whatever the developer has in front of
+// them RIGHT NOW. A scenario built on those would assert against a desktop
+// rather than against this bridge.
+//
+// So every test that needs a factory gets one from here, with a fake for every
+// one of them, a capture path nothing writes and a marker path nothing reads. The ONLY
 // place the real ones are built is Wiring, and the only thing that runs Wiring's
 // version is a bridge somebody started deliberately.
 
@@ -33,7 +39,10 @@ public func testAdapterFactory(
 	lifecycle: any ProviderLifecycle = FakeProviderLifecycle(),
 	scripts: any AppleScriptRunner = FakeAppleScriptRunner(),
 	permissions: any PermissionBroker = FakePermissionBroker(),
-	poster: any EventPoster = FakeEventPoster()
+	poster: any EventPoster = FakeEventPoster(),
+	tree: any AccessibilityTree = FakeAccessibilityTree(),
+	frontmost: any FrontmostApplication = FakeFrontmostApplication(),
+	trust: any AccessibilityTrust = FakeAccessibilityTrust()
 ) -> VoiceOverAdapterFactory {
 	VoiceOverAdapterFactory(
 		capturePath: capturePath,
@@ -41,7 +50,10 @@ public func testAdapterFactory(
 		lifecycle: lifecycle,
 		scripts: scripts,
 		permissions: permissions,
-		poster: poster
+		poster: poster,
+		tree: tree,
+		frontmost: frontmost,
+		trust: trust
 	)
 }
 
@@ -50,8 +62,8 @@ public func testAdapterFactory(
 /// The fields arrived one entry at a time and will keep doing so, so a test that
 /// spells the initializer out is a test that has to be edited by every future
 /// entry for reasons that have nothing to do with what it asserts. Two arrived
-/// with 13.7 and two more with 13.8, and this helper is why nothing but the
-/// factory noticed either time.
+/// with 13.7, two more with 13.8 and one with 13.9, and this helper is why
+/// nothing but the factory noticed any of the three times.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
@@ -60,7 +72,8 @@ public func fakeAdapterSet(
 	gestureSender: FakeGestureSender = FakeGestureSender(),
 	readerLiveness: FakeReaderLiveness = FakeReaderLiveness(),
 	textTyper: FakeTextTyper = FakeTextTyper(),
-	permissions: FakePermissionBroker = FakePermissionBroker()
+	permissions: FakePermissionBroker = FakePermissionBroker(),
+	focusInspector: FakeFocusInspector = FakeFocusInspector()
 ) -> AdapterSet {
 	AdapterSet(
 		mode: mode,
@@ -70,6 +83,7 @@ public func fakeAdapterSet(
 		gestureSender: gestureSender,
 		readerLiveness: readerLiveness,
 		textTyper: textTyper,
-		permissions: permissions
+		permissions: permissions,
+		focusInspector: focusInspector
 	)
 }

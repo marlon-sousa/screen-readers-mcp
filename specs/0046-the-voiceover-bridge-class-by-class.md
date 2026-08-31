@@ -1317,6 +1317,132 @@ and this paragraph is where it is written down.
 
 **No `state` capability**, per Part 2. Board 13.9 is amended accordingly.
 
+**Amendments made while implementing 13.9 (2026-08-30), each with its why.**
+
+1. **The route is chosen through a new adapter seam, `Adapters/Ports/
+   AccessibilityTrust` (`isTrusted() -> Bool`), which `TCCPermissionBroker` also
+   conforms to — not through the domain's `PermissionBroker`.** The table above
+   has `VoiceOverFocusInspector` hold "all the decisions", and choosing between
+   the tree and the cursor is exactly such a decision — but the thing that knows
+   whether the grant exists was, until this entry, a **domain** port. The two
+   ways out were: put `PermissionBroker` in the inspector's hands (an adapter
+   holding a domain port, and reaching `request` from a command whose whole
+   promise is that it does not), or widen the port to
+   `focusInfo(accessibilityGranted:)` and have the controller read `status` and
+   pass it down — which is the shape 13.7 and 13.8 both arrived at. The second
+   was declined for three reasons: it puts a **macOS permission fact in a port
+   signature** that lane 1's identical `FocusInspector` does not have; it
+   teaches the **domain** that focus has two routes, which is a fact about this
+   reader's edge and nothing else; and it moves a decision out of the adapter
+   the table says holds them. What the seam costs is one interface and one fake;
+   what it buys is that **the object focus holds cannot request anything** — the
+   laziness is structural rather than observed. One leaf answers both interfaces,
+   so there is still exactly one class in the bridge that talks to the permission
+   machinery, and 13.10's dialog still consumes the *port*.
+2. **The `AccessibilityTree` seam is ONE call, and no element handle crosses
+   it.** The table names it as "focused element of a pid, and an attribute of an
+   element", which is two calls with an opaque element passed between them —
+   and that element is an `AXUIElement`, which a fake cannot construct. The seam
+   would therefore have carried a boxed `AnyObject` and the **leaf** would have
+   had to cast it back, putting a failure case in the one file whose entire
+   justification is that it has none. `focusedElement(pid:attributes:)` asks for
+   the names in one call, so the leaf unwraps nothing, the double is a
+   dictionary, and *which* attributes are asked for stays a decision one layer
+   up where a test can read it. Nothing in this entry walks the tree; the entry
+   that needs to widens the seam then.
+3. **`FocusSnapshot` gains no field and `FocusError` is a struct**, shaped like
+   `TypingError` and for the stated reason: there is one thing to say — the
+   question could not be put. What must never throw is anything merely **empty**,
+   and that is the entry's load-bearing rule rather than a nicety. Spec 0047's
+   finding 5 is the argument: with VoiceOver frontmost every read comes back
+   `missing value`, and a bridge that reported a named reader fault for it would
+   be diagnosing its own doing. So "nothing focused", "no title", "`missing
+   value`" and "no bundle identifier" are all answers.
+4. **`appModule` is the frontmost application's BUNDLE IDENTIFIER**, never
+   `localizedName`. That is the lane's no-reader-strings rule reaching one layer
+   further out than 13.8 took it: `lsappinfo` and `NSRunningApplication` both
+   answer a localized name — TextEdit is "Editor de Texto" on the maintainer's
+   machine — and `appModule` is a field an agent compares. `role` is `AXRole`
+   for the same reason, and **`AXRoleDescription` is asked for nowhere**: it is
+   `AXButton` rendered into the user's language, which would make `role` mean a
+   different thing per machine while looking perfectly reasonable.
+5. **There is no fallback from one route to the other.** A trusted read that
+   finds nothing focused answers **empty** rather than quietly asking the
+   cursor. The two are different views (see "The two cursors, settled"), and an
+   answer that silently came from the other one is an answer an agent cannot
+   interpret. The grant picks the route; the route answers.
+6. **The AppleEvent error numbers are `VoiceOverGestureSender`'s, reused rather
+   than copied.** The inspector maps three of them to its own recovery prose,
+   and takes the numbers from the constants that adapter already declares:
+   each cost a live measurement, and two adapters holding their own copies is
+   one drift away from two answers about one machine.
+
+**And the instrument the entry owed.** Finding 8 calls its AX work "a working
+prototype of entry 13.9's `AXAccessibilityTree` adapter", and the `axpress`
+helper it was made with lived in a session that no longer exists — exactly like
+spec 0041's `keyboard.sh` before 13.8 brought it back. It is back as
+`scripts/voiceover_focus.sh`, beside `voiceover_channels.sh`,
+`voiceover_keyboard.sh` and `voiceover_modifiers.sh`, and shaped like them: safe
+in the same specific sense, and **read-only** — it presses nothing, types
+nothing and writes no preference. It shows **all three views at one instant** —
+the accessibility tree, `text under cursor of vo cursor` and `text under cursor
+of keyboard cursor` — because "they only usually agree" is a claim nobody had
+re-measured, and it keeps the **system-wide element as a labelled control that
+is expected to fail**, the way `voiceover_channels.sh` keeps the
+application-target probe. **Re-measured 2026-08-30 while writing it**:
+`AXUIElementCreateSystemWide()` still answers `-25204` for
+`kAXFocusedUIElementAttribute` on macOS 15.0, which is what the leaf's comment
+now says in the file whoever tries it will be reading.
+
+**And the two cursors were measured against each other, which this entry had
+owed.** Two live runs were taken on 2026-08-30 with the maintainer's permission,
+on macOS 15.0 (24A335). The first, with TextEdit frontmost and no document open,
+produced a **consistent healthy empty** — the tree answered `kAXErrorNoValue`
+(-25212) and both cursors answered `missing value` — which confirms the
+instrument and the system-wide control, and is exactly the shape spec 0047's
+finding 5 warns reads like a dead reader. The second, with a document focused and
+one press of VoiceOver's own `stop interacting with item`:
+
+| View | Before | After one press |
+|---|---|---|
+| tree `AXRole` / `AXFocused` | `AXTextArea` / true | `AXTextArea` / true |
+| `text under cursor of vo cursor` | `alpha one` | `área de rolagem` |
+| `text under cursor of keyboard cursor` | `alpha one` | `alpha one` |
+
+**Three results, and the third was not what anyone was looking for.**
+
+1. **They separate on ONE ordinary keystroke**, not on some exotic sequence, so
+   "two views that only usually agree" is if anything understated. An agent that
+   pressed a VoiceOver navigation command and then asked `getFocusInfo` would get
+   the element it left, not the one the reader is on.
+2. **The accessibility tree tracks the KEYBOARD cursor**, which is what makes it
+   the right source for this command rather than merely the richer one.
+3. **The VO cursor's answer is LOCALIZED, and the tree's is not.** `área de
+   rolagem` is a role rendered in the machine's own language, where the tree says
+   `AXTextArea` everywhere. So the fallback route's `name` is **not comparable
+   across machines** — the lane's no-reader-strings rule arriving from a
+   direction nobody was looking in. That does not withhold the fallback (a name
+   a human can read beats nothing when the grant is absent), and it does mean no
+   check may compare it, which is what 13.11's guidance has to say.
+
+**And one negative worth keeping**: `move right` inside a text area does NOT show
+any of this. It moves the cursor *within* the element and `text under cursor`
+reports the whole element, so both cursors go on answering the same string and
+the run looks like agreement when nothing was tested. `move to next item`, `move
+to window` and `go to window` are not command names on this reader at all
+(`Command does not exist (6)`); `move right`, `move left`, `go to menu bar`, `go
+to dock`, `go to desktop` and `stop interacting with item` are. The instrument
+defaults to the one that shows the finding and reproduces the negative on
+request.
+
+The instrument is `scripts/voiceover_cursors.sh`, kept **separate** from
+`voiceover_focus.sh` for the same kind of reason `voiceover_keyboard.sh` is kept
+separate from `voiceover_channels.sh`: the focus probe is read-only and this one
+**presses**, because a disagreement between the cursors cannot be waited for, it
+has to be provoked. Both drive the same AX program,
+`scripts/voiceover_ax_focus.swift`, so the two instruments cannot drift into two
+answers about one machine.
+
 ### 13.10 — the control dialog, and the human channel
 
 **Views** — driving actors, not adapters: they consume ports rather than

@@ -32,7 +32,10 @@ struct SessionRoundTripTests {
 			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
 			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner(),
 			permissions: FakePermissionBroker = FakePermissionBroker(),
-			poster: FakeEventPoster = FakeEventPoster()
+			poster: FakeEventPoster = FakeEventPoster(),
+			tree: FakeAccessibilityTree = FakeAccessibilityTree(),
+			frontmost: FakeFrontmostApplication = FakeFrontmostApplication(),
+			trust: FakeAccessibilityTrust = FakeAccessibilityTrust()
 		) {
 			let (bridgeEnd, clientEnd) = LoopbackTransport.pair()
 			client = clientEnd
@@ -45,7 +48,8 @@ struct SessionRoundTripTests {
 				handlers: handlers
 					?? Registry.build(
 						factory: testAdapterFactory(
-							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster
+							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster,
+							tree: tree, frontmost: frontmost, trust: trust
 						),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
@@ -91,7 +95,7 @@ struct SessionRoundTripTests {
 		#expect(hello.mode == .live)
 		// What this build actually serves, announced end to end -- the server gates
 		// its speech tools on exactly this string arriving here.
-		#expect(hello.capabilities == [.speech, .gestures, .typing])
+		#expect(hello.capabilities == [.speech, .gestures, .typing, .focus])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
 		peer.hangUp()
@@ -361,6 +365,114 @@ struct SessionRoundTripTests {
 		let refused = try peer.reply()
 		#expect(try #require(refused.error).message.contains("System Settings"))
 		#expect(permissions.requests == [.accessibility])
+		peer.hangUp()
+	}
+
+	@Test("a getFocusInfo off the wire reads the TREE when the grant is held")
+	func focusReachesTheAccessibilityTree() throws {
+		// THE TEST THE UNITS CANNOT WRITE, a third time. Every unit above runs
+		// against a graph its own test assembled, so a handler wired to the wrong
+		// command name, an inspector the factory never builds, or a result that
+		// does not encode would pass all of them. What is asserted here is the
+		// whole path -- a JSON frame in, the real Registry's handler, the real
+		// VoiceOverAdapterFactory's inspector, and the element query that would
+		// have gone to the accessibility API.
+		let tree = FakeAccessibilityTree(element: [
+			"AXRole": .text("AXButton"),
+			"AXTitle": .text("Save"),
+			"AXValue": .text("on"),
+			"AXFocused": .flag(true),
+			"AXEnabled": .flag(false),
+		])
+		let peer = Peer(tree: tree, trust: FakeAccessibilityTrust(trusted: true))
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(id: 2, cmd: "getFocusInfo")
+		let response = try peer.reply()
+		guard case .success(let value) = try response.outcome() else {
+			Issue.record("getFocusInfo failed: \(response)")
+			return
+		}
+		let result = try value.decoded(as: FocusInfoResult.self)
+		#expect(result.name == "Save")
+		// A FRAMEWORK CONSTANT, never `AXRoleDescription`: `role` means the same
+		// string on a machine that speaks Portuguese.
+		#expect(result.role == "AXButton")
+		#expect(result.states == ["focused", "disabled"])
+		#expect(result.value == "on")
+		// The bundle identifier, which is what survives translation.
+		#expect(result.appModule == "com.apple.TextEdit")
+
+		// The query the real inspector made, off the real wire request: addressed
+		// to the frontmost application's pid, because there is no system-wide
+		// element that works (see AXAccessibilityTree's header).
+		let query = try #require(tree.queries.first)
+		#expect(query.pid == 4242)
+		#expect(query.attributes.contains("AXRole"))
+		#expect(!query.attributes.contains("AXRoleDescription"))
+		peer.hangUp()
+	}
+
+	@Test("a getFocusInfo off the wire reads the VOICEOVER CURSOR when the grant is not held")
+	func focusFallsBackToTheVoiceOverCursor() throws {
+		// The other route, end to end, and the same kind of assertion: the script
+		// text that would have gone to `osascript`. A bridge with no Accessibility
+		// grant still answers `getFocusInfo` -- thinner, and never by asking for
+		// the grant.
+		let scripts = FakeAppleScriptRunner()
+		scripts.defaultAnswer = "Ok button"
+		let peer = Peer(scripts: scripts, trust: FakeAccessibilityTrust(trusted: false))
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(id: 2, cmd: "getFocusInfo")
+		let response = try peer.reply()
+		guard case .success(let value) = try response.outcome() else {
+			Issue.record("getFocusInfo failed: \(response)")
+			return
+		}
+		let result = try value.decoded(as: FocusInfoResult.self)
+		#expect(result.name == "Ok button")
+		// The cursor answers a rendering, not structure, so the rest is empty --
+		// and `value` is NULL rather than "", which is the distinction
+		// FocusInfoResult writes its own Codable to keep.
+		#expect(result.role.isEmpty)
+		#expect(result.states.isEmpty)
+		#expect(result.value == nil)
+		#expect(result.appModule == "com.apple.TextEdit")
+
+		#expect(
+			scripts.scripts == [
+				"tell application \"VoiceOver\" to return text under cursor of vo cursor"
+			])
+		peer.hangUp()
+	}
+
+	@Test("A SESSION THAT ALSO READS FOCUS STILL NEVER ASKS FOR THE ACCESSIBILITY GRANT")
+	func focusNeverTriggersAPermissionRequest() throws {
+		// 13.9 IS THE ENTRY THAT COULD HAVE QUIETLY SPENT 13.8's LEVER, because
+		// focus WANTS the same grant: it answers from the accessibility tree when
+		// the grant is held. It reads that fact through an adapter seam that shows
+		// no dialog, and never through the broker -- so a session that presses,
+		// reads speech and asks where it is goes past a counting broker without
+		// asking it anything at all, on BOTH routes.
+		let permissions = FakePermissionBroker(state: .notGranted)
+		let trust = FakeAccessibilityTrust(trusted: false)
+		let peer = Peer(permissions: permissions, trust: trust)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+		try peer.send(id: 2, cmd: "getFocusInfo")
+		_ = try peer.reply()
+		// And again with the grant held, which is the route that USES it.
+		trust.trusted = true
+		try peer.send(id: 3, cmd: "getFocusInfo")
+		_ = try peer.reply()
+
+		#expect(permissions.requests.isEmpty)
+		#expect(permissions.statusReads.isEmpty)
+		// It did ask the cheap question -- once per command, on both routes.
+		#expect(trust.reads == 2)
 		peer.hangUp()
 	}
 

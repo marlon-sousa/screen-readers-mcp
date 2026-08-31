@@ -22,14 +22,14 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("it serves the four a session needs, the five `speech` promises, and both halves of input")
+	@Test("it serves a session's four, `speech`'s five, both halves of input, and focus")
 	func theCommandSet() {
 		#expect(
 			Set(registry().keys) == [
 				"hello", "ping", "echo", "bye",
 				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
 				"waitForSpeech", "waitForSpeechToFinish",
-				"pressGesture", "typeText",
+				"pressGesture", "typeText", "getFocusInfo",
 			])
 	}
 
@@ -40,9 +40,9 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces `speech`, `gestures` and `typing`, because that is what this build serves")
+	@Test("it announces `speech`, `gestures`, `typing` and `focus` -- what this build serves")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities == [.speech, .gestures, .typing])
+		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus])
 	}
 
 	@Test("every command an announced capability promises has a handler, and nothing extra")
@@ -63,6 +63,11 @@ struct RegistryTests {
 			// and the other does not. Folding them into one string would make that
 			// unsayable.
 			.typing: ["typeText"],
+			// ANNOUNCED WITHOUT A PERMISSION BEHIND IT. Focus answers richer where
+			// typing's Accessibility grant is already held and thinner where it is
+			// not -- one capability either way, because the command works on every
+			// machine and the wire has no shape for "works better over there".
+			.focus: ["getFocusInfo"],
 		]
 		let served = registry()
 		for (capability, commands) in promised {
@@ -92,7 +97,7 @@ struct RegistryTests {
 		#expect(Set(passive) == ["ping"])
 	}
 
-	@Test("the two input commands are the only ones that move the user's machine")
+	@Test("the two input commands are STILL the only ones that move the user's machine")
 	func exactlyTheInputCommandsMutateTheReader() {
 		// THE FLAG DEFAULTS TO `false` AND THE FAILURE MODE OF FORGETTING IS
 		// "ALLOWED", so a new mutating handler that omits it is invisible in its
@@ -100,7 +105,9 @@ struct RegistryTests {
 		// membership check for exactly that reason -- and it did its job at 13.8:
 		// it FAILED the moment `typeText` was registered, which is the test asking
 		// whether the new handler had opted in, and the fix was to state the new
-		// set rather than to weaken the assertion.
+		// set rather than to weaken the assertion. 13.9 adds a handler and does NOT
+		// join this set: reading where the focus is moves nothing, which is what
+		// lets an observe-only session (spec 0017) ask.
 		let mutating = registry().filter { $0.value.mutatesReader }.keys
 		#expect(Set(mutating) == ["pressGesture", "typeText"])
 	}

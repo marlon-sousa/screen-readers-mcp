@@ -48,6 +48,9 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let scripts: any AppleScriptRunner
 	private let permissions: any PermissionBroker
 	private let poster: any EventPoster
+	private let tree: any AccessibilityTree
+	private let frontmost: any FrontmostApplication
+	private let trust: any AccessibilityTrust
 
 	/// `capturePath` is where the capture voice appends its feed; `markerPath` is
 	/// where it reads what the bridge is asking of it. Passed in with no defaults,
@@ -72,13 +75,24 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// lets `Tests/Fakes/Support/ReaderEdge.swift` guarantee that a test cannot
 	/// reach either by accident -- the same guarantee it already gives for the
 	/// provider lifecycle, which writes the voice VoiceOver speaks with.
+	///
+	/// THE FOCUS TRIO IS INJECTED FOR A THIRD REASON AGAIN: not safety, but
+	/// DETERMINISM. Reading the accessibility tree and asking who is frontmost
+	/// change nothing on the machine -- but their answers are whatever window the
+	/// developer had in front of them, so an integration scenario built on the
+	/// real ones would assert against the developer's desktop. All three are
+	/// per-process and stateless, and `trust` is answered by the very object that
+	/// answers `permissions`: one leaf, two interfaces at two layers.
 	public init(
 		capturePath: String,
 		markerPath: String,
 		lifecycle: any ProviderLifecycle,
 		scripts: any AppleScriptRunner,
 		permissions: any PermissionBroker,
-		poster: any EventPoster
+		poster: any EventPoster,
+		tree: any AccessibilityTree,
+		frontmost: any FrontmostApplication,
+		trust: any AccessibilityTrust
 	) {
 		self.capturePath = capturePath
 		self.markerPath = markerPath
@@ -86,6 +100,9 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.scripts = scripts
 		self.permissions = permissions
 		self.poster = poster
+		self.tree = tree
+		self.frontmost = frontmost
+		self.trust = trust
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {
@@ -109,7 +126,16 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// because building one here would be the second place in the bridge that
 			// touches the permission machinery, when the whole point of 13.8 is that
 			// there is exactly one.
-			permissions: permissions
+			permissions: permissions,
+			// STATELESS TOO, so one is built per session over three shared seams.
+			// IT IS HANDED `trust` AND NOT `permissions`, and that is the shape 13.9
+			// settled: focus READS whether the grant is held, to pick a route, and
+			// must never be able to ask for it. Handing it the domain port would put
+			// `request` within reach of the one command whose whole promise is that
+			// it does not.
+			focusInspector: VoiceOverFocusInspector(
+				tree: tree, scripts: scripts, frontmost: frontmost, trust: trust
+			)
 		)
 	}
 }

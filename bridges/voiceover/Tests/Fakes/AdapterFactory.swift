@@ -34,6 +34,10 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// for it is asserting the entry's whole claim.
 	public let textTyper = FakeTextTyper()
 	public let permissions = FakePermissionBroker()
+	/// And 13.9's one. Exposed like the rest so a session-level test can assert
+	/// what a `getFocusInfo` off the wire actually read -- and, beside
+	/// `permissions` above, that answering focus asked the broker nothing.
+	public let focusInspector = FakeFocusInspector()
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
@@ -56,7 +60,8 @@ public final class FakeAdapterFactory: AdapterFactory {
 			gestureSender: gestureSender,
 			readerLiveness: readerLiveness,
 			textTyper: textTyper,
-			permissions: permissions
+			permissions: permissions,
+			focusInspector: focusInspector
 		)
 	}
 }
