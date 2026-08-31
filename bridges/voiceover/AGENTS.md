@@ -546,6 +546,23 @@ this bridge some of it is spent before any utterance is visible at all. Nothing
 has yet measured how much of a real grace window the pipe consumes; that is board
 entry 13.18, and it is why that entry is an investigation rather than a parameter.
 
+**AND THE TEXT HALF MUST STAY AHEAD OF THE AUDIO HALF -- it already is, and it is
+load-bearing.** `CaptureController.capture()` emits to the `UtteranceSink`
+**before** it calls `synthesizer.speak`, so a session sees an utterance the moment
+VoiceOver hands it over, whether or not anything is about to be spoken aloud. That
+is what makes **first-utterance latency identical in live and silent**, which is
+the property lane 1 gets for free by capturing at queue time. The spike did it the
+other way round -- the line was written after the prebuffer wait -- and every
+captured utterance reached the file about 0.2 s late; the order was changed
+deliberately and its header says so. **Anyone "tidying" that emit to sit beside
+the `speak` call reintroduces it, and makes live worse than silent for every first
+utterance.**
+
+So the live/silent difference is NOT that our capture waits for audio. It is that
+VoiceOver will not hand over utterance N+1 until N has finished rendering -- the
+delay is upstream of this bridge, in the reader's own queue, and it is a person
+listening.
+
 **What the pipe does NOT distort is `emittedAt`.** The stamp is taken in the
 capture voice's own process at the moment the utterance arrives
 (`ContainerFileUtteranceSink`, `at: Date().timeIntervalSince1970`) and travels in

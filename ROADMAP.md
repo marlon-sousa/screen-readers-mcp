@@ -1442,6 +1442,15 @@ rule intends.
     heading title**; the same nine moves in a silent `run_sequence` with a 400 ms
     gap captured twenty utterances with **every title present**.
 
+    **One thing that is NOT a cause, checked rather than assumed, so nobody
+    investigates it twice.** This bridge does not wait for audio before reporting:
+    `CaptureController.capture()` emits to the `UtteranceSink` BEFORE it calls
+    `synthesizer.speak`, so a session sees an utterance the moment VoiceOver hands
+    it over and **first-utterance latency is identical in live and silent**. The
+    spike did it the other way round and every utterance reached the file ~0.2 s
+    late; the order was changed deliberately. What differs between the modes is
+    when the NEXT utterance arrives, which is the reader's queue and not ours.
+
     **Two causes, and only one of them is VoiceOver's.** The first is that a live
     session is paced by AUDIO, because the reader waits for one utterance to be
     spoken before handing over the next -- which is a person listening, and not a
