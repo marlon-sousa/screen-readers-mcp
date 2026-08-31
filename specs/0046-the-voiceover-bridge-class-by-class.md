@@ -1394,19 +1394,54 @@ application-target probe. **Re-measured 2026-08-30 while writing it**:
 `kAXFocusedUIElementAttribute` on macOS 15.0, which is what the leaf's comment
 now says in the file whoever tries it will be reading.
 
-**And the two cursors are still not measured against each other, which is stated
-rather than glossed.** One live run was taken on 2026-08-30, with the
-maintainer's permission, on macOS 15.0 (24A335), VoiceOver running, TextEdit
-frontmost with no document open. It produced a **consistent healthy empty**: the
-tree answered `kAXErrorNoValue` (-25212), and `text under cursor` of the `vo
-cursor` and of the `keyboard cursor` both answered `missing value`. That
-confirms two things and settles nothing about the third — the instrument works
-and the system-wide control reproduces; the "empty is not a fault" rule is
-exactly the shape a healthy machine produces, which is why it is a rule; and the
-question **how far apart the two cursors get, and when**, needs a run with
-something actually focused and the VO cursor deliberately moved off it. 13.11's
-guidance document has to answer that, so the instrument is versioned here and the
-measurement is owed rather than claimed.
+**And the two cursors were measured against each other, which this entry had
+owed.** Two live runs were taken on 2026-08-30 with the maintainer's permission,
+on macOS 15.0 (24A335). The first, with TextEdit frontmost and no document open,
+produced a **consistent healthy empty** — the tree answered `kAXErrorNoValue`
+(-25212) and both cursors answered `missing value` — which confirms the
+instrument and the system-wide control, and is exactly the shape spec 0047's
+finding 5 warns reads like a dead reader. The second, with a document focused and
+one press of VoiceOver's own `stop interacting with item`:
+
+| View | Before | After one press |
+|---|---|---|
+| tree `AXRole` / `AXFocused` | `AXTextArea` / true | `AXTextArea` / true |
+| `text under cursor of vo cursor` | `alpha one` | `área de rolagem` |
+| `text under cursor of keyboard cursor` | `alpha one` | `alpha one` |
+
+**Three results, and the third was not what anyone was looking for.**
+
+1. **They separate on ONE ordinary keystroke**, not on some exotic sequence, so
+   "two views that only usually agree" is if anything understated. An agent that
+   pressed a VoiceOver navigation command and then asked `getFocusInfo` would get
+   the element it left, not the one the reader is on.
+2. **The accessibility tree tracks the KEYBOARD cursor**, which is what makes it
+   the right source for this command rather than merely the richer one.
+3. **The VO cursor's answer is LOCALIZED, and the tree's is not.** `área de
+   rolagem` is a role rendered in the machine's own language, where the tree says
+   `AXTextArea` everywhere. So the fallback route's `name` is **not comparable
+   across machines** — the lane's no-reader-strings rule arriving from a
+   direction nobody was looking in. That does not withhold the fallback (a name
+   a human can read beats nothing when the grant is absent), and it does mean no
+   check may compare it, which is what 13.11's guidance has to say.
+
+**And one negative worth keeping**: `move right` inside a text area does NOT show
+any of this. It moves the cursor *within* the element and `text under cursor`
+reports the whole element, so both cursors go on answering the same string and
+the run looks like agreement when nothing was tested. `move to next item`, `move
+to window` and `go to window` are not command names on this reader at all
+(`Command does not exist (6)`); `move right`, `move left`, `go to menu bar`, `go
+to dock`, `go to desktop` and `stop interacting with item` are. The instrument
+defaults to the one that shows the finding and reproduces the negative on
+request.
+
+The instrument is `scripts/voiceover_cursors.sh`, kept **separate** from
+`voiceover_focus.sh` for the same kind of reason `voiceover_keyboard.sh` is kept
+separate from `voiceover_channels.sh`: the focus probe is read-only and this one
+**presses**, because a disagreement between the cursors cannot be waited for, it
+has to be provoked. Both drive the same AX program,
+`scripts/voiceover_ax_focus.swift`, so the two instruments cannot drift into two
+answers about one machine.
 
 ### 13.10 — the control dialog, and the human channel
 

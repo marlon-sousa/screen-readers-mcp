@@ -881,14 +881,19 @@ rule intends.
     read-only, showing all three views at one instant, and keeping the
     system-wide element as a control that is expected to fail (re-measured
     2026-08-30: still `-25204`).
-    **What this entry did NOT settle, stated rather than glossed:** how far the
-    `vo cursor` and the `keyboard cursor` actually get from each other. One live
-    run was taken on 2026-08-30 and produced a consistent healthy EMPTY --
-    `kAXErrorNoValue` from the tree, `missing value` from both cursors, with
-    TextEdit frontmost and no document open -- which proves the instrument and the
-    control and answers nothing about the two views. **13.11 owes that
-    measurement**, because its guidance document is where an agent is told which
-    to reach for.
+    **And the two cursors were measured**, which is what the entry owed. Live on
+    2026-08-30, macOS 15.0: one press of the reader's own `stop interacting with
+    item` moved the `vo cursor` to the scroll area while the `keyboard cursor`
+    and the accessibility tree both stayed on the focused text -- so **they
+    separate on one ordinary keystroke**, and **the tree tracks the KEYBOARD
+    cursor**, which is what makes it the right source rather than merely the
+    richer one. The third result was not what anyone was looking for: **the VO
+    cursor's answer is LOCALIZED** (`área de rolagem`) where the tree's `AXRole`
+    is `AXTextArea` on every machine, so the fallback route's `name` is not
+    comparable across machines -- which is what **13.11's guidance must say**.
+    The instrument is `scripts/voiceover_cursors.sh`, kept separate from the
+    read-only focus probe because it PRESSES: a disagreement cannot be waited
+    for, it has to be provoked.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
     13.9 section carries the six layout amendments this made, each with its why.
     Done (2026-08-30).

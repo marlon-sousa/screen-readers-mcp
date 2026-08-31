@@ -28,6 +28,30 @@
 // machine where typing has already been granted and works everywhere else --
 // which is the honest shape for a capability that cannot pay for itself.
 //
+// AND THE TWO VIEWS REALLY DO SEPARATE -- MEASURED 2026-08-30, macOS 15.0
+// (24A335), rather than assumed. With a TextEdit document focused, one press of
+// VoiceOver's own `stop interacting with item`:
+//
+// | View | Before | After one press |
+// |---|---|---|
+// | tree `AXRole` / `AXFocused` | `AXTextArea` / true | `AXTextArea` / true |
+// | `text under cursor of vo cursor` | `alpha one` | `área de rolagem` |
+// | `text under cursor of keyboard cursor` | `alpha one` | `alpha one` |
+//
+// So the accessibility tree tracks the KEYBOARD cursor, which is what makes it
+// the right source for a command whose name is `getFocusInfo` -- and the VO
+// cursor is somewhere else entirely after one ordinary keystroke. `bash
+// scripts/voiceover_cursors.sh` is the re-runnable instrument.
+//
+// THE SAME RUN FOUND A SECOND REASON TO PREFER THE TREE, AND IT IS THE STRONGER
+// ONE: the cursor route's answer is LOCALIZED. `área de rolagem` is a role
+// rendered in the machine's own language, where the tree answers `AXTextArea` on
+// every machine on earth. So the cursor route's `name` is not comparable across
+// machines and the tree route's `role` is -- which is the lane's
+// no-reader-strings rule arriving from a direction nobody was looking in. It is
+// not a reason to withhold the fallback: a name a human can read is worth more
+// than nothing when the grant is absent. It IS a reason no check may compare it.
+//
 // THERE IS NO FALLBACK BETWEEN THE ROUTES, deliberately. A tree route that finds
 // nothing focused answers EMPTY rather than quietly asking the cursor: the two
 // are different views (spec 0046, "The two cursors, settled"), and an answer

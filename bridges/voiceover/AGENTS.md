@@ -262,7 +262,7 @@ character and none of them is worth waiting for.
 
 `getFocusInfo` answers from the **accessibility tree** of the frontmost
 application when this process holds the Accessibility grant, and from
-**VoiceOver's own cursor** over AppleEvents when it does not. Four rules bind
+**VoiceOver's own cursor** over AppleEvents when it does not. Five rules bind
 anyone editing this, and the first is the one that keeps the section above true.
 
 **The grant is READ, never requested, and the reading happens at the adapter
@@ -295,6 +295,23 @@ a collaborator rather than a convenience. `AXAccessibilityTree`'s header carries
 the measurement where whoever tries the system-wide element will read it, and
 `bash scripts/voiceover_focus.sh` keeps it as a **labelled control that is
 expected to fail** — re-measured 2026-08-30, still `-25204`.
+
+**The two cursors separate on ONE keystroke, and the tree tracks the KEYBOARD
+one.** Measured 2026-08-30, macOS 15.0, and re-runnable as `bash
+scripts/voiceover_cursors.sh`: with a TextEdit document focused, one press of the
+reader's own `stop interacting with item` moved the `vo cursor` to the scroll
+area while the `keyboard cursor` and the accessibility tree both stayed on the
+focused text. So `getFocusInfo` answering the keyboard view is a real choice with
+a real consequence — an agent that navigates with VoiceOver commands and then
+asks where it is gets the element it left, and the one it is on comes from
+`pressGesture ["describe item in voiceover cursor"]` plus a speech read. **The
+same run found that the VO cursor's answer is LOCALIZED** — `área de rolagem`,
+where the tree says `AXTextArea` on every machine — so the fallback route's
+`name` is not comparable across machines. That is not a reason to withhold it; it
+is a reason no check may compare it. **And one negative worth keeping**: `move
+right` inside a text area shows none of this, because it moves the cursor within
+the element while `text under cursor` reports the whole element, so the run looks
+like agreement when nothing was tested.
 
 **`role` is `AXRole` and `appModule` is a BUNDLE IDENTIFIER.** `AXRoleDescription`
 is asked for nowhere: it is `AXButton` rendered into the user's language, and a

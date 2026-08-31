@@ -40,6 +40,12 @@
 # `typeText` -- and an instrument that requested it would make the claim untrue
 # for anyone who ran the instrument. So this script reports the grant and stops.
 #
+# THE MEASUREMENT ITSELF IS `scripts/voiceover_ax_focus.swift`, shared with
+# `voiceover_cursors.sh`. THAT script is the one that PRESSES: it provokes a
+# disagreement between the cursors and is not read-only, which is why it is a
+# separate file -- the same split, for the same kind of reason, as
+# `voiceover_channels.sh` and `voiceover_keyboard.sh`.
+#
 # THE -25204 CONTROL IS EXPECTED TO FAIL, and it is kept for the reason
 # `voiceover_channels.sh` keeps the application-target probe: a measurement that
 # fails on a healthy machine, so that nobody rediscovers it as a fault.
@@ -84,78 +90,15 @@ if [[ "$front_bundle" == "com.apple.VoiceOver"* || "$front_name" == "VoiceOver" 
 	echo "   is not one -- spec 0047, finding 5. Put a real application in front."
 fi
 
-work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+# The AX half is `scripts/voiceover_ax_focus.swift`, a file of its own rather
+# than a heredoc, because `voiceover_cursors.sh` measures with the SAME program:
+# two copies would be one drift away from two answers about one machine. It is
+# Swift rather than `osascript` because System Events cannot create the
+# system-wide element the control below needs, and because this is the API
+# `AXAccessibilityTree` actually calls.
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
-# The AX half, in the language the bridge's own adapter uses. It is here rather
-# than in `osascript` because System Events cannot create the SYSTEM-WIDE element
-# the control below needs, and because this is the API `AXAccessibilityTree`
-# actually calls -- an instrument that measured a different API would be evidence
-# about something else.
-cat > "$work/focus.swift" <<'SWIFT'
-import ApplicationServices
-import Foundation
-
-func render(_ value: CFTypeRef) -> String {
-	let type = CFGetTypeID(value)
-	if type == CFStringGetTypeID() { return unsafeBitCast(value, to: CFString.self) as String }
-	if type == CFBooleanGetTypeID() {
-		return CFBooleanGetValue(unsafeBitCast(value, to: CFBoolean.self)) ? "true" : "false"
-	}
-	if type == CFNumberGetTypeID() {
-		var number = 0.0
-		CFNumberGetValue(unsafeBitCast(value, to: CFNumber.self), .doubleType, &number)
-		return String(number)
-	}
-	return "<\(CFCopyTypeIDDescription(type) as String? ?? "opaque")>"
-}
-
-// ASKS NOBODY ANYTHING. The option that prompts is deliberately not used here --
-// see the script's header.
-print("trusted\t\(AXIsProcessTrusted() ? "yes" : "no")")
-
-// THE CONTROL. Expected to fail with -25204 on a perfectly healthy machine.
-var wide: CFTypeRef?
-let wideStatus = AXUIElementCopyAttributeValue(
-	AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &wide)
-print("systemwide\t\(wideStatus.rawValue)")
-
-guard CommandLine.arguments.count > 1, let pid = Int32(CommandLine.arguments[1]) else {
-	print("focused\tno pid given")
-	exit(0)
-}
-var focused: CFTypeRef?
-let status = AXUIElementCopyAttributeValue(
-	AXUIElementCreateApplication(pid), kAXFocusedUIElementAttribute as CFString, &focused)
-guard status == .success, let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else {
-	// -25212 is kAXErrorNoValue: nothing is focused there. AN ANSWER, not a
-	// fault -- see the script's header and spec 0047's finding 5.
-	let named = status.rawValue == -25212 ? "nothing focused (kAXErrorNoValue -25212)"
-		: "nothing (AXError \(status.rawValue))"
-	print("focused\t\(named)")
-	exit(0)
-}
-print("focused\tyes")
-let element = unsafeBitCast(focused, to: AXUIElement.self)
-// The list the bridge asks for, plus AXSubrole for interest -- and
-// AXRoleDescription, which the bridge deliberately NEVER asks for: it is AXRole
-// rendered into the user's language, and on a Portuguese machine it is what
-// would silently make `role` mean something different here than elsewhere.
-for name in [
-	"AXRole", "AXSubrole", "AXTitle", "AXDescription", "AXValue",
-	"AXFocused", "AXSelected", "AXEnabled", "AXRoleDescription",
-] {
-	var value: CFTypeRef?
-	let attribute = AXUIElementCopyAttributeValue(element, name as CFString, &value)
-	if attribute == .success, let value {
-		print("\(name)\t\(render(value))")
-	} else {
-		print("\(name)\tabsent (AXError \(attribute.rawValue))")
-	}
-}
-SWIFT
-
-ax_out=$(swift "$work/focus.swift" "${front_pid:-0}" 2>&1)
+ax_out=$(swift "$here/voiceover_ax_focus.swift" "${front_pid:-0}" 2>&1)
 
 echo
 echo "== the grant, which is what picks the route"
