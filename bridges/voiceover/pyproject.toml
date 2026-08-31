@@ -50,12 +50,41 @@ reason = "VoiceOver is macOS, and the bridge is Swift against macOS frameworks."
 
 # SwiftPM cannot emit .app or .appex bundles, so the shippable artifact is
 # assembled by build.sh and Package.swift alone is not the build.
+#
+# WHAT `poe build` PRODUCES HERE, named because "the shippable artifact" is not
+# one file on this bridge: `build/VoiceOverCaptureSpike.app`, containing
+# `Contents/PlugIns/CaptureVoice.appex`, containing
+# `Contents/Frameworks/CaptureVoice.framework` -- plus `build/probe` beside it,
+# which is a diagnostic rather than a deliverable. A macOS app extension cannot be
+# installed on its own, so the app is the unit of shipping even though the
+# extension is the thing that does the work.
 [tool.screen-readers-mcp.bridge.tiers.package.tasks]
 build = "bash bridges/voiceover/build.sh"
 
-# No `live` TASKS yet, deliberately: entry 13.2 has no session to drive, and a
-# task name that ran nothing would make `poe live` report a pass. The tier is
-# declared so the doctor can say what this host CAN do; 13.11 fills it in.
+# THE LIVE TIER, FILLED IN BY 13.11 as its declaration promised.
+#
+# WHAT IT RUNS, AND WHY IT IS NOT A TEST SUITE. Lane 1's live tier is pytest
+# behind a marker, because an NVDA bridge can drive a real reader from Python and
+# assert on what came back. This one deliberately runs `voiceover_announce.sh`,
+# and the difference is about what a live check on THIS reader can honestly claim:
+# VoiceOver renders in the tester's own language, so no assertion may compare its
+# words (spec 0046, and scripts/live_pages/README.md's rule in its macOS
+# instance). What is left to check automatically is structure -- and structure is
+# already checked headlessly, over real sockets, by Tests/Integration.
+#
+# So the live tier's job here is the one thing no headless tier can reach: it
+# drives a REAL VoiceOver and makes the machine speak, so a human can confirm with
+# their EARS that a silent session really is silent and that `announce` is really
+# audible through it. That is a guided instrument with a person at the other end,
+# not an assertion, and pretending otherwise by wrapping it in a test runner would
+# manufacture a green tick nobody should believe.
+#
+# IT NEEDS A BRIDGE ALREADY LISTENING, which it will not start for you -- see the
+# script's own header. Until the control dialog lands (13.14) that is
+# `swift build --product BridgeListener && .build/debug/BridgeListener`.
 [tool.screen-readers-mcp.bridge.tiers.live]
 hosts = ["macos"]
 reason = "VoiceOver is macOS, and the bridge is Swift against macOS frameworks."
+
+[tool.screen-readers-mcp.bridge.tiers.live.tasks]
+live = "bash scripts/voiceover_announce.sh"

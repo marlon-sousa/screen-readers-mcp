@@ -30,6 +30,10 @@
 // them asks a human for anything -- `status` shows no dialog, and the scripting
 // setting is two file reads.
 //
+// THE PERMISSION ROWS COST A SUBPROCESS SINCE 13.11, because the automation one
+// is a fact about the channel rather than about this binary and is read by using
+// it. Paid once, at startup, on a report that is worth being right.
+//
 // Usage:
 //   BridgeListener [--tcp [port]] [--endpoint <name-or-path>] [--unattended]
 //                  [--print-cues]
@@ -209,9 +213,33 @@ case .unknown:
 // The permissions, READ and never requested: `status` shows no dialog, which is
 // what makes it safe to print on a machine nobody is sitting at. The only
 // COMMAND that asks for one is `typeText`.
+//
+// THIS ROW USED TO LIE, AND 13.11 IS WHERE IT STOPPED. Until then the automation
+// permission was read with `AEDeterminePermissionToAutomateTarget`, which answers
+// about the CALLING BINARY -- and this launcher sends no AppleEvents: every one
+// leaves an `osascript` subprocess whose events are attributed to whatever
+// process macOS holds responsible. Measured 2026-08-30: this line printed
+// `not granted` one minute after this very process had driven the reader through
+// a whole MCP session. It now asks the channel, so what it prints is what the
+// gestures will actually get.
+//
+// THREE ANSWERS, AND THE THIRD ONE IS PRINTED AS ITSELF. `cannot tell` is not a
+// hedge: it is what a channel that failed for a NON-permission reason is worth,
+// and it points at the likeliest of those, because a human reading this row is
+// about to go and change a setting that was never the problem.
 let broker = Wiring.permissionBroker()
 for permission in Permission.allCases {
-	let held = broker.status(of: permission) == .granted
-	print("permission \(permission.rawValue): \(held ? "granted" : "not granted")")
+	switch broker.status(of: permission) {
+	case .granted:
+		print("permission \(permission.rawValue): granted")
+	case .notGranted:
+		print("permission \(permission.rawValue): NOT GRANTED -- \(permission.recovery)")
+	case .cannotTell:
+		print(
+			"permission \(permission.rawValue): cannot tell -- the reader did not answer, which "
+				+ "is not a permission failure. Check that VoiceOver is running before changing "
+				+ "anything about grants."
+		)
+	}
 }
 dispatchMain()

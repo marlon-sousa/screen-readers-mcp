@@ -1,13 +1,54 @@
 // ROLE: port -- what this bridge is allowed to do to the machine, and the one
 // place it may ASK for more.
 //
-// IMPLEMENTED BY: TCCPermissionBroker (adapters), a leaf over
-// `AXIsProcessTrustedWithOptions`; FakePermissionBroker (Tests/Fakes).
+// IMPLEMENTED BY: TCCPermissionBroker (adapters), over `AXIsProcessTrusted` for
+// one permission and over the AppleScript channel for the other -- see below,
+// because which mechanism answers which is not an implementation detail here;
+// FakePermissionBroker (Tests/Fakes).
 // BUILT BY: Wiring, ONCE PER PROCESS -- the answer is a fact about this process
 // and not about a session, and a per-session one would ask the same question
 // again for an answer that cannot have changed because a socket was accepted.
 // USED BY: the TypeText controller (`request`, and only it), and the launcher's
 // startup report (`status`, which asks nobody anything).
+//
+// THE TWO PERMISSIONS ARE READ BY DIFFERENT MEANS, AND 13.11 HAD TO FIX THAT
+// AFTER 13.10 SHIPPED IT WRONG. The distinction is structural rather than
+// incidental:
+//
+//   * ACCESSIBILITY is a fact about THIS PROCESS, which posts its own CGEvents.
+//     `AXIsProcessTrusted` answers about the caller, and the caller is the one
+//     that acts. The API and the actor agree.
+//   * AUTOMATION is a fact about A CHANNEL. This bridge never sends an AppleEvent
+//     itself: every one leaves a `/usr/bin/osascript` subprocess, and macOS
+//     attributes a subprocess's events to whatever process it holds RESPONSIBLE
+//     for it -- the app bundle when the bridge runs as one, and whatever launched
+//     it when it does not. So an API that answers about the calling binary is
+//     answering about a process that sends nothing.
+//
+// MEASURED 2026-08-30, and it is the reason this header changed. On the
+// maintainer's machine, seconds apart:
+// `AEDeterminePermissionToAutomateTarget(com.apple.VoiceOver, askUserIfNeeded:
+// false)` returned **-1744** (`errAEEventWouldRequireUserConsent`) from an
+// unsigned launcher binary -- reported as `notGranted` -- while that same
+// process's `osascript` had just driven the reader successfully through a whole
+// MCP session. The startup report therefore printed a FALSE NEGATIVE about a
+// machine that was working. The grant was held all along, by the responsible
+// process: VS Code was launched over SSH, Claude Code from VS Code, and the
+// bridge from Claude Code, so the identity TCC consulted was
+// `/usr/libexec/sshd-keygen-wrapper`, which the maintainer had granted.
+//
+// SO `status(.automationVoiceOver)` ASKS THE CHANNEL, by sending the same
+// `return name` probe every gesture route uses, and reads the NUMBER: `-1743`
+// (`errAEEventNotPermitted`) IS the missing grant, a reply IS the grant, and
+// anything else is `cannotTell` rather than a guess. See TCCPermissionBroker.
+//
+// THE CASE WAS KEPT RATHER THAN DELETED, and the alternative is worth recording
+// because this file's own header proposed it before 13.10: `automationVoiceOver`
+// could have been removed, leaving `Permission` a fact about this process alone.
+// It is kept because the grant IS a thing a human can be asked for -- which is
+// what makes it a `Permission` and not a `Precondition` -- because `recovery`'s
+// prose is what a human acts on, and because the control dialog (13.14) needs the
+// row with a Request behind it. What was wrong was the READING, not the concept.
 //
 // THE MACOS-ONLY PORT WITH NO NVDA ANALOGUE, AND THE ENTRY'S WHOLE POINT.
 // Windows has no gate on synthesizing a keystroke, so lane 1 has nothing to
@@ -74,6 +115,10 @@ public enum Permission: String, Equatable, Sendable, CaseIterable {
 	/// AppleEvents, and each of them already reports `-1743` in its own words when
 	/// the grant is missing. What the row adds is the chance to grant it BEFORE an
 	/// agent trips over it, which is a thing only a human at the machine can do.
+	///
+	/// IT IS THE PERMISSION OF THE RESPONSIBLE PROCESS, NOT OF THIS BINARY, which
+	/// is why reading it costs a subprocess and why it is the one permission that
+	/// can answer `cannotTell`. The header carries the measurement.
 	case automationVoiceOver
 
 	/// What is not possible without it, in one sentence.
@@ -123,25 +168,38 @@ public enum Permission: String, Equatable, Sendable, CaseIterable {
 
 /// Whether a permission is in force.
 ///
-/// TWO STATES, NOT THREE, AND THAT IS AN HONEST ANSWER RATHER THAN A COARSE ONE.
-/// The Accessibility grant is read through `AXIsProcessTrusted`, which returns a
-/// Bool: "not yet asked" and "asked and refused" are the same observable from
-/// here. A third case would be a distinction this bridge cannot make, reported
-/// as though it could -- and the difference matters to a caller only in what it
-/// would say next, which `Permission.recovery` already says for both.
+/// THREE STATES SINCE 13.11, AND THE THIRD ONE IS NOT THE ONE 13.10 DECLINED.
+/// That distinction matters, because this file has now been asked for a third
+/// case twice and only one of the two requests was worth granting.
 ///
-/// AND 13.10 DECLINED TO ADD ONE, which is worth recording because this file
-/// invited it. `AEDeterminePermissionToAutomateTarget` really does answer three
-/// ways for the automation grant -- granted, refused, and not yet asked -- so the
-/// row COULD have been three-state. It is not, because the third state would
-/// exist for one of the two cases, would have to be rendered as something for the
-/// other, and buys the dialog nothing it does not already have: the Request
-/// button is offered whenever the answer is not `granted`, and pressing it when
-/// the answer was "refused" is how macOS wants a human to be sent to System
-/// Settings anyway.
+/// WHAT WAS DECLINED, AND STAYS DECLINED: "refused" versus "not yet asked".
+/// `AEDeterminePermissionToAutomateTarget` really does separate them, and
+/// `AXIsProcessTrusted` does not. It is still not modelled, because what a caller
+/// DOES about them is identical -- offer the human the request -- and
+/// `Permission.recovery` already says the same sentence for both.
+///
+/// WHAT WAS ADDED, AND WHY IT IS A DIFFERENT QUESTION: `cannotTell` does not
+/// refine "not granted", it refuses to answer at all. The automation grant is
+/// read by USING the channel (see PermissionBroker's header), and a channel can
+/// fail for reasons that say nothing whatever about a permission -- the reader is
+/// not running, `osascript` could not be launched, the scripting object model is
+/// wedged. Reporting any of those as `notGranted` would send a human to System
+/// Settings to fix a grant they already hold, which is precisely the false
+/// negative 13.11 exists to remove; reporting them as `granted` would promise a
+/// channel nobody tested. So the honest answer is that this cannot be determined
+/// from here, and the launcher prints it as that.
+///
+/// ONLY ONE PERMISSION CAN BE IN IT, and that asymmetry is real rather than
+/// sloppy: Accessibility is answered by an API about this process, which always
+/// answers. A caller that treats `cannotTell` as "not granted" is not wrong about
+/// what to show; it is wrong about what to blame.
 public enum PermissionState: String, Equatable, Sendable {
 	case granted
 	case notGranted
+
+	/// The channel that would answer this did not, for a reason that is not a
+	/// permission. Never returned for `.accessibility`.
+	case cannotTell
 }
 
 public protocol PermissionBroker: AnyObject {
@@ -149,6 +207,11 @@ public protocol PermissionBroker: AnyObject {
 	/// it is safe to call on any path -- which is what lets the controller check
 	/// before it requests, and lets the launcher print what this machine can do
 	/// without becoming the thing that triggers a request.
+	///
+	/// IT IS NOT FREE FOR EVERY PERMISSION, SINCE 13.11: reading the automation
+	/// grant means using the channel, which is a subprocess. Cheap enough for a
+	/// startup report and for a dialog a human refreshes; not cheap enough to put
+	/// in front of a command, which is why no command calls it.
 	func status(of permission: Permission) -> PermissionState
 
 	/// Ask the human for `permission`, and report where that left things.

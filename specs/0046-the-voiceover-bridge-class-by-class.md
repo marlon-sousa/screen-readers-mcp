@@ -1645,13 +1645,22 @@ read-only siblings are read as safe by default.
 
 | File | Role | Collaborators / why |
 |---|---|---|
-| `Sources/VoiceOverBridgeDomain/Entities/Documents/*.md` | documents | The persona guidance texts, as **files**, per `AGENTS.md`: a document served to an agent is never a string literal. |
+| `Sources/VoiceOverBridgeDomain/Entities/Documents/*.md` | documents | The persona guidance texts, as **files**, per `AGENTS.md`: a document served to an agent is never a string literal. Five: `common`, `user`, `validator`, `expert`, `unknown`. |
 | `Entities/GuidanceDocuments.swift` | entity | Loads them and **throws** when one is missing, rather than returning `""` — an empty document reads to an agent as "this reader has nothing to say", which is a much worse answer than "the build is broken". |
 | `Ports/…` | — | none needed; documents are pure resources. |
-| `Commands/GetGuidance.swift` | controller | Takes no parameters; the persona was fixed at `hello`. |
+| `Commands/GetGuidance.swift` | controller | Takes no parameters; the persona was fixed at `hello`. Its `guidance(for:)` is static because **`HelloHandler` sends the same document** in the handshake, and the contract requires both routes to describe one. |
 | `server/config/defaults.json` | shipped config | gains `{"name": "voiceover", "endpoints": ["local:voiceoverMcpBridge", "tcp:127.0.0.1:8765"]}`. |
-| `.github/workflows/*` | CI | a macOS job that builds and headless-tests the bridge. |
+| `.github/workflows/*` | CI | **no new job**: `portable (macos-latest)` already builds and headless-tests this bridge, and now calls `poe ci-portable` so it packages too. Amendment 10. |
 | `scripts/drift.py`, `poe conformance` | gates | the real Go binary against the real Swift bridge. |
+
+Four files the table did not anticipate, each with its amendment below:
+
+| File | Role | Why |
+|---|---|---|
+| `Tests/ConformanceBridge/main.swift` | test scaffolding | A real bridge with a fake reader edge, startable as a process — the Swift twin of `conformance_bridge.py`, and what makes `poe conformance` reach this bridge at all. Amendment 7. |
+| `server/tests/conformance/swift_bridge_test.go` | test scaffolding | Builds and launches it, behind `//go:build conformance && darwin`. Amendment 8. |
+| `server/tests/conformance/real_swift_bridge_session_test.go` | conformance scenario | The session, both transports, and the capability gate refusing what this reader cannot serve. Amendment 9. |
+| `Sources/VoiceOverBridgeAdapters/BridgeVersion.swift` | declaration | One version, read by `Wiring` and by `build.sh`. Amendment 6. |
 
 **The endpoint name is `voiceoverMcpBridge`**, satisfying `protocol.md` §1's
 `<reader>McpBridge` convention against `reader.name = "voiceover"`, and resolving
@@ -1670,6 +1679,17 @@ than a compile error. So `build.sh` copies it, `GuidanceDocuments` throws rather
 than returning empty, and `scripts/doctor.py` counts
 `bridges/voiceover/Sources/**/Documents/*.md` among the bundle's build inputs —
 the same staleness check the server's `//go:embed` documents already get.
+
+> **Amended while implementing, on measurement: the last two clauses are wrong,
+> and both are withdrawn.** SwiftPM has a real dependency graph that includes
+> resources, so an edited document already forces a rebuild and there is no
+> staleness for the doctor to watch — the trap is *less* dangerous here than in
+> the other two languages, not equally so (amendment 3). And `build.sh` does not
+> copy the bundle yet, because the `.app` contains no code that could read a
+> guidance document until 13.14 gives it the domain's dependency edge; copying it
+> now would ship a resource nothing loads (amendment 4). What survives intact is
+> the middle clause, and it earned itself the first time the loader ran:
+> `GuidanceDocuments` throws.
 
 **What the guidance document says**, since this is where the toggles become
 usable: gesture ids on this reader are **English command names**, not keystrokes;
@@ -1691,6 +1711,253 @@ cost stands; what changes is who pays it, and this entry's documentation should
 say "the bridge restarts the reader" rather than "ask the user to restart the
 reader". The same spec records a risk that lands on **13.7** rather than here,
 and it is the more serious of the two findings.
+
+#### Amendments made while implementing 13.11, each with its why
+
+**0. A DEFECT 13.10 SHIPPED IS FIXED HERE, and this entry owns it.**
+`Permission.automationVoiceOver`'s `status` was answered by
+`AEDeterminePermissionToAutomateTarget`, which reports on **the calling binary**
+— and this bridge never sends an AppleEvent itself. Every one leaves a
+`/usr/bin/osascript` subprocess, and macOS attributes a subprocess's events to
+whatever process it holds **responsible** for it. So the API was answering about
+a process that sends nothing, and the launcher's startup report printed a
+confident false negative.
+
+Measured on 2026-08-30, on the maintainer's machine, seconds apart:
+
+| What was asked | Answer |
+|---|---|
+| `AEDeterminePermissionToAutomateTarget(com.apple.VoiceOver, askUserIfNeeded: false)` from an unsigned launcher | **-1744** (`errAEEventWouldRequireUserConsent`) → reported as `notGranted` |
+| `/usr/bin/osascript -e 'tell application "VoiceOver" to return name'` | `VoiceOver`, exit 0 |
+| `BridgeListener`'s startup report | `permission automationVoiceOver: not granted` |
+| That same process, one minute earlier, driving a whole MCP session | `press_gesture ["describe item in voiceover cursor"]` → the reader answered, and the speech came back captured |
+
+**The grant was held all along, by the responsible process.** The maintainer's
+session runs VS Code over SSH, Claude Code inside VS Code, and the bridge from
+Claude Code — so TCC consulted `/usr/libexec/sshd-keygen-wrapper`, which is
+granted. An unsigned binary gets an identity of its own and therefore answers
+about nobody.
+
+**The fix: the row is answered from the channel the gestures actually use.**
+`TCCPermissionBroker` now holds the `AppleScriptRunner` seam and sends the same
+`return name` probe `VoiceOverLiveness` sends, reading the **number**: `-1743`
+(`errAEEventNotPermitted`) is the missing grant, a reply is the grant, and
+anything else is neither. `request` keeps the API, deliberately — it asks on
+behalf of this binary's responsible process, which for the **shipped `.app`** is
+exactly the identity that will send the events.
+
+Three consequences, each recorded where it lands:
+
+- **`PermissionState` gains `cannotTell`, and it is not the third state 13.10
+  declined.** That one was "refused" versus "not yet asked", and it stays
+  declined because a caller does the same thing about both. This one refuses to
+  answer at all: the reader not running, `osascript` failing to launch, or a
+  wedged object model say nothing whatever about a permission, and reporting
+  them as `notGranted` would send a human to System Settings to fix a grant they
+  already hold — the very failure this amendment removes.
+- **`TCCPermissionBroker` stopped being a leaf and gained a test file.** It now
+  makes a decision (which error numbers mean what), and the repo's rule is that a
+  decision in a leaf belongs one layer up. Its test may never call `request`, and
+  the file says so in capitals: `request` raises a real consent dialog and leaves
+  the process on a list with no undo.
+- **The probe script and the error numbers are read, not copied.**
+  `VoiceOverLiveness.readerNameScript` is public so both callers ask the same
+  question in the same words, and the broker matches on
+  `VoiceOverGestureSender.notAuthorized` rather than on a fourth literal `-1743`.
+
+**Verified live after the fix, same machine, same launcher:**
+`permission automationVoiceOver: granted`.
+
+**1. The `.app`'s own Automation grant is a DIFFERENT question, and it is not
+answered here.** The measurement above is about the SSH-rooted responsibility
+chain. When the bridge runs as the app bundle, the app is its own responsible
+process and will raise its own consent prompt on the first gesture. That is a
+live-checklist item for this entry and for 13.14, and it cannot be ticked from a
+session that reaches the machine over SSH.
+
+**2. `Bundle.module` needs a SUBDIRECTORY, and the trap fired while this was
+being written.** `.copy("Entities/Documents")` copies the **directory**, so the
+files sit under `Documents/` inside the generated bundle and a lookup at the
+bundle root finds nothing. `GuidanceDocuments.read` therefore passes
+`subdirectory:`. Worth recording because of how it failed: the loader raised
+`the bridge's guidance document 'common.md' is missing`, by name, and every test
+went red at once. A `?? ""` there would have shipped an empty document to every
+agent that asked and told nobody — which is exactly the argument the spec makes
+for raising, confirmed by the mechanism it was written against.
+
+**3. `scripts/doctor.py` does NOT gain a staleness check for the Swift
+documents, and the spec's instruction to add one is withdrawn.** The 13.11
+section says the doctor should count
+`bridges/voiceover/Sources/**/Documents/*.md` among the bundle's build inputs,
+"the same staleness check the server's `//go:embed` documents already get".
+**Measured: SwiftPM already tracks them.** Touching `common.md` and rebuilding
+prints `[1/6] Copying Documents` before linking, so `swift test`, `swift build`
+and `BridgeListener` cannot be stale with respect to a document.
+
+That makes the third rendering of the trap **less** dangerous than the other two,
+not equally so, and the spec was wrong to assume symmetry: Go embeds at compile
+time with no dependency edge, Python has no build step at all, and SwiftPM has a
+real dependency graph that includes resources. A doctor check here would watch a
+staleness that cannot happen. **What remains true** is the `build.sh` half — a
+`.app` the script assembles does not get the bundle for free — and that lands on
+13.14 with the app's dependency edge (amendment 4 below).
+
+**4. `build.sh` does NOT copy the resource bundle into `Contents/Resources`, and
+that moves to 13.14 with the rest of the app's edge.** The section requires the
+copy. It cannot be written honestly yet: 13.10's amendment 12 left
+`Package.swift` and `build.sh` untouched because the app has no dependency on the
+domain or the adapters, so the `.app` contains no code that could read a guidance
+document. Copying the bundle now would ship a resource nothing loads — a step no
+test could exercise and the repo's own "nothing in this entry has no caller" rule
+forbids. `Package.swift`'s resource declaration carries the obligation in its
+header, where whoever gives the app its edge will read it.
+
+**5. The bundle identity is NOT renamed, and the cost is stated rather than
+paid.** `build.sh` says entry 13.11 owns identifiers and is where the one-time
+cost of dropping `spike` from `VoiceOverCaptureSpike` /
+`org.screen-readers-mcp.spike.capture` is worth paying. Deferred on 2026-08-31,
+deliberately, for a reason about **evidence** rather than effort: the voice
+identifier VoiceOver stores is derived from the extension's bundle id, so a
+rename unregisters the published voice and needs re-registration plus a reader
+restart to recover. The whole of this entry's live checklist depends on the
+capture voice working, and the machine's publication state had already been
+unreliable that week (board 13.13a). Renaming while the maintainer was away meant
+that a failure could not be told apart from 13.13a's known state — and a rename
+whose result cannot be verified is worse than one not yet made. **The version
+half WAS paid** (amendment 6). The identifier rename should ride with 13.14,
+which touches `build.sh` anyway and will have a human at the machine.
+
+**6. The version stopped being a literal, in the one place it was two.**
+`Wiring.bridgeVersion` read `0.1.0-dev` while all three Info.plists `build.sh`
+writes said `1.0`, so the version an agent read in `hello` and the version macOS
+shows in Get Info were unrelated numbers.
+`Sources/VoiceOverBridgeAdapters/BridgeVersion.swift` is now the one declaration
+and `build.sh` derives from it with `sed`, failing the build rather than
+defaulting if it cannot. Lane 1's shape (`buildVars.py` declares
+`addon_version`, scons reads it) for lane 1's reason: the value belongs with the
+code that ships it. It is still never compared — what must match between two
+halves is the protocol version (spec 0012).
+
+**7. The conformance harness is an EXECUTABLE UNDER `Tests/` that depends on the
+fakes, which is a shape nothing else in this package has.**
+`Tests/ConformanceBridge/main.swift` is the Swift twin of
+`bridges/nvda/tests/support/conformance_bridge.py`: a real `BridgeServer`, a real
+listener, a real `Session`, a real `JsonLinesChannel` and a real `Registry`, with
+a **fake reader edge**, made startable as a process so the Go tier can drive it.
+It speaks the Python harness's protocol byte for byte — start with
+`--transport`, one JSON line on stdout, stdin EOF to stop — so the Go side has
+one driver protocol rather than two.
+
+Three things it must keep:
+
+- **It must never be copied into the bundle**, and the reason is stronger than
+  for the probe and the launcher: it carries the doubles that exist to keep code
+  away from a real reader, a real grant and a real voice. Shipping it would ship
+  a bridge that only pretends to drive VoiceOver.
+- **`/tmp` and a short endpoint name, not `NSTemporaryDirectory()`.** A Unix
+  socket path may be at most 103 bytes and macOS's per-user temporary directory
+  is a generated `/var/folders/...` path around 49 before anything of ours is
+  appended; the kernel's answer to a longer path is `connect: invalid argument`,
+  naming neither the limit nor the path.
+- **It announces with `FileHandle` rather than `print`.** Swift's `print` is
+  fully buffered to a pipe, so a `print` there would deadlock the Go driver until
+  the process exited. Measured on this repo's own launcher first, whose startup
+  report was invisible for exactly this reason.
+
+**8. The Go scenarios are `//go:build conformance && darwin`, which is not a
+skip.** The tier's standing rule is that failing to reach the real bridge is a
+hard failure and never a skip, because a run that quietly used the Go fake would
+assert the guarantee without providing it. That rule is about **falling back**,
+and nothing falls back here: on Windows and Linux the files do not compile in at
+all, because a Swift bridge for a macOS-only reader cannot exist there. That is
+spec 0042's first principle applied to a test tier — the server is everywhere, a
+bridge is somewhere. On macOS there is no escape hatch: no Swift toolchain, or a
+harness that will not build, **fails**.
+
+**The scenarios connect LIVE rather than silent**, and that is a real constraint
+rather than a preference: 13.6 refuses a silent handshake where the capture voice
+is not registered and published, which is every CI runner. A live session in the
+same state is not refused — writing the voice applies live in both directions
+(spec 0047, finding 17) — and that asymmetry is what makes this tier runnable at
+all.
+
+**9. The conformance tier gained a check the Python side cannot make.** That
+bridge announces every capability group the contract defines, so its run has no
+unannounced capability to exercise and `unannouncedTools` over there is an empty
+list kept as a slot. This bridge announces **six of eleven**, and the five it
+omits — braille, state, config, log, document — are absent from the **reader**.
+So `TestToolsThisReaderCannotServeAreRefusedByCapability` watches the gate refuse
+by capability, end to end, against a real bridge, for the first time.
+
+**10. No second macOS CI job was added; the `portable` job gained the packaging
+step instead.** The board says to check what `portable (macos-latest)` already
+covers before adding one, and it covers more than it looks: `poe ci` dispatches
+`swift test` through the bridge registry, and `swift test` builds every target in
+`Package.swift` on the way — which is this bridge's architecture test — while
+`ci-conformance` now drives the real Go binary against the real Swift bridge,
+because those scenarios compile in only on that leg.
+
+**What was genuinely missing was the PACKAGING script.** `build.sh` is 220 lines
+of bundle assembly and nothing had ever run it in CI; the first person to learn
+it was broken would have been whoever next tried to ship. So the job now calls
+`poe ci-portable` (`ci`, then `build-bridge`), which on macOS assembles both
+deliverables — the `.app` and the `.nvda-addon`, the latter never gated anywhere
+before either. It is a **task rather than a second workflow step**, per
+`ci.yml`'s own 1:1 rule, and it is deliberately **not** in `poe ci`: 12 seconds is
+cheap for a CI job and a fifth of the inner loop's one-minute budget.
+
+**11. `scripts/doctor.py` stopped counting `_test.go` files as server build
+inputs.** A test file's bytes never enter `cmd/screenreader-mcp`, so adding a
+conformance scenario made the doctor report the binary as stale and prescribe
+`poe redeploy` — which kills every attached agent's MCP session to rebuild a
+binary that was already current. That is a false alarm on the one check whose
+entire value is that it is believed. Found by this entry, on itself.
+
+**12. Three `server/` tests asserted a READER COUNT where they meant a layering
+property, and shipping the second reader turned them red for a reason none of
+them was testing.** `TestEmbeddedDefaultsShipTheNVDABridgeEndpointsInOrder`
+(renamed), `TestAConfigFileAddsAReaderTheDefaultsDoNotKnow`,
+`TestANewReaderFromAFlagIsAppended` and
+`TestListReadersReportsTheConfiguredReadersWithoutDialing` all said `len(readers)
+!= 1` or indexed `[0]`. They now name the shipped set once, find their reader by
+name, and assert that a config file or a flag **extends** it rather than
+replacing it — which is what each was for. Same class of defect as the allow-list
+holes recorded in the root manual: an assertion about today's inventory, dressed
+as an assertion about behaviour.
+
+**13. `getGuidance`'s result is composed in ONE place and sent by two.** The
+handshake carries the document (protocol.md §3) so connect costs no extra round
+trip, and the command still answers for a re-read. The contract requires both
+routes to describe one document, so `GetGuidanceHandler.guidance(for:)` is static
+and `HelloHandler` calls it — two compositions would be a handshake and a command
+that agree today. A conformance scenario drives both over a real wire and asserts
+they are equal, because that is the kind of agreement only a round trip can
+check.
+
+**14. The guidance document draws the ordinary user's boundary in a DIFFERENT
+PLACE than NVDA's, and that is the strongest evidence this repo has for why the
+concrete half ships with the reader.** On NVDA, moving a cursor independently of
+system focus is an expert's escape hatch. On VoiceOver it is how an ordinary user
+navigates: `move right`, `start interacting with item` and the rotor are the
+platform's own vocabulary, and a stance transcribed from the Windows bridge would
+forbid the thing this platform's users do all day. The boundary here is the
+**mouse commands** and the **hot spots**. Spec 0029's rule survives the crossing
+untouched; every instance in it had to be rewritten.
+
+**15. The document names a curated subset of the toggles rather than all 45, and
+no table of the 414-command vocabulary.** `bridges/voiceover/AGENTS.md` forbids a
+copy of the vocabulary in this repo — the reader dispatches and answers an
+unknown name with `Command does not exist (6)`, which is a better check than a
+copy that goes stale every release. What the board asks for is that the toggles
+"become usable", so the document names the ones that change how an interface
+behaves under an agent, says that each announces its own result, and says that
+the reader is the authority on the rest. **The command names in it were read out
+of `SCRStringsToCommandsMap.scrconfig` on this machine** rather than recalled.
+
+Two warnings ride with them, because they are about somebody else's computer: a
+toggle flips rather than arrives, so pressing one leaves the machine changed for
+whoever uses it next; and `mute voiceover toggle` and `toggle screen curtain on
+or off` change what a **person** can perceive.
 
 ### 13.12 — can VoiceOver be asked what mode it is in?
 

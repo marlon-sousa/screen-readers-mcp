@@ -25,6 +25,20 @@
 import VoiceOverBridgeDomain
 
 public final class VoiceOverLiveness: ReaderLiveness {
+	/// The probe itself, PUBLIC because a second reader asks the same question of
+	/// a different thing and must not ask it in different words.
+	///
+	/// `TCCPermissionBroker` sends this script to find out whether the automation
+	/// grant is in force, because on this bridge that grant is a fact about the
+	/// CHANNEL rather than about the calling binary (13.11). It cannot go through
+	/// this class: liveness collapses every failure into `false`, and the broker
+	/// needs the NUMBER -- `-1743` is the missing grant and everything else is
+	/// not. So the two share the script and not the interpretation, which is the
+	/// same shape `captureVoiceIdentifierSuffix` already has: read a second time
+	/// rather than copied, so a change to what is asked cannot reach one caller
+	/// and miss the other.
+	public static let readerNameScript = "tell application \"VoiceOver\" to return name"
+
 	private let runner: any AppleScriptRunner
 
 	public init(runner: any AppleScriptRunner) {
@@ -32,7 +46,7 @@ public final class VoiceOverLiveness: ReaderLiveness {
 	}
 
 	public func readerAnswersItsOwnName() -> Bool {
-		guard let name = try? runner.run("tell application \"VoiceOver\" to return name") else {
+		guard let name = try? runner.run(Self.readerNameScript) else {
 			return false
 		}
 		// A REPLY IS THE ANSWER, NOT ITS CONTENTS. The name is localized like

@@ -29,9 +29,13 @@ import VoiceOverBridgeDomain
 public enum Wiring {
 	/// This bridge's own version. It travels in `hello` for the human reading a
 	/// transcript and is NEVER compared with anything: what must match between
-	/// two halves is the protocol version (spec 0012). 13.11 owns packaging and
-	/// is where this stops being a literal.
-	public static let bridgeVersion = "0.1.0-dev"
+	/// two halves is the protocol version (spec 0012).
+	///
+	/// DECLARED IN `BridgeVersion.swift` SINCE 13.11, which is the entry that owns
+	/// packaging. It was a literal here reading `0.1.0-dev` while every Info.plist
+	/// build.sh wrote said `1.0`; now one file declares it and both the handshake
+	/// and the bundle take it from there.
+	public static let bridgeVersion = voiceOverBridgeVersion
 
 	/// The screen reader's version, which on macOS is the SYSTEM's.
 	///
@@ -125,8 +129,15 @@ public enum Wiring {
 	/// factory, in the doctor or in a probe may ask it anything. Reading `status`
 	/// is a different question and the launcher does print it, because reading
 	/// shows no dialog.
-	public static func permissionBroker() -> any PermissionBroker {
-		TCCPermissionBroker()
+	///
+	/// IT IS HANDED THE APPLESCRIPT RUNNER SINCE 13.11, because one of the two
+	/// permissions is a fact about the CHANNEL rather than about this process and
+	/// is read by using it. That is the same runner the gesture sender and the
+	/// liveness probe go through, on purpose: a permission read down a different
+	/// route than the events would be answering about a route nobody uses.
+	public static func permissionBroker(scripts: (any AppleScriptRunner)? = nil) -> any PermissionBroker
+	{
+		TCCPermissionBroker(scripts: scripts ?? appleScriptRunner())
 	}
 
 	/// How a synthesized keystroke leaves this process: one Core Graphics event
@@ -168,8 +179,14 @@ public enum Wiring {
 	/// IT ASKS NOBODY ANYTHING, exactly as constructing the broker does not:
 	/// `isTrusted` shows no dialog, and the only call to `request` in this
 	/// repository is in the TypeText handler.
+	///
+	/// THE RUNNER IT IS GIVEN IS NEVER USED ON THIS PATH: `isTrusted` reads
+	/// `AXIsProcessTrusted` and talks to no channel at all. It is a constructor
+	/// argument rather than an optional collaborator because one class answers
+	/// both interfaces, and a second initialiser that left it nil would be a way
+	/// for a future edit to reach the automation path with nothing behind it.
 	public static func accessibilityTrust() -> any AccessibilityTrust {
-		TCCPermissionBroker()
+		TCCPermissionBroker(scripts: appleScriptRunner())
 	}
 
 	/// How this bridge speaks to the human at the reader.

@@ -98,9 +98,51 @@ struct SessionRoundTripTests {
 		#expect(hello.mode == .live)
 		// What this build actually serves, announced end to end -- the server gates
 		// its speech tools on exactly this string arriving here.
-		#expect(hello.capabilities == [.speech, .gestures, .typing, .focus, .interact])
+		#expect(hello.capabilities == [.speech, .gestures, .typing, .focus, .interact, .guidance])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
+		// THE GUIDANCE DOCUMENT RIDES BACK IN THE HANDSHAKE (protocol.md §3), so a
+		// session gets this reader's own account of its stance without a second
+		// round trip. Asserted HERE rather than only in the handler's unit test
+		// because the property that matters is that it survived encoding, framing
+		// and decoding as part of a real reply -- the document is the largest field
+		// this bridge ever sends.
+		let guidance = try #require(hello.guidance)
+		#expect(guidance.text.contains("Driving VoiceOver on macOS"))
+		// This handshake declared no persona, which an older server will not, and
+		// §4 requires that to DEGRADE rather than fail.
+		#expect(guidance.persona == "")
+		#expect(!guidance.recognised)
+		peer.hangUp()
+	}
+
+	@Test("the handshake's guidance is the persona's, and getGuidance answers with the same text")
+	func guidanceTravelsBothWays() throws {
+		// protocol.md §3: both routes describe ONE document, and a server that
+		// receives the handshake's copy MUST NOT call the command as well. That
+		// rule is only safe if the two cannot disagree -- so this drives both over
+		// a real wire and compares them.
+		let peer = Peer()
+		try peer.send(
+			id: 1, cmd: "hello",
+			params: [
+				"mode": .string("live"), "protocolVersion": .int(1), "persona": .string("validator"),
+			])
+		guard case .success(let handshake) = try peer.reply().outcome() else {
+			Issue.record("the handshake failed")
+			return
+		}
+		let fromHandshake = try #require(
+			try handshake.decoded(as: HelloResult.self).guidance)
+		#expect(fromHandshake.persona == "validator")
+		#expect(fromHandshake.recognised)
+
+		try peer.send(id: 2, cmd: "getGuidance")
+		guard case .success(let answer) = try peer.reply().outcome() else {
+			Issue.record("getGuidance failed")
+			return
+		}
+		#expect(try answer.decoded(as: GetGuidanceResult.self) == fromHandshake)
 		peer.hangUp()
 	}
 

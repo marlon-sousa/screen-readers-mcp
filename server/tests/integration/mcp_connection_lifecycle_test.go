@@ -98,14 +98,30 @@ func TestListReadersReportsTheConfiguredReadersWithoutDialing(t *testing.T) {
 	}
 	h.Call(t, "list_readers", nil).Decode(t, &listing)
 
-	if len(listing.Readers) != 1 || listing.Readers[0].Reader != "nvda" {
-		t.Fatalf("readers = %+v, want the one configured reader", listing.Readers)
+	// THE HARNESS'S READER IS FOUND BY NAME, NOT BY POSITION. The listing also
+	// carries every reader the binary SHIPS a default for -- two since 13.11 --
+	// because the harness's --reader flag layers on top of the embedded defaults
+	// rather than replacing them. Indexing [0] made this test a statement about
+	// how many bridges the repo happens to have, which is not what it is for.
+	var nvda *struct {
+		Reader    string `json:"reader"`
+		Endpoints []struct {
+			Endpoint string `json:"endpoint"`
+			Liveness string `json:"liveness"`
+		} `json:"endpoints"`
+	}
+	for i := range listing.Readers {
+		if listing.Readers[i].Reader == "nvda" {
+			nvda = &listing.Readers[i]
+		}
+	}
+	if nvda == nil || len(nvda.Endpoints) == 0 {
+		t.Fatalf("readers = %+v, want the configured nvda reader among them", listing.Readers)
 	}
 	// A TCP endpoint cannot be tested without connecting, and connecting
 	// would occupy the single session slot the agent is about to want.
-	if listing.Readers[0].Endpoints[0].Liveness != "unknown" {
-		t.Errorf("liveness = %q, want unknown for a TCP endpoint",
-			listing.Readers[0].Endpoints[0].Liveness)
+	if nvda.Endpoints[0].Liveness != "unknown" {
+		t.Errorf("liveness = %q, want unknown for a TCP endpoint", nvda.Endpoints[0].Liveness)
 	}
 	if got := h.Bridge.Received(); len(got) != 0 {
 		t.Errorf("list_readers dialed the bridge: %v", got)

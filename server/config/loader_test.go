@@ -37,24 +37,48 @@ func specs(reader entities.ConfiguredReader) []string {
 	return out
 }
 
+// shippedReaders is what the embedded defaults carry, named once so that the
+// layering tests below can say "the shipped set, plus mine" instead of counting.
+//
+// THEY USED TO COUNT, AND 13.11 IS WHERE THAT COST SOMETHING. Three tests
+// asserted `len(readers) != 1` -- a statement about how many bridges this repo
+// happened to have rather than about layering -- so shipping the VoiceOver reader
+// turned them red for a reason none of them was testing. The property each one
+// actually cares about is that a config file or a flag EXTENDS the shipped set
+// and does not replace it, which is what they say now.
+var shippedReaders = []string{"nvda", "voiceover"}
+
 // A freshly started server with NO arguments knows where our bridges listen:
 // the zero-configuration install works because the default is a constant in the
 // binary, not an inference from anything running.
-func TestEmbeddedDefaultsShipTheNVDABridgeEndpointsInOrder(t *testing.T) {
+func TestEmbeddedDefaultsShipEveryBridgeEndpointInOrder(t *testing.T) {
 	loader, err := config.Load(config.Options{})
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 
 	readers := loader.Readers()
-	if len(readers) != 1 || readers[0].Name != "nvda" {
-		t.Fatalf("readers = %v, want exactly the shipped nvda entry", readers)
+	names := make([]string, 0, len(readers))
+	for _, reader := range readers {
+		names = append(names, reader.Name)
 	}
-	// Pipe first, then loopback TCP: spec 0011's dialog lets the user switch
-	// between them, and this is the order connect_reader tries.
-	want := []string{"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"}
-	if diff := cmp.Diff(want, specs(readers[0])); diff != "" {
-		t.Errorf("shipped endpoints (-want +got):\n%s", diff)
+	if diff := cmp.Diff(shippedReaders, names); diff != "" {
+		t.Fatalf("shipped readers (-want +got):\n%s", diff)
+	}
+
+	// The LOCAL endpoint first, then loopback TCP: spec 0011's dialog lets the
+	// user switch between them, and this is the order connect_reader tries. The
+	// local name follows protocol.md §1's `<reader>McpBridge` convention against
+	// each bridge's own reader.name, which is what lets one shipped default reach
+	// a local bridge on every host (spec 0044).
+	want := map[string][]string{
+		"nvda":      {"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"},
+		"voiceover": {"local:voiceoverMcpBridge", "tcp:127.0.0.1:8765"},
+	}
+	for _, reader := range readers {
+		if diff := cmp.Diff(want[reader.Name], specs(reader)); diff != "" {
+			t.Errorf("%s's shipped endpoints (-want +got):\n%s", reader.Name, diff)
+		}
 	}
 }
 
@@ -90,11 +114,11 @@ func TestAConfigFileAddsAReaderTheDefaultsDoNotKnow(t *testing.T) {
 	}
 
 	readers := loader.Readers()
-	if len(readers) != 2 {
-		t.Fatalf("readers = %v, want the shipped one extended, not replaced", readers)
+	if len(readers) != len(shippedReaders)+1 {
+		t.Fatalf("readers = %v, want the shipped set extended, not replaced", readers)
 	}
-	if readers[0].Name != "nvda" || readers[1].Name != "talkback" {
-		t.Errorf("reader order = %s, %s; want the defaults first", readers[0].Name, readers[1].Name)
+	if readers[0].Name != shippedReaders[0] || readers[len(readers)-1].Name != "talkback" {
+		t.Errorf("reader order = %v; want the defaults first and talkback appended", readers)
 	}
 }
 
@@ -158,8 +182,8 @@ func TestANewReaderFromAFlagIsAppended(t *testing.T) {
 	}
 
 	readers := loader.Readers()
-	if len(readers) != 2 || readers[1].Name != "jaws" {
-		t.Fatalf("readers = %v, want jaws appended after the shipped nvda", readers)
+	if len(readers) != len(shippedReaders)+1 || readers[len(readers)-1].Name != "jaws" {
+		t.Fatalf("readers = %v, want jaws appended after the shipped set", readers)
 	}
 }
 

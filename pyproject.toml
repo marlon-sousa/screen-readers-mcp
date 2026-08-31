@@ -384,6 +384,31 @@ sequence = ["sync", "bridge", "bridge-types", "bridge-lint", "repo-lint"]
 help = "The `conformance` CI job: the real Go binary against the real Python bridge"
 sequence = ["conformance"]
 
+# The `portable` job, which is the ONE job that runs the whole definition of
+# green on another host -- and, since 13.11, the one that also PACKAGES.
+#
+# WHY PACKAGING IS HERE AND NOT IN `ci`. `build-bridge` takes about 12 seconds
+# for both bridges on macOS, which is cheap for a CI job and not cheap for the
+# inner loop: `poe dev` is meant to be about a minute, and a fifth of that spent
+# rebuilding artifacts nobody is about to install is a tax on every run. So it
+# rides on the job that has the time rather than on the task every developer
+# types.
+#
+# WHAT IT ACTUALLY GATES, which is the reason it exists at all: `build.sh` is 220
+# lines of bundle assembly -- a framework symlink farm, three Info.plists, the
+# entitlements, the codesign invocation -- and until this entry NOTHING ran it
+# except a developer typing `poe build`. The first person to learn it was broken
+# would have been whoever next tried to ship. On macOS this also builds the NVDA
+# bridge's .nvda-addon, which scons can do on any host and which no job had ever
+# gated either, so both deliverables are covered by one line.
+#
+# It does NOT install, register or run anything: assembling the bundle is the
+# check. Registering a speech provider on a CI runner would prove nothing about
+# the artifact and would need a reader to be useful.
+[tool.poe.tasks.ci-portable]
+help = "The `portable` CI job: everything CI runs, plus each bridge's artifact"
+sequence = ["ci", "build-bridge"]
+
 # -- the whole thing ---------------------------------------------------------
 
 [tool.poe.tasks.ci]

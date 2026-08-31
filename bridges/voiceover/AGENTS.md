@@ -74,13 +74,24 @@ the manifest. Both, usually.
   concrete `final` `AudioRing` for exactly that reason. Everywhere else a port is
   free to be a protocol.
 
-## The capability set grows ONE ENTRY AT A TIME
+## The capability set grows ONE ENTRY AT A TIME, and at 13.11 it is COMPLETE
 
 `hello` announces what this build actually implements, and nothing else.
 `Registry.capabilities` was empty at 13.4, `[speech]` at 13.5, `[speech,
 gestures]` at 13.7, `[speech, gestures, typing]` at 13.8, `[speech, gestures,
-typing, focus]` at 13.9 and `[speech, gestures, typing, focus, interact]` at
-13.10, and each later entry adds its own alongside the handlers that serve it.
+typing, focus]` at 13.9, `[speech, gestures, typing, focus, interact]` at 13.10
+and all six at 13.11, and each entry added its own alongside the handlers that
+serve it.
+
+**Six of the contract's eleven, and the five that are missing are missing from
+the READER.** Braille, state, config, log and document are not unimplemented
+here: VoiceOver exposes no readable braille buffer, keeps no diagnostic log,
+answers no query for any of its 45 toggles, and offers no way to ask for a
+document as flat lines. So the gate is doing exactly what it exists for, and this
+is the first bridge in the repo where that is visible — the NVDA one announces
+every group, which is why its conformance run has no unannounced capability to
+exercise and this one's does.
+
 Announcing a capability before the entry that implements it produces the one
 failure the capability gate exists to prevent: a tool the agent can see, call,
 and get nothing from. The converse costs too, and it is why `speech` landed with
@@ -214,6 +225,25 @@ design lever rather than tidiness. `pressGesture` is an AppleEvent to the reader
 `typeText` synthesizes system input events and needs **Accessibility**
 (`kTCCServiceAccessibility`). Windows has no equivalent gate, so lane 1 has no
 analogue and there is nothing to copy here.
+
+**THE TWO GRANTS ARE READ BY DIFFERENT MEANS, AND 13.11 HAD TO FIX THAT.**
+Accessibility is a fact about THIS PROCESS, which posts its own `CGEvent`s, so
+`AXIsProcessTrusted` answers about the thing that acts. Automation is a fact
+about a CHANNEL: this bridge never sends an AppleEvent itself — every one leaves
+an `osascript` subprocess, and macOS attributes a subprocess's events to whatever
+process it holds RESPONSIBLE for it. So an API that answers about the calling
+binary answers about a process that sends nothing.
+
+Measured 2026-08-30, seconds apart, on the maintainer's machine:
+`AEDeterminePermissionToAutomateTarget` returned **-1744** from an unsigned
+launcher — reported as `notGranted` — while that same process's `osascript` had
+just driven the reader through a whole MCP session. The grant was held all along,
+by the responsible process: VS Code was launched over SSH, Claude Code from VS
+Code, and the bridge from Claude Code, so TCC consulted
+`/usr/libexec/sshd-keygen-wrapper`. `TCCPermissionBroker` now asks the channel
+and reads the NUMBER — `-1743` is the missing grant, a reply is the grant, and
+anything else is `cannotTell` rather than a guess, because "the reader is not
+running" is not evidence about a permission.
 
 **THE ACCESSIBILITY GRANT IS REQUESTED FROM ONE PLACE: `TypeTextHandler`, on a
 `typeText`.** Not at construction, not in `Wiring`, not in
@@ -391,6 +421,96 @@ neither reads the environment to do it — the caller passes the values in.
 `LocalSocketListener` holds §1's three listener obligations (directory mode
 `0700`, unlink before binding, unlink on exit) because their **order** is the
 contract.
+
+## What this reader says about itself: the guidance document
+
+`getGuidance` is the `guidance` capability, and it is the reason that capability
+came last: the document can only be written against a vocabulary that already
+works, so **every concrete claim in it is a measurement some earlier entry paid
+for**. It lives in `Sources/VoiceOverBridgeDomain/Entities/Documents/` as five
+`.md` files — `common`, plus one per persona, plus `unknown` — because a document
+served to an agent is a file and never a string literal (root `AGENTS.md`,
+invariant 9).
+
+Four rules bind anyone editing it.
+
+- **It is the THIRD rendering of the embedded-document trap, and the least
+  dangerous of the three.** Go embeds at compile time and Python has no build
+  step, so both can serve a stale document silently; SwiftPM has a real
+  dependency graph that includes resources, so an edited document forces a
+  rebuild. Measured 2026-08-31. What is *not* free is the `.app`:
+  `Bundle.module` is found beside an executable SwiftPM built and not inside a
+  bundle a script assembled, so whoever gives the app the domain's dependency
+  edge (13.14) copies the generated bundle into `Contents/Resources` in the same
+  breath. `Package.swift`'s header carries that obligation.
+- **A missing document raises; it never returns `""`.** An empty document reads
+  to an agent as "this reader has nothing to say", which is a very different and
+  much worse answer than "the build is broken" — and the agent acts on it. The
+  rule earned itself immediately: `.copy` of a directory nests the files, the
+  first run could not find `common.md`, and the loader said so by name instead of
+  serving nothing.
+- **The boundary it draws is NOT NVDA's, and that is the point of the document
+  existing.** Spec 0029's rule is reader-agnostic — a command that re-reads what
+  is already there is in, a command that reaches what focus cannot is out — and
+  every instance of it is this reader's. On NVDA the boundary falls at object
+  navigation and the review cursor; here **cursor navigation is what an ordinary
+  user does all day**, so the boundary falls at the mouse commands and the hot
+  spots instead. A stance transcribed from lane 1 would forbid the platform's own
+  vocabulary.
+- **It names a curated subset of the toggles and NO table of the vocabulary.**
+  The 414 command names stay out of this repo for the reason the gesture section
+  below gives; what the document adds is which toggles matter, that each
+  announces its own result — which is how an agent reads state on a reader that
+  cannot be asked — and that the reader is the authority on the rest. The names
+  in it were read out of `SCRStringsToCommandsMap.scrconfig`, not recalled.
+
+**The handshake carries it too.** `hello` sends the same document (protocol.md
+§3) so a session gets it without a second round trip, and a server that receives
+it must not call `getGuidance` as well. Both routes therefore compose through one
+static function, and a conformance scenario drives both over a real wire and
+asserts they are equal — two compositions would be a handshake and a command that
+agree today.
+
+## The conformance tier: the third binding, finally on a wire
+
+`poe conformance` drives the real Go binary against the real Swift bridge, as it
+already did against the real Python one, and 13.11 is where the two halves of
+this lane were first gated together.
+
+**What it adds that `scripts/drift.py --swift` cannot.** That gate reads the
+binding's SOURCE against `specs/wire/v1/schema.json`, so it catches a field that
+was never written. It cannot catch a field written *differently* from how the
+server reads it, because nothing had ever put the two implementations on opposite
+ends of a socket. Every other test of the server drives a Go fake that encodes
+with the same generated binding the server decodes with — both sides wrong
+together, in agreement.
+
+`Tests/ConformanceBridge/` is what makes it reachable: a real `BridgeServer`, a
+real `Session`, a real `JsonLinesChannel` and a real `Registry`, with a **fake
+reader edge**, startable as a process. Four rules:
+
+- **It speaks the Python harness's protocol byte for byte** — `--transport`, one
+  JSON line on stdout, stdin EOF to stop — so the Go side has one driver protocol
+  rather than two to keep in step with the contract it is testing.
+- **It must never be copied into the bundle.** It carries the doubles that exist
+  to keep code away from a real reader, a real grant and a real voice; shipping it
+  would ship a bridge that only pretends to drive VoiceOver.
+- **It announces with `FileHandle`, not `print`.** Swift's `print` is fully
+  buffered to a pipe, so a `print` there deadlocks the Go driver until the process
+  exits. Measured on `BridgeListener` first, whose startup report was invisible
+  for exactly this reason.
+- **`/tmp` and a short endpoint name.** A Unix socket path may be at most 103
+  bytes and `NSTemporaryDirectory()` is a `/var/folders/...` path around 49 before
+  anything of ours is appended. The kernel's answer to a longer one is `connect:
+  invalid argument`, naming neither the limit nor the path.
+
+The Go scenarios are `//go:build conformance && darwin`. **That is not a skip**:
+the tier's rule is that failing to reach the real bridge is a hard failure and
+never a fall-back, and nothing falls back — on Windows the files do not compile in
+at all, because a Swift bridge for a macOS-only reader cannot exist there. On
+macOS there is no escape hatch. They connect **live** rather than silent, because
+13.6 refuses a silent handshake where the capture voice is not published, which is
+every CI runner.
 
 ## Two executables exist that the bundle does not ship
 
