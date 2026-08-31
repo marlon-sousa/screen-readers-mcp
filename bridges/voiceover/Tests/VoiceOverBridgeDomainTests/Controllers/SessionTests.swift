@@ -568,4 +568,60 @@ struct SessionTests {
 		)
 		#expect(silence.acts.contains(.passThrough))
 	}
+
+	// -- the human channel's two effects on the loop (13.10) --------------------
+
+	/// A handshake that also leaves a question in front of the human, so the loop
+	/// can be watched with a window open.
+	private func askingHandler(_ set: AdapterSet, _ prompter: FakeUserPrompter) -> FakeHandler {
+		let handler = FakeHandler(availableBeforeHello: true)
+		handler.onExecute = { context, _ in
+			context.mode = .silent
+			context.adapters = set
+			let ticket = try? prompter.present("did the menu open?")
+			context.outstandingPrompt = UserPrompt(
+				ticket: ticket ?? "", prompt: "did the menu open?", now: context.clock.monotonic())
+		}
+		return handler
+	}
+
+	@Test("AN OPEN QUESTION HOLDS THE SILENCE WINDOW OPEN, however long the human takes")
+	func anOpenPromptKeepsTheCapFresh() {
+		// A human reading a prompt IS hearing their machine -- `askUser` gave the
+		// reader back to let them answer (protocol.md §5). A cap that went on
+		// counting through that would lift a suppression that is not in force and
+		// mark itself lifted for the rest of the session, so the next command would
+		// be unable to make the machine quiet again.
+		let prompter = FakeUserPrompter()
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, userPrompter: prompter)
+		let signals = FakeSessionSignals()
+		run(
+			[hello(), .quiet, .quiet, .quiet, .quiet],
+			handlers: ["hello": askingHandler(set, prompter)],
+			config: SessionConfig(readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(signals.warnedCount == 0)
+		#expect(signals.liftedCount == 0)
+		#expect(!silence.acts.contains(.passThrough))
+		// AND THE LEASE IS STILL RENEWED, which is the half that must not be traded
+		// for the other: an open prompt suspends the CAP, never the expiry that
+		// un-mutes a machine whose bridge has died.
+		#expect(silence.renewals >= 4)
+	}
+
+	@Test("TEARDOWN TAKES AN OPEN QUESTION OFF THE SCREEN")
+	func teardownCancelsAnOpenPrompt() {
+		// A question outlives the session that asked it otherwise, and there is
+		// nobody left to answer it to.
+		let prompter = FakeUserPrompter()
+		let set = fakeAdapterSet(userPrompter: prompter)
+		let outcome = run(
+			[hello(), request(2, "bye")],
+			handlers: ["hello": askingHandler(set, prompter), "bye": byeHandler()])
+		#expect(prompter.cancelled == [prompter.lastTicket])
+		#expect(outcome.session.sessionContext.outstandingPrompt == nil)
+	}
 }

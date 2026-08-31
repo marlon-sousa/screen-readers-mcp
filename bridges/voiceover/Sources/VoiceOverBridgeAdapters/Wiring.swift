@@ -11,8 +11,12 @@
 // mistake would survive every test. It imports the domain and the adapters,
 // which is exactly what a composition root is allowed to do and nothing else is.
 //
-// USED BY: the integration scenarios today, and the container app from 13.10,
-// when there is a dialog to start and stop the server from.
+// USED BY: the integration scenarios and the headless launcher, which is what
+// starts a bridge today. THE CONTROL DIALOG IS A LATER ENTRY, and when it lands
+// it is a client of this file like the launcher is: a view consumes ports and
+// builds nothing, so the one place that knows which concrete classes a dialog
+// runs on will be here, in the module a test can import, rather than in the
+// executable target no test can.
 //
 // IT MAKES NO DECISIONS OF ITS OWN. Every choice here is read from BridgeConfig
 // or passed in; that is what keeps "which transport" a setting rather than
@@ -113,12 +117,14 @@ public enum Wiring {
 	/// with the system, which cannot change because a socket was accepted.
 	///
 	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the entry's whole
-	/// design. Wiring builds the broker at startup and never calls it; the only
-	/// call to `request` in this repository is in the TypeText handler, on the
-	/// first `typeText` of a session. That is what makes "a session that only
-	/// presses commands and reads speech never triggers an Accessibility request"
-	/// a checkable statement rather than an intention -- so nothing here, in the
-	/// factory, in the doctor or in a probe may ask it anything.
+	/// design. Wiring builds the broker at startup and never calls `request`; the
+	/// only call to it in this repository is in the TypeText handler, on the first
+	/// `typeText` of a session. That is what makes "a session that only presses
+	/// commands and reads speech never triggers an Accessibility request" a
+	/// checkable statement rather than an intention -- so nothing here, in the
+	/// factory, in the doctor or in a probe may ask it anything. Reading `status`
+	/// is a different question and the launcher does print it, because reading
+	/// shows no dialog.
 	public static func permissionBroker() -> any PermissionBroker {
 		TCCPermissionBroker()
 	}
@@ -164,6 +170,72 @@ public enum Wiring {
 	/// repository is in the TypeText handler.
 	public static func accessibilityTrust() -> any AccessibilityTrust {
 		TCCPermissionBroker()
+	}
+
+	/// How this bridge speaks to the human at the reader.
+	///
+	/// ONE PER PROCESS: one machine has one loudspeaker, and two announcers would
+	/// be two synthesizers talking over each other.
+	///
+	/// IT IS HANDED THE SAME SUFFIX THE VOICE STORE MATCHES OURS BY, which is the
+	/// point of building it here: the announcer must never pick the capture voice,
+	/// because that voice renders silence while a silent session holds it and the
+	/// announcement would be silence talking to itself. The rule already existed --
+	/// this is the second reader of it, not a second copy.
+	public static func announcer(
+		voices: (any PublishedVoices)? = nil,
+		out: (any SpeechOut)? = nil
+	) -> any Announcer {
+		SynthesizerAnnouncer(
+			voices: voices ?? SystemPublishedVoices(),
+			out: out ?? AVSpeechOut(),
+			excludingSuffix: captureVoiceIdentifierSuffix,
+			preferredLanguage: preferredLanguage()
+		)
+	}
+
+	/// The language the human at this machine reads in, as the system spells it.
+	///
+	/// READ HERE AND NOWHERE BELOW, like the endpoint's directories and the two
+	/// capture paths: everything under this line is a pure function of values. A
+	/// warning spoken in the wrong language is a warning nobody acts on, which is
+	/// why it is worth asking at all -- and it is only a preference, so an
+	/// unmatched one costs nothing.
+	public static func preferredLanguage() -> String {
+		Locale.preferredLanguages.first ?? "en-US"
+	}
+
+	/// How this bridge asks the human a question. ONE PER PROCESS: one screen, and
+	/// two prompters would each hold half the tickets.
+	public static func userPrompter(window: (any PromptWindow)? = nil) -> any UserPrompter {
+		AppKitUserPrompter(window: window ?? AppKitPromptWindow())
+	}
+
+	/// Whether AppleScript control of VoiceOver is switched on. ONE PER PROCESS
+	/// and stateless: every call re-reads the two files, so a human who fixes the
+	/// setting and presses Refresh sees it change.
+	public static func readerScripting(reader: (any PlistReader)? = nil) -> any ReaderScriptingSetting {
+		VoiceOverPrefsScriptingSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
+	}
+
+	/// The persisted settings. ONE PER PROCESS, because two would be two caches of
+	/// one file -- and this one deliberately caches nothing at all.
+	public static func bridgeConfig(defaults: (any Defaults)? = nil) -> any BridgeConfig {
+		UserDefaultsBridgeConfig(defaults: defaults ?? UserDefaultsStore())
+	}
+
+	/// The audible cues, and the preference that silences them.
+	///
+	/// IT TAKES THE CONFIG RATHER THAN A BOOLEAN so the switch is read on every
+	/// cue: a human who turns the cues off while a session is running means now,
+	/// not next time.
+	public static func sessionSignals(
+		config: any BridgeConfig,
+		announcer speaker: (any Announcer)? = nil,
+		tones: (any Tones)? = nil
+	) -> any SessionSignals {
+		AudibleSessionSignals(
+			tones: tones ?? CoreAudioTones(), announcer: speaker ?? announcer(), config: config)
 	}
 
 	/// Which endpoint to accept on, per the configured connection mode.
@@ -221,7 +293,9 @@ public enum Wiring {
 		poster: (any EventPoster)? = nil,
 		tree: (any AccessibilityTree)? = nil,
 		frontmost: (any FrontmostApplication)? = nil,
-		trust: (any AccessibilityTrust)? = nil
+		trust: (any AccessibilityTrust)? = nil,
+		speaker: (any Announcer)? = nil,
+		prompter: (any UserPrompter)? = nil
 	) -> BridgeServer {
 		let handlers = Registry.build(
 			factory: VoiceOverAdapterFactory(
@@ -233,7 +307,9 @@ public enum Wiring {
 				poster: poster ?? eventPoster(),
 				tree: tree ?? accessibilityTree(),
 				frontmost: frontmost ?? frontmostApplication(),
-				trust: trust ?? accessibilityTrust()
+				trust: trust ?? accessibilityTrust(),
+				announcer: speaker ?? announcer(),
+				prompter: prompter ?? userPrompter()
 			),
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion

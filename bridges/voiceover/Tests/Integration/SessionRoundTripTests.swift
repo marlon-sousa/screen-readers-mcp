@@ -35,7 +35,9 @@ struct SessionRoundTripTests {
 			poster: FakeEventPoster = FakeEventPoster(),
 			tree: FakeAccessibilityTree = FakeAccessibilityTree(),
 			frontmost: FakeFrontmostApplication = FakeFrontmostApplication(),
-			trust: FakeAccessibilityTrust = FakeAccessibilityTrust()
+			trust: FakeAccessibilityTrust = FakeAccessibilityTrust(),
+			announcer: FakeAnnouncer = FakeAnnouncer(),
+			prompter: FakeUserPrompter = FakeUserPrompter()
 		) {
 			let (bridgeEnd, clientEnd) = LoopbackTransport.pair()
 			client = clientEnd
@@ -49,7 +51,8 @@ struct SessionRoundTripTests {
 					?? Registry.build(
 						factory: testAdapterFactory(
 							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster,
-							tree: tree, frontmost: frontmost, trust: trust
+							tree: tree, frontmost: frontmost, trust: trust, announcer: announcer,
+							prompter: prompter
 						),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
@@ -95,7 +98,7 @@ struct SessionRoundTripTests {
 		#expect(hello.mode == .live)
 		// What this build actually serves, announced end to end -- the server gates
 		// its speech tools on exactly this string arriving here.
-		#expect(hello.capabilities == [.speech, .gestures, .typing, .focus])
+		#expect(hello.capabilities == [.speech, .gestures, .typing, .focus, .interact])
 		#expect(hello.attended == true)
 		#expect(hello.bridgeVersion == "1.2.3")
 		peer.hangUp()
@@ -345,6 +348,11 @@ struct SessionRoundTripTests {
 		// checkability. A handshake, a gesture and a speech read go past here
 		// without the broker being asked anything at all; the first `typeText`
 		// asks, and nothing else in the bridge ever does.
+		//
+		// AND THIS SCENARIO DID NOT HAVE TO CHANGE AT 13.10, which is the point of
+		// it: that entry adds three commands -- telling the human something, asking
+		// them something, and collecting the answer -- and none of them touches the
+		// broker, so they are simply driven past it here as well.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		let peer = Peer(permissions: permissions)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
@@ -354,6 +362,13 @@ struct SessionRoundTripTests {
 			params: ["gestures": .array([.string("go to desktop")]), "graceMs": .int(0)])
 		_ = try peer.reply()
 		try peer.send(id: 3, cmd: "getNextSpeechIndex")
+		_ = try peer.reply()
+		// And the three commands 13.10 added, which talk to a PERSON and not to the
+		// system: telling them something, asking them something, and collecting the
+		// answer all cost no permission at all.
+		try peer.send(id: 10, cmd: "announce", params: ["text": .string("still here")])
+		_ = try peer.reply()
+		try peer.send(id: 11, cmd: "askUser", params: ["prompt": .string("ready?")])
 		_ = try peer.reply()
 		#expect(permissions.requests.isEmpty)
 		#expect(permissions.statusReads.isEmpty)
@@ -473,6 +488,115 @@ struct SessionRoundTripTests {
 		#expect(permissions.statusReads.isEmpty)
 		// It did ask the cheap question -- once per command, on both routes.
 		#expect(trust.reads == 2)
+		peer.hangUp()
+	}
+
+	// -- the human channel, end to end (13.10) ---------------------------------
+
+	@Test("AN `announce` IN A SILENT SESSION SUCCEEDS, AND THE WORDS LEAVE THE BRIDGE")
+	func announceReachesTheHumanInASilentSession() throws {
+		// THE PROMISE 13.10 EXISTS TO MAKE KEEPABLE, asserted end to end rather than
+		// intended. Before this entry the same words on a `pressGesture` were
+		// REFUSED in silent mode, because there was no channel to say them on; the
+		// Announcer speaks with the bridge's own synthesizer, outside VoiceOver,
+		// which is why the mode that mutes the reader does not reach it.
+		//
+		// What a headless test can assert is that the words reached the synthesizer
+		// seam off a real wire frame. That they are AUDIBLE on a real machine is a
+		// claim no test can make, and `scripts/voiceover_announce.sh` is the
+		// re-runnable instrument that does.
+		let announcer = FakeAnnouncer()
+		let peer = Peer(announcer: announcer)
+		try peer.send(
+			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(id: 2, cmd: "announce", params: ["text": .string("the agent is about to type")])
+		let response = try peer.reply()
+		guard case .success(let value) = try response.outcome() else {
+			Issue.record("announce failed in a silent session: \(response)")
+			return
+		}
+		#expect(try value.decoded(as: AckResult.self).ok)
+		#expect(announcer.spoken == ["the agent is about to type"])
+		// AND THE SESSION IS STILL SILENT. `announce` bypasses the suppression; it
+		// does not lift it, which is the difference between a hint and a lift.
+		try peer.send(id: 3, cmd: "ping")
+		guard case .success(let pong) = try peer.reply().outcome() else {
+			Issue.record("ping failed")
+			return
+		}
+		#expect(try pong.decoded(as: PingResult.self).suppressing == true)
+
+		// And the same words reach the human through a MUTATING command's
+		// `announce`, which is the field that had nothing to travel on until now.
+		try peer.send(
+			id: 4, cmd: "pressGesture",
+			params: [
+				"gestures": .array([.string("go to desktop")]), "graceMs": .int(0),
+				"announce": .string("moving to the desktop"),
+			])
+		guard case .success = try peer.reply().outcome() else {
+			Issue.record("a gesture with an announce failed in a silent session")
+			return
+		}
+		#expect(announcer.spoken == ["the agent is about to type", "moving to the desktop"])
+		peer.hangUp()
+	}
+
+	@Test("`askUser` AND `waitForUserReply` ARE TWO COMMANDS, and the answer survives between them")
+	func aQuestionAndItsAnswerCrossTwoCommands() throws {
+		// protocol.md §5's whole shape: the agent asks, is handed a ticket, and
+		// collects the answer later -- possibly much later. Nothing blocks, which is
+		// why the ticket has to outlive the command that minted it and why the
+		// answer has to be waiting when a poll finally arrives.
+		let prompter = FakeUserPrompter()
+		let peer = Peer(prompter: prompter)
+		try peer.send(
+			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(id: 2, cmd: "askUser", params: ["prompt": .string("did the menu open?")])
+		guard case .success(let asked) = try peer.reply().outcome() else {
+			Issue.record("askUser failed")
+			return
+		}
+		let ticket = try asked.decoded(as: AskUserResult.self).ticket
+		#expect(prompter.presented == ["did the menu open?"])
+
+		// A POLL BEFORE ANYBODY HAS ANSWERED IS `answered: false`, not an error, and
+		// it leaves the window open -- `waitForSpeech`'s manners.
+		try peer.send(
+			id: 3, cmd: "waitForUserReply",
+			params: ["ticket": .string(ticket), "timeout": .double(0)])
+		guard case .success(let miss) = try peer.reply().outcome() else {
+			Issue.record("the first poll failed")
+			return
+		}
+		#expect(try miss.decoded(as: WaitForUserReplyResult.self).answered == false)
+
+		// Now the person answers, at a moment nothing in the bridge controls.
+		prompter.answer("yes, and it read the first item")
+		try peer.send(
+			id: 4, cmd: "waitForUserReply",
+			params: ["ticket": .string(ticket), "timeout": .double(0)])
+		guard case .success(let answered) = try peer.reply().outcome() else {
+			Issue.record("the second poll failed")
+			return
+		}
+		let reply = try answered.decoded(as: WaitForUserReplyResult.self)
+		#expect(reply.answered)
+		#expect(reply.text == "yes, and it read the first item")
+
+		// AND THE SESSION IS SILENT AGAIN. Asking gave the reader back so the human
+		// could hear the field they were typing into; answering takes it away
+		// again, which is what `suppressing` reports.
+		try peer.send(id: 5, cmd: "ping")
+		guard case .success(let pong) = try peer.reply().outcome() else {
+			Issue.record("ping failed")
+			return
+		}
+		#expect(try pong.decoded(as: PingResult.self).suppressing == true)
 		peer.hangUp()
 	}
 

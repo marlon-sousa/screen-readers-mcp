@@ -11,9 +11,10 @@
 //
 // THE VOCABULARY GROWS ONE ENTRY AT A TIME, and what is missing here is a
 // statement rather than an omission: `speech` arrived with the capture feed
-// (13.5), `gesture` with input: commands (13.7) and `typed` with input: typing
-// (13.8) -- each added by the entry that first produces the event. A transcript
-// verb nothing can emit would be a promise this build does not keep.
+// (13.5), `gesture` with input: commands (13.7), `typed` with input: typing
+// (13.8) and `announced` with the human channel (13.10) -- each added by the
+// entry that first produces the event. A transcript verb nothing can emit would
+// be a promise this build does not keep.
 // NOTHING HERE THROWS, and that is the contract rather than an omission: a
 // broken log must never take down a session, still less stop the teardown that
 // gives a human their screen reader back. So an implementation swallows its own
@@ -64,6 +65,18 @@ public protocol Transcript: AnyObject {
 	/// reading this file is looking for is the one that went wrong, and a record
 	/// written on success would be missing exactly that one.
 	func typed(_ length: Int)
+
+	/// What was said to the HUMAN at the reader, in the bridge's own voice.
+	///
+	/// ITS OWN VERB RATHER THAN A `note`, because it is the one line in the record
+	/// that says a person was told something -- the transcript of a silent run is
+	/// how anyone reconstructs what that person could hear, and "the agent warned
+	/// them before it typed" is exactly the question asked of it afterwards.
+	///
+	/// THE TEXT IS RECORDED, UNLIKE `typed`'s. An announcement is written to be
+	/// heard out loud in a room; a password is not, which is why one is a string
+	/// here and the other is a length.
+	func announced(_ text: String)
 
 	func note(_ text: String)
 

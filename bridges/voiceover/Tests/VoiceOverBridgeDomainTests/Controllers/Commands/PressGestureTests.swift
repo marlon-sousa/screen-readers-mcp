@@ -23,13 +23,14 @@ struct PressGestureTests {
 		mode: CaptureMode = .live,
 		sender: FakeGestureSender = FakeGestureSender(),
 		liveness: FakeReaderLiveness = FakeReaderLiveness(),
-		transcript: FakeTranscript = FakeTranscript()
+		transcript: FakeTranscript = FakeTranscript(),
+		announcer: FakeAnnouncer = FakeAnnouncer()
 	) -> SessionContext {
 		let context = SessionContext(
 			clock: FakeClock(), transcript: transcript, attended: true, close: { _ in })
 		context.mode = mode
 		context.adapters = fakeAdapterSet(
-			mode: mode, gestureSender: sender, readerLiveness: liveness)
+			mode: mode, gestureSender: sender, readerLiveness: liveness, announcer: announcer)
 		context.speech = SpeechBuffer(clock: FakeClock())
 		return context
 	}
@@ -211,37 +212,44 @@ struct PressGestureTests {
 
 	// -- announce --------------------------------------------------------------
 
-	@Test("a SILENT session refuses an announce it cannot speak, and presses nothing")
-	func announceIsRefusedInASilentSession() throws {
-		// The one place `announce` is the human's only channel, because the reader
-		// is being rendered mute on their behalf. This build has no such channel,
-		// so the promise is refused rather than half-kept -- the same argument
-		// that kept silent mode itself refused until 13.6.
+	@Test("the announce IS SPOKEN, in BOTH modes -- 13.10 made that keepable")
+	func announceIsSpokenInEitherMode() throws {
+		// A SILENT session is the one place `announce` is the human's only channel,
+		// because the reader is being rendered mute on their behalf. Until 13.10
+		// there was no channel and the promise was REFUSED rather than half-kept;
+		// the Announcer speaks outside VoiceOver, so both modes warn them now.
+		for mode in [CaptureMode.silent, .live] {
+			let announcer = FakeAnnouncer()
+			let sender = FakeGestureSender()
+			_ = try handler.execute(
+				context(mode: mode, sender: sender, announcer: announcer),
+				request(["go to desktop"], announce: "moving to the desktop"))
+			#expect(announcer.spoken == ["moving to the desktop"])
+			#expect(sender.pressed == ["go to desktop"])
+		}
+	}
+
+	@Test("a warning that could not be spoken PRESSES NOTHING")
+	func anUnspeakableWarningStopsEverything() throws {
+		// The ordering proof: the warning is the first thing the handler does, so if
+		// the human cannot be told what is about to happen to their machine, nothing
+		// happens to it.
+		let announcer = FakeAnnouncer()
+		announcer.fails = true
 		let sender = FakeGestureSender()
 		do {
 			_ = try handler.execute(
-				context(mode: .silent, sender: sender),
+				context(mode: .silent, sender: sender, announcer: announcer),
 				request(["go to desktop"], announce: "moving to the desktop"))
-			Issue.record("expected the announce to be refused")
+			Issue.record("expected the gesture to be refused when the human could not be warned")
 		} catch let error as CommandError {
-			#expect(error.description.contains("announce"))
-			#expect(error.description.contains("control"))
+			#expect(error.description.contains("could not be warned"))
+			#expect(error.description.contains("empty"))
 		}
 		#expect(sender.pressed.isEmpty)
 	}
 
-	@Test("a LIVE session notes the announce and carries on: the human hears their machine")
-	func announceIsNotedInALiveSession() throws {
-		let transcript = FakeTranscript()
-		let sender = FakeGestureSender()
-		_ = try handler.execute(
-			context(mode: .live, sender: sender, transcript: transcript),
-			request(["go to desktop"], announce: "moving to the desktop"))
-		#expect(sender.pressed == ["go to desktop"])
-		#expect(transcript.notes.contains { $0.contains("moving to the desktop") })
-	}
-
-	@Test("whitespace is not an announcement, so a silent session is not refused over it")
+	@Test("whitespace is not an announcement, so nothing is said and nothing is refused")
 	func whitespaceAnnounceIsAbsence() throws {
 		let sender = FakeGestureSender()
 		_ = try handler.execute(

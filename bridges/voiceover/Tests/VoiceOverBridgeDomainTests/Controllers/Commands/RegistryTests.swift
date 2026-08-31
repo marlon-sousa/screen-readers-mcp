@@ -22,7 +22,7 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("it serves a session's four, `speech`'s five, both halves of input, and focus")
+	@Test("a session's four, `speech`'s five, both halves of input, focus, and `interact`'s three")
 	func theCommandSet() {
 		#expect(
 			Set(registry().keys) == [
@@ -30,6 +30,7 @@ struct RegistryTests {
 				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
 				"waitForSpeech", "waitForSpeechToFinish",
 				"pressGesture", "typeText", "getFocusInfo",
+				"announce", "askUser", "waitForUserReply",
 			])
 	}
 
@@ -40,9 +41,9 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces `speech`, `gestures`, `typing` and `focus` -- what this build serves")
+	@Test("it announces speech, gestures, typing, focus and interact -- what this build serves")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus])
+		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus, .interact])
 	}
 
 	@Test("every command an announced capability promises has a handler, and nothing extra")
@@ -68,6 +69,11 @@ struct RegistryTests {
 			// not -- one capability either way, because the command works on every
 			// machine and the wire has no shape for "works better over there".
 			.focus: ["getFocusInfo"],
+			// THE THREE THAT TALK TO A PERSON RATHER THAN TO A READER, and they are
+			// one capability because they are one conversation: `askUser` is useless
+			// without `waitForUserReply`, and both are only audible because
+			// `announce`'s channel goes around the reader.
+			.interact: ["announce", "askUser", "waitForUserReply"],
 		]
 		let served = registry()
 		for (capability, commands) in promised {
@@ -97,7 +103,7 @@ struct RegistryTests {
 		#expect(Set(passive) == ["ping"])
 	}
 
-	@Test("the two input commands are STILL the only ones that move the user's machine")
+	@Test("the two input commands and `askUser` are the ones that move the user's machine")
 	func exactlyTheInputCommandsMutateTheReader() {
 		// THE FLAG DEFAULTS TO `false` AND THE FAILURE MODE OF FORGETTING IS
 		// "ALLOWED", so a new mutating handler that omits it is invisible in its
@@ -108,8 +114,15 @@ struct RegistryTests {
 		// set rather than to weaken the assertion. 13.9 adds a handler and does NOT
 		// join this set: reading where the focus is moves nothing, which is what
 		// lets an observe-only session (spec 0017) ask.
+		//
+		// 13.10 ADDS THREE HANDLERS AND EXACTLY ONE OF THEM JOINS, which is the
+		// distinction worth having: `announce` tells the human something and demands
+		// nothing, so an observe-only session may narrate what it is watching;
+		// `askUser` puts a question in front of them and takes the reader back to
+		// let them answer it, which is an interruption they did not ask for. And
+		// `waitForUserReply` only collects what is already there.
 		let mutating = registry().filter { $0.value.mutatesReader }.keys
-		#expect(Set(mutating) == ["pressGesture", "typeText"])
+		#expect(Set(mutating) == ["pressGesture", "typeText", "askUser"])
 	}
 
 	@Test("the reader identity is the one protocol.md's endpoint convention is built from")

@@ -38,6 +38,13 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// what a `getFocusInfo` off the wire actually read -- and, beside
 	/// `permissions` above, that answering focus asked the broker nothing.
 	public let focusInspector = FakeFocusInspector()
+	/// And 13.10's two, exposed for the sharpest reason of the lot: what the human
+	/// at the machine was TOLD, and what they were ASKED, are the two things a
+	/// session test has to be able to assert about a silent run -- and neither is
+	/// visible anywhere else, because both go out of this process rather than into
+	/// a result.
+	public let announcer = FakeAnnouncer()
+	public let userPrompter = FakeUserPrompter()
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
@@ -61,7 +68,9 @@ public final class FakeAdapterFactory: AdapterFactory {
 			readerLiveness: readerLiveness,
 			textTyper: textTyper,
 			permissions: permissions,
-			focusInspector: focusInspector
+			focusInspector: focusInspector,
+			announcer: announcer,
+			userPrompter: userPrompter
 		)
 	}
 }

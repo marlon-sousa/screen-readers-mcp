@@ -31,7 +31,10 @@
 // capture is identical either way, the marker channel carries the user's own
 // voice in both (Rule 0), the provider lifecycle answers the same questions, and
 // a command is dispatched to the reader the same way whether or not the human
-// can hear the result. Only what the handshake ASKS for differs.
+// can hear the result. Only what the handshake ASKS for differs. The human
+// channel added at 13.10 is the sharpest instance of that symmetry: the
+// announcer speaks OUTSIDE VoiceOver, so it works identically in a mode where the
+// reader is mute -- which is the mode it exists for.
 //
 // WHAT IS NOT DECIDED HERE: where any of it lives. The capture path, the marker
 // path and the lifecycle are values Wiring resolves, so this class stays the
@@ -51,6 +54,8 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let tree: any AccessibilityTree
 	private let frontmost: any FrontmostApplication
 	private let trust: any AccessibilityTrust
+	private let announcer: any Announcer
+	private let prompter: any UserPrompter
 
 	/// `capturePath` is where the capture voice appends its feed; `markerPath` is
 	/// where it reads what the bridge is asking of it. Passed in with no defaults,
@@ -76,6 +81,13 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// reach either by accident -- the same guarantee it already gives for the
 	/// provider lifecycle, which writes the voice VoiceOver speaks with.
 	///
+	/// THE HUMAN CHANNEL IS INJECTED FOR THE SAFETY REASON AGAIN (13.10): the real
+	/// announcer SPEAKS on the developer's machine and the real prompter opens a
+	/// window on their screen and takes their focus. Both are per-process and hold
+	/// no session state, so the set carries the same two objects for every session
+	/// -- and `ReaderEdge.swift` hands every test fakes for them, exactly as it
+	/// does for the poster and the broker.
+	///
 	/// THE FOCUS TRIO IS INJECTED FOR A THIRD REASON AGAIN: not safety, but
 	/// DETERMINISM. Reading the accessibility tree and asking who is frontmost
 	/// change nothing on the machine -- but their answers are whatever window the
@@ -92,7 +104,9 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		poster: any EventPoster,
 		tree: any AccessibilityTree,
 		frontmost: any FrontmostApplication,
-		trust: any AccessibilityTrust
+		trust: any AccessibilityTrust,
+		announcer: any Announcer,
+		prompter: any UserPrompter
 	) {
 		self.capturePath = capturePath
 		self.markerPath = markerPath
@@ -103,6 +117,8 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.tree = tree
 		self.frontmost = frontmost
 		self.trust = trust
+		self.announcer = announcer
+		self.prompter = prompter
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {
@@ -135,7 +151,13 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// it does not.
 			focusInspector: VoiceOverFocusInspector(
 				tree: tree, scripts: scripts, frontmost: frontmost, trust: trust
-			)
+			),
+			// SHARED, LIKE THE LIFECYCLE AND THE BROKER, and for the plainest of the
+			// three reasons: one process has one loudspeaker and one screen. Two
+			// announcers would be two synthesizers talking over each other, and two
+			// prompters would each hold half the tickets.
+			announcer: announcer,
+			userPrompter: prompter
 		)
 	}
 }

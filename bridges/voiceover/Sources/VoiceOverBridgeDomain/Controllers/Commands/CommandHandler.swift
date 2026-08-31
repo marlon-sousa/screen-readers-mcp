@@ -19,6 +19,22 @@
 
 import ScreenReaderWire
 
+/// The longest ANY single blocking command may hold the session thread.
+///
+/// Comfortably inside the 120 s command-inactivity window
+/// (`SessionConfig.inactivityTimeout`), which is measured from the moment a
+/// command is DISPATCHED and is deliberately not refreshed when a handler
+/// returns: inactivity answers "has the agent abandoned this session?", so a
+/// blocking handler must not extend it. A command allowed to block longer would
+/// answer the agent and have the session torn down under it one line later.
+///
+/// LIVES HERE, on the shared handler module, rather than on whichever blocking
+/// command needed it first: it is a property of the SESSION's watchdog, not of
+/// user replies. Lane 1 puts its `MAX_POLL_TIMEOUT` in the same place, with the
+/// same value, for the same reason -- and clamping in the bridge protects every
+/// client, not only the one whose tool schema is polite.
+public let maxPollTimeout: Double = 110.0
+
 /// A handler-level failure: a version mismatch, a mode this build cannot carry
 /// out, a command whose preconditions are not met. Distinct from a transport
 /// fault and from a validation fault, both of which have their own types.

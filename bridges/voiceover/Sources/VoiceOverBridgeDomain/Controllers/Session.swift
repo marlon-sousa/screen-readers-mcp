@@ -111,11 +111,6 @@ public final class Session {
 	private var reason: TeardownReason?
 	private var tornDown = false
 
-	/// The third watchdog. Nil until a SILENT session establishes: a cap on a
-	/// session that suppresses nothing would be measuring a silence that is not
-	/// happening.
-	private var silenceCap: SilenceCap?
-
 	public init(
 		channel: any MessageChannel,
 		transcript: any Transcript,
@@ -257,7 +252,16 @@ public final class Session {
 	private func checkSilence() {
 		guard let silence = context.adapters?.silenceControl else { return }
 		silence.renew()
-		guard let cap = silenceCap else { return }
+		guard let cap = context.silenceCap else { return }
+		// A HUMAN READING A PROMPT IS HEARING THEIR MACHINE, so the window stays
+		// fresh for as long as one is open (13.10). `askUser` lets the machine
+		// speak again while it asks -- protocol.md §5 -- and a cap that went on
+		// counting through that would lift a suppression that is not in force and
+		// mark itself lifted for the rest of the session.
+		if context.outstandingPrompt != nil {
+			cap.heard(clock.monotonic())
+			return
+		}
 		switch cap.check(clock.monotonic()) {
 		case .none:
 			return
@@ -320,7 +324,7 @@ public final class Session {
 			// is about to sound -- which is honest, because that cue is itself one
 			// of the sounds that reach the human past the suppression.
 			if context.mode == .silent {
-				silenceCap = SilenceCap(policy: config.silenceCap, now: clock.monotonic())
+				context.silenceCap = SilenceCap(policy: config.silenceCap, now: clock.monotonic())
 			}
 			// Two ascending tones, then the persona this session declared: the
 			// tones say control was taken, the words say what it was taken AS.
@@ -361,6 +365,16 @@ public final class Session {
 		// would be catching nothing. It is also idempotent, so a source that was
 		// never started is safe to stop.
 		context.adapters?.speechSource.stop()
+
+		// A QUESTION LEFT ON SOMEBODY'S SCREEN OUTLIVES THE SESSION THAT ASKED IT,
+		// and nobody is left to answer it to. So an outstanding prompt is taken
+		// away here (13.10). NO GUARD, AND THE TYPE IS WHY: `cancel` does not
+		// throw -- a window that could not be dismissed must never stop a session
+		// from ending -- so a try/catch here would be catching nothing.
+		if let prompt = context.outstandingPrompt {
+			context.adapters?.userPrompter.cancel(prompt.ticket)
+			context.outstandingPrompt = nil
+		}
 
 		// HARD INVARIANT 3, IN ITS MACOS FORM. Both steps run on EVERY teardown
 		// path, whatever ended the session, and each is guarded so a failure in one

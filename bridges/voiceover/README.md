@@ -19,10 +19,17 @@ voice back at teardown, so nobody has to visit VoiceOver Utility to start or
 finish a session. **Since 13.7 it can drive the reader**: `pressGesture` sends
 VoiceOver's own English command names — `go to desktop`, not a keystroke —
 through the reader's own dispatcher, which is why this bridge asks for no
-Accessibility grant. So `hello` announces `speech` and `gestures`, and those two
-and no others, which is the honest description of a bridge whose remaining reader
-edges do not exist yet. The dialog that starts and stops it is
-13.10; until then it is started from a test, from code, or from
+Accessibility grant. **Since 13.8 it can type** into whatever holds focus, which
+is the half of input that does cost the Accessibility grant — asked for on the
+first `typeText` of a session and nowhere else — and **since 13.9 it can say
+where the focus is**. **Since 13.10 it can talk to you**: `announce` speaks with
+the bridge's own synthesizer, outside VoiceOver entirely, so you hear it even
+while a silent session is holding your reader quiet, and `askUser` puts a
+question on your screen and collects your answer whenever you give it. So `hello`
+announces `speech`, `gestures`, `typing`, `focus` and `interact`. The dialog that
+starts and stops it is entry 13.14 — held until the bridge can drive VoiceOver
+over its own window, so that it can be checked the way everything else here is —
+and until then it is started from a test, from code, or from
 `swift build --product BridgeListener`.
 
 This is not a sketch that grew. It is the spike from
@@ -116,7 +123,7 @@ touch the endpoint a developer's own bridge listens on.
 
 ## Making it listen
 
-Until the control dialog lands (13.10), the bridge is started by a small
+Until the control dialog lands (entry 13.14), the bridge is started by a small
 launcher, kept in the repo because anything a check depends on is versioned
 rather than improvised:
 
@@ -124,11 +131,35 @@ rather than improvised:
 swift build --package-path bridges/voiceover --product BridgeListener
 ./bridges/voiceover/.build/debug/BridgeListener            # the local endpoint
 ./bridges/voiceover/.build/debug/BridgeListener --tcp 8765 # loopback instead
+./bridges/voiceover/.build/debug/BridgeListener --print-cues  # no tones, just text
 ```
 
 It prints the endpoint it bound and every state change, and stops on `^C`,
 unlinking the socket. It is **not** part of the shipped `.app`: `build.sh` does
 not copy it.
+
+**It starts from the settings this machine has stored, and a flag overrides them
+for one run without writing anything.** The stored values are the endpoint kind,
+its name, the loopback port, whether a human is expected at the machine, and
+whether the audible session cues play; the dialog will be the first thing that
+edits them, and until then `defaults` does:
+
+```sh
+defaults write org.screen-readers-mcp.spike.capture bridge.endpointName someOtherName
+defaults read  org.screen-readers-mcp.spike.capture
+```
+
+**It also says what the machine can do before anything is pressed**: the capture
+voice's state with its recovery, whether AppleScript control of VoiceOver is
+switched on (VoiceOver Utility → General — no API can set it, so this is a thing
+only you can fix), and which permissions this process holds. None of that asks
+you for anything; reading a permission shows no dialog.
+
+**The session cues are audible now**, unless you pass `--print-cues` or turn them
+off in the settings: two ascending tones and the persona when a session takes
+your reader, two descending when it gives it back. They are played outside
+VoiceOver, so you hear them even while a silent session is holding the reader
+quiet.
 
 With it running, the real MCP server connects:
 

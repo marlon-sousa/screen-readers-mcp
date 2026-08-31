@@ -55,6 +55,32 @@ public final class SessionContext {
 	/// half-way still leaves teardown holding what the user had.
 	public var previousVoice: String?
 
+	/// The third watchdog itself, once a SILENT session has established one.
+	///
+	/// IT LIVES HERE RATHER THAN INSIDE THE SESSION SINCE 13.10, and that is a
+	/// layout amendment with its why: what RESETS this clock is sound the human
+	/// actually hears (protocol.md §6.1), and from this entry on two of those
+	/// sounds are commands -- `announce` and `askUser`. A handler sees the context
+	/// and nothing else, so the cap either moves here or the context grows a
+	/// second closure into the session for the sole purpose of forwarding one
+	/// call. The session still owns the POLICY: it creates the cap at the
+	/// handshake and it is the only thing that acts on `check`.
+	///
+	/// Nil in a live session, and nil on a machine whose owner declared it
+	/// unattended: a cap on a session that suppresses nothing would be measuring a
+	/// silence that is not happening.
+	public var silenceCap: SilenceCap?
+
+	/// The one question currently in front of the human, if any (13.10).
+	///
+	/// ONE AT A TIME, enforced by the AskUser controller: two open windows would
+	/// leave a human unable to tell which ticket they were answering. Hung on the
+	/// context rather than held by a handler because three different things need
+	/// it -- the poll that collects the answer, the dispatch loop (a human reading
+	/// a prompt IS hearing their machine, so the cap stays fresh while it is open)
+	/// and teardown, which takes the window away.
+	public var outstandingPrompt: UserPrompt?
+
 	/// Whether this machine bounds its silences, and by how much. A MACHINE fact
 	/// like `attended` and derived from the same one, carried here so the
 	/// handshake can report it and the session can build its third watchdog from
@@ -97,6 +123,19 @@ public final class SessionContext {
 			throw CommandError("the speech buffer was read before `hello` installed it")
 		}
 		return speech
+	}
+
+	/// The human just heard their own machine: a fresh silence window.
+	///
+	/// CALLED FOR EXACTLY THE SOUNDS THAT REACH THEM PAST THE SUPPRESSION -- the
+	/// session cue, `announce`, and the question `askUser` puts to them -- and for
+	/// nothing else. Four hundred gestures in ninety seconds reset nothing,
+	/// because they told the human nothing (protocol.md §6.1).
+	///
+	/// AFTER THE SOUND WAS MADE, never before: the clock records when they were
+	/// told, not when we decided to tell them.
+	public func humanHeard() {
+		silenceCap?.heard(clock.monotonic())
 	}
 
 	/// Ask the session to end. Cooperative: the loop honours it at its next

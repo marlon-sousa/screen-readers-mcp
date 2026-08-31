@@ -15,5 +15,14 @@ public final class FakePublishedVoices: PublishedVoices {
 		self.voices = voices
 	}
 
-	public func identifiers() -> [String] { voices }
+	/// How many times the machine's list was actually asked for. It matters to one
+	/// caller: `SynthesizerAnnouncer` resolves its voice ONCE and keeps it, because
+	/// the list is a property of the machine and an announcement in a different
+	/// voice each time is worse to listen to than one in the wrong voice.
+	public private(set) var enumerations = 0
+
+	public func identifiers() -> [String] {
+		enumerations += 1
+		return voices
+	}
 }

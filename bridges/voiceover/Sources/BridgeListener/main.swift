@@ -3,11 +3,12 @@
 //
 // AN AMENDMENT TO SPEC 0046's 13.4 LAYOUT, with its why: the layout has no entry
 // for it, and without it nothing outside a test can make this bridge listen --
-// the control dialog that will is 13.10. An entry whose headline is "the bridge
-// LISTENS" needs a way to see it listen that is not a unit test, and this repo's
-// rule is that anything a check depends on is VERSIONED rather than improvised
-// in a scratch directory (the 2026-08-22 rule). So it is here, reviewable, in
-// thirty lines.
+// the control dialog that will is a later entry, deferred on 2026-08-30 until the
+// bridge can drive VoiceOver over its own window. An entry whose headline is "the
+// bridge LISTENS" needs a way to see it listen that is not a unit test, and this
+// repo's rule is that anything a check depends on is VERSIONED rather than
+// improvised in a scratch directory (the 2026-08-22 rule). So it is here,
+// reviewable, and it is what STARTS A BRIDGE on this platform today.
 //
 // IT IS A COMPOSITION ROOT'S CLIENT AND NOTHING ELSE. Every decision it makes is
 // a command-line flag read into a BridgeConfig; the graph is Wiring's. If logic
@@ -16,43 +17,112 @@
 // NOT IN THE .app, deliberately: build.sh assembles the shipped bundle and does
 // not copy this. `swift build --product BridgeListener` is how you get it.
 //
+// IT READS THE PERSISTED SETTINGS AND LETS FLAGS OVERRIDE THEM (13.10). Until
+// there is a dialog, the stored preferences are the only place a machine's
+// choices can live -- so this launcher starts from them and every flag below wins
+// over what is stored, which keeps an invocation reproducible from its own
+// command line while a machine that has been configured stays configured.
+//
+// AND IT SAYS WHAT THE MACHINE CAN DO BEFORE ANYTHING IS PRESSED. The capture
+// voice's state, whether AppleScript control of VoiceOver is on, and which
+// permissions are held: three answers that decide whether a run is going to work,
+// printed at startup rather than discovered as a failure ten commands in. None of
+// them asks a human for anything -- `status` shows no dialog, and the scripting
+// setting is two file reads.
+//
 // Usage:
 //   BridgeListener [--tcp [port]] [--endpoint <name-or-path>] [--unattended]
+//                  [--print-cues]
 
 import Foundation
 import VoiceOverBridgeAdapters
 import VoiceOverBridgeDomain
 
-/// The launcher's own settings object: an in-memory BridgeConfig, because there
-/// is no persisted one until 13.10 gives the dialog something to persist.
+/// The launcher's settings: whatever is stored, with this run's flags on top.
+///
+/// IT IS A DECORATOR RATHER THAN A COPY, so a flag overrides for THIS run and
+/// changes nothing on the machine: reading falls through to the stored value
+/// unless this invocation said otherwise, and nothing here writes. That is what
+/// keeps a live check reproducible from its own command line -- the 2026-08-22
+/// rule's spirit -- while a machine somebody has configured stays configured.
 final class LaunchConfig: BridgeConfig {
-	var connectionMode: ConnectionMode = .default
-	var endpointName: String = defaultEndpointName
-	var loopbackPort: Int = defaultLoopbackPort
-	var attended: Bool = true
+	private let stored: any BridgeConfig
+	private var modeOverride: ConnectionMode?
+	private var nameOverride: String?
+	private var portOverride: Int?
+	private var attendedOverride: Bool?
+
+	init(stored: any BridgeConfig) {
+		self.stored = stored
+	}
+
+	var connectionMode: ConnectionMode {
+		get { modeOverride ?? stored.connectionMode }
+		set { modeOverride = newValue }
+	}
+
+	var endpointName: String {
+		get { nameOverride ?? stored.endpointName }
+		set { nameOverride = newValue }
+	}
+
+	var loopbackPort: Int {
+		get { portOverride ?? stored.loopbackPort }
+		set { portOverride = newValue }
+	}
+
+	var attended: Bool {
+		get { attendedOverride ?? stored.attended }
+		set { attendedOverride = newValue }
+	}
+
+	/// Not overridable from the command line: whether the machine plays its cues
+	/// is a fact about the ROOM, and a flag that silenced them for one run would
+	/// be an agent-shaped decision about what a person hears.
+	var cuesEnabled: Bool {
+		get { stored.cuesEnabled }
+		set { stored.cuesEnabled = newValue }
+	}
 }
 
-/// Cues printed rather than played: this launcher is run from a terminal by
-/// somebody watching it, and the real macOS cue adapter is 13.10's.
-final class PrintingSignals: SessionSignals {
-	func sessionStarted(persona: String) {
+/// The real cues, with a line in the terminal beside each one.
+///
+/// BOTH, AND NEITHER IS DECORATION. The tones and the spoken persona are for the
+/// person at the machine -- they are the signal that something has taken their
+/// screen reader -- and the printed line is for whoever is watching the terminal,
+/// who can scroll back. `--print-cues` drops the audible half for a developer
+/// working in a room with other people; the preference that silences it for good
+/// is the machine's own `cuesEnabled`.
+final class ReportingSignals: SessionSignals {
+	private let audible: (any SessionSignals)?
+
+	init(audible: (any SessionSignals)?) {
+		self.audible = audible
+	}
+
+	func sessionStarted(persona: String) throws {
 		print("session started (persona: \(persona.isEmpty ? "-" : persona))")
+		try audible?.sessionStarted(persona: persona)
 	}
 
-	func sessionEnded() {
+	func sessionEnded() throws {
 		print("session ended")
+		try audible?.sessionEnded()
 	}
 
-	func silenceWarning() {
+	func silenceWarning() throws {
 		print("SILENCE CAP: the human has not heard their machine for a while")
+		try audible?.silenceWarning()
 	}
 
-	func silenceLifted() {
+	func silenceLifted() throws {
 		print("SILENCE CAP: LIFTED -- the machine is audible again")
+		try audible?.silenceLifted()
 	}
 }
 
-let config = LaunchConfig()
+let config = LaunchConfig(stored: Wiring.bridgeConfig())
+var playCues = true
 var arguments = Array(CommandLine.arguments.dropFirst())
 while let argument = arguments.first {
 	arguments.removeFirst()
@@ -72,6 +142,8 @@ while let argument = arguments.first {
 		arguments.removeFirst()
 	case "--unattended":
 		config.attended = false
+	case "--print-cues":
+		playCues = false
 	default:
 		FileHandle.standardError.write(Data("unknown flag: \(argument)\n".utf8))
 		exit(2)
@@ -84,7 +156,11 @@ _ = bus.subscribe { event in
 		print("server: \(status.state.rawValue)\(status.endpoint.map { " on \($0)" } ?? "")")
 	}
 }
-let server = Wiring.bridgeServer(config: config, signals: PrintingSignals(), eventBus: bus)
+let server = Wiring.bridgeServer(
+	config: config,
+	signals: ReportingSignals(audible: playCues ? Wiring.sessionSignals(config: config) : nil),
+	eventBus: bus
+)
 
 // Interrupt has to reach the accept loop, and the handler runs on a queue rather
 // than in the signal context: stop() takes a lock and waits on a thread, neither
@@ -118,4 +194,24 @@ print("writing capture mode to \(Wiring.markerPath())")
 // going to fail says so before a human starts pressing keys -- by name, with the
 // recovery, which is the whole point of ProviderState.
 print("capture voice: \(Wiring.providerLifecycle().state().report)")
+// AND THE TWO ANSWERS THE READER'S OWN SETTINGS OWE (13.10). AppleScript control
+// is a PRECONDITION -- observable, unsettable by this bridge, and required -- so
+// the recovery is printed with it rather than left to be rediscovered when every
+// gesture fails with -1743.
+switch Wiring.readerScripting().scripting() {
+case .enabled:
+	print("AppleScript control of VoiceOver: on")
+case .disabled:
+	print("AppleScript control of VoiceOver: OFF -- \(Precondition.readerScripting.recovery)")
+case .unknown:
+	print("AppleScript control of VoiceOver: cannot tell (neither location could be read)")
+}
+// The permissions, READ and never requested: `status` shows no dialog, which is
+// what makes it safe to print on a machine nobody is sitting at. The only
+// COMMAND that asks for one is `typeText`.
+let broker = Wiring.permissionBroker()
+for permission in Permission.allCases {
+	let held = broker.status(of: permission) == .granted
+	print("permission \(permission.rawValue): \(held ? "granted" : "not granted")")
+}
 dispatchMain()

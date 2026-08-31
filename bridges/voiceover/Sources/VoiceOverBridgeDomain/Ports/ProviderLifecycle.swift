@@ -3,7 +3,7 @@
 //
 // ELEMENT 2 OF THE FIVE, NAMED RATHER THAN HIDDEN INSIDE A HEALTH CHECK (spec
 // 0046, part 3). Detection and selection are one component because they are one
-// state machine, and the dialog's capture-voice row (13.10) is a view of it.
+// state machine, and a control surface's capture-voice row is a view of it.
 //
 // IMPLEMENTED BY: PluginKitProviderLifecycle (adapters); FakeProviderLifecycle
 // (Tests/Fakes).
@@ -23,7 +23,7 @@
 // 0046's 13.6 table and are deliberately absent: re-registration only takes
 // effect after the reader is RESTARTED (spec 0047, finding 6), and restarting a
 // blind person's screen reader is not something a handshake may decide. They
-// arrive with the control dialog (13.10), beside the row that a human drives --
+// arrive with the control dialog, beside the row that a human drives --
 // which is the same rule as "a capability is announced by the entry that
 // implements it", applied to a port.
 

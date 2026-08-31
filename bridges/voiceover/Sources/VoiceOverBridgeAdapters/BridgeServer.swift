@@ -7,8 +7,9 @@
 //
 // HOLDS: a Listener, and a factory that turns an accepted Transport into a
 // Session. It owns the server thread.
-// BUILT BY: Wiring. USED BY: the control dialog (13.10), which is why start,
-// stop and an observable status are the whole public surface.
+// BUILT BY: Wiring. USED BY: the launcher today and the control dialog when it
+// lands, which is why start, stop and an observable status are the whole public
+// surface.
 //
 // ONE SESSION AT A TIME: accept, build, run it inline on the server thread, go
 // back to accepting. It touches nothing a session owns -- the promise that a

@@ -3,9 +3,10 @@
 //
 // IMPLEMENTED BY: SimpleEventBus (adapters); FakeEventBus (Tests/Fakes).
 // EMITTED TO BY: BridgeServer, after every state transition.
-// SUBSCRIBED TO BY: nothing yet -- the control dialog is 13.10. The port is here
-// because BridgeServer is here, and a server that gained an observer later would
-// have to grow one into a class that had already been written without one.
+// SUBSCRIBED TO BY: the launcher, which prints each transition, and by the
+// control dialog when it lands. The port is here because BridgeServer is here,
+// and a server that gained an observer later would have to grow one into a class
+// that had already been written without one.
 //
 // THE EVENT TYPES LIVE IN THIS FILE, WITH THE PORT THAT CARRIES THEM, and that
 // is a departure from the NVDA bridge worth stating. There, the payload is
@@ -16,7 +17,8 @@
 //
 // HANDLERS ARE CALLED ON THE PUBLISHER'S THREAD, which is the accept loop's.
 // A subscriber that touches AppKit marshals to the main thread itself; that is
-// the macOS rendering of the NVDA main-thread rule, and 13.10 is where it bites.
+// the macOS rendering of the NVDA main-thread rule, and the control dialog is
+// where it will bite.
 
 /// What the connection edge is doing.
 public enum ServerState: String, Equatable, Sendable {
