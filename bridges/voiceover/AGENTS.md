@@ -523,21 +523,39 @@ change. Any command that arrives inside that window makes VoiceOver **cancel**
 the pending utterance, and a cancelled utterance is one this bridge never sees at
 all: the capture point is the SYNTHESIZER, downstream of the reader's own queue.
 
-**That is the architectural difference from lane 1, and it is worth knowing in
-both directions.** The NVDA bridge captures at `speech.extensions.filter_speechSequence`
+**That is one of two architectural differences from lane 1, and both are worth
+knowing in both directions.** The NVDA bridge captures at `speech.extensions.filter_speechSequence`
 — *queue* time, upstream of any cancellation — so a cancelled utterance there has
 already been captured. `getSpeech` therefore means "what the reader queued" on one
 bridge and "what the reader handed to a synthesizer" on the other. Neither is
 wrong; they are not the same sentence.
 
-**The ORDER of announcement and dispatch also differs**, and this is the half that
-decides how long a wait has to be. NVDA reports and then passes the key down, so
-the announcement is the reader's own and its latency is the reader's. VoiceOver
-passes the key down FIRST and announces what comes back — so the text utterance is
-a *reaction*, and its delay belongs to the APPLICATION. A native window answers in
-milliseconds; web content crosses into the browser's out-of-process accessibility
-and takes as long as it takes. **No constant is right for both**, which is why
-board entry 13.18 is an investigation rather than a parameter.
+**AND THE CAPTURE PATH IS IPC HERE AND A FUNCTION CALL THERE**, which is the
+difference that decides how wide a wait has to be. Lane 1's bridge is an add-on
+**inside the NVDA process**: `filter_speechSequence` is called on NVDA's own
+thread, so capture costs a function call and its latency is nil. Here the reader,
+the capture voice and the bridge are **three processes**. VoiceOver hands the
+utterance to the capture voice (its own `.appex`), which appends a JSON line to a
+file in its container, which `FileLineTailer` **polls every 50 ms** — a cadence
+its own header calls "a deliberate floor on the feed's latency, and the one number
+in this class a live run should be measured against".
+
+**So `graceMs`'s default of 100 ms is about two poll intervals wide here, and
+effectively unbounded there.** Same field, same number, same contract — and on
+this bridge some of it is spent before any utterance is visible at all. Nothing
+has yet measured how much of a real grace window the pipe consumes; that is board
+entry 13.18, and it is why that entry is an investigation rather than a parameter.
+
+**What the pipe does NOT distort is `emittedAt`.** The stamp is taken in the
+capture voice's own process at the moment the utterance arrives
+(`ContainerFileUtteranceSink`, `at: Date().timeIntervalSince1970`) and travels in
+the line; `ContainerFileSpeechSource` reads it rather than re-stamping, "so
+`emittedAt` means the instant of EMISSION and survives". **That is what makes the
+gaps above trustworthy** — they are differences between two upstream stamps, not
+between two poll ticks, and the silent figure landing near the poll interval is a
+coincidence rather than a measurement of our own tailer. What the pipe delays is
+*when a session can see* an utterance, which is what a grace window is actually
+racing.
 
 **`graceMs` returns on the FIRST utterance**, in both bridges and by contract
 (`protocol.md` §5, spec 0025) — `SpeechBuffer.collectSince` waits for speech to

@@ -1458,18 +1458,37 @@ rule intends.
     help. What is missing is the COMPOSITION: start, **then** quiet. That has a
     start condition, so the objection against quiescence does not reach it.
 
+    **AND THE THIRD CAUSE IS OUR OWN PIPE, which nothing has measured.** Lane 1's
+    bridge runs INSIDE the NVDA process -- `filter_speechSequence` is a function
+    call on NVDA's own thread -- so its capture latency is nil and `graceMs` races
+    nothing. Here the reader, the capture voice and the bridge are **three
+    processes**: VoiceOver hands the utterance to the `.appex`, which appends a
+    JSON line to a file in its container, which `FileLineTailer` **polls every 50
+    ms**. Its own header already calls that cadence "a deliberate floor on the
+    feed's latency, and the one number in this class a live run should be measured
+    against" (spec 0046, open question 3). **So `graceMs`'s default of 100 ms is
+    about two poll intervals wide on this bridge and effectively unbounded on the
+    other one** -- the same field, the same number, and a different meaning.
+
+    The gap figures above are NOT distorted by that, and it is worth saying why
+    before anyone re-derives it: `emittedAt` is stamped in the capture voice's own
+    process when the utterance arrives and travels in the line, so a gap is the
+    difference between two upstream stamps rather than between two poll ticks. What
+    the pipe delays is WHEN A SESSION CAN SEE an utterance -- which is exactly what
+    a grace window races.
+
     **Why this is an investigation and not a wire change.** The obvious answer is a
     second field beside `graceMs` meaning "wait for it to start, then for it to
-    stop" -- and it would be wrong to ship on the reasoning above, because **no
-    constant is right**. VoiceOver passes the keystroke down to the application
-    FIRST and announces what comes back, so the text utterance's latency belongs to
-    the APPLICATION rather than to the reader: milliseconds in a native window,
-    and an out-of-process accessibility round trip in web content. (NVDA reverses
-    that order -- it reports, then passes the key down -- which is why lane 1's
-    "one announcement ~124 ms after a keystroke" is true there and false here.)
+    stop" -- and it would be wrong to ship on the reasoning above, because nobody
+    has yet separated the three causes. Until the pipe's own contribution is known,
+    any constant chosen would be fitted to a number that is partly ours.
 
     **So the entry owes measurements before it owes a design**, and they are
     cheap:
+    - **how much of a grace window the pipe consumes**: time from `emittedAt` to
+      the instant the utterance becomes readable in a session, and how that moves
+      when `FileLineTailer`'s poll interval is varied. That separates our latency
+      from the reader's and is the first thing to know;
     - the role-to-text gap in a NATIVE window against WEB content, in silent, on
       the same command shape -- which sizes any cap, or shows that a cap is the
       wrong shape;
@@ -1479,9 +1498,9 @@ rule intends.
       element has no text", which is what any wait has to answer and may not be
       answerable at all.
 
-    **It is VoiceOver-only, deliberately.** Lane 1 has neither cause: it captures
-    at queue time, so cancellation costs it nothing, and it reports before
-    dispatching, so its announcement latency is its own. A contract change made for
+    **It is VoiceOver-only, deliberately.** Lane 1 has none of the three causes: it
+    captures at queue time, so cancellation costs it nothing, and it captures
+    in-process, so there is no pipe to race. A contract change made for
     this reader's problem would make lane 1 pay a settle on every keypress for an
     announcement that has already arrived -- which is what spec 0025 chose the
     early return to avoid.

@@ -125,16 +125,17 @@ text.
 ", COMO ESCREVER CARACTERES ACENTUADOS NO IOS 11.0 …"       <- the text
 ```
 
-**The second one's delay belongs to the APPLICATION, not to the reader.** This
-reader passes your keystroke down to the application first and announces what
-comes back — so the text arrives when the application's accessibility tree
-answers. In a native window that is milliseconds. In web content it crosses into
-the browser's out-of-process accessibility and takes as long as it takes. **On
-the other reader in this contract the order is reversed** — it reports first and
-passes the key down afterwards — which is why a habit brought from there
-misfires here.
+**And there is a pipe between the reader and you.** On this platform the reader,
+the voice that captures its speech and this bridge are three separate processes,
+so an utterance reaches a session over IPC rather than in memory — which is not
+true of every reader, and means a wait that is generous elsewhere can be tight
+here. Budget for it: when in doubt, give a grace window more room than you think
+it needs, and read again from `speech_to` rather than concluding the reader said
+nothing.
 
-Measured on macOS 15.0, 2026-08-31, in Safari web content:
+Measured on macOS 15.0, 2026-08-31, in Safari web content — these are differences
+between two emission stamps, so they are the reader's own timing and not the
+pipe's:
 
 | Session | Role → text gap |
 |---|---|
