@@ -1507,9 +1507,16 @@ rule intends.
       element has no text", which is what any wait has to answer and may not be
       answerable at all.
 
-    **It is VoiceOver-only, deliberately.** Lane 1 has none of the three causes: it
-    captures at queue time, so cancellation costs it nothing, and it captures
-    in-process, so there is no pipe to race. A contract change made for
+    **It is VoiceOver-only, deliberately, and that was verified rather than
+    assumed.** Read out of `../nvda` at `release-2026.1` on 2026-08-31: NVDA's
+    `SpeechManager` DOES wait for the synth before pushing the next sequence
+    (`_onSynthDoneSpeaking` -> `_handleDoneSpeaking` -> `_pushNextSpeech(True)`,
+    `source/speech/manager.py`), so "NVDA does not pace" would have been wrong.
+    What makes lane 1 immune is that `filter_speechSequence.apply()` is the FIRST
+    LINE of `speak()` (`source/speech/speech.py:1096`) -- upstream of the manager,
+    the queue and the synth alike. So it captures what the reader DECIDED to say;
+    this bridge captures what got as far as being SPOKEN. Lane 1 also captures
+    in-process, so it has no pipe to race. A contract change made for
     this reader's problem would make lane 1 pay a settle on every keypress for an
     announcement that has already arrived -- which is what spec 0025 chose the
     early return to avoid.

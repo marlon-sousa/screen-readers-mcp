@@ -125,6 +125,15 @@ text.
 ", COMO ESCREVER CARACTERES ACENTUADOS NO IOS 11.0 …"       <- the text
 ```
 
+**If you have driven NVDA, this is where your instincts are wrong.** Both readers
+wait for the synthesizer before moving on — that part is the same. What differs is
+that NVDA's bridge captures speech *before* the reader queues it, so a session
+there sees everything the reader decided to say whatever the synthesizer is doing,
+and whether or not the speech was later cancelled. **Here the capture point is the
+synthesizer itself.** An utterance the reader cancels before speaking it is one
+you never see — it is not delayed, it is gone. That is why `silent` and `live`
+change what you can read on this reader and change nothing on that one.
+
 **And there is a pipe between the reader and you.** On this platform the reader,
 the voice that captures its speech and this bridge are three separate processes,
 so an utterance reaches a session over IPC rather than in memory — which is not

@@ -524,11 +524,30 @@ the pending utterance, and a cancelled utterance is one this bridge never sees a
 all: the capture point is the SYNTHESIZER, downstream of the reader's own queue.
 
 **That is one of two architectural differences from lane 1, and both are worth
-knowing in both directions.** The NVDA bridge captures at `speech.extensions.filter_speechSequence`
-— *queue* time, upstream of any cancellation — so a cancelled utterance there has
-already been captured. `getSpeech` therefore means "what the reader queued" on one
-bridge and "what the reader handed to a synthesizer" on the other. Neither is
-wrong; they are not the same sentence.
+knowing in both directions.**
+
+**BOTH READERS PACE THEIR QUEUE ON THE SYNTHESIZER. What differs is where capture
+sits relative to that pacing** — read out of `../nvda` at `release-2026.1`,
+2026-08-31, rather than assumed:
+
+- NVDA's `SpeechManager` holds `pendingSequences` and pushes the next one when the
+  synth reports done: `_onSynthDoneSpeaking` → `_handleDoneSpeaking` →
+  `_pushNextSpeech(True)` (`source/speech/manager.py`). So it waits, exactly as
+  VoiceOver does.
+- **But `filter_speechSequence.apply(speechSequence)` is the FIRST LINE of
+  `speak()`** (`source/speech/speech.py:1096`) — before the priority handling,
+  before the manager, before the synth exists in the story. Lane 1 therefore
+  captures **upstream of its own queue**, and this bridge captures **at the
+  synthesizer**, downstream of the reader's.
+
+So the agent-visible consequence, which is the part to tell an agent: on NVDA a
+session sees everything the reader **decided to say**, at the instant it decided,
+whatever the synth is doing and whether or not the speech is later cancelled. Here
+a session sees what got as far as **being spoken**. `getSpeech` means "what the
+reader queued" on one bridge and "what the reader handed to a synthesizer" on the
+other — neither is wrong, and they are not the same sentence. **It is also why
+`silent` versus `live` changes what an agent can read here and changes nothing at
+all on NVDA.**
 
 **AND THE CAPTURE PATH IS IPC HERE AND A FUNCTION CALL THERE**, which is the
 difference that decides how wide a wait has to be. Lane 1's bridge is an add-on
