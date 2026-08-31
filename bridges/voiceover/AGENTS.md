@@ -590,6 +590,21 @@ shapes:
   reading exactly like "the reader never said it". Measured on 2026-08-30, in the
   tests, which is the only reason it was not measured live instead. Whatever a
   background loop must not miss, capture it on the caller's thread.
+- **DO NOT RUN THE BRIDGE UNDER `script(1)`, and fix the buffering instead.**
+  Swift's `print` is block-buffered when stdout is not a terminal, so
+  `BridgeListener > run.log &` shows nothing at all while it runs -- which is
+  exactly how a live check captures the startup report. The obvious workaround is
+  a pty: `script -q run.log BridgeListener`. **It breaks the accessibility
+  reads.** Measured 2026-08-31: under `script -q`, `getFocusInfo` answered
+  `-25204 kAXErrorCannotComplete` for *every* application, while the same build
+  launched directly answered `AXList / com.apple.finder` immediately, and
+  `scripts/voiceover_focus.sh` had been reporting a healthy tree the whole time.
+  An hour went into suspecting the bridge, `NSWorkspace.frontmostApplication`,
+  the SSH session and a wedged Finder before the harness turned out to be the
+  variable. `BridgeListener` now sets `setbuf(stdout, nil)`, so the report is
+  visible in a plain redirect and there is no reason to reach for a pty. **The
+  general lesson is the one this repo keeps relearning: when a measurement
+  disagrees with a versioned instrument, suspect the harness before the code.**
 - **macOS filesystems are case-insensitive by default, so two source files whose
   names differ only in case are ONE file to the build.** `Ports/TcpBinder.swift`
   beside `TCPBinder.swift` compiled, and one object file silently overwrote the
@@ -618,3 +633,13 @@ shapes:
 - **VoiceOver crashes on the maintainer's machine as routine weather**, so lane
   3's live checklists measure the crash census from two independent sources and
   every check is independently re-runnable from a cold start. Spec 0046 part 1(c).
+  **The two sources, and how to read them** (13.11's live run used both):
+  `~/Library/Logs/DiagnosticReports/` and the `Retired/` directory beneath it
+  hold the `.ips` reports, one per crash, named with a timestamp; and VoiceOver
+  keeps its own count in `SCRCUserDefaultsUnplannedShutdownCount` inside
+  `com.apple.VoiceOver4.local.plist` (spec 0046 part 2). They can disagree, which
+  is why there are two. **And the weather is not constant**: measured 2026-08-31,
+  six reports all dated 2026-08-28 and none in the three days since, with the
+  reader's own counter at 0. A burst rather than a drizzle -- so "it crashed"
+  is a hypothesis to check against both sources, not a default explanation for a
+  quiet read.

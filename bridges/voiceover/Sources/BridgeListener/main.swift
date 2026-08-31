@@ -42,6 +42,25 @@ import Foundation
 import VoiceOverBridgeAdapters
 import VoiceOverBridgeDomain
 
+// STDOUT IS UNBUFFERED, AND THIS ONE LINE COST AN EVENING'S CONFUSION.
+//
+// Swift's `print` is BLOCK-buffered when stdout is not a terminal, so every line
+// below -- the endpoint, the capture voice's state, the permission rows -- is
+// invisible for as long as this process runs if you redirect it to a file or a
+// pipe. Which is exactly what a live check does: `BridgeListener > run.log &`,
+// and then nothing to read while you wonder whether it started.
+//
+// THE WORKAROUND SOMEBODY WILL REACH FOR IS WORSE THAN THE PROBLEM. Running this
+// under `script(1)` to get a pty does make the output appear -- and it also
+// breaks the accessibility reads: measured 2026-08-31, `getFocusInfo` answered
+// `-25204 kAXErrorCannotComplete` for every application under `script -q`, and
+// the same build launched directly answered `AXList / com.apple.finder`
+// immediately. An hour went into suspecting the bridge, `NSWorkspace`, the SSH
+// session and a wedged Finder before the harness turned out to be the variable.
+// So the buffering is fixed here, where it belongs, rather than worked around
+// where it bites.
+setbuf(stdout, nil)
+
 /// The launcher's settings: whatever is stored, with this run's flags on top.
 ///
 /// IT IS A DECORATOR RATHER THAN A COPY, so a flag overrides for THIS run and

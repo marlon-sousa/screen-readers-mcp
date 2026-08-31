@@ -490,6 +490,11 @@ the machine can do before anything is pressed: the capture voice's state, whethe
 AppleScript control is on, and which permissions are held. Reading those costs
 nothing and asks nobody for anything.
 
+**Redirect it to a file if you like; do NOT wrap it in `script(1)`.** Running the
+bridge under a pty breaks the accessibility reads — every `get_focus_info`
+answers `-25204` — and the failure looks exactly like a broken bridge. Its stdout
+is unbuffered, so a plain `> run.log` shows everything as it happens.
+
 Confirm the endpoint exists:
 
 ```sh
