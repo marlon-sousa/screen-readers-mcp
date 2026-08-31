@@ -1,9 +1,9 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/GetFocusInfo.swift.
 //
 // TWO PROPERTIES CARRY THIS FILE, and both are about what the handler does NOT
-// do. It never asks the permission broker anything -- the grant is requested
-// from exactly one place in this bridge, and adding a second caller would spend
-// the lane's one design lever. And it does not interpret the snapshot: `value`
+// do. It never asks the permission broker anything -- the grant is requested only
+// by a command that POSTS A SYSTEM EVENT, and a command that merely reads where
+// the focus is joining them would spend the lane's one design lever. And it does not interpret the snapshot: `value`
 // and `appModule` are optional on the wire so that "the element has no value"
 // can be told from "the frame forgot the field", and a handler that helpfully
 // turned nil into "" would erase exactly that distinction.
@@ -90,10 +90,10 @@ struct GetFocusInfoTests {
 	@Test("ANSWERING FOCUS NEVER TOUCHES THE PERMISSION BROKER -- neither status nor request")
 	func focusAsksTheBrokerNothing() throws {
 		// 13.8's lever, defended at the one entry that could quietly spend it. The
-		// grant is requested from exactly one place in this repository, the
-		// TypeText handler, and focus reads whether it is held through an ADAPTER
-		// seam -- a question that shows no dialog -- so the domain's broker is not
-		// on this path at all. A `status` read here would be harmless today and
+		// grant is requested only by a command that is about to post a system event
+		// -- a `typeText`, or a keystroke `pressGesture` -- and focus reads whether
+		// it is held through an ADAPTER seam, a question that shows no dialog, so
+		// the domain's broker is not on this path at all. A `status` read here would be harmless today and
 		// would put `request` one line away tomorrow.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		_ = try result(context(permissions: permissions))

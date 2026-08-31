@@ -11,10 +11,12 @@
 //  * It takes a PermissionBroker, and the real one's `request` raises a system
 //    consent dialog and leaves the process on a list that STAYS granted
 //    afterwards. There is no undo, and 13.8's whole claim is that this bridge
-//    asks for that grant exactly once, from exactly one place. No test may touch
-//    the real grant.
+//    asks for that grant only when a COMMAND is about to post a system event. No
+//    test may touch the real grant.
 //  * It takes an EventPoster, and the real one types into whatever window the
-//    developer has in front of them at that moment.
+//    developer has in front of them at that moment -- which since 13.17 includes
+//    pressing CHORDS into it. A stray Command-W in a test run closes the window
+//    the developer is reading the failure in.
 //  * SINCE 13.10 it takes an Announcer and a UserPrompter, and the real ones
 //    SPEAK OUT LOUD and OPEN A WINDOW that steals focus -- on a machine that may
 //    have a screen reader running, which would then announce a dialog nobody
@@ -24,7 +26,10 @@
 // kind: the focus trio (`tree`, `frontmost`, `trust`) changes nothing on the
 // machine, but the real ones answer with whatever the developer has in front of
 // them RIGHT NOW. A scenario built on those would assert against a desktop
-// rather than against this bridge.
+// rather than against this bridge. 13.17's KEYBOARD LAYOUT is the same kind
+// again: reading it asks for nothing and changes nothing, and its answer is
+// whatever keyboard the developer types on -- Brazilian here, American in CI --
+// so a scenario built on the real one would assert against a person's hardware.
 //
 // So every test that needs a factory gets one from here, with a fake for every
 // one of them, a capture path nothing writes and a marker path nothing reads. The ONLY
@@ -44,6 +49,7 @@ public func testAdapterFactory(
 	scripts: any AppleScriptRunner = FakeAppleScriptRunner(),
 	permissions: any PermissionBroker = FakePermissionBroker(),
 	poster: any EventPoster = FakeEventPoster(),
+	layout: any KeyboardLayout = FakeKeyboardLayout(),
 	tree: any AccessibilityTree = FakeAccessibilityTree(),
 	frontmost: any FrontmostApplication = FakeFrontmostApplication(),
 	trust: any AccessibilityTrust = FakeAccessibilityTrust(),
@@ -57,6 +63,7 @@ public func testAdapterFactory(
 		scripts: scripts,
 		permissions: permissions,
 		poster: poster,
+		layout: layout,
 		tree: tree,
 		frontmost: frontmost,
 		trust: trust,
@@ -70,8 +77,9 @@ public func testAdapterFactory(
 /// The fields arrived one entry at a time and will keep doing so, so a test that
 /// spells the initializer out is a test that has to be edited by every future
 /// entry for reasons that have nothing to do with what it asserts. Two arrived
-/// with 13.7, two more with 13.8, one with 13.9 and two with 13.10, and this
-/// helper is why nothing but the factory noticed any of the four times.
+/// with 13.7, two more with 13.8, one with 13.9, two with 13.10 and one with
+/// 13.17, and this helper is why nothing but the factory noticed any of the five
+/// times.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
@@ -80,6 +88,7 @@ public func fakeAdapterSet(
 	gestureSender: FakeGestureSender = FakeGestureSender(),
 	readerLiveness: FakeReaderLiveness = FakeReaderLiveness(),
 	textTyper: FakeTextTyper = FakeTextTyper(),
+	keyPresser: FakeKeyPresser = FakeKeyPresser(),
 	permissions: FakePermissionBroker = FakePermissionBroker(),
 	focusInspector: FakeFocusInspector = FakeFocusInspector(),
 	announcer: FakeAnnouncer = FakeAnnouncer(),
@@ -93,6 +102,7 @@ public func fakeAdapterSet(
 		gestureSender: gestureSender,
 		readerLiveness: readerLiveness,
 		textTyper: textTyper,
+		keyPresser: keyPresser,
 		permissions: permissions,
 		focusInspector: focusInspector,
 		announcer: announcer,

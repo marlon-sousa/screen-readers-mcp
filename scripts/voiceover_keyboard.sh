@@ -21,10 +21,12 @@
 # `voiceover_channels.sh` needs only AppleEvents access to VoiceOver; this one
 # needs Accessibility (`kTCCServiceAccessibility`), which is the grant board
 # entry 13.8 exists to keep LAZY -- the bridge asks for it on the first
-# `typeText` of a session and nowhere else. Keeping the scripts apart is part of
-# what makes "a session that only presses commands and reads speech never
+# `typeText` of a session, and since 13.17 on the first KEYSTROKE `pressGesture`
+# of one, and nowhere else. Keeping the scripts apart is part of what makes "a
+# session that presses only the reader's COMMAND NAMES and reads speech never
 # triggered an Accessibility request" a checkable statement: you can run the
 # gesture probe on a machine that has never granted Accessibility, and it works.
+# `scripts/voiceover_chords.sh` is on THIS side of the line, for this reason.
 # Merging the two would quietly require the wider grant to measure the narrower
 # channel.
 #

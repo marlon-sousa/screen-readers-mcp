@@ -22,9 +22,10 @@
 // either.
 //
 // THE GRANT IS READ, NEVER REQUESTED. `AccessibilityTrust.isTrusted()` shows no
-// dialog and adds this process to no list; the only call to
-// `PermissionBroker.request` in this repository is in the TypeText handler, and
-// 13.8's whole lever is that it stays the only one. So focus is RICHER on a
+// dialog and adds this process to no list; every call to
+// `PermissionBroker.request` in this repository is in a command handler that is
+// about to post a system event -- a `typeText`, or a keystroke `pressGesture` --
+// and 13.8's lever is that reading focus never joins them. So focus is RICHER on a
 // machine where typing has already been granted and works everywhere else --
 // which is the honest shape for a capability that cannot pay for itself.
 //

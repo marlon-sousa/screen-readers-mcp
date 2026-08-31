@@ -10,24 +10,31 @@
 // session (spec 0017) refuses it.
 //
 // ============================================================================
-// THE ACCESSIBILITY GRANT IS REQUESTED HERE, ON THE FIRST typeText, AND NOWHERE
-// ELSE IN THE BRIDGE.
+// THE ACCESSIBILITY GRANT IS REQUESTED HERE, ON THE FIRST typeText -- AND SINCE
+// 13.17 FROM ONE OTHER PLACE, WHICH IS A KEYSTROKE `pressGesture`.
 // ============================================================================
 //
-// That is the entry's whole point rather than a detail of it. The two halves of
-// input cost different permissions (spec 0041): pressing one of the reader's own
-// commands is an AppleEvent, typing is `kTCCServiceAccessibility`. Windows has
-// no equivalent gate, so lane 1 has no analogue and there is nothing to copy --
-// this is the one design lever lane 3 has that lane 1 cannot have. Keeping the
-// two apart is what makes
+// That is 13.8's whole point rather than a detail of it. The two halves of input
+// cost different permissions (spec 0041): pressing one of the reader's own
+// COMMAND NAMES is an AppleEvent, typing is `kTCCServiceAccessibility`. Windows
+// has no equivalent gate, so lane 1 has no analogue and there is nothing to copy
+// -- this is the one design lever lane 3 has that lane 1 cannot have. Keeping
+// them apart is what makes
 //
-//     "a session that only presses commands and reads speech never triggers an
-//      Accessibility request"
+//     a session that presses only the reader's COMMAND NAMES and reads speech
+//     never triggers an Accessibility request
 //
-// a CHECKABLE statement rather than an intention: the only call to
-// `PermissionBroker.request` in this repository is the one below. Not at
-// construction, not in Wiring, not in the adapter factory, not in the doctor,
-// not in a probe, and not in a test.
+// a CHECKABLE statement rather than an intention. 13.17 narrowed that sentence
+// by one word and did not spend it: `pressGesture` also takes keystrokes now,
+// and a keystroke is a system event costing the same grant, so there are exactly
+// TWO callers of `PermissionBroker.request` in this repository -- this command
+// and that one, both handlers, both on the first act of a session that needs it.
+// Not at construction, not in Wiring, not in the adapter factory, not in the
+// doctor, not in a probe, and not in a test.
+//
+// THE CHECK ITSELF LIVES IN `AccessibilityGrant`, shared between the two, for
+// the reason `HumanWarning` is shared: two commands that must not differ about
+// whether somebody's machine raises a consent dialog should not be able to.
 //
 // THE CHECK COMES BEFORE THE INJECTION BECAUSE THE INJECTION CANNOT FAIL
 // VISIBLY. An event posted by an untrusted process is dropped by the window
@@ -64,7 +71,7 @@ public final class TypeTextHandler: CommandHandler {
 		// the two commands cannot come to differ about a human's ears.
 		try HumanWarning.honour(context, params.announce)
 
-		try ensureTypingIsAllowed(adapters.permissions)
+		try AccessibilityGrant.ensure(adapters.permissions, orElse: "nothing was typed")
 
 		let startIndex = buffer.nextIndex()
 		// Recorded BEFORE the injection, mirroring `pressGesture`: the attempt is
@@ -108,26 +115,6 @@ public final class TypeTextHandler: CommandHandler {
 	/// comparable.
 	static func count(_ text: String) -> Int {
 		text.unicodeScalars.count
-	}
-
-	/// Ask for the Accessibility grant if this process does not already hold it.
-	///
-	/// THE ONLY CALLER OF `request` IN THE BRIDGE. See the header.
-	///
-	/// `status` first, so a session that already has the grant costs nothing and
-	/// raises nothing. A request that does not immediately produce a grant is
-	/// reported as NOT YET rather than as a refusal: macOS raises a dialog that
-	/// sends the human to System Settings, and they act on it long after this call
-	/// has returned. Telling an agent it was refused would send it looking for a
-	/// decision nobody has made yet.
-	private func ensureTypingIsAllowed(_ broker: any PermissionBroker) throws {
-		guard broker.status(of: .accessibility) != .granted else { return }
-		guard broker.request(.accessibility) != .granted else { return }
-		throw CommandError(
-			"\(Permission.accessibility.described) A request has been raised on the machine, so if "
-				+ "somebody is at it they may be able to grant it now; nothing was typed. Pressing the "
-				+ "reader's own commands with `pressGesture` needs no such grant and still works"
-		)
 	}
 
 	private func readerEdge(_ context: SessionContext) throws -> AdapterSet {

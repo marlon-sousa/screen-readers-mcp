@@ -18,8 +18,9 @@
 // THIS PORT CANNOT REPORT A MISSING ACCESSIBILITY GRANT, AND DOES NOT PRETEND
 // TO. An event posted by an untrusted process is dropped by the window server;
 // `CGEvent.post` returns nothing, so a dropped event and a delivered one are the
-// same observable from here. That is exactly why the grant is checked through
-// PermissionBroker BEFORE anything is posted, and why `TypingError` has no
+// same observable from here -- and `KeyPresser`, the third input port, says the
+// same thing for the same reason. That is exactly why the grant is checked
+// through PermissionBroker BEFORE anything is posted, and why `TypingError` has no
 // `accessibilityNotGranted` case -- a layout amendment to spec 0046's 13.8
 // table, with its why. A case that nothing can throw would read to whoever adds
 // the next adapter as a detection this bridge performs.

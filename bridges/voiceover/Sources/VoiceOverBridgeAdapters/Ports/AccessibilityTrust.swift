@@ -29,10 +29,12 @@
 // decisions". Recorded as an amendment in spec 0046's 13.9 section.
 //
 // IT ASKS NOBODY ANYTHING. This is `AXIsProcessTrusted` with no options: no
-// dialog, no consent prompt, no entry added to any list. The only call to
-// `PermissionBroker.request` in this repository is in the TypeText handler, and
-// nothing here may become a second one -- a route CHOICE that could raise a
-// consent dialog is the whole thing this seam exists to prevent.
+// dialog, no consent prompt, no entry added to any list. Every call to
+// `PermissionBroker.request` in this repository is in a command handler that is
+// about to post a system event -- a `typeText`, or a keystroke `pressGesture` --
+// and nothing here may join them. A route CHOICE that could raise a consent
+// dialog is the whole thing this seam exists to prevent: focus does not move the
+// machine, so it must not be able to cost the person a decision.
 
 public protocol AccessibilityTrust: AnyObject {
 	/// Whether this process is trusted to use the accessibility API.

@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// ELEVEN FIELDS AT 13.10, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// TWELVE FIELDS AT 13.17, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -27,7 +27,8 @@ import ScreenReaderWire
 /// | `gestureSender`, `readerLiveness` | 13.7, input: commands |
 /// | `textTyper`, `permissions` | 13.8, input: typing |
 /// | `focusInspector` | 13.9, focus |
-/// | `announcer`, `userPrompter` | 13.10, the human channel -- here |
+/// | `announcer`, `userPrompter` | 13.10, the human channel |
+/// | `keyPresser` | 13.17, chords -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -72,10 +73,27 @@ public struct AdapterSet {
 
 	/// How literal text reaches whatever holds system focus. A SECOND INPUT PORT
 	/// beside the gesture sender rather than a method on it, and the separation is
-	/// the design rather than tidiness: the two halves of input cost different
-	/// permissions on this platform (spec 0041), and one port that did both would
-	/// make "this bridge never asked for Accessibility" impossible to check.
+	/// the design rather than tidiness: input on this platform costs different
+	/// permissions depending on how it is delivered (spec 0041), and one port that
+	/// did everything would make "this session was asked for no permission"
+	/// impossible to check.
 	public let textTyper: any TextTyper
+
+	/// How a KEY WITH MODIFIERS HELD reaches whatever holds system focus -- the
+	/// third input port, and 13.17's one addition to this set.
+	///
+	/// IT IS NOT A METHOD ON THE TYPER, and the reason is the typer's own promise:
+	/// `typeText` is layout-independent Unicode injection, and a chord is the
+	/// opposite -- a virtual keycode, in a place that differs between a Brazilian
+	/// keyboard and an American one. Folding the two together would have put a
+	/// layout question inside the adapter whose header says the layout is
+	/// irrelevant. See `KeyPresser`, whose header carries the rest.
+	///
+	/// IT COSTS THE SAME GRANT THE TYPER DOES, which is why `pressGesture` became
+	/// the second of the bridge's two callers of `PermissionBroker.request`. The
+	/// lever narrowed rather than being spent: a session that presses only the
+	/// reader's COMMAND NAMES and reads speech still asks for nothing.
+	public let keyPresser: any KeyPresser
 
 	/// What the system lets this process do, and the one place it may ask for
 	/// more. HELD BY THE SET AND COMBINED BY THE CONTROLLER, which is a layout
@@ -135,6 +153,7 @@ public struct AdapterSet {
 		gestureSender: any GestureSender,
 		readerLiveness: any ReaderLiveness,
 		textTyper: any TextTyper,
+		keyPresser: any KeyPresser,
 		permissions: any PermissionBroker,
 		focusInspector: any FocusInspector,
 		announcer: any Announcer,
@@ -147,6 +166,7 @@ public struct AdapterSet {
 		self.gestureSender = gestureSender
 		self.readerLiveness = readerLiveness
 		self.textTyper = textTyper
+		self.keyPresser = keyPresser
 		self.permissions = permissions
 		self.focusInspector = focusInspector
 		self.announcer = announcer

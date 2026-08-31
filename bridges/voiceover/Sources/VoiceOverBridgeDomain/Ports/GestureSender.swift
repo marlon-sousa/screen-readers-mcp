@@ -3,18 +3,25 @@
 //
 // IMPLEMENTED BY: VoiceOverGestureSender (adapters), over the AppleScriptRunner
 // seam; FakeGestureSender (Tests/Fakes).
-// BUILT BY: VoiceOverAdapterFactory. USED BY: the PressGesture handler, and from
-// 13.8 by nothing else -- typing is a different port, because it needs a grant
-// this one deliberately never asks for.
+// BUILT BY: VoiceOverAdapterFactory. USED BY: the PressGesture handler, for the
+// ids that are command names -- and by nothing else. Typing is a different port,
+// and since 13.17 so is a KEYSTROKE, because both of those need a grant this one
+// deliberately never asks for.
 //
-// A GESTURE ON THIS READER IS AN ENGLISH COMMAND NAME, NOT A KEYSTROKE, and that
-// is the whole reason this port takes a `String` and hands it on untouched.
-// VoiceOver publishes 415 of them (`SCRStringsToCommandsMap.scrconfig` on macOS
-// 15.0) mapping a phrase like "go to desktop" to an internal selector, and it
-// dispatches them ITSELF -- so nothing here races with whatever else holds the
-// keyboard, and this bridge asks for no Accessibility grant to press one. That
-// is what keeps 13.8's laziness checkable: a session that only presses commands
-// and reads speech never triggers an Accessibility request.
+// THIS PORT CARRIES ONE OF THE TWO NOTATIONS `pressGesture` ACCEPTS, and it is
+// the cheap one. A gesture id on this reader is either an English COMMAND NAME,
+// which comes here, or a keystroke, which goes to `KeyPresser` -- and
+// `CommandVocabulary` is what decides. VoiceOver publishes 415 command names
+// (`SCRStringsToCommandsMap.scrconfig` on macOS 15.0) mapping a phrase like "go
+// to desktop" to an internal selector, and it dispatches them ITSELF -- so
+// nothing here races with whatever else holds the keyboard, and this bridge asks
+// for no Accessibility grant to press one. That is what keeps 13.8's laziness
+// checkable after 13.17 narrowed it: a session that presses only the reader's
+// COMMAND NAMES and reads speech never triggers an Accessibility request.
+//
+// SO PREFER THIS PORT'S ROUTE WHEREVER A COMMAND NAME EXISTS. `return key` costs
+// nothing and `command+return` costs a consent dialog on somebody's machine;
+// they are not interchangeable just because both press a key.
 //
 // THE THREE FAILURES ARE DISTINCT BECAUSE THE RECOVERIES ARE. An unknown name is
 // the agent's mistake and costs nothing; a dead scripting object model is the

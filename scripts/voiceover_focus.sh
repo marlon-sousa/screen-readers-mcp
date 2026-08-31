@@ -36,9 +36,10 @@
 # AND IT NEVER REQUESTS THE ACCESSIBILITY GRANT. `AXIsProcessTrusted` asks
 # nobody anything; `AXIsProcessTrustedWithOptions` with the prompt option raises
 # a system consent dialog and leaves the caller on a list that stays granted,
-# with no undo. The bridge requests that grant from exactly one place -- a
-# `typeText` -- and an instrument that requested it would make the claim untrue
-# for anyone who ran the instrument. So this script reports the grant and stops.
+# with no undo. The bridge requests that grant only from a command about to post
+# a system event -- a `typeText`, or a keystroke `pressGesture` -- and an
+# instrument that requested it would make the claim untrue for anyone who ran the
+# instrument. So this script reports the grant and stops.
 #
 # THE MEASUREMENT ITSELF IS `scripts/voiceover_ax_focus.swift`, shared with
 # `voiceover_cursors.sh`. THAT script is the one that PRESSES: it provokes a

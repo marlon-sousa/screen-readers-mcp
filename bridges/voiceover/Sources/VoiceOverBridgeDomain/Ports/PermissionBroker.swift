@@ -57,15 +57,25 @@
 // typing literal text into whatever holds focus is Accessibility. Keeping them
 // apart is what makes
 //
-//     "a session that only presses commands and reads speech never triggers an
-//      Accessibility request"
+//     a session that presses only the reader's COMMAND NAMES and reads speech
+//     never triggers an Accessibility request
 //
 // a CHECKABLE statement about this bridge rather than an intention. The check is
-// structural: this port's `request` is reached from the TypeText controller and
+// structural: this port's `request` is reached from TWO COMMAND HANDLERS and
 // from nowhere else in the bridge -- not from Wiring, not from the adapter
 // factory, not from a probe, and not from a test. Wiring CONSTRUCTS the broker
-// (construction asks nothing); only `request` raises anything, and only typing
-// calls it.
+// (construction asks nothing); only `request` raises anything, and only a
+// command that is about to post a system event calls it, through
+// `AccessibilityGrant`.
+//
+// THE CLAIM NARROWED BY ONE WORD AT 13.17, AND THAT IS THE HONEST RECORD OF WHAT
+// THAT ENTRY SPENT. `pressGesture` took only the reader's command names until
+// then; it now also takes keystrokes -- `command+l`, which a blind user presses
+// constantly and which this bridge simply could not send -- and a keystroke is a
+// system event costing this same grant. So the sentence lost "only presses
+// commands" and gained "presses only the reader's COMMAND NAMES", which is the
+// property that was ever worth having. What did NOT happen is a bridge that asks
+// at startup, at the handshake, from a probe or from a test.
 //
 // `status` IS A DIFFERENT MATTER AND HAS A SECOND CALLER SINCE 13.10: the
 // launcher prints what this process is allowed to do before a run starts. That

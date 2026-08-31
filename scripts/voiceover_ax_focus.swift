@@ -17,7 +17,8 @@
 // IT ASKS NOBODY ANYTHING. `AXIsProcessTrusted` shows no dialog;
 // `AXIsProcessTrustedWithOptions` with the prompt option raises a system consent
 // dialog and leaves the caller granted with no undo, and is deliberately not
-// used. The bridge requests that grant from exactly one place -- a `typeText` --
+// used. The bridge requests that grant only from a command about to post a
+// system event -- a `typeText`, or a keystroke `pressGesture` --
 // and an instrument that requested it would make the claim untrue for whoever
 // ran the instrument.
 //

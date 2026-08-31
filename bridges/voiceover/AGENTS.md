@@ -171,37 +171,120 @@ theirs back on every teardown path. Three things must survive any edit here:
   itself as the pass-through voice, which is infinite recursion. That is Rule 0's
   first caveat and it is asserted in three places.
 
-## A gesture on this reader is a COMMAND NAME, addressed to the commander
+## A gesture on this reader is a COMMAND NAME **or a keystroke**, and the id decides
 
-Two rules, and the second one is the finding that unblocked board entry 13.7.
+Three rules. The second is the finding that unblocked board entry 13.7; the
+third is 13.17, which is where this section stopped being one rule.
 
-**Gesture ids are English command names**, from VoiceOver's own
+**A command name is an English phrase**, from VoiceOver's own
 `SCRStringsToCommandsMap` vocabulary — 415 entries on macOS 15.0, phrases like
 `go to desktop` and `mute sound toggle`. There is no table of them in this
 repo and there must not be one: the reader does its own dispatch and answers an
 unknown name with `Command does not exist (6)`, which is a better check than any
-copy that goes stale every release. What `CommandVocabulary` refuses is a
-**keystroke sent as a gesture** — `control+l`, and VoiceOver's own `VO-D`
-notation — because that is the mistake the reader cannot diagnose usefully, and
-because synthesizing a keystroke needs the Accessibility grant 13.8 exists to
-keep lazy. The hyphen rule has to survive real command names that contain
-hyphens, so a hyphen counts only in an id with no spaces at all.
+copy that goes stale every release. **A keystroke is `+`-joined, modifiers first
+and the key last** — `command+l`, `control+option+space` — and
+`CommandVocabulary` tells the two apart by **the space rule**: a separator counts
+as keystroke notation only in an id with no spaces at all. Every real command
+name that carries one carries spaces too (`toggle single-key quick nav on or
+off`), and no command in the 415 is a bare `+`-joined token. The same rule
+decides the hyphen case, which is why the rule is one rule and not two.
 
-**A gesture reaches commands and single KEYS, and NOT chords.** The vocabulary
+**`VO-D` is still refused, and no feature retires that.** `VO` is whatever the
+person has bound their VoiceOver modifier to — Control-Option, or Caps Lock, or
+both — so pressing it would mean guessing at somebody's own configuration and
+pressing the wrong keys with total confidence. The refusal names both
+alternatives: the reader's command name, or `control+option+d` if those literal
+keys were meant.
+
+**Prefer the command name wherever one exists**, and the reason is the grant: a
+command name is an AppleEvent and costs nothing, a keystroke is a `CGEvent` and
+costs Accessibility. `return key` and `command+return` are not interchangeable
+just because both press a key. That is also why **a key with no modifier stays a
+command name**: the `+` is the whole discriminator, and routing a lone `return`
+through the event path would spend the grant for a keypress that never needed it.
+
+**Do NOT build a chord out of the reader's modifier commands.** The vocabulary
 carries 30 commands whose name ends in `key` — `tab key`, `return key`, the four
 arrows, `f1 key` through `f12 key`, `delete key`, `forward delete key`, `fn key`
 — plus modifiers in two flavours, momentary (`command key`, `shift key`, …) and
-sticky (`toggle command key`, …). All cost no Accessibility grant, so a chord
-reachable this way would widen the lazy lever considerably. **Measured 2026-08-30
-on macOS 15.0: they do not compose.** Four runs — sticky and momentary, option
-and command — each followed by `delete key` into a scratch document removed
-exactly one character, the same as the no-modifier control, where Option-Delete
-would have taken a word and Command-Delete the line. The modifier command
-*succeeds* and changes nothing about the key that follows it, which is the worst
-shape a negative can have, so it is written down here and re-runnable as `bash
-scripts/voiceover_modifiers.sh`. Independently of that, the table has **no letter
-keys at all**, so literal text can never come out of it — which is why `typeText`
-synthesizes events and pays for the grant.
+sticky (`toggle command key`, …). **Measured 2026-08-30 on macOS 15.0: they do
+not compose.** Four runs — sticky and momentary, option and command — each
+followed by `delete key` into a scratch document removed exactly one character,
+the same as the no-modifier control, where Option-Delete would have taken a word
+and Command-Delete the line. The modifier command *succeeds* and changes nothing
+about the key that follows it, which is the worst shape a negative can have, so
+it is written down here and re-runnable as `bash scripts/voiceover_modifiers.sh`.
+Independently of that, the table has **no letter keys at all**, so literal text
+can never come out of it — which is why `typeText` synthesizes events and pays
+for the grant.
+
+**And that measurement was read too widely for four entries, which is the
+cautionary half of this section.** "The modifiers do not compose" is true, and it
+was generalised into "a chord is not expressible on this reader" and then into a
+sentence in the shipped guidance document telling an agent that a chord needs
+`type_text`'s route — a route that cannot press one either. A true statement
+about one channel became a false statement about the bridge, it read like a
+platform limit, and so nobody looked for the missing feature behind it while a
+blind user's commonest act stayed unreachable. Spec 0048 §1.1 keeps the record.
+
+## Pressing a chord: the layout is the hard part, and there is no table
+
+`CGKeystrokePresser` holds every decision — key to keycode, modifiers to flags,
+down then up — over two seams: `KeyboardLayout` (which physical key produces a
+character **on the layout that is active now**) and `EventPoster`. Four rules
+bind anyone editing it.
+
+**There is no keycode table for characters in this repository, and there must not
+be one.** A `CGEvent` carries a virtual keycode, and which one produces `l`
+depends on the active layout; the maintainer's is Brazilian. A hard-coded ANSI
+table would compile, pass every test its author wrote, read well in review, and
+**press the wrong key on his machine** — the exact shape of failure this lane
+keeps paying for. So `CurrentKeyboardLayout` asks
+`TISCopyCurrentKeyboardInputSource` and `UCKeyTranslate`, building the reverse map
+backwards because macOS only ever answers the forward question.
+
+**The map is cached by the input source's id, and the id is re-read on every
+lookup.** That is one cheap call against 256 `UCKeyTranslate` calls, and it means
+somebody who switches layouts mid-session gets the right keys on the very next
+press — with no notification observer to register, forget to remove, or receive
+on the wrong thread.
+
+**An unreachable character is a NAMED FAILURE that posts nothing.** "This layout
+has no key that produces `ç`" is an answer an agent can act on; pressing
+something else is not, and a chord that quietly did the wrong thing is the worst
+failure available on an edge nobody can watch. Measured on the maintainer's
+`com.apple.keylayout.Brazilian-Pro`, 2026-08-31: 110 characters mapped, `ç` among
+the ones that are not, and `$` reported on the **shifted layer** of the key that
+carries `4`.
+
+**The modifiers are PRESSED AND RELEASED, not merely set as flags — and that is
+the bug this entry produced.** Flags on the key event are what menu shortcuts
+match, and the first `command+l` through this bridge opened Safari's location bar
+on the first try. It also left **Command held down on the maintainer's keyboard**:
+`CGEventSource.flagsState` said so, nothing else did, every keystroke afterwards
+was a chord, and the symptom that surfaced was `typeText` reporting `typed: 11`
+into an address bar the reader read back as empty. So the sequence is what a real
+keyboard produces — a `flagsChanged` per modifier building up, the key down and
+up, then transitions unwinding to `[]` — and **the release is in a `defer`, so it
+runs even when the press failed**. Its own failures are swallowed: leaving
+somebody's Command key down is worse than any error this class could return. Spec
+0048 §2.5, reversed with the measurement it asked for.
+
+**The seam reports which LAYER the character sits on, and that is a decision
+rather than a detail.** Digits are unshifted here and on an American keyboard and
+**shifted** on a French AZERTY one, so a seam answering only a keycode would make
+`command+4` a named failure on a machine where the person presses it daily.
+Reporting the layer keeps the decision — a shifted layer means an added
+`.maskShift` — above the seam, where it is an ordinary unit test. Named keys
+(`return`, `f5`, the arrows) are layout-independent constants and skip the
+translation entirely; their table is the one table the presser is allowed to
+carry, because a physical position is not a layout.
+
+Re-runnable as `bash scripts/voiceover_chords.sh`, which prints what this
+machine's layout answers and then presses a chord into a scratch document it
+closes without saving. It needs the Accessibility grant, which is why it is a
+separate script from `voiceover_modifiers.sh` — the same split as
+`voiceover_keyboard.sh`, for the same reason.
 
 **`perform command` is addressed to the `commander object`, never to
 `application "VoiceOver"`.** `VoiceOver.sdef` in this directory is the authority:
@@ -220,11 +303,18 @@ well as a positive.
 
 ## Typing is the OTHER half of input, and it costs the grant
 
-Two commands, two ports, two capabilities, and the separation is the lane's one
-design lever rather than tidiness. `pressGesture` is an AppleEvent to the reader;
-`typeText` synthesizes system input events and needs **Accessibility**
+Two commands, three ports, two capabilities, and the separation is the lane's one
+design lever rather than tidiness. A **command name** through `pressGesture` is
+an AppleEvent to the reader; `typeText` and a **keystroke** through
+`pressGesture` both synthesize system input events and need **Accessibility**
 (`kTCCServiceAccessibility`). Windows has no equivalent gate, so lane 1 has no
 analogue and there is nothing to copy here.
+
+**The line falls between NOTATIONS, not between commands, and 13.17 is where it
+moved.** Until then it fell between the two commands, and the sentence below said
+"only presses commands". It now says "presses only the reader's COMMAND NAMES",
+which is the property that was ever worth having — and the narrowing is written
+into every place that states it rather than left for somebody to discover.
 
 **THE TWO GRANTS ARE READ BY DIFFERENT MEANS, AND 13.11 HAD TO FIX THAT.**
 Accessibility is a fact about THIS PROCESS, which posts its own `CGEvent`s, so
@@ -245,21 +335,31 @@ and reads the NUMBER — `-1743` is the missing grant, a reply is the grant, and
 anything else is `cannotTell` rather than a guess, because "the reader is not
 running" is not evidence about a permission.
 
-**THE ACCESSIBILITY GRANT IS REQUESTED FROM ONE PLACE: `TypeTextHandler`, on a
-`typeText`.** Not at construction, not in `Wiring`, not in
-`VoiceOverAdapterFactory`, not in `scripts/doctor.py`, not in a probe, and **not
-in a test**. That is what makes
+**THE ACCESSIBILITY GRANT IS REQUESTED FROM TWO PLACES, BOTH COMMAND HANDLERS,
+BOTH THROUGH `AccessibilityGrant`:** `TypeTextHandler` on a `typeText` (13.8),
+and `PressGestureHandler` on a batch containing a **keystroke** (13.17). Not at
+construction, not in `Wiring`, not in `VoiceOverAdapterFactory`, not in
+`scripts/doctor.py`, not in a probe, and **not in a test**. That is what makes
 
-> a session that only presses commands and reads speech never triggers an
-> Accessibility request
+> a session that presses only the reader's COMMAND NAMES and reads speech never
+> triggers an Accessibility request
 
 a *checkable statement about this bridge* rather than an intention, and the check
 is a round trip in `Tests/Integration/SessionRoundTripTests.swift` that drives a
-handshake, a gesture and a speech read past a counting broker and asserts it was
-asked nothing at all. `Wiring` **constructs** `TCCPermissionBroker` at startup and
-never calls it: constructing asks nobody anything, and only `request` raises a
-dialog. If you add a caller, you have spent the lever — the entry is worth what
-its checkability is worth.
+handshake, a command-name gesture, a speech read, an `announce` and an `askUser`
+past a counting broker, asserts it was asked nothing at all, and only then sends
+the two commands that may ask. `Wiring` **constructs** `TCCPermissionBroker` at
+startup and never calls it: constructing asks nobody anything, and only `request`
+raises a dialog.
+
+**The shared check is a file because the second caller arrived**, which is the
+rule `HumanWarning` and `Observation` were both created by. Two hand-written
+copies of a permission check would come to differ the first time one was
+reworded, and what they would differ about is whether somebody's machine raises a
+consent dialog. **If you add a THIRD caller, ask first whether the thing you are
+adding is a command that moves the machine.** 13.9 wanted this grant for focus
+and did not take it — it reads whether the grant is held through an adapter seam
+that cannot request anything — and that is the shape to copy.
 
 **No test may touch the real grant or post a real event.** The real broker's
 `request` raises a system consent dialog and leaves this process on a list that
@@ -270,9 +370,11 @@ developer has in front of them at that moment. Both are injected into
 it already gives for the provider lifecycle, which writes the voice the developer
 hears.
 
-**The target application rewrites what was typed.** Two lines sent to TextEdit
-came back autocapitalized (spec 0041). "Send this keystroke" is not "this text
-arrives", and **nothing in this bridge, its tests or its documentation may compare
+**The target application rewrites what was typed, and the same holds for a
+chord.** Two lines sent to TextEdit came back autocapitalized (spec 0041). "Send
+this keystroke" is not "this text arrives" — nor "this chord happened", since an
+application that ignores `command+f` is indistinguishable from one that acted on
+it — and **nothing in this bridge, its tests or its documentation may compare
 typed input with observed output as though they were the same string**.
 Autocapitalization is only the measured instance; autocorrect, smart quotes and an
 application's own filtering are the same class, and they are per-application and
@@ -353,8 +455,8 @@ layer.** `VoiceOverFocusInspector` holds `AccessibilityTrust` — a seam with on
 method, `isTrusted()`, answered by the same `TCCPermissionBroker` that answers
 the domain's `PermissionBroker` — and not the domain port itself. That is
 deliberate rather than incidental: focus is the one command that WANTS 13.8's
-grant, so the guarantee is made structural, by handing it an object that cannot
-request anything. `Tests/Integration/SessionRoundTripTests.swift` drives
+grant and does not move the machine to earn it, so the guarantee is made
+structural, by handing it an object that cannot request anything. `Tests/Integration/SessionRoundTripTests.swift` drives
 `getFocusInfo` down both routes past a counting broker and asserts it was asked
 nothing at all. If you ever hand the inspector the broker, you have spent the
 lever. The alternative that was declined — `focusInfo(accessibilityGranted:)`,

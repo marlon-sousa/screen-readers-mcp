@@ -1,16 +1,27 @@
-// ROLE: entity -- what counts as a gesture id on this reader, and what is
-// refused before the machine is touched.
+// ROLE: entity -- what counts as a gesture id on this reader, WHICH OF THE TWO
+// ROUTES it takes, and what is refused before the machine is touched.
 //
-// PURE. USED BY: the PressGesture handler, which checks the WHOLE batch before
-// dispatching any of it -- see below.
+// PURE. USED BY: the PressGesture handler, which classifies the WHOLE batch
+// before dispatching any of it -- see below.
 //
-// A GESTURE ID HERE IS AN ENGLISH COMMAND NAME AND NOTHING ELSE. protocol.md §5
+// A GESTURE ID HERE IS AN ENGLISH COMMAND NAME OR A KEYSTROKE. protocol.md §5
 // says gesture id syntax is reader-specific and passes through opaquely: it is
 // "the reader's own user-facing command notation, as its documentation writes
-// it". On NVDA that is a key combo (`"NVDA+f7"`); on VoiceOver it is a phrase
-// from the 415-entry `SCRStringsToCommandsMap` vocabulary -- "go to desktop",
-// "describe item in voiceover cursor", "mute sound toggle". Same field, entirely
-// different notation, which is exactly what "reader-specific" means.
+// it". On NVDA that notation IS keystrokes (`NVDA+f7`); on VoiceOver it is a
+// phrase from the 415-entry `SCRStringsToCommandsMap` vocabulary -- "go to
+// desktop", "describe item in voiceover cursor", "mute sound toggle". This
+// reader takes BOTH, because a person driving a Mac uses both:
+//
+//   * a COMMAND NAME goes to the reader, which dispatches it itself
+//   * a KEYSTROKE goes to the system, which is how Command-L opens a location
+//
+// THIS FILE USED TO REFUSE THE SECOND, AND 13.17 DELETED THAT REFUSAL IN THE
+// COMMIT THAT MADE THE PROMISE KEEPABLE -- the pattern 13.6 and 13.10 both
+// followed before it. The refusal was not wrong when it was written: nothing in
+// the bridge could press a chord, and admitting one would have meant failing it
+// anyway. What it cost is recorded in spec 0048 §1.1: a true statement about
+// this ENTITY was read as a fact about the PLATFORM, and the gap sat unnoticed
+// through four entries while a blind user's commonest act stayed unreachable.
 //
 // THERE IS NO TABLE OF THE 415 HERE, AND THAT IS DELIBERATE. VoiceOver does its
 // own dispatch and answers an unknown name with `Command does not exist (6)` --
@@ -20,27 +31,56 @@
 // added, and would buy nothing the reader does not already give for free. That
 // is also why spec 0046 gives this entry no `GestureResolver` port.
 //
-// SO WHAT IS LEFT TO REFUSE IS EXACTLY THE MISTAKE THE READER CANNOT DIAGNOSE
-// FOR US: A KEYSTROKE SENT AS A GESTURE. An agent that has driven NVDA -- or
-// read VoiceOver's own documentation, which writes shortcuts as `VO-D` -- will
-// eventually send `"VO-D"` or `"control+l"` here. VoiceOver would answer
-// `Command does not exist`, which is true and useless: the agent's mistake is
-// not a typo in a command name, it is that this reader's gesture channel does
-// not take keystrokes at all. Naming that is the whole value of this type.
+// WHAT IS STILL REFUSED, AND BY NAME: VoiceOver's own `VO-D` notation. It is
+// neither a command the reader will dispatch nor a keystroke this bridge can
+// construct, because `VO` is whatever the user has configured their VoiceOver
+// modifier to be -- Control-Option, or Caps Lock, or both -- and this file
+// cannot know which. Guessing would press the wrong keys with total confidence,
+// which is the exact mistake this type was written to catch. The refusal says to
+// send `control+option+d` if that is what was meant.
 //
-// AND REFUSING IT IS A LOAD-BEARING BOUNDARY, NOT TIDINESS. Synthesizing a
-// keystroke needs the Accessibility grant, which is the grant 13.8 exists to
-// keep lazy. A bridge that quietly accepted key combos here would either fail
-// them anyway or have to reach for that grant -- and "a session that only
-// presses commands and reads speech never triggers an Accessibility request"
-// would stop being a checkable statement about this bridge.
-//
-// THE KEYSTROKE THAT IS NOT REFUSED: the vocabulary itself contains commands
-// like "f8 key" and "command key", which press a key THROUGH the reader. Those
-// are command names, they go through untouched, and they are the honest route
-// for an agent that wants a key pressed before 13.8 exists.
+// THE DISCRIMINATOR IS THE SPACE RULE, and it is the one this file already lived
+// by. A separator counts as keystroke notation only in an id with NO SPACES AT
+// ALL: every real command name that carries one carries spaces too ("mute sound
+// toggle", "toggle single-key quick nav on or off"), and no command in the
+// vocabulary is a bare `+`-joined token. So "command key" still goes to the
+// reader and "command+l" does not.
 
 import Foundation
+
+/// Which of this reader's two routes an accepted id takes.
+///
+/// THE ENTITY CLASSIFIES; THE CONTROLLER ROUTES. Deciding this here is what lets
+/// the whole batch be checked before any of it moves the machine, and what lets
+/// the handler ask for the Accessibility grant exactly once, for a batch that
+/// contains a keystroke, before anything at all has been pressed.
+public enum Gesture: Equatable {
+	/// One of VoiceOver's own English command names, dispatched by the reader.
+	/// Costs no Accessibility grant.
+	case readerCommand(String)
+
+	/// A key with modifiers held, posted at the system. Costs the Accessibility
+	/// grant, exactly as `typeText` does.
+	case keystroke(Keystroke)
+
+	/// What the bridge UNDERSTOOD, which is what the transcript and the `pressed`
+	/// entry report. A command name is the trimmed id; a keystroke is its
+	/// canonical spelling, so an agent that wrote `Command+L` is told `command+l`
+	/// went out rather than being echoed its own text back.
+	public var described: String {
+		switch self {
+		case .readerCommand(let command): return command
+		case .keystroke(let keystroke): return keystroke.described
+		}
+	}
+
+	/// Whether this one costs the Accessibility grant. Asked of a WHOLE BATCH by
+	/// the handler, before any of it is dispatched.
+	public var isKeystroke: Bool {
+		guard case .keystroke = self else { return false }
+		return true
+	}
+}
 
 /// A gesture id this reader cannot accept, and why.
 ///
@@ -61,50 +101,66 @@ public struct GestureIdRefused: Error, Equatable, CustomStringConvertible {
 }
 
 public enum CommandVocabulary {
-	/// Accept a gesture id, or refuse it by name with its reason.
+	/// Classify a gesture id, or refuse it by name with its reason.
 	///
-	/// Returns the id to dispatch, which is the input with surrounding
-	/// whitespace removed and NOTHING ELSE done to it. The trim is the one
-	/// liberty taken with an opaque value, because a trailing space turns a
-	/// perfectly good command into `Command does not exist` and no agent would
-	/// ever see why; case, spelling and internal spacing are the reader's
-	/// business and are passed through exactly as sent.
-	public static func accept(_ gesture: String) throws -> String {
+	/// A command name comes back as the input with surrounding whitespace removed
+	/// and NOTHING ELSE done to it. The trim is the one liberty taken with an
+	/// opaque value, because a trailing space turns a perfectly good command into
+	/// `Command does not exist` and no agent would ever see why; case, spelling
+	/// and internal spacing are the reader's business and are passed through
+	/// exactly as sent.
+	///
+	/// A keystroke comes back PARSED, so the id's contents are the caller's
+	/// mistake to hear about here rather than the machine's to discover later.
+	public static func classify(_ gesture: String) throws -> Gesture {
 		let trimmed = gesture.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else {
 			throw GestureIdRefused(
 				gesture: gesture,
 				reason: "it is empty -- this reader's gestures are English command names, "
-					+ "such as \"go to desktop\" or \"describe item in voiceover cursor\""
+					+ "such as \"go to desktop\", or keystrokes, such as \"command+l\""
 			)
 		}
-		guard !looksLikeAKeystroke(trimmed) else {
+		guard !isReaderModifierNotation(trimmed) else {
 			throw GestureIdRefused(
 				gesture: trimmed,
-				reason: "it reads as a key combination, and this reader's gesture channel takes "
-					+ "COMMAND NAMES rather than keystrokes -- VoiceOver dispatches them itself, "
-					+ "which is why no Accessibility grant is needed. Send the English name of the "
-					+ "command instead (\"go to desktop\", not \"VO-D\"); the vocabulary also "
-					+ "contains commands like \"f8 key\" for pressing a key through the reader"
+				reason: "it is VoiceOver's own shorthand, and this bridge cannot press it. \"VO\" is "
+					+ "whatever the user has bound their VoiceOver modifier to -- Control-Option, or "
+					+ "Caps Lock, or both -- so pressing it would mean guessing at somebody's own "
+					+ "configuration. Send the reader's English command name (\"describe item in "
+					+ "voiceover cursor\"), which costs no permission and works whatever the modifier "
+					+ "is; or, if you meant the literal keys, write them out as \"control+option+d\""
 			)
 		}
-		return trimmed
+		guard isKeystrokeNotation(trimmed) else {
+			return .readerCommand(trimmed)
+		}
+		do {
+			return .keystroke(try Keystroke.parse(trimmed))
+		} catch let malformed as KeystrokeMalformed {
+			throw GestureIdRefused(gesture: trimmed, reason: malformed.reason)
+		}
 	}
 
-	/// Whether an id is written in somebody's keystroke notation.
+	/// Whether an id is written as a keystroke: `+`-joined, and one token.
 	///
-	/// TWO SHAPES, AND THE SECOND ONE NEEDS ITS RULE STATED because the obvious
-	/// spelling of it is wrong. A `+` is unambiguous -- no command in the
-	/// vocabulary contains one, and it is how NVDA, the contract's other reader,
-	/// writes every gesture. A HYPHEN is how VoiceOver's own documentation writes
-	/// chords (`VO-D`, `Control-Option-Shift-Down`), but hyphens also appear
-	/// INSIDE real command names: "toggle single-key quick nav on or off" is one
-	/// of the 415. What separates them is the space -- a command name is a
-	/// phrase, a chord is a single token -- so a hyphen is a keystroke only in an
-	/// id that has no spaces at all. Both halves were read off the real
-	/// vocabulary file rather than assumed.
-	private static func looksLikeAKeystroke(_ gesture: String) -> Bool {
-		if gesture.contains("+") { return true }
-		return gesture.contains("-") && !gesture.contains(" ")
+	/// A `+` is unambiguous -- no command in the 415-entry vocabulary contains
+	/// one, and it is how NVDA, the contract's other reader, writes every gesture.
+	/// The space rule is what keeps it that way: a command name is a phrase, a
+	/// keystroke is a single token, so an id with a space in it is a command name
+	/// whatever else it contains.
+	private static func isKeystrokeNotation(_ gesture: String) -> Bool {
+		gesture.contains("+") && !gesture.contains(" ")
+	}
+
+	/// Whether an id is VoiceOver's own hyphen shorthand (`VO-D`).
+	///
+	/// THE HYPHEN RULE HAS TO SURVIVE REAL COMMAND NAMES THAT CONTAIN HYPHENS:
+	/// "toggle single-key quick nav on or off" is one of the 415, and there are
+	/// three. What separates them is the space, exactly as above -- so a hyphen is
+	/// this notation only in an id with no spaces at all. Both halves were read
+	/// off the machine's own vocabulary file rather than assumed.
+	private static func isReaderModifierNotation(_ gesture: String) -> Bool {
+		gesture.contains("-") && !gesture.contains(" ")
 	}
 }

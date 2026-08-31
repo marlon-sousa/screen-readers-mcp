@@ -51,6 +51,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let scripts: any AppleScriptRunner
 	private let permissions: any PermissionBroker
 	private let poster: any EventPoster
+	private let layout: any KeyboardLayout
 	private let tree: any AccessibilityTree
 	private let frontmost: any FrontmostApplication
 	private let trust: any AccessibilityTrust
@@ -72,8 +73,15 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// subprocess -- so one serves every session, and building one per handshake
 	/// would be construction for its own sake.
 	///
+	/// THE KEYBOARD LAYOUT IS PASSED IN FOR THE DETERMINISM REASON, not the safety
+	/// one: reading it changes nothing and asks for nothing, but its answer is
+	/// whatever layout the developer happens to be typing on -- so a test built on
+	/// the real one would assert against a Brazilian keyboard here and an American
+	/// one in CI. It is shared across sessions because its reverse map costs 256
+	/// system calls to build and describes the machine rather than the session.
+	///
 	/// THE PERMISSION BROKER AND THE EVENT POSTER ARE PASSED IN FOR A STRONGER
-	/// REASON THAN EITHER OF THOSE: no test may ever build the real ones. The real
+	/// REASON THAN ANY OF THOSE: no test may ever build the real ones. The real
 	/// broker's `request` raises a system consent dialog and leaves this process
 	/// on a list that stays granted afterwards, and the real poster types into
 	/// whatever window the developer has in front of them. Injecting both is what
@@ -102,6 +110,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		scripts: any AppleScriptRunner,
 		permissions: any PermissionBroker,
 		poster: any EventPoster,
+		layout: any KeyboardLayout,
 		tree: any AccessibilityTree,
 		frontmost: any FrontmostApplication,
 		trust: any AccessibilityTrust,
@@ -114,6 +123,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.scripts = scripts
 		self.permissions = permissions
 		self.poster = poster
+		self.layout = layout
 		self.tree = tree
 		self.frontmost = frontmost
 		self.trust = trust
@@ -137,11 +147,16 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			gestureSender: VoiceOverGestureSender(runner: scripts),
 			readerLiveness: VoiceOverLiveness(runner: scripts),
 			textTyper: AccessibilityTextTyper(poster: poster),
+			// STATELESS TOO, and built per session over the two shared seams beneath
+			// it. THE LAYOUT IS SHARED AND THE PRESSER IS NOT, which is the ordinary
+			// split in this file: the layout holds a cache worth keeping across
+			// sessions, and the presser holds nothing at all.
+			keyPresser: CGKeystrokePresser(layout: layout, poster: poster),
 			// SHARED, LIKE THE LIFECYCLE, because it describes this PROCESS's
 			// standing with the system rather than anything about a session -- and
-			// because building one here would be the second place in the bridge that
-			// touches the permission machinery, when the whole point of 13.8 is that
-			// there is exactly one.
+			// because building one here would be a second place in the bridge that
+			// touches the permission machinery, when the point of 13.8 is that only
+			// a command handler ever does.
 			permissions: permissions,
 			// STATELESS TOO, so one is built per session over three shared seams.
 			// IT IS HANDED `trust` AND NOT `permissions`, and that is the shape 13.9

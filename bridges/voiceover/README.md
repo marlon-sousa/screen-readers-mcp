@@ -17,12 +17,14 @@ It also **hears**: it tails the file the capture voice appends to and answers
 and it selects the capture voice itself at the handshake and puts the user's own
 voice back at teardown, so nobody has to visit VoiceOver Utility to start or
 finish a session. **Since 13.7 it can drive the reader**: `pressGesture` sends
-VoiceOver's own English command names — `go to desktop`, not a keystroke —
-through the reader's own dispatcher, which is why this bridge asks for no
-Accessibility grant. **Since 13.8 it can type** into whatever holds focus, which
-is the half of input that does cost the Accessibility grant — asked for on the
-first `typeText` of a session and nowhere else — and **since 13.9 it can say
-where the focus is**. **Since 13.10 it can talk to you**: `announce` speaks with
+VoiceOver's own English command names — `go to desktop` — through the reader's
+own dispatcher, which is why a session that presses only those asks for no
+Accessibility grant. **Since 13.8 it can type** into whatever holds focus, and
+**since 13.17 it can press a chord** — `command+l`, which is how anybody opens a
+location bar — through the same `pressGesture`, written as a keystroke. Those two
+are the halves of input that do cost the Accessibility grant, asked for on the
+first of each in a session and nowhere else. **Since 13.9 it can say where the
+focus is**. **Since 13.10 it can talk to you**: `announce` speaks with
 the bridge's own synthesizer, outside VoiceOver entirely, so you hear it even
 while a silent session is holding your reader quiet, and `askUser` puts a
 question on your screen and collects your answer whenever you give it. So `hello`

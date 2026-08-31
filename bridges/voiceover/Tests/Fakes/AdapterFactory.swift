@@ -30,10 +30,14 @@ public final class FakeAdapterFactory: AdapterFactory {
 	public let readerLiveness = FakeReaderLiveness()
 	/// And 13.8's two, for the same reason -- plus one this file cannot leave
 	/// implicit: the broker records whether the Accessibility grant was ever
-	/// REQUESTED, and a session test asserting that a run of gestures never asked
-	/// for it is asserting the entry's whole claim.
+	/// REQUESTED, and a session test asserting that a run of COMMAND-NAME gestures
+	/// never asked for it is asserting the entry's whole claim.
 	public let textTyper = FakeTextTyper()
 	public let permissions = FakePermissionBroker()
+	/// And 13.17's one, exposed for the reason the gesture sender is: a session
+	/// test asserts WHICH ROUTE a gesture id took, and "the chord went to the
+	/// system rather than to the reader" is invisible in the AdapterSet.
+	public let keyPresser = FakeKeyPresser()
 	/// And 13.9's one. Exposed like the rest so a session-level test can assert
 	/// what a `getFocusInfo` off the wire actually read -- and, beside
 	/// `permissions` above, that answering focus asked the broker nothing.
@@ -67,6 +71,7 @@ public final class FakeAdapterFactory: AdapterFactory {
 			gestureSender: gestureSender,
 			readerLiveness: readerLiveness,
 			textTyper: textTyper,
+			keyPresser: keyPresser,
 			permissions: permissions,
 			focusInspector: focusInspector,
 			announcer: announcer,
