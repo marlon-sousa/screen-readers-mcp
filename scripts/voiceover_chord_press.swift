@@ -3,6 +3,7 @@
 //
 //     swift scripts/voiceover_chord_press.swift report a l f 4
 //     swift scripts/voiceover_chord_press.swift press command a
+//     swift scripts/voiceover_chord_press.swift press h
 //
 // ROLE: the measuring half of `scripts/voiceover_chords.sh`, which owns the
 // scratch document and the safety. It is a separate file for the reason
@@ -17,6 +18,11 @@
 // `TISCopyCurrentKeyboardInputSource` and `UCKeyTranslate`, and this file asks it
 // the same way -- so a maintainer on any layout can see the numbers their own
 // machine answers with, rather than taking a test's word for it.
+//
+// A `press` WITH NO MODIFIERS AT ALL is board entry 13.19's shape -- `kb:h`, the
+// letter key an ordinary user presses to move by heading with single-key Quick
+// Nav on. Nothing special happens for it here: no modifier goes down, so none has
+// to come back up, and the same keycode question is asked of the same layout.
 //
 // `report` PRESSES NOTHING. It prints the active input source and the keycode
 // each character sits on, which is safe to run anywhere and is the half worth
@@ -108,10 +114,13 @@ let modifierKeyCodes: [String: UInt16] = [
 ]
 
 /// The layout-independent keys, by the same table `CGKeystrokePresser` carries.
+/// Spelled as NVDA spells them, because the bridge is (spec 0049 §2.3): every
+/// name here means the same physical key on the contract's other reader, and
+/// `backspace` rather than `delete` is the one that makes that true.
 let namedKeyCodes: [String: UInt16] = [
-	"space": 0x31, "return": 0x24, "tab": 0x30, "escape": 0x35,
-	"delete": 0x33, "forwarddelete": 0x75,
-	"left": 0x7B, "right": 0x7C, "down": 0x7D, "up": 0x7E,
+	"space": 0x31, "enter": 0x24, "tab": 0x30, "escape": 0x35,
+	"backspace": 0x33, "forwarddelete": 0x75,
+	"leftarrow": 0x7B, "rightarrow": 0x7C, "downarrow": 0x7D, "uparrow": 0x7E,
 ]
 
 func postFlagsChanged(keyCode: UInt16, flags: CGEventFlags) {

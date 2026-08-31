@@ -71,7 +71,7 @@ struct CGKeystrokePresserTests {
 		let layout = FakeKeyboardLayout()
 		let poster = FakeEventPoster()
 		try presser(layout: layout, poster: poster).press(
-			Keystroke(modifiers: [], key: .named(.return)))
+			Keystroke(modifiers: [], key: .named(.enter)))
 
 		#expect(layout.asked.isEmpty)
 		#expect(poster.keyed.map(\.keyCode) == [0x24, 0x24])
@@ -89,8 +89,8 @@ struct CGKeystrokePresserTests {
 			#expect(CGKeystrokePresser.namedKeyCodes[.function(number)] != nil)
 		}
 		for key in [
-			Keystroke.NamedKey.space, .return, .tab, .escape, .delete, .forwardDelete,
-			.left, .right, .up, .down, .home, .end, .pageUp, .pageDown,
+			Keystroke.NamedKey.space, .enter, .tab, .escape, .backspace, .forwardDelete,
+			.leftArrow, .rightArrow, .upArrow, .downArrow, .home, .end, .pageUp, .pageDown,
 		] {
 			#expect(CGKeystrokePresser.namedKeyCodes[key] != nil)
 		}
@@ -163,7 +163,7 @@ struct CGKeystrokePresserTests {
 	@Test("a keystroke with NO modifiers posts no transitions at all")
 	func noModifiersNoTransitions() throws {
 		let poster = FakeEventPoster()
-		try presser(poster: poster).press(Keystroke(modifiers: [], key: .named(.return)))
+		try presser(poster: poster).press(Keystroke(modifiers: [], key: .named(.enter)))
 		#expect(poster.flagTransitions.isEmpty)
 		#expect(poster.keyed.count == 2)
 	}

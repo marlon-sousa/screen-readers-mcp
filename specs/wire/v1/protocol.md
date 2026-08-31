@@ -328,8 +328,16 @@ means the command takes no parameters. Summary:
   own **user-facing command notation**, as its documentation writes it — for
   NVDA, the key-combo form from the User Guide (`"NVDA+f7"`, `"control+l"`,
   `"escape"`), not an internal identifier. The reader-specific bridge maps it to
-  a keypress; an NVDA bridge tolerates a legacy `"kb:"` inputCore prefix but the
-  documented form is prefixless.
+  a keypress.
+  - A `"kb:"` **source prefix** says the id names a key on the keyboard rather
+    than something in another of that reader's vocabularies. It is **redundant on
+    a reader whose gesture notation is keystrokes and nothing else** — an NVDA
+    bridge accepts it and the documented form there is prefixless — and
+    **load-bearing on a reader that has more than one vocabulary**: a VoiceOver
+    bridge's unprefixed ids are the reader's own English command names, so
+    `"kb:h"` is the letter key and `"h"` is a command. Which vocabularies a reader
+    has, and therefore whether the prefix means anything, is that reader's
+    guidance to state (`getGuidance`).
   - `graceMs` (default **100**, `0` to opt out) is the **grace window** of §7.3:
     after each gesture the bridge waits up to that long for the speech it
     caused, and returns as soon as any arrives.

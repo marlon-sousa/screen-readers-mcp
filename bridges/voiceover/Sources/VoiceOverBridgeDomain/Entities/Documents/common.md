@@ -17,11 +17,21 @@ bridge posts at the system:
 
     press_gesture { gestures: ["describe item in voiceover cursor"] }   # the reader
     press_gesture { gestures: ["command+l"] }                           # the system
+    press_gesture { gestures: ["kb:h"] }                                # the system
 
-**The rule that tells them apart is the space.** A command name is a phrase and
-always contains one; a keystroke is a single `+`-joined token and never does. So
-`command key` is a command the reader performs and `command+l` is a chord the
-system receives.
+**Two things tell them apart, and you only need the first one.**
+
+- **`kb:` says "this is a key".** Everything after it is a keystroke, whatever it
+  looks like. That is what lets you press a single letter — `kb:h`, the key an
+  ordinary user presses to move by heading with single-key Quick Nav on. Without
+  the prefix, `h` is looked up as one of the reader's command names and refused.
+- **Otherwise a `+` says it**, so `command+l` needs no prefix. A command name is
+  a phrase and always contains a space; a keystroke never does. So `command key`
+  is a command the reader performs and `command+l` is a chord the system
+  receives.
+
+The prefix is optional on a chord and required on a lone key. `kb:command+l` and
+`command+l` are the same gesture.
 
 **Prefer the command name whenever one exists.** It costs no permission at all,
 it works whatever the user has rebound, and the reader diagnoses it for you. The
@@ -51,22 +61,49 @@ Four consequences that save round trips:
 
 ## Keystrokes: how to write one, and what it costs
 
-    command+l          control+option+space          shift+command+4
+    command+l          control+option+space          shift+command+4          kb:h
 
 **Modifiers first, the key last, joined by `+`.** The modifiers are `command`,
-`control`, `option`, `shift` and `fn`; case does not matter and neither does the
-order of the modifiers among themselves. The key is a single character, or one of
-these names: `space`, `return`, `tab`, `escape`, `delete`, `forwarddelete`,
-`left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, and `f1`
-through `f20`.
+`control`, `option` (`alt` also works), `shift` and `fn`; case does not matter
+and neither does the order of the modifiers among themselves. The key is a single
+character, or one of these names:
 
-- **A key with NO modifier is a command name, not a keystroke.** Send
-  `return key`, `tab key`, `left arrow key`, `f8 key` — the reader performs those
-  itself and they cost nothing. `return` on its own is not a gesture id here.
+| Key | Write | Also accepted |
+|---|---|---|
+| Return | `enter` | `return` |
+| The Delete key, which erases backwards | `backspace` | — |
+| Forward delete | `forwardDelete` | — |
+| The arrows | `leftArrow`, `rightArrow`, `upArrow`, `downArrow` | `left`, `right`, `up`, `down` |
+| Paging | `pageUp`, `pageDown`, `home`, `end` | — |
+| The rest | `space`, `tab`, `escape` | `esc` |
+| Function row | `f1` … `f20` | — |
+
+**These are NVDA's spellings, on purpose.** Every key name this reader accepts
+names the same physical key on the other reader in this contract, so a keystroke
+that works here works there. Two names are **refused** rather than guessed at,
+because they would not:
+
+- **`delete`** means a different key on each platform — this machine's Delete
+  erases backwards, Windows' erases forwards. Write `backspace` or
+  `forwardDelete`, or send the reader's own `delete key` command.
+- **`insert`** is a key this keyboard does not have. Neither is there an `nvda`
+  modifier: VoiceOver's is Control-Option unless the person rebound it, so send
+  the command name rather than guessing at somebody's configuration.
+
+**And one key has no shared spelling at all:** NVDA calls forward delete
+`delete`, which is exactly the name refused here. A script that runs on both
+readers has to spell that one key differently.
+
+- **A key with NO modifier needs the `kb:` prefix** — `kb:h`, `kb:enter`. Without
+  it the id is a command name. That is not pedantry: the reader has commands for
+  most single keys (`return key`, `tab key`, `left arrow key`, `f8 key`), it
+  performs them itself, and **they cost no permission at all**. Prefer them.
+  `kb:` is for the keys the reader has no command for — which is every letter,
+  and letters are what single-key Quick Nav is made of.
 - **A keystroke costs the Accessibility grant**, exactly as `type_text` does, and
   the request is raised on the first one of a session. A session that presses only
   command names and reads speech is never asked for anything — so if you do not
-  need a chord, do not send one.
+  need a key, do not send one.
 - **The keyboard layout is the machine's, not yours.** Which physical key
   produces `l` depends on the layout the person is typing on, and this bridge asks
   the live layout rather than assuming an American keyboard. If the active layout
@@ -107,6 +144,11 @@ So:
 - **`type_text` cannot press one either.** It carries a Unicode *payload*, which
   is how literal text arrives; it does not hold a modifier down. Typing and
   chording are two different acts and this reader has a route for each.
+- **`type_text "h"` does move single-key Quick Nav, and it is still the wrong
+  call.** A letter reaching the focused page is a letter either way, so it works
+  by coincidence — and the same call types an `h` into a text field, which is a
+  difference you cannot see before you make it. `press_gesture ["kb:h"]` says
+  which one you meant, and the record of the run says it too.
 - The table has **no letter keys at all**, so literal text can never come out of
   it. `type_text` is how text is entered, always.
 
@@ -217,6 +259,18 @@ document exists.
   platform's single-letter navigation, and like it they are **inside** every
   stance's vocabulary: they are how a user reads a page, not a way around a
   broken one.
+
+**Single-key Quick Nav is the same thing under the person's own fingers**, and
+when it is on the letters do it: `kb:h` for the next heading, `kb:l` for a link,
+`kb:b` for a button, `kb:1` through `kb:6` for a heading level. An ordinary user
+turns it on and navigates a page that way all day, so it is inside every stance's
+vocabulary too — press the letters the way a person would.
+
+Two things to know before you rely on it. It is a **mode**, and it is off unless
+somebody turned it on; `toggle single-key quick nav on or off` flips it and says
+which way it went, which is how you find out (see "How you read state" below).
+And while it is on, those letters no longer reach the page as text — which is
+what makes it worth turning off again before you type into a field.
 
 **Acting on things**, through the key commands above: `return key` to activate,
 `space` — which is not in the vocabulary, so use `return key` or the item's own

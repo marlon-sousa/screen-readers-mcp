@@ -479,6 +479,58 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
+	@Test("`kb:h` OFF THE WIRE IS THE LETTER KEY, AND `h` IS STILL A COMMAND NAME")
+	func aSourcePrefixedKeyOffTheWireReachesTheEventPath() throws {
+		// 13.19, end to end. With single-key Quick Nav on, an ordinary VoiceOver
+		// user presses `h` to move by heading; until this entry the bridge had no
+		// notation for it, because the `+` was the whole discriminator and a lone
+		// token was looked up as one of the reader's commands. Both halves are
+		// asserted here on one connection, because the property is the DIFFERENCE
+		// between them: the same letter, two vocabularies, two destinations.
+		let poster = FakeEventPoster()
+		let scripts = FakeAppleScriptRunner()
+		let peer = Peer(scripts: scripts, poster: poster)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: ["gestures": .array([.string("kb:h")]), "graceMs": .int(0)])
+		let reply = try peer.reply()
+		#expect(reply.error == nil)
+		guard case .success(let value) = try reply.outcome() else {
+			Issue.record("pressGesture failed: \(reply)")
+			return
+		}
+		// Down then up on the key the FAKE LAYOUT named, and NOT ONE MODIFIER
+		// TRANSITION: an unmodified press holds nothing down, so there is nothing
+		// to put back and no way for it to leave a key stuck.
+		#expect(poster.keyed.map(\.keyCode) == [205, 205])
+		#expect(poster.keyed.allSatisfy { $0.flags == [] })
+		#expect(poster.keyed.map(\.keyDown) == [true, false])
+		#expect(poster.flagTransitions.isEmpty)
+		// Not to the reader, and not as typed text -- which is the route that made
+		// this reachable by accident and meant something else entirely.
+		#expect(scripts.scripts.isEmpty)
+		#expect(poster.posted.isEmpty)
+		// What the session is TOLD it pressed keeps the prefix, so the line can be
+		// replayed: `h` fed back in is a command name.
+		let result = try value.decoded(as: GestureResult.self)
+		#expect(result.pressed.map(\.gesture) == ["kb:h"])
+		#expect(peer.transcript.gestures == ["kb:h"])
+
+		// And the unprefixed letter still goes to the reader, where it is refused
+		// by VoiceOver itself as a command that does not exist -- which is the
+		// cheap, correct failure, and proves the prefix is doing the deciding.
+		try peer.send(
+			id: 3, cmd: "pressGesture",
+			params: ["gestures": .array([.string("h")]), "graceMs": .int(0)])
+		_ = try peer.reply()
+		#expect(scripts.scripts == ["tell application \"VoiceOver\" to tell commander to perform command \"h\""])
+		#expect(poster.keyed.count == 2)
+		peer.hangUp()
+	}
+
 	@Test("a getFocusInfo off the wire reads the TREE when the grant is held")
 	func focusReachesTheAccessibilityTree() throws {
 		// THE TEST THE UNITS CANNOT WRITE, a third time. Every unit above runs

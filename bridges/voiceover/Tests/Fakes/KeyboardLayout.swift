@@ -35,6 +35,10 @@ public final class FakeKeyboardLayout: KeyboardLayout {
 		"f": LayoutKey(keyCode: 202, shifted: false),
 		"t": LayoutKey(keyCode: 203, shifted: false),
 		"4": LayoutKey(keyCode: 204, shifted: false),
+		// 13.19's letter: `h` is what an ordinary user presses to move by
+		// heading with single-key Quick Nav on, and `kb:h` is how a session
+		// says it. Here so the integration test can press the real one.
+		"h": LayoutKey(keyCode: 205, shifted: false),
 		"$": LayoutKey(keyCode: 204, shifted: true),
 	]
 

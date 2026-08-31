@@ -45,8 +45,9 @@ func (t *PressGesture) Capability() entities.Capability { return entities.Capabi
 func (t *PressGesture) Description() string {
 	return "Press one or more screen reader gestures, in order, and receive what the " +
 		"reader SAID in response. Gesture ids are the reader's own user-facing " +
-		"command notation -- modifier+key as that reader's own guidance spells it, " +
-		"not an internal identifier -- and pass through untouched. WHERE TO GET THEM: " +
+		"command notation -- a key combination on one reader, a named command on " +
+		"another, as that reader's own guidance spells it, not an internal " +
+		"identifier -- and pass through untouched. WHERE TO GET THEM: " +
 		"screenreader://reader-guidance is the connected reader's own list, read out " +
 		"of the running reader rather than transcribed, so it is right even where the " +
 		"user has rebound something; connect_reader returns it in full. Do not copy a " +

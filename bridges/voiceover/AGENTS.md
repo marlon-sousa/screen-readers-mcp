@@ -174,7 +174,8 @@ theirs back on every teardown path. Three things must survive any edit here:
 ## A gesture on this reader is a COMMAND NAME **or a keystroke**, and the id decides
 
 Three rules. The second is the finding that unblocked board entry 13.7; the
-third is 13.17, which is where this section stopped being one rule.
+third is 13.17, which is where this section stopped being one rule; and 13.19 put
+a **source prefix** in front of all of it.
 
 **A command name is an English phrase**, from VoiceOver's own
 `SCRStringsToCommandsMap` vocabulary — 415 entries on macOS 15.0, phrases like
@@ -189,6 +190,36 @@ name that carries one carries spaces too (`toggle single-key quick nav on or
 off`), and no command in the 415 is a bare `+`-joined token. The same rule
 decides the hyphen case, which is why the rule is one rule and not two.
 
+**`kb:` OUTRANKS ALL OF THAT, and it is what makes a lone key expressible.** A
+source prefix — everything up to and including the first `:`, lane 1's own rule
+in `bare_key_name` — says the id is a keystroke whatever shape it has, so `kb:h`
+is the letter key and `h` is a command name. It exists because 13.17's `+` rule
+left an ordinary user's commonest act unreachable: with single-key Quick Nav on
+you press `h` to move by heading, and there was no notation for it (spec 0049).
+Three consequences worth knowing before you touch this: `kb(laptop):` and any
+other source are **refused by name**, because a wrong source must not fall
+through to being read as a phrase; the prefix is **not second-guessed**, so
+`kb:go to desktop` is a malformed keystroke and not a command name; and
+`Gesture.described` **emits the prefix only where dropping it would change the
+meaning** — `kb:h` keeps it, `command+l` does not — so a transcript line is
+always replayable and still spells a chord the way lane 1 documents it.
+
+**EVERY KEY NAME THIS BRIDGE ACCEPTS NAMES THE SAME PHYSICAL KEY ON NVDA**, and
+that is a rule to keep rather than a coincidence to erode. The names in
+`Keystroke.NamedKey` were read out of `../nvda/source/vkCodes.py` (`byCode`,
+lower-cased into `byName` for lookup) rather than recalled, and the Mac's own
+spellings are synonyms where they name the same key (`return` for `enter`, `left`
+for `leftArrow`, `alt` for `option`). Where a name would mean a *different* key
+it is **refused by name** instead: `delete` is this machine's erases-backwards
+key and Windows' erases-forwards one, so it names `backspace`, `forwardDelete`
+and the reader's own `delete key` and presses nothing. The line is that **a name
+that differs with no hazard is tolerated and a name that differs with a hazard is
+refused** — and the one key with no shared spelling anywhere is forward delete,
+which NVDA calls `delete`. What is deliberately *not* copied from lane 1 is
+`press_order`'s modifier hoisting: it exists to undo NVDA's own alphabetical
+normalizer, there is no such normalizer here, and `l+command` stays a named
+failure rather than being quietly reordered.
+
 **`VO-D` is still refused, and no feature retires that.** `VO` is whatever the
 person has bound their VoiceOver modifier to — Control-Option, or Caps Lock, or
 both — so pressing it would mean guessing at somebody's own configuration and
@@ -198,10 +229,13 @@ keys were meant.
 
 **Prefer the command name wherever one exists**, and the reason is the grant: a
 command name is an AppleEvent and costs nothing, a keystroke is a `CGEvent` and
-costs Accessibility. `return key` and `command+return` are not interchangeable
-just because both press a key. That is also why **a key with no modifier stays a
-command name**: the `+` is the whole discriminator, and routing a lone `return`
-through the event path would spend the grant for a keypress that never needed it.
+costs Accessibility. `return key` and `command+enter` are not interchangeable
+just because both press a key. That is also why **an UNPREFIXED lone key stays a
+command name**: the vocabulary's 30 `… key` commands cost nothing, and routing a
+bare `return` through the event path would spend the grant for a keypress that
+never needed it. `kb:enter` is how a session says it meant the key itself, and it
+pays for saying so — which is the whole shape of 13.8's lever surviving 13.19
+intact, word for word.
 
 **Do NOT build a chord out of the reader's modifier commands.** The vocabulary
 carries 30 commands whose name ends in `key` — `tab key`, `return key`, the four

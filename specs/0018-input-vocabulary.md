@@ -67,6 +67,15 @@ and if a non-keyboard vocabulary ever arrives (braille cursor routing, touch), i
 can carry its own explicit prefix. So the User-Guide form becomes the norm
 without closing the door the `kb:` namespace was quietly holding open.
 
+**The reservation was spent on 2026-08-31, by board entry 13.19 — and by the
+mirror image of the case anticipated here.** The non-keyboard vocabulary that
+arrived is not a new *kind* of gesture but a reader whose **default** vocabulary
+is not the keyboard: VoiceOver's unprefixed ids are its own English command
+names, so on that reader `h` is a command and `kb:h` is the letter key. Nothing
+above changes for NVDA — the prefix stays tolerated and the documented form there
+stays prefixless — and `protocol.md` §5 now states both halves.
+See [spec 0049](0049-a-key-that-is-not-a-command.md).
+
 ### What shipped in PR #41
 
 - `specs/wire/v1/protocol.md` — `pressGesture` wording + example rewritten to the

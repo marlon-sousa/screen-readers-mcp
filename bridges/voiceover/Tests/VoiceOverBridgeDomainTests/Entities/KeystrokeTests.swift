@@ -60,12 +60,27 @@ struct KeystrokeTests {
 	func namedKeys() throws {
 		// The distinction the adapter depends on: Return is in the same place on
 		// every keyboard sold, and `l` is not.
-		#expect(try Keystroke.parse("command+return").key == .named(.return))
+		#expect(try Keystroke.parse("command+enter").key == .named(.enter))
 		#expect(try Keystroke.parse("control+escape").key == .named(.escape))
 		#expect(try Keystroke.parse("option+forwarddelete").key == .named(.forwardDelete))
-		#expect(try Keystroke.parse("command+left").key == .named(.left))
+		#expect(try Keystroke.parse("command+leftarrow").key == .named(.leftArrow))
 		#expect(try Keystroke.parse("command+pagedown").key == .named(.pageDown))
 		#expect(try Keystroke.parse("command+space").key == .named(.space))
+	}
+
+	// -- a key with no modifiers, which is 13.19 --------------------------------
+
+	@Test("A LONE KEY IS A KEYSTROKE HERE, and that is what `kb:h` means")
+	func aLoneKeyParses() throws {
+		// The entry's whole point: with single-key Quick Nav on, an ordinary
+		// VoiceOver user presses `h` to move by heading. The vocabulary decides
+		// that a BARE `h` is one of the reader's command names and that `kb:h` is
+		// this -- so by the time an id reaches here, a single token is a key.
+		let quickNav = try Keystroke.parse("h")
+		#expect(quickNav.modifiers.isEmpty)
+		#expect(quickNav.key == .character("h"))
+		#expect(try Keystroke.parse("enter") == Keystroke(modifiers: [], key: .named(.enter)))
+		#expect(try Keystroke.parse("F5") == Keystroke(modifiers: [], key: .named(.function(5))))
 	}
 
 	@Test("f1 through f20, and nothing above f20")
@@ -78,15 +93,38 @@ struct KeystrokeTests {
 		#expect(throws: KeystrokeMalformed.self) { try Keystroke.parse("command+f0") }
 	}
 
-	@Test("the spellings an agent is likely to write are accepted")
+	@Test("the MAC's spellings are accepted as synonyms for NVDA's names")
 	func alternativeSpellings() throws {
-		// Each of these is what somebody coming from another platform, or from
-		// Apple's own documentation, actually types. Accepting them costs a line
-		// each and saves a round trip that would otherwise fail for no good reason.
-		#expect(try Keystroke.parse("command+enter").key == .named(.return))
+		// Each of these is what somebody reading Apple's documentation -- or this
+		// bridge's own guidance before 13.19 -- actually types, and each names the
+		// same physical key as the canonical spelling beside it. Accepting them
+		// costs a line each and saves a round trip that would fail for no good
+		// reason. What is NOT accepted is a name that means a DIFFERENT key on the
+		// other reader; those are refused below.
+		#expect(try Keystroke.parse("command+return").key == .named(.enter))
 		#expect(try Keystroke.parse("command+esc").key == .named(.escape))
-		#expect(try Keystroke.parse("command+backspace").key == .named(.delete))
-		#expect(try Keystroke.parse("command+downarrow").key == .named(.down))
+		#expect(try Keystroke.parse("command+left").key == .named(.leftArrow))
+		#expect(try Keystroke.parse("command+down").key == .named(.downArrow))
+		#expect(try Keystroke.parse("command+up").key == .named(.upArrow))
+		#expect(try Keystroke.parse("command+right").key == .named(.rightArrow))
+		// `alt` is `option`: one physical key, two labels, and Apple prints both.
+		#expect(try Keystroke.parse("alt+t") == Keystroke.parse("option+t"))
+	}
+
+	@Test("EVERY TOKEN ACCEPTED HERE NAMES THE SAME KEY ON NVDA -- spec 0049 §2.3")
+	func nvdaNamesAreTheCanonicalOnes() throws {
+		// Read out of `../nvda/source/vkCodes.py` at release-2026.1 rather than
+		// recalled. Three of these previously spelled themselves in a way that
+		// FAILS on lane 1 -- `fromName` looks its tokens up in `vkCodes.byName`,
+		// which has `enter`, `leftArrow` and `pageUp` and has never had `return`,
+		// `left` or `pageup` -- so a transcript line from this reader could not be
+		// replayed on the other one.
+		#expect(try Keystroke.parse("command+return").described == "command+enter")
+		#expect(try Keystroke.parse("command+left").described == "command+leftArrow")
+		#expect(try Keystroke.parse("command+down").described == "command+downArrow")
+		#expect(try Keystroke.parse("command+pageup").described == "command+pageUp")
+		#expect(try Keystroke.parse("command+backspace").described == "command+backspace")
+		#expect(try Keystroke.parse("alt+t").described == "option+t")
 	}
 
 	// -- what fails, and by name -----------------------------------------------
@@ -106,12 +144,64 @@ struct KeystrokeTests {
 		}
 	}
 
+	@Test("A NAME THAT MEANS A DIFFERENT KEY ON THE OTHER READER IS REFUSED, NOT MAPPED")
+	func ambiguousKeyNamesAreRefused() {
+		// `delete` is the one that made this rule worth having: on this machine it
+		// erases BACKWARDS and on Windows it erases FORWARDS, so accepting it would
+		// mean one gesture id doing two different things on the contract's two
+		// readers with nothing anywhere to see. A refusal costs one round trip and
+		// names the three ways out; a wrong key costs whoever finds out, whenever
+		// they do.
+		do {
+			_ = try Keystroke.parse("command+delete")
+			Issue.record("expected 'command+delete' to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("backspace"))
+			#expect(malformed.reason.contains("forwardDelete"))
+			#expect(malformed.reason.contains("delete key"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+		// Insert is NVDA's own modifier and a key this keyboard does not have.
+		do {
+			_ = try Keystroke.parse("control+insert")
+			Issue.record("expected 'control+insert' to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("no Insert key"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("the other reader's two modifiers are refused BY NAME, each with its answer")
+	func windowsModifiersAreRefusedByName() {
+		// An agent that has driven lane 1 writes both of these, and the generic
+		// "not a modifier" message would leave it guessing which of five to try.
+		do {
+			_ = try Keystroke.parse("nvda+f7")
+			Issue.record("expected 'nvda+f7' to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("no NVDA key"))
+			#expect(malformed.reason.contains("Control-Option"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+		do {
+			_ = try Keystroke.parse("windows+d")
+			Issue.record("expected 'windows+d' to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("command"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
 	@Test("a modifier this bridge does not know is refused BY NAME, with the ones it does")
 	func unknownModifier() {
-		// `cmd` and `alt` are what an agent that has driven another platform
-		// writes. Answering "invalid gesture" would teach it nothing; naming the
-		// five modifiers lets it fix the id on the next call.
-		for id in ["cmd+l", "alt+t", "meta+l"] {
+		// `cmd` is what an agent that has driven another platform writes.
+		// Answering "invalid gesture" would teach it nothing; naming the five
+		// modifiers lets it fix the id on the next call.
+		for id in ["cmd+l", "meta+l"] {
 			do {
 				_ = try Keystroke.parse(id)
 				Issue.record("expected '\(id)' to be refused")
@@ -157,12 +247,12 @@ struct KeystrokeTests {
 		}
 	}
 
-	@Test("an id with no '+' at all is not a keystroke")
-	func nothingToSplit() {
-		// The vocabulary decides this before `parse` is reached, so this is the
-		// entity refusing to invent a chord out of a bare token rather than a case
-		// an agent can produce through `pressGesture`.
-		#expect(throws: KeystrokeMalformed.self) { try Keystroke.parse("l") }
+	@Test("a token that names no key at all is still refused, even with no '+'")
+	func aLoneTokenMustStillNameAKey() {
+		// 13.19 made a lone key legal here; it did not make a lone WORD legal.
+		// `kb:heading` is an agent reaching for a command name through the keyboard
+		// source, and the answer is the named failure rather than a press.
+		#expect(throws: KeystrokeMalformed.self) { try Keystroke.parse("heading") }
 	}
 
 	// -- the canonical spelling ------------------------------------------------
@@ -172,7 +262,11 @@ struct KeystrokeTests {
 		// It is what the transcript and the `pressed` entry report, so it has to be
 		// a spelling this bridge would accept: a record nobody could replay would
 		// be a worse record.
-		for id in ["command+l", "Shift+Command+4", "control+option+space", "command+RETURN", "fn+f5"] {
+		for id in [
+			"command+l", "Shift+Command+4", "control+option+space", "command+RETURN", "fn+f5",
+			// A lone key round-trips too, which is what makes `kb:h` replayable.
+			"h", "downarrow",
+		] {
 			let keystroke = try Keystroke.parse(id)
 			#expect(try Keystroke.parse(keystroke.described) == keystroke)
 		}
