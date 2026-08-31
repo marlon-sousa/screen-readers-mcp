@@ -398,9 +398,15 @@ sequence = ["conformance"]
 # lines of bundle assembly -- a framework symlink farm, three Info.plists, the
 # entitlements, the codesign invocation -- and until this entry NOTHING ran it
 # except a developer typing `poe build`. The first person to learn it was broken
-# would have been whoever next tried to ship. On macOS this also builds the NVDA
-# bridge's .nvda-addon, which scons can do on any host and which no job had ever
-# gated either, so both deliverables are covered by one line.
+# would have been whoever next tried to ship.
+#
+# WHAT IT DOES NOT GATE TODAY, said plainly rather than left to be discovered:
+# the .nvda-addon. Its package tier declares `scons`, `msgfmt` and `xgettext`, and
+# the macOS runner has none of them, so the dispatcher SKIPS it by name -- which
+# is the behaviour 13.11 had to add, because before it that tier ran anyway and
+# failed the whole job with a raw `[Errno 2] No such file or directory: 'scons'`.
+# Installing those three in the workflow would turn it on with no change here,
+# and that is a lane-1 decision rather than this entry's.
 #
 # It does NOT install, register or run anything: assembling the bundle is the
 # check. Registering a speech provider on a CI runner would prove nothing about

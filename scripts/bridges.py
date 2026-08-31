@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -66,6 +67,22 @@ class Tier:
 
 	def runs_here(self) -> bool:
 		return supports(self.hosts)
+
+	def missing_tools(self) -> tuple[str, ...]:
+		"""Which of this tier's declared tools are not on PATH here.
+
+		DECLARED TOOLS USED TO BE REPORTED AND NEVER CHECKED, and 13.11 is where
+		that cost something. `poe doctor` asked whether each tool was present;
+		`bridge_task.py` asked only about the HOST, so a tier whose tools were
+		missing ran anyway -- and the first CI job to run a build task tried `scons`
+		on a runner without it, got `[Errno 2] No such file or directory: 'scons'`,
+		and failed the whole run. That is the wrong answer twice over: the message
+		names a Python exception rather than a missing dependency, and a machine
+		that cannot do a bridge's packaging should SKIP it exactly as a machine on
+		the wrong host does. The declaration already said `tools = ["scons", ...]`;
+		nothing was reading it.
+		"""
+		return tuple(tool for tool in self.tools if shutil.which(tool) is None)
 
 	@property
 	def question(self) -> str:

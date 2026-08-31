@@ -132,12 +132,19 @@ jobs:
   # task list: if a Windows-only assumption creeps back in, it fails HERE rather
   # than on somebody's laptop three weeks later.
   #
-  # `ci-portable` IS `ci` PLUS EACH BRIDGE'S ARTIFACT, since 13.11. The task, not
-  # a second step, because this file's rule is that a job runs exactly one task
-  # and gains work in the task -- and because that keeps "what CI checks" a thing
-  # a developer can run and prove before pushing. What it buys: this is the only
-  # host where BOTH deliverables can be assembled, so it is the only place
-  # `bridges/voiceover/build.sh` and the .nvda-addon build are gated at all.
+  # `ci-portable` IS `ci` PLUS EACH SELECTED BRIDGE'S ARTIFACT, since 13.11. The
+  # task, not a second step, because this file's rule is that a job runs exactly
+  # one task and gains work in the task -- and because that keeps "what CI checks"
+  # a thing a developer can run and prove before pushing. What it buys is the only
+  # gate anywhere on `bridges/voiceover/build.sh`, which is 220 lines of bundle
+  # assembly that nothing in CI had ever run.
+  #
+  # THE .nvda-addon IS SKIPPED HERE, BY NAME, and that is the dispatcher working:
+  # its package tier declares scons, msgfmt and xgettext, this runner installs
+  # none of them, and a tier whose declared tools are absent skips exactly as one
+  # on the wrong host does. Adding those three to the steps below would gate that
+  # artifact too, with no change to any task -- a lane-1 decision, and the reason
+  # this comment names it rather than leaving a silent gap.
   #
   # IT IS ALSO WHERE THE SWIFT HALF OF THE LANE IS TESTED. `poe ci` dispatches
   # `swift test` to the VoiceOver bridge through the bridge registry (which

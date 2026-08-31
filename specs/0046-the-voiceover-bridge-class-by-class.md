@@ -1900,11 +1900,16 @@ because those scenarios compile in only on that leg.
 **What was genuinely missing was the PACKAGING script.** `build.sh` is 220 lines
 of bundle assembly and nothing had ever run it in CI; the first person to learn
 it was broken would have been whoever next tried to ship. So the job now calls
-`poe ci-portable` (`ci`, then `build-bridge`), which on macOS assembles both
-deliverables — the `.app` and the `.nvda-addon`, the latter never gated anywhere
-before either. It is a **task rather than a second workflow step**, per
-`ci.yml`'s own 1:1 rule, and it is deliberately **not** in `poe ci`: 12 seconds is
-cheap for a CI job and a fifth of the inner loop's one-minute budget.
+`poe ci-portable` (`ci`, then `build-bridge`). It is a **task rather than a second
+workflow step**, per `ci.yml`'s own 1:1 rule, and it is deliberately **not** in
+`poe ci`: 12 seconds is cheap for a CI job and a fifth of the inner loop's
+one-minute budget.
+
+**And it found a hole on its first run, which is amendment 16.** The `.nvda-addon`
+is *not* gated by it: that tier declares `scons`, `msgfmt` and `xgettext`, the
+macOS runner has none of them, and the dispatcher skips it by name. An earlier
+draft of this amendment claimed both deliverables were covered; that was written
+before the run and was wrong, so it is corrected here rather than quietly.
 
 **11. `scripts/doctor.py` stopped counting `_test.go` files as server build
 inputs.** A test file's bytes never enter `cmd/screenreader-mcp`, so adding a
@@ -1912,6 +1917,28 @@ conformance scenario made the doctor report the binary as stale and prescribe
 `poe redeploy` — which kills every attached agent's MCP session to rebuild a
 binary that was already current. That is a false alarm on the one check whose
 entire value is that it is believed. Found by this entry, on itself.
+
+**16. A TIER'S DECLARED TOOLS WERE PRINTED, CHECKED BY THE DOCTOR, AND IGNORED BY
+THE DISPATCHER.** Found by amendment 10's own first CI run. `bridges.py` parsed
+`tools = ["scons", ...]` and `poe bridges` printed it; `scripts/bridge_task.py`
+asked only `tier.runs_here()`, which is a question about the HOST. So on a macOS
+runner the NVDA bridge's package tier ran anyway and the job died with
+
+    $ scons -C bridges/nvda
+    could not run it: [Errno 2] No such file or directory: 'scons'
+
+which is the wrong answer twice: the message names a Python exception rather than
+a missing dependency, and a machine that cannot do a bridge's packaging should
+**skip** it exactly as a machine on the wrong host does. `Tier.missing_tools()`
+now answers that question and the dispatcher skips by name, pointing at the
+doctor. Rehearsed locally by hiding `scons` from `PATH`:
+
+    SKIP nvda: its package tier needs scons, which this machine does not have
+    (run `uv run poe doctor` for how to install it)
+
+It had never bitten before because no task that declared tools had ever been run
+by anything but a developer who had them. Spec 0042's structure was right and one
+of its readers was incomplete.
 
 **12. Three `server/` tests asserted a READER COUNT where they meant a layering
 property, and shipping the second reader turned them red for a reason none of
