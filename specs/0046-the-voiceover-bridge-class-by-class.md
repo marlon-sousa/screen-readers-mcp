@@ -1985,6 +1985,48 @@ program is now passed with `-c`, which leaves fd 0 alone, and the human pause
 falls back to a countdown when stdin is not a terminal so that a wrapper cannot
 turn a harness fault into an apparent bridge failure.
 
+**20. THE CUE WAS "LIGHT" WHERE LANE 1'S IS "CLEAR", and the amplitude was the
+one parameter nobody had argued for.** Raised by the maintainer on 2026-08-31 on
+hearing it: the header justified the fade, the duration and the pitch pairs, and
+set the amplitude to `0.2` with no reason recorded anywhere.
+
+Two things were wrong, and the second mattered more than the loudness. The cue's
+two tones were scheduled back to back, so a pair was heard as **one 90 ms sound
+that changed pitch halfway** rather than as two beeps a listener can count --
+while lane 1's `nvda_session_signals.py`, which is what the maintainer actually
+hears when a session takes his NVDA, uses `_TONE_MS = 180` and `_GAP_MS = 300`
+start-to-start. So the rhythm now matches lane 1's exactly (180 ms of tone, 120 ms
+of silence), the gap crosses the `Tones` seam because *the silence is part of what
+the cue means*, and a test pins it. Amplitude went to half scale, which is NVDA's
+documented `tones.beep` default — **flagged in the file as unverified**, because
+`../nvda` is a stated prerequisite for reading real code and this machine has no
+checkout.
+
+**21. A VOICE THE READER OFFERS AND THE SYSTEM WILL NOT SPEAK — and this bridge
+was innocent.** Board entry **13.15** carries it in full; the short version is
+that a live session's pass-through came out in Luciana while the user's reader was
+set to `com.apple.eloquence.pt-BR.Reed`. The bridge recorded the user's voice,
+wrote it into the marker verbatim and asked for it; **Eloquence is advertised on
+that machine and not installed**, so every request falls back — in `say`, in
+`AVSpeechSynthesizer`, and in VoiceOver itself.
+
+Settled by the repo's own "compare states, not strings" rule rather than by
+listening: the same sentence rendered with Eloquence Reed, Eloquence Grandma and
+Luciana produced **byte-identical audio**. Three of my own conclusions died on the
+way there — a silent macOS substitution, then the sandbox, then a wrong identifier
+— each killed by a measurement the maintainer asked for and I had not taken. The
+diagnosis that survived is his: *the language part is being obeyed, but not the
+synth.*
+
+**What it changed here** is the honesty of the evidence, not the behaviour:
+`passthrough_voice` became `passthrough_voice_requested`, because no API reports
+which voice actually rendered and the old name invited exactly the wrong reading —
+it was read back to the maintainer as proof the pass-through had honoured his
+voice, and it was not. Two new fields record what the bridge ASKED for and whether
+this extension's catalogue could see it, which is the fact that had to be inferred
+backwards. `speech-voices-read`, which carried no fields at all, now says what was
+published.
+
 **12. Three `server/` tests asserted a READER COUNT where they meant a layering
 property, and shipping the second reader turned them red for a reason none of
 them was testing.** `TestEmbeddedDefaultsShipTheNVDABridgeEndpointsInOrder`

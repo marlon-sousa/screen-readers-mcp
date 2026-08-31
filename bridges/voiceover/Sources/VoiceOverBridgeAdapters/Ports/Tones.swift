@@ -18,8 +18,18 @@
 // is never worth a session.
 
 public protocol Tones: AnyObject {
-	/// Play `frequencies` in order, each for `seconds`. A rising pair and a
-	/// falling pair are the whole vocabulary today; the seam takes a list because
-	/// "two tones, in this order" is the thing being asked for.
-	func play(_ frequencies: [Double], seconds: Double) throws
+	/// Play `frequencies` in order, each for `seconds`, separated by `gapSeconds`
+	/// of silence. A rising pair and a falling pair are the whole vocabulary
+	/// today; the seam takes a list because "two tones, in this order" is the
+	/// thing being asked for.
+	///
+	/// THE GAP IS PART OF WHAT THE CUE IS, which is why it crosses this seam
+	/// rather than living in the leaf. Two tones played back to back are heard as
+	/// ONE sound that changes pitch; the same two with a short silence between
+	/// them are heard as TWO beeps, and "two beeps" is what the cue means. 13.11
+	/// added it after the maintainer -- who uses NVDA daily -- reported that this
+	/// bridge's cue was "light" where NVDA's is "clear". It was: 90 ms of
+	/// continuous tone at a fifth of full scale, against lane 1's two 180 ms beeps
+	/// 300 ms apart.
+	func play(_ frequencies: [Double], seconds: Double, gapSeconds: Double) throws
 }

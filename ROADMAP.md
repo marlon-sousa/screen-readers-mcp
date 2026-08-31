@@ -280,8 +280,10 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.15**
-in lane 3, and the next free spec number is **0048**. Board number **13.14** was
+The next free board number is **11.38** in the convergence series and **13.16**
+in lane 3, and the next free spec number is **0048**. Board number **13.15** was
+spent on 2026-08-31 by the voice-substitution finding that came out of 13.11's
+live run, and this line moved in the same commit. Board number **13.14** was
 spent on 2026-08-30 when the control dialog was split out of 13.10, and this line
 was not moved with it -- corrected by 13.11, which spent no number of its own and
 found the gap while looking for one. **13.11 took no spec number either**: its
@@ -1200,6 +1202,53 @@ rule intends.
     amendment 13).
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), section
     13.14.
+
+13.15. **A voice the reader offers and the system will not speak** (lane 3).
+    Raised by Marlon on 2026-08-31, out of 13.11's live run, and it is a
+    USER-FACING honesty problem rather than a bug in this bridge.
+
+    **What was measured.** With VoiceOver set to `com.apple.eloquence.pt-BR.Reed`,
+    a live session's pass-through came out in Luciana. The bridge was innocent at
+    every step: it recorded the user's voice before writing ours, wrote it
+    verbatim into the marker (`{"silent":false,"voice":"com.apple.eloquence.pt-BR.Reed"}`),
+    and asked for it. The substitution is the SYSTEM's. Proved without ears, by
+    the repo's own "compare states, not strings" technique
+    ([`docs/how-we-found-the-voice-store.md`](docs/how-we-found-the-voice-store.md)):
+    rendering one sentence with `say` produced **byte-identical audio** for
+    Eloquence Reed, Eloquence Grandma and Luciana (53760 bytes, one SHA-256), and
+    the same for Eloquence Reed and Samantha in English (41984 bytes). **The
+    language is obeyed and the synthesizer is not.** Eloquence is advertised in
+    the catalogue -- it appears in `speechVoices()`, in `say -v '?'` and in
+    VoiceOver Utility -- and no payload is installed, so every request falls back,
+    **including VoiceOver's own**.
+
+    **Why it needs an entry.** Nothing in any API says a substitution happened:
+    `AVSpeechSynthesisVoice(identifier:)` returns an object that names itself
+    correctly, and `didStart` and `didFinish` both fire. So an agent, a
+    maintainer, or this bridge's own log will all report the requested voice as
+    though it were the delivered one -- which is exactly what happened, and what
+    13.11 fixed at the log's end by renaming the field.
+
+    **What the entry owes.** IF the bridge can determine that the reader's
+    selected voice is not installed -- and the byte-comparison above shows it is
+    determinable offline, so the question is whether it is determinable *cheaply
+    at a handshake* -- then it must **say so plainly**: that the user's chosen
+    voice will not be used, that the language default will be heard instead, and
+    **how to install the voice outside VoiceOver** (System Settings >
+    Accessibility > Spoken Content > System Voice > Manage Voices). A bridge that
+    silently changes how somebody's machine sounds is doing the one thing Rule 0
+    exists to prevent, even when the substitution is not its doing.
+
+    If it turns out NOT to be determinable at reasonable cost, that is a real
+    answer too and is written down permanently rather than re-investigated --
+    the shape spec 0041 and spec 0047 both used.
+
+    **It affects `live` sessions only.** A silent session renders nothing, so
+    nothing is substituted; this quietly strengthens the standing advice to prefer
+    silent.
+
+    Spec: none yet -- a measurement-and-decision entry in the shape of
+    [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
 ## Convergence (requires C and D both Done)
 

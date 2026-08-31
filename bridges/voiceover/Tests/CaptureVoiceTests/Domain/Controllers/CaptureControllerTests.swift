@@ -111,7 +111,7 @@ struct CaptureControllerTests {
 		let subject = makeSubject()
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ext.ours")
 		#expect(subject.sink.field("voice", ofKind: .synthesize) == .text("ext.ours"))
-		#expect(subject.sink.field("passthrough_voice", ofKind: .synthesize)
+		#expect(subject.sink.field("passthrough_voice_requested", ofKind: .synthesize)
 			== .text(CaptureControllerTests.brazilian.identifier))
 	}
 
@@ -183,14 +183,14 @@ struct CaptureControllerTests {
 		let subject = makeSubject(defaults: ["pt-BR": CaptureControllerTests.ours], voices: [CaptureControllerTests.ours])
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		#expect(subject.synthesizer.spoken.isEmpty)
-		#expect(subject.sink.field("passthrough_voice", ofKind: .synthesize) == .text("<none>"))
+		#expect(subject.sink.field("passthrough_voice_requested", ofKind: .synthesize) == .text("<none>"))
 	}
 
 	@Test("no usable voice is reported by name, and the utterance still ends")
 	func noVoiceIsNamedRatherThanHung() {
 		let subject = makeSubject(defaults: [:], voices: [])
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
-		#expect(subject.sink.field("passthrough_voice", ofKind: .synthesize) == .text("<none>"))
+		#expect(subject.sink.field("passthrough_voice_requested", ofKind: .synthesize) == .text("<none>"))
 		#expect(subject.ring.isFinished)
 	}
 
@@ -277,7 +277,7 @@ struct CaptureControllerTests {
 		// Named in the feed rather than inferred from the audio, which is spec
 		// 0047 finding 18's whole point: the ear cannot tell these apart.
 		#expect(
-			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+			subject.sink.field("passthrough_voice_requested", ofKind: .synthesize)
 				== .text(CaptureControllerTests.arabic.identifier))
 	}
 
@@ -286,7 +286,7 @@ struct CaptureControllerTests {
 		let subject = makeSubject(preferredVoice: "com.example.a.voice.that.is.not.installed")
 		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
 		#expect(
-			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+			subject.sink.field("passthrough_voice_requested", ofKind: .synthesize)
 				== .text(CaptureControllerTests.brazilian.identifier))
 	}
 
@@ -295,7 +295,7 @@ struct CaptureControllerTests {
 		let subject = makeSubject(preferredVoice: CaptureControllerTests.ours.identifier)
 		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
 		#expect(
-			subject.sink.field("passthrough_voice", ofKind: .synthesize)
+			subject.sink.field("passthrough_voice_requested", ofKind: .synthesize)
 				== .text(CaptureControllerTests.brazilian.identifier))
 	}
 
