@@ -19,7 +19,7 @@
 // THE SHAPE HAS NOWHERE TO SAY WHICH ROUTE ANSWERED, and that is the wire's
 // (protocol.md §5), not an omission here: an agent reading an empty `role` and
 // no `states` cannot tell "this bridge has no Accessibility grant" from "the
-// element has none". 13.10's dialog draws the permission row a human reads, and
+// element has none". the control dialog will draw the permission row a human reads, and
 // 13.11's guidance document is where an agent is told. `FocusInfoResult`'s own
 // header carries the same warning.
 //

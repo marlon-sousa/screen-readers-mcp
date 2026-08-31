@@ -26,12 +26,14 @@ struct TypeTextTests {
 		mode: CaptureMode = .live,
 		typer: FakeTextTyper = FakeTextTyper(),
 		permissions: FakePermissionBroker = FakePermissionBroker(),
-		transcript: FakeTranscript = FakeTranscript()
+		transcript: FakeTranscript = FakeTranscript(),
+		announcer: FakeAnnouncer = FakeAnnouncer()
 	) -> SessionContext {
 		let context = SessionContext(
 			clock: FakeClock(), transcript: transcript, attended: true, close: { _ in })
 		context.mode = mode
-		context.adapters = fakeAdapterSet(mode: mode, textTyper: typer, permissions: permissions)
+		context.adapters = fakeAdapterSet(
+			mode: mode, textTyper: typer, permissions: permissions, announcer: announcer)
 		context.speech = SpeechBuffer(clock: FakeClock())
 		return context
 	}
@@ -203,33 +205,42 @@ struct TypeTextTests {
 
 	// -- announce, on exactly the terms pressGesture uses -----------------------
 
-	@Test("a SILENT session refuses an announce it cannot speak, and types nothing")
-	func announceIsRefusedInASilentSession() throws {
-		// The same decision `pressGesture` made, through the same function, so the
-		// two commands cannot come to differ about a human's ears.
+	@Test("the announce IS SPOKEN, in BOTH modes -- 13.10 made that keepable")
+	func announceIsSpokenInEitherMode() throws {
+		// Until the human channel existed this was REFUSED in a silent session and
+		// merely noted in a live one, because there was nothing to say it on. The
+		// Announcer speaks outside VoiceOver, so both modes now warn the person
+		// before their window is typed into.
+		for mode in [CaptureMode.silent, .live] {
+			let announcer = FakeAnnouncer()
+			let typer = FakeTextTyper()
+			_ = try handler.execute(
+				context(mode: mode, typer: typer, announcer: announcer),
+				request("hello", announce: "about to type"))
+			#expect(announcer.spoken == ["about to type"])
+			#expect(typer.typed == ["hello"])
+		}
+	}
+
+	@Test("a warning that could not be spoken TYPES NOTHING and asks for no grant")
+	func anUnspeakableWarningStopsEverything() throws {
+		// The ordering proof, and the reason `HumanWarning.honour` is the first line
+		// of the handler: if the human cannot be told what is about to happen to
+		// their machine, nothing happens to it -- and no consent dialog is left
+		// behind either, because the warning is honoured before the grant is asked
+		// for.
+		let announcer = FakeAnnouncer()
+		announcer.fails = true
 		let typer = FakeTextTyper()
 		let permissions = FakePermissionBroker()
 		#expect(throws: CommandError.self) {
 			try handler.execute(
-				context(mode: .silent, typer: typer, permissions: permissions),
+				context(mode: .silent, typer: typer, permissions: permissions, announcer: announcer),
 				request("hello", announce: "about to type"))
 		}
 		#expect(typer.typed.isEmpty)
-		// AND THE GRANT WAS NEVER ASKED FOR, because the warning is honoured first:
-		// a refused command must not leave a permission dialog on the machine.
 		#expect(permissions.requests.isEmpty)
 		#expect(permissions.statusReads.isEmpty)
-	}
-
-	@Test("a LIVE session notes the announce and carries on: the human hears their machine")
-	func announceIsNotedInALiveSession() throws {
-		let transcript = FakeTranscript()
-		let typer = FakeTextTyper()
-		_ = try handler.execute(
-			context(mode: .live, typer: typer, transcript: transcript),
-			request("hello", announce: "about to type"))
-		#expect(typer.typed == ["hello"])
-		#expect(transcript.notes.contains { $0.contains("about to type") })
 	}
 
 	// -- the flags the dispatch loop reads -------------------------------------

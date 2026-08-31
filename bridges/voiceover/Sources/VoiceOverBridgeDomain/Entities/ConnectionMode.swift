@@ -2,7 +2,8 @@
 // to accept connections on.
 //
 // Pure, and read by BridgeConfig (the persisted preference), by Wiring (which
-// listener to build) and by the control dialog (13.10, the combo box). It is
+// listener to build) and by the launcher; the control dialog's combo box will
+// read the same value. It is
 // NOT on the wire: the server and the bridge agree on a transport before `hello`
 // and never mention it again, which is why nothing in ScreenReaderWire knows
 // this type exists.

@@ -91,6 +91,34 @@ struct WiringTests {
 		}
 	}
 
+	@Test("THE ANNOUNCER IT BUILDS EXCLUDES OUR OWN VOICE, by the suffix the store matches")
+	func theAnnouncerCannotPickTheCaptureVoice() throws {
+		// A COMPOSITION-ROOT MISTAKE THAT NO ADAPTER TEST WOULD CATCH: the rule
+		// lives in `SynthesizerAnnouncer`, but WHICH suffix it is given is decided
+		// here, and handing it the wrong string would produce an announcer that
+		// picks the capture voice -- silence talking to itself, returning `ok`
+		// while the room stays quiet.
+		let published = FakePublishedVoices(voices: [
+			"org.screen-readers-mcp.spike.capture.voice.org.screen-readers-mcp.spike.capture",
+			"com.apple.voice.compact.pt-BR.Luciana",
+		])
+		let out = FakeSpeechOut()
+		try Wiring.announcer(voices: published, out: out).announce("hello")
+		#expect(out.spoken.first?.voice == "com.apple.voice.compact.pt-BR.Luciana")
+	}
+
+	@Test("the prompter it builds mints a ticket per question and holds the answer")
+	func thePrompterIsWiredOverItsWindow() throws {
+		// The same shape of check one level up: the prompter's rules are its own,
+		// and what is decided HERE is that it is stacked over a window seam at all.
+		let window = FakePromptWindow()
+		let prompter = Wiring.userPrompter(window: window)
+		let ticket = try prompter.present("ready?")
+		#expect(window.opened.map(\.prompt) == ["ready?"])
+		window.report(ticket, .answered("yes"))
+		#expect(prompter.reply(for: ticket) == .answered("yes"))
+	}
+
 	@Test("the silence cap's `enabled` is the machine's `attended`, from ONE source")
 	func theCapFollowsAttendance() {
 		// protocol.md §6.2 keeps them separable for readers whose cap can be

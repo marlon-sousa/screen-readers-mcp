@@ -31,7 +31,8 @@
 // IT ASKS NOBODY ANYTHING. This is `AXIsProcessTrusted` with no options: no
 // dialog, no consent prompt, no entry added to any list. The only call to
 // `PermissionBroker.request` in this repository is in the TypeText handler, and
-// nothing here may become a second one.
+// nothing here may become a second one -- a route CHOICE that could raise a
+// consent dialog is the whole thing this seam exists to prevent.
 
 public protocol AccessibilityTrust: AnyObject {
 	/// Whether this process is trusted to use the accessibility API.

@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// EIGHT FIELDS AT 13.9, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// ELEVEN FIELDS AT 13.10, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -26,7 +26,8 @@ import ScreenReaderWire
 /// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
 /// | `gestureSender`, `readerLiveness` | 13.7, input: commands |
 /// | `textTyper`, `permissions` | 13.8, input: typing |
-/// | `focusInspector` | 13.9, focus -- here |
+/// | `focusInspector` | 13.9, focus |
+/// | `announcer`, `userPrompter` | 13.10, the human channel -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -83,7 +84,7 @@ public struct AdapterSet {
 	/// adapter depend on another outside an `adapters/ports/` seam. 13.7 met the
 	/// same shape with `readerLiveness` and resolved it the same way. See
 	/// `PermissionBroker`, whose header carries the rest of the argument --
-	/// including the one 13.7 did not have, that 13.10's dialog needs this port
+	/// including the one 13.7 did not have, that the control dialog will need this port
 	/// too and a view may consume a port but not an adapter's private seam.
 	///
 	/// PROCESS-SCOPED, like the provider lifecycle: it describes this process's
@@ -106,6 +107,26 @@ public struct AdapterSet {
 	/// NOTHING on this path can request anything. See `FocusInspector`.
 	public let focusInspector: any FocusInspector
 
+	/// How this session speaks TO the human at the reader.
+	///
+	/// PRESENT IN BOTH MODES, and in a silent one it is the human's ONLY channel:
+	/// it speaks with the bridge's own synthesizer, outside VoiceOver entirely, so
+	/// the suppression the capture voice is rendering does not reach it. See
+	/// `Announcer`, whose header carries the argument, and `HumanWarning`, which
+	/// is where a promise this bridge used to be unable to keep became keepable.
+	///
+	/// PROCESS-SCOPED, like the permission broker: it describes a way out of this
+	/// process rather than anything about a session.
+	public let announcer: any Announcer
+
+	/// How this session asks the human a question and collects the answer later.
+	///
+	/// TWO COMMANDS, ONE PORT (protocol.md §5): `askUser` presents and
+	/// `waitForUserReply` polls, and NOTHING BLOCKS -- because the thread that
+	/// would block is the one that renews the silence lease. `UserPrompter`'s
+	/// header carries that decision and the alternative it was chosen over.
+	public let userPrompter: any UserPrompter
+
 	public init(
 		mode: CaptureMode,
 		speechSource: any SpeechSource,
@@ -115,7 +136,9 @@ public struct AdapterSet {
 		readerLiveness: any ReaderLiveness,
 		textTyper: any TextTyper,
 		permissions: any PermissionBroker,
-		focusInspector: any FocusInspector
+		focusInspector: any FocusInspector,
+		announcer: any Announcer,
+		userPrompter: any UserPrompter
 	) {
 		self.mode = mode
 		self.speechSource = speechSource
@@ -126,6 +149,8 @@ public struct AdapterSet {
 		self.textTyper = textTyper
 		self.permissions = permissions
 		self.focusInspector = focusInspector
+		self.announcer = announcer
+		self.userPrompter = userPrompter
 	}
 }
 

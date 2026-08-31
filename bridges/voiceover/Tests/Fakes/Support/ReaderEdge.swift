@@ -15,6 +15,10 @@
 //    the real grant.
 //  * It takes an EventPoster, and the real one types into whatever window the
 //    developer has in front of them at that moment.
+//  * SINCE 13.10 it takes an Announcer and a UserPrompter, and the real ones
+//    SPEAK OUT LOUD and OPEN A WINDOW that steals focus -- on a machine that may
+//    have a screen reader running, which would then announce a dialog nobody
+//    asked for while the developer reads a test failure.
 //
 // AND SINCE 13.9 IT MAKES A FOURTH MISTAKE UNAVAILABLE, which is a different
 // kind: the focus trio (`tree`, `frontmost`, `trust`) changes nothing on the
@@ -42,7 +46,9 @@ public func testAdapterFactory(
 	poster: any EventPoster = FakeEventPoster(),
 	tree: any AccessibilityTree = FakeAccessibilityTree(),
 	frontmost: any FrontmostApplication = FakeFrontmostApplication(),
-	trust: any AccessibilityTrust = FakeAccessibilityTrust()
+	trust: any AccessibilityTrust = FakeAccessibilityTrust(),
+	announcer: any Announcer = FakeAnnouncer(),
+	prompter: any UserPrompter = FakeUserPrompter()
 ) -> VoiceOverAdapterFactory {
 	VoiceOverAdapterFactory(
 		capturePath: capturePath,
@@ -53,7 +59,9 @@ public func testAdapterFactory(
 		poster: poster,
 		tree: tree,
 		frontmost: frontmost,
-		trust: trust
+		trust: trust,
+		announcer: announcer,
+		prompter: prompter
 	)
 }
 
@@ -62,8 +70,8 @@ public func testAdapterFactory(
 /// The fields arrived one entry at a time and will keep doing so, so a test that
 /// spells the initializer out is a test that has to be edited by every future
 /// entry for reasons that have nothing to do with what it asserts. Two arrived
-/// with 13.7, two more with 13.8 and one with 13.9, and this helper is why
-/// nothing but the factory noticed any of the three times.
+/// with 13.7, two more with 13.8, one with 13.9 and two with 13.10, and this
+/// helper is why nothing but the factory noticed any of the four times.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
@@ -73,7 +81,9 @@ public func fakeAdapterSet(
 	readerLiveness: FakeReaderLiveness = FakeReaderLiveness(),
 	textTyper: FakeTextTyper = FakeTextTyper(),
 	permissions: FakePermissionBroker = FakePermissionBroker(),
-	focusInspector: FakeFocusInspector = FakeFocusInspector()
+	focusInspector: FakeFocusInspector = FakeFocusInspector(),
+	announcer: FakeAnnouncer = FakeAnnouncer(),
+	userPrompter: FakeUserPrompter = FakeUserPrompter()
 ) -> AdapterSet {
 	AdapterSet(
 		mode: mode,
@@ -84,6 +94,8 @@ public func fakeAdapterSet(
 		readerLiveness: readerLiveness,
 		textTyper: textTyper,
 		permissions: permissions,
-		focusInspector: focusInspector
+		focusInspector: focusInspector,
+		announcer: announcer,
+		userPrompter: userPrompter
 	)
 }

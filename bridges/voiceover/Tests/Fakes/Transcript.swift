@@ -31,6 +31,11 @@ public final class FakeTranscript: Transcript {
 	/// protocol.md §5 puts on the transcript: the record says how much was typed
 	/// and can never say what.
 	public private(set) var typedLengths: [Int] = []
+	/// What was said to the human, in order. Separate from `notes` because the
+	/// entry that produced it is separate: this is the record that a person was
+	/// TOLD something, and it is the one line a silent run's transcript is read
+	/// for afterwards.
+	public private(set) var announcements: [String] = []
 	public private(set) var notes: [String] = []
 	public private(set) var closedReasons: [String] = []
 
@@ -56,6 +61,10 @@ public final class FakeTranscript: Transcript {
 
 	public func typed(_ length: Int) {
 		typedLengths.append(length)
+	}
+
+	public func announced(_ text: String) {
+		announcements.append(text)
 	}
 
 	public func note(_ text: String) {

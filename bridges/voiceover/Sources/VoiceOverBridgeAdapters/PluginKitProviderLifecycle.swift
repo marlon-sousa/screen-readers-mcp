@@ -32,8 +32,8 @@
 // (finding 6), and restarting a blind person's screen reader is not a decision a
 // handshake may take. The recovery is REPORTED, by name, with its order --
 // `lsregister -f` first and `pluginkit -a` second, because the first alone was
-// measured not to be enough (spec 0041, C1) -- and 13.10's dialog is where a
-// human drives it.
+// measured not to be enough (spec 0041, C1) -- and the control dialog is where a
+// human will drive it.
 
 import Foundation
 import VoiceOverBridgeDomain

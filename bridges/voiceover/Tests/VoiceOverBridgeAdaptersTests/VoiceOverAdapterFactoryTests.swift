@@ -82,6 +82,24 @@ struct VoiceOverAdapterFactoryTests {
 		}
 	}
 
+	@Test("both modes get the SAME announcer and prompter, and a silent one is not special")
+	func bothModesGetTheHumanChannel() throws {
+		// The channel goes around the reader entirely -- the bridge's own
+		// synthesizer, and a window of its own -- so the mode that mutes the reader
+		// changes nothing about it. That is exactly why `announce` is audible in a
+		// silent session, which is the one mode where it is the human's only
+		// channel. Both are SHARED, like the broker: one process has one
+		// loudspeaker and one screen.
+		let announcer = FakeAnnouncer()
+		let prompter = FakeUserPrompter()
+		let factory = testAdapterFactory(announcer: announcer, prompter: prompter)
+		for mode in [CaptureMode.live, .silent] {
+			let set = try factory.build(mode: mode)
+			#expect(set.announcer === announcer)
+			#expect(set.userPrompter === prompter)
+		}
+	}
+
 	@Test("BUILDING A SESSION ASKS FOR NO PERMISSION -- the request belongs to `typeText`")
 	func buildingAsksForNothing() throws {
 		// The structural half of "a session that only presses commands and reads

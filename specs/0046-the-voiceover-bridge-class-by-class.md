@@ -1445,8 +1445,18 @@ answers about one machine.
 
 ### 13.10 — the control dialog, and the human channel
 
+> **SPLIT ON 2026-08-30, while this was being implemented.** What shipped as
+> 13.10 is the **human channel** — the second table below, and the three commands
+> `interact` announces. The **Views** table is now board entry **13.14**, held
+> until the bridge can drive VoiceOver over its own window so that the dialog can
+> be checked the way everything else in this lane is; until then the machine's
+> settings live in the persisted store and a bridge is started by
+> `BridgeListener`. The reasoning is amendment 0 below, and it is the maintainer's
+> decision rather than an implementation finding.
+
 **Views** — driving actors, not adapters: they consume ports rather than
-implement one, exactly as `views/bridge_dialog.py` does (spec 0011).
+implement one, exactly as `views/bridge_dialog.py` does (spec 0011). **These are
+13.14's**, per the note above.
 
 | File | Role |
 |---|---|
@@ -1482,6 +1492,154 @@ capture voice is selected — the last of which is a **view of `ProviderState`**
 observe the session through `EventBus` and marshal every update to the main
 thread, and no view call blocks it. Teardown paths are fire-and-forget, so a
 main-thread caller can never wait on the thread it is joining.
+
+#### Amendments made while implementing 13.10, each with its why
+
+**0. THE ENTRY WAS SPLIT, AND THE CONTROL DIALOG IS NOT IN IT.** Decided by the
+maintainer on 2026-08-30, while this was being implemented, and it is the
+amendment every other one below is conditioned on: **the dialog waits until the
+bridge can drive VoiceOver over its own window**, so that it can be checked the
+way everything else in this lane is checked — by driving the reader and reading
+back what it said — rather than by a human being asked whether it looked right.
+Until then the machine's settings are read from the persisted store and a bridge
+is started by `BridgeListener`. The Views table above therefore belongs to
+**board entry 13.14**, unchanged, and what shipped as 13.10 is the entry's other
+half: **the human channel**, `announce` / `askUser` / `waitForUserReply`, the
+`interact` capability, and the three ports and their adapters that the dialog was
+going to be the first reader of.
+
+That split costs almost nothing, because the human channel never needed a window:
+`announce` speaks with the bridge's own synthesizer and `askUser` opens a prompt
+of its own. What it changes is who READS the rest — and the answer is the
+launcher, which is a real caller rather than a placeholder: it starts from the
+persisted settings and lets a flag override them for one run, it plays the
+audible cues as well as printing them, and it prints what the machine can do
+before anything is pressed (the capture voice's state, whether AppleScript
+control of VoiceOver is on, and which permissions are held). **Nothing in this
+entry has no caller**, which is the rule that would otherwise have been broken by
+shipping a settings adapter and a cue adapter with only a dialog to use them.
+
+**1. `App/Wiring.swift` is not added, and will not be, because `Wiring` already
+exists.** The Views table lists it as if the app has to grow one. It does not:
+13.4 put `Wiring` in `VoiceOverBridgeAdapters`, and its header carries the reason
+— SwiftPM cannot import an executable target into a test target, so a composition
+root in the app would be the one file a wiring mistake could survive every test
+in. That argument is *stronger* for a dialog, not weaker, because the dialog is
+the thing being wired. When 13.14 lands, what the app gets is one struct of
+ports built by one function in the module the tests can reach.
+
+**2. The open design question, resolved: `UserPrompter` is `present` / `reply` /
+`cancel`, and `waitForUserReply` POLLS.** `askUser` and `waitForUserReply` are
+two commands (protocol.md §5), so the prompt must not block the session's
+dispatch loop. The alternative — a continuation the session thread awaits —
+reads better and was declined for a reason specific to this bridge: **that thread
+also renews the silence lease.** Parking it on a human's decision would let the
+lease expire while somebody reads a dialog, which is precisely the failure 13.6's
+design exists to make impossible, on the one path where the human is being asked
+a question about their own machine. So the adapter owns a small table keyed by
+ticket, the poll is bounded by the request's own timeout against the same `Clock`
+port every other wait in this bridge uses, and nothing blocks either thread.
+`cancel` is the third method because a question outlives the session that asked
+it otherwise, and teardown has to be able to take it off the screen.
+
+**3. `Adapters/Ports/PromptWindow.swift` and `Adapters/AppKitPromptWindow.swift`
+are added.** The table has `AppKitUserPrompter` as a single adapter. Split, for
+the repo's layering rule and for the same reason `SpeechOut`/`AVSpeechOut` are
+already split in the table: *no test may open a window*, so the decisions — the
+ticket, the table, first-outcome-wins, a cancelled prompt refusing a late outcome
+— have to sit above a seam, and what is left below it is AppKit with nothing to
+test in it. **This window is the prompt, not the control panel**: `askUser` needs
+a window whether or not a dialog exists.
+
+**4. The persisted settings arrive here: `UserDefaultsBridgeConfig` over a
+`Defaults` seam, with a `UserDefaultsStore` leaf.** Not in the table, and owed by
+13.4: `BridgeConfig` has been a domain port with only a fake behind it since then.
+Lane 1's shape exactly (`IniBridgeConfig` over `ConfigFile` over
+`TextConfigFile`), for lane 1's reason: a test that reached the real store would
+leave droppings in the developer's own preferences. **The launcher is what reads
+it** — the maintainer's "keep using the config file until then" — and a flag
+overrides for one run without writing anything.
+
+**5. The audible cues arrive here too: `AudibleSessionSignals` over a `Tones`
+seam, with a `CoreAudioTones` leaf.** Owed by 13.4 in the same way, and it is
+this entry rather than the dialog's because the human channel is what gives a cue
+WORDS: the tones say control was taken and the `Announcer` says what it was taken
+as, both outside VoiceOver, because a cue routed through a reader this session has
+muted is the one thing the human cannot hear. The launcher plays them and prints
+them.
+
+**6. `BridgeConfig` gains `cuesEnabled`**, which `SessionSignals`' header
+promised to this entry. Read on every cue rather than at construction, so
+silencing the cues takes effect on the session that is running rather than on the
+next one. Deliberately **not** overridable from the launcher's command line:
+whether the machine makes a sound is a fact about the room.
+
+**7. `Permission` gains `automationVoiceOver`**, which `PermissionBroker`'s header
+promised "beside the row that reads it". What reads it is the launcher's startup
+report, which is a row in a terminal rather than a row in a window; the dialog
+will read the same value. **The three-way answer was declined**:
+`AEDeterminePermissionToAutomateTarget` distinguishes "refused" from "not yet
+asked", and `PermissionState` reports both as `notGranted` because what a caller
+does about them is identical — offer the human the request. That decision is
+recorded in `PermissionState`'s own header, which is the file that invited it.
+
+**8. The silence cap moved from the `Session` to the `SessionContext`.** What
+resets that clock is sound the human actually hears (protocol.md §6.1), and from
+this entry two of those sounds are *commands* — `announce` and `askUser`. A
+handler sees the context and nothing else, so the cap either moves there or the
+context grows a second closure into the session whose only job is to forward one
+call. The session still owns the policy: it creates the cap at the handshake and
+is the only thing that acts on `check`.
+
+**9. `Entities/UserPrompt.swift` is added.** Not in the table. The prompter's
+table holds the ANSWER, because the window that collects it is AppKit's; what has
+to be pure is the WINDOW — a 300-second deadline (protocol.md §5's number) and
+whether asking cost this session its silence. Deadlines are arithmetic on a clock
+reading, and arithmetic does not belong in a view.
+
+**10. `Transcript` gains `announced`.** The vocabulary grows one verb per entry
+that first produces the event, and this is the entry that produces it. It records
+the TEXT, which is the opposite of `typed`'s decision and for the opposite reason:
+an announcement is written to be heard out loud in a room, and a password is not.
+
+**11. `askUser` lifts the suppression while its window is open, and
+`waitForUserReply` puts it back.** protocol.md §5 says `suppressing` is false
+while an askUser window is open; the reason is not bookkeeping, it is that asking
+a question of somebody whose screen reader this session has muted is asking them
+to answer a dialog they cannot hear. Recorded on the prompt rather than
+re-derived, because a live session suspended nothing — and **not** put back if the
+silence cap has already lifted, because that was a guarantee rather than a loan.
+While a window is open the dispatch loop keeps the cap's window fresh, so a
+prompt somebody takes two minutes over cannot lift a suppression that is not in
+force.
+
+**12. `Package.swift` and `build.sh` are untouched, and that is amendment 0's
+doing.** `Package.swift`'s header says 13.10 "adds the edge and teaches build.sh
+the module search path in the same breath". Both belong to 13.14 now, because
+both exist to make an app that DOES something — and until the dialog lands the
+app is still only the container the extension ships inside. When it is written,
+the recommendation from having built it once is to take the app's executable out
+of SwiftPM's products and copy it, exactly as the script already does for
+`CaptureProbe`, rather than teaching the script a second compile description that
+can drift from the manifest.
+
+**13. The one-place claim about the Accessibility grant did NOT narrow, and the
+obligation moved with the dialog.** The claim — *the grant is requested from
+exactly one place, the TypeText handler* — is still literally true, because the
+second caller was going to be the dialog's Request button. It is stated in eleven
+places across the bridge's source, tests and manuals, and **13.14 must rewrite
+all of them in the PR that adds the caller**: no COMMAND but `typeText` requests
+anything, and a human pressing a button is not a command. `PermissionBroker`'s
+header now carries that obligation where whoever writes the button will read it.
+A claim that quietly becomes false is worse than one that was never made.
+
+**14. `scripts/voiceover_announce.sh` is added**, because the entry's one
+promise that no unit test can make is that `announce` is AUDIBLE in a silent
+session. It opens a silent session against a listening bridge, presses one command
+to show the reader is inaudible, announces to show the bridge is not, and then
+asks a question through `askUser` and collects the answer — the same channel in
+the other direction. It says plainly that it makes the machine speak, because its
+read-only siblings are read as safe by default.
 
 ### 13.11 — packaging, CI, guidance, and the live run
 
@@ -1557,6 +1715,42 @@ re-opens it. Either way lane 3 ships v1 without `state`, and the question is
 settled by evidence rather than by this spec's judgement.
 
 It adds no production class, so it carries no layout — exactly as spec 0041 did.
+
+### 13.14 — the control dialog
+
+**The layout is 13.10's Views table above, unchanged**, plus `Wiring`'s
+`ControlSurface` — one struct of ports, built by one function in the adapters
+module, because SwiftPM cannot import an executable target into a test target and
+a composition root nothing can exercise is where a wiring mistake survives every
+test (amendment 1).
+
+**Why it waits.** Every other entry in this lane is checkable: a gesture is
+asserted against the script the reader received, focus against the element the
+tree returned, silence against the marker the extension reads. A window is not —
+the only way to know a control panel works is to drive it, and the thing that can
+drive a macOS window is the reader this bridge already talks to. So the dialog
+lands when `pressGesture`, `getFocusInfo` and captured speech can be pointed at
+the bridge's own window, which is after 13.11 wires the live tier. Decided by the
+maintainer on 2026-08-30, in those terms: *wait until you can control VoiceOver,
+so that you can navigate through your own GUI by yourself.*
+
+**What it inherits, stated so it is not rediscovered:**
+
+- **The endpoint NAME is already a stored setting** (board 11.37, paid in at
+  13.10); what the dialog adds is a way for a human to edit it without a
+  `defaults` command.
+- **The audible cues, the persisted settings and the scripting-setting port all
+  exist and all have callers.** The dialog replaces the launcher as the thing a
+  human drives; it does not introduce any of them.
+- **`ProviderLifecycle` still owes `register()` / `unregister()`**, which 13.6
+  deliberately left out because re-registration only takes effect after the
+  reader restarts and that is not a decision a handshake may take. They arrive
+  beside the row a human drives.
+- **It is the second caller of `PermissionBroker.request`**, and therefore the
+  entry that must NARROW the one-place claim everywhere it is written —
+  amendment 13 lists what that means.
+- **The live checklist for the dialog is the dialog's own**, driven through the
+  bridge rather than by eye.
 
 ## Testing
 

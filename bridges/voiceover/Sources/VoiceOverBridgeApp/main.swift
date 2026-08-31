@@ -13,11 +13,14 @@
 // synchronous console write there would be paid on the thread that has to start
 // synthesis.
 //
-// WHAT IT BECOMES: the bridge session on a background thread (13.4), the input
-// path (13.7, 13.8), and the control dialog on AppKit's main thread (13.10). At
-// that point it gains VoiceOverBridgeDomain, VoiceOverBridgeAdapters and
-// ScreenReaderWire as dependencies, and Wiring.swift becomes the answer to "who
-// connects what".
+// WHAT IT BECOMES: the control dialog on AppKit's main thread -- element 5 of
+// the five (spec 0046, part 3), deferred on 2026-08-30 until the bridge can drive
+// VoiceOver over its own window, so that the dialog can be checked the way
+// everything else in this lane is. At that point this target gains
+// VoiceOverBridgeAdapters and VoiceOverBridgeDomain as dependencies, and
+// `Wiring.controlSurface` becomes the answer to "who connects what" for it.
+// Until then a bridge is started by `BridgeListener`, which reads the same
+// persisted settings the dialog will edit.
 
 import Foundation
 

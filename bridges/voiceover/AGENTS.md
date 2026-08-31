@@ -78,19 +78,27 @@ the manifest. Both, usually.
 
 `hello` announces what this build actually implements, and nothing else.
 `Registry.capabilities` was empty at 13.4, `[speech]` at 13.5, `[speech,
-gestures]` at 13.7, `[speech, gestures, typing]` at 13.8 and `[speech, gestures,
-typing, focus]` at 13.9, and each later entry adds its own alongside the handlers
-that serve it. Announcing a capability before the entry that implements it
-produces the one failure the capability gate exists to prevent: a tool the agent
-can see, call, and get nothing from. The
-converse costs too, and it is why `speech` landed with 13.5 rather than being
-held back: a capture feed the server gates away is a tool nobody can call.
+gestures]` at 13.7, `[speech, gestures, typing]` at 13.8, `[speech, gestures,
+typing, focus]` at 13.9 and `[speech, gestures, typing, focus, interact]` at
+13.10, and each later entry adds its own alongside the handlers that serve it.
+Announcing a capability before the entry that implements it produces the one
+failure the capability gate exists to prevent: a tool the agent can see, call,
+and get nothing from. The converse costs too, and it is why `speech` landed with
+13.5 rather than being held back: a capture feed the server gates away is a tool
+nobody can call.
 
 The same rule is why `VoiceOverAdapterFactory` refused a silent session until
 13.6, and **13.6 deleted that refusal and its named test in the commit that made
-the promise keepable**, exactly as this file required. What replaced it is not
-nothing: **the refusal MOVED to the handshake**, which is the only place that can
-ask whether this machine can actually deliver silence. `silent` is not a
+the promise keepable**, exactly as this file required. **13.10 did it a second
+time**, to the same pattern: `HumanWarning` refused a `pressGesture`'s or a
+`typeText`'s `announce` in a silent session, because that is the one mode where
+it is the human's only warning and this bridge does not half-keep a promise about
+somebody's ears. The refusal and its named test went in the commit that gave the
+bridge a channel to speak on.
+
+What replaced 13.6's refusal is not nothing: **it MOVED to the handshake**, which
+is the only place that can ask whether this machine can actually deliver
+silence. `silent` is not a
 preference, it is a promise about a human's ears, so a silent handshake on a
 machine where the capture voice is not registered, not published, or would not
 stick is refused **by named condition, with its recovery** — never established
@@ -258,6 +266,51 @@ and would disagree silently on a decomposed character.
 oversight: with "speak typed characters" on, typing emits one utterance per
 character and none of them is worth waiting for.
 
+## The human channel goes AROUND the reader, which is why it works in silence
+
+`announce`, `askUser` and `waitForUserReply` are the `interact` capability, and
+all three rest on one fact: **the `Announcer` speaks with the bridge's own
+synthesizer, outside VoiceOver entirely.** On this platform the suppression is
+rendered inside the capture voice, so anything said *through* the reader is
+exactly what the person cannot hear — and going around it is a cleaner bypass
+than NVDA's, where the same claim rests on the interception being a filter in
+front of a synth that is still loaded. It is also why `pressGesture`'s and
+`typeText`'s `announce` field is honourable here at all: until 13.10 it was
+refused in a silent session, because there was nothing to say it on.
+
+Four rules bind anyone editing this.
+
+**Our own capture voice is excluded by SUFFIX, and that is not a nicety.** An
+announcement rendered by the extension that is rendering silence would be silence
+talking to itself — an `announce` that returns `ok` while the room stays quiet, in
+the one mode where it is the human's only channel. The match is by suffix and
+never by equality, because the system publishes our voice as the extension's
+bundle id followed by the one the audio unit declared (spec 0041 A1, spec 0047
+finding 17). It is the same constant `PluginKitProviderLifecycle` matches ours by,
+read a second time rather than copied.
+
+**Asking is PRESENTED and POLLED, never awaited.** `askUser` and
+`waitForUserReply` are two commands (protocol.md §5), and the thread that a
+continuation would park is **the one that renews the silence lease**. A lease
+expiring while somebody reads a dialog is the failure the lease design exists to
+prevent, so the AppKit prompter owns a table keyed by ticket, `waitForUserReply`
+polls it against the same `Clock` port every other wait uses, and nothing blocks
+either thread. The alternative and its rejection are in `UserPrompter`'s header.
+
+**A question gives the reader back while it is open.** protocol.md §5 says
+`suppressing` is false while an `askUser` window is open, and the reason is not
+bookkeeping: asking a question of somebody whose screen reader this session has
+muted is asking them to answer a dialog they cannot hear. The prompt records
+whether it lifted anything — a live session lifted nothing — and the answer puts
+back exactly that, **unless the silence cap has already fired**, because that was
+a guarantee rather than a loan. While a window is open the dispatch loop keeps the
+cap's own window fresh, so a human who takes two minutes cannot cause a lift of a
+suppression that is not in force.
+
+**What the human was told is in the transcript, in full.** `announced` records
+the text where `typed` records a length, and the asymmetry is deliberate: an
+announcement is written to be heard out loud in a room, and a password is not.
+
 ## Focus has TWO ROUTES, and the grant picks one without ever being asked for
 
 `getFocusInfo` answers from the **accessibility tree** of the frontmost
@@ -346,9 +399,20 @@ squinting at a settings pane, and `BridgeListener` starts the bridge listening
 from a terminal. Neither is copied by `build.sh`. They are in the repo for one
 reason: **anything a check depends on is versioned, in the same PR as the
 check** — the 2026-08-22 rule — and both answer a question no unit test can.
-Keep them thin. Every decision `BridgeListener` makes is a flag read into a
-`BridgeConfig`; the graph is `Wiring`'s, and logic that starts accumulating there
-belongs in `Wiring` or in the dialog.
+Keep them thin: the graph is `Wiring`'s, and logic that starts accumulating in
+either belongs in `Wiring` or in the dialog.
+
+**`BridgeListener` is how a bridge is STARTED on this platform, and it will be
+until 13.14.** The control dialog was split out of 13.10 on 2026-08-30 —
+*"wait until you can control VoiceOver, so that you can navigate through your own
+GUI by yourself, and keep using the config file until then"* — so the launcher
+reads the same persisted settings the dialog will edit: it starts from
+`UserDefaultsBridgeConfig` and lets this run's flags override them without
+writing anything. It also plays the audible cues as well as printing them, and
+prints what the machine can do before anything is pressed — the capture voice's
+state, whether AppleScript control of VoiceOver is on, and which permissions are
+held. **None of that asks a human for anything**: `status` shows no dialog, and
+the scripting setting is two file reads.
 
 ## Tests
 

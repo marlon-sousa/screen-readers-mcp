@@ -73,6 +73,15 @@ public final class FileTranscript: Transcript {
 		line("TYPE length=\(length)")
 	}
 
+	/// WHAT WAS SAID TO THE HUMAN, IN FULL. The opposite decision from `typed`
+	/// above, and for the opposite reason: an announcement is written to be heard
+	/// out loud in a room, so recording it costs nothing and it is exactly what a
+	/// person reconstructing a silent run needs -- "was I warned before it typed
+	/// into my window?".
+	public func announced(_ text: String) {
+		line("ANNOUNCE \(FileTranscript.quoted(text))")
+	}
+
 	public func note(_ text: String) {
 		line("NOTE \(text)")
 	}

@@ -1,13 +1,15 @@
 // ROLE: adapter -- IMPLEMENTS the EventBus domain port, in process.
 //
 // BUILT BY: Wiring, at singleton scope. EMITTED TO BY: BridgeServer.
-// SUBSCRIBED TO BY: the control dialog (13.10).
+// SUBSCRIBED TO BY: the launcher, which prints each transition, and the control
+// dialog when it lands.
 //
 // A LOCK GUARDS EVERY ACCESS, and it is not defensive habit: `emit` runs on the
-// accept thread while `subscribe` and `unsubscribe` run on the main thread the
-// moment a dialog exists. Handlers are then called OUTSIDE the lock, on the
-// emitter's thread, so a subscriber that blocks cannot deadlock the server and a
-// subscriber that touches AppKit is responsible for marshalling itself.
+// accept thread while `subscribe` and `unsubscribe` run on whichever thread set
+// the subscription up -- the main one, the moment a dialog exists. Handlers are
+// then called OUTSIDE the lock, on the emitter's thread, so a subscriber that
+// blocks cannot deadlock the server and a subscriber that touches AppKit is
+// responsible for marshalling itself.
 //
 // A THROWING HANDLER IS SWALLOWED because a view that fails to refresh must not
 // take down the connection edge that told it to.

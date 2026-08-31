@@ -387,7 +387,7 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.10**: **13.1 through 13.9
+its board was written on 2026-08-29. Its head is **13.11**: **13.1 through 13.10
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
 voice, the wire contract's Swift binding, a bridge that **listens**, one that
 **hears** -- an agent can read back what the reader said -- one that can make the
@@ -400,8 +400,14 @@ own English command names through the reader itself, and `typeText` synthesizes
 keystrokes into whatever holds focus. Since 13.9 it also answers **where the
 agent is**: `getFocusInfo` reads the accessibility tree where the grant exists
 and VoiceOver's own cursor where it does not, and **never asks for the grant to
-do better**. `hello` announces `speech`, `gestures`, `typing` and `focus`, and
-their eight commands answer.
+do better**. And since 13.10 it can **talk to the person at the machine**:
+`announce` speaks with the bridge's OWN synthesizer, outside VoiceOver entirely,
+so it is audible in the one mode where the reader is mute -- which is what makes
+`pressGesture`'s and `typeText`'s `announce` field honourable at all -- and
+`askUser` / `waitForUserReply` put a question in front of them and collect the
+answer later, without ever blocking the thread that renews the silence lease.
+`hello` announces `speech`, `gestures`, `typing`, `focus` and `interact`, and
+their eleven commands answer.
 
 **The two halves stay apart because they cost different permissions, and that is
 the lane's one design lever.** Pressing a command is an AppleEvent; typing is
@@ -413,8 +419,22 @@ documentation asserts. Windows has no equivalent gate, so lane 1 has no analogue
 and there was nothing to copy. **13.9 was the entry that could have quietly spent
 that lever and did not** -- focus wants the same grant, so it reads whether the
 grant is held through a one-method adapter seam that shows no dialog, and the
-object it holds cannot request anything. The next step is the control dialog,
-against [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+object it holds cannot request anything. 13.10 did not spend it either: the
+three commands it adds talk to a PERSON rather than to the system, and the
+counting-broker scenario drives all of them past a broker that is asked nothing.
+The next step is packaging, CI and the live run (13.11), against [spec
+0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+
+**The control dialog is NOT part of 13.10 any more, and that is a decision worth
+reading before anyone re-opens it.** Taken by Marlon on 2026-08-30, while 13.10
+was being implemented: *wait until you can control VoiceOver, so that you can
+navigate through your own GUI by yourself, and keep using the config file until
+then.* Every other entry in this lane is checkable by driving the reader and
+reading back what it said; a window is only checkable by eye, unless the thing
+driving it is the reader this bridge already talks to. So the dialog is **13.14**,
+after the live tier exists, and until then a bridge is started by
+`BridgeListener` -- which now reads the same persisted settings the dialog will
+edit.
 
 The lane rests on two documents that carry **no board number**, each taken
 out-of-band for the reason it states: [spec
@@ -598,8 +618,8 @@ rule intends.
     only place its leaf runs at all.
     **Proven against the real Go server, not only against a Swift client.** With
     `Sources/BridgeListener/` -- a versioned launcher, because the dialog that
-    will start the bridge is 13.10 and a check's dependencies are versioned rather
-    than improvised -- the shipped `screenreader-mcp` binary was pointed at
+    will start the bridge is 13.14 and a check's dependencies are versioned
+    rather than improvised -- the shipped `screenreader-mcp` binary was pointed at
     `local:voiceoverMcpBridge` and: `list_readers` reported the endpoint
     **listening**, `connect_reader` completed the handshake and carried back
     `reader=voiceover`, `readerVersion=macOS 15.0.0`, `capabilities=[]`, the log
@@ -835,8 +855,8 @@ rule intends.
     13.8 section carries the layout amendments this made, each with its why --
     including the one that moved a port: `PermissionBroker` goes in the
     `AdapterSet` and the CONTROLLER makes the request, rather than the typer
-    holding a domain port, because 13.10's dialog needs the same broker and a view
-    may consume a port but not an adapter's private seam.
+    holding a domain port, because the control dialog will need the same broker
+    and a view may consume a port but not an adapter's private seam.
     Done (2026-08-30).
 13.9. **Focus** (lane 3). `getFocusInfo` — and **`getState` is no longer part of
     this entry**, amended 2026-08-29 by 13.1. VoiceOver's AppleScript exposes four
@@ -897,22 +917,52 @@ rule intends.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
     13.9 section carries the six layout amendments this made, each with its why.
     Done (2026-08-30).
-13.10. **The control dialog** (lane 3). The macOS counterpart of [spec
-    0011](specs/0011-bridge-control-ui.md) — endpoint selection, connection
-    state, the session's activity — plus three rows that exist only here and are
-    the reason this is its own entry rather than a corner of 13.4:
-    **whether AppleScript control of VoiceOver is enabled**, which the bridge
-    cannot enable, cannot work without, and which no API can set for the user
-    (VoiceOver Utility → General; on Sequoia written to both a Group Container
-    plist's `SCREnableAppleScript` and the legacy
-    `/private/var/db/Accessibility/.VoiceOverAppleScriptEnabled`);
-    **which permissions are granted**, with a way to trigger the requests; and
-    **whether the capture voice is selected in VoiceOver**, which the bridge can
-    detect from utterances arriving and cannot set without driving the reader.
-    **Design in an endpoint NAME field, not only a kind** — see 11.37. The
-    NVDA dialog lacks one and retrofitting it is that entry's cost; a dialog
-    being written from scratch pays nothing to include it.
-    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+13.10. **Done (2026-08-30)** -- **The human channel** (lane 3). **SPLIT WHILE IT
+    WAS BEING IMPLEMENTED**: this entry was "the control dialog, and the human
+    channel", and the dialog is now **13.14** for the reason stated in the lane
+    header above. What shipped is the half that needed no window.
+    `announce` **speaks with the bridge's own synthesizer, outside VoiceOver
+    entirely**, which is the only reason it is audible in a silent session -- the
+    mode where the capture voice is rendering the reader mute and `announce` is
+    the human's ONLY channel. It excludes our own capture voice by identifier
+    suffix, because an announcement rendered by the extension that is rendering
+    silence would be silence talking to itself. That is a cleaner bypass than
+    NVDA's, where the same claim rests on the interception being a filter in
+    front of a synth that is still loaded.
+    **So `HumanWarning`'s refusal is gone**, deleted in the commit that made the
+    promise keepable, exactly as 13.6 deleted `VoiceOverAdapterFactory`'s refusal
+    of a silent session: `pressGesture` and `typeText` now SPEAK their `announce`
+    in both modes, and a warning that cannot be spoken stops the command rather
+    than being dropped.
+    `askUser` and `waitForUserReply` are **two commands** (protocol.md §5), so
+    the one design question the spec left open had to be answered: the port
+    PRESENTS and the answer is POLLED, never awaited. The alternative reads
+    better and was declined because the thread that would block is **the one that
+    renews the silence lease** -- a lease expiring while somebody reads a dialog
+    is the failure 13.6's whole design exists to make impossible.
+    Asking also **gives the reader back while the window is open** (§5:
+    `suppressing` is false then), because a question put to somebody whose screen
+    reader this session has muted is a dialog they cannot hear; the answer puts
+    the silence back, unless the cap has already lifted -- that was a guarantee
+    rather than a loan.
+    **The endpoint NAME is now a stored setting** (11.37), the persisted
+    `BridgeConfig` is real, the audible session cues are real, and
+    `Precondition` names the kind of thing this bridge can observe, cannot set
+    and cannot work without -- **AppleScript enablement is its only true
+    instance**, because spec 0047's findings 16 and 17 moved voice selection from
+    "report it and wait for a human" to "repair it". All four are read by
+    `BridgeListener`, which now starts from the stored settings, lets a flag
+    override them for one run, plays the cues as well as printing them, and
+    prints what the machine can do before anything is pressed.
+    `hello` announces `interact`, and its three commands answer.
+    **The instrument is `bash scripts/voiceover_announce.sh`**, which is the one
+    promise here no unit test can make: it opens a silent session against a
+    listening bridge, presses one command to show the reader is inaudible,
+    announces to show the bridge is not, and asks a question. It says plainly that
+    it makes the machine speak.
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
+    13.10 section carries fifteen layout amendments, each with its why -- starting
+    with the split.
 13.11. **Packaging, CI, and the live run** (lane 3). `poe build` produces the
     `.app`; a macOS CI job builds and headless-tests the bridge; the
     `conformance` gate runs the real Go binary against the real Swift bridge, as
@@ -1060,6 +1110,45 @@ rule intends.
     `ReaderVoiceControl` port over that recipe, with the reader restart from
     finding 1, and the named condition 13.6 now owes.
     Spec: [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
+13.14. **The control dialog** (lane 3; **needs 13.11's live tier**). Split out of
+    **13.10** on 2026-08-30, by Marlon, while that entry was being implemented,
+    and the reason is a rule about evidence rather than a preference about
+    scope: *wait until you can control VoiceOver, so that you can navigate
+    through your own GUI by yourself, and keep using the config file until
+    then.* Every other entry in this lane is checkable by driving the reader and
+    reading back what it said; **a window is only checkable by eye**, unless the
+    thing driving it is the reader this bridge already talks to -- and this bridge
+    can drive VoiceOver, so the dialog should be checked the way everything else
+    is. That needs 13.11's live tier, so it comes after it.
+    The macOS counterpart of [spec 0011](specs/0011-bridge-control-ui.md) --
+    endpoint selection, connection state, the session's activity -- plus the
+    three rows that exist only here: **whether AppleScript control of VoiceOver
+    is enabled**, which the bridge cannot enable, cannot work without, and which
+    no API can set for the user (VoiceOver Utility -> General; on Sequoia written
+    to both a Group Container plist's `SCREnableAppleScript` and the legacy
+    `/private/var/db/Accessibility/.VoiceOverAppleScriptEnabled`); **which
+    permissions are granted**, with a way to trigger the requests; and **whether
+    the capture voice is selected in VoiceOver**, which is a VIEW of
+    `ProviderState` rather than a boolean the dialog computes for itself.
+    **Most of what it reads already exists and already has callers**, which is
+    what 13.10 shipped: the persisted `BridgeConfig` (including the endpoint
+    NAME, 11.37), the `ReaderScriptingSetting` port, `Precondition`,
+    `Permission.automationVoiceOver`, the `EventBus` the server already emits to,
+    and the audible cues. `BridgeListener` reads all of them today; the dialog
+    replaces it as the thing a human drives, and adds the ability to EDIT the
+    settings without a `defaults` command.
+    **Three things it must do that nothing else can**, each already written down
+    where whoever builds it will read them: give the app its dependency edge in
+    `Package.swift` and its executable in `build.sh` (spec 0046, amendment 12);
+    add `register()` / `unregister()` to `ProviderLifecycle`, which 13.6 left out
+    because re-registration only takes effect after a reader restart and that is
+    not a decision a handshake may take; and **NARROW the one-place claim about
+    the Accessibility grant, everywhere it is written**, because the dialog's
+    Request button is its second caller -- no COMMAND but `typeText` requests
+    anything, and a human pressing a button is not a command (spec 0046,
+    amendment 13).
+    Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), section
+    13.14.
 
 ## Convergence (requires C and D both Done)
 
@@ -2679,9 +2768,15 @@ rather than before it.
     accepts an absolute socket path, which 11.35 already decided the server
     would honour — so this entry is what makes that override reachable from the
     listening end rather than only the dialing one.
-    **Lane 3 gets it cheaply if it is designed in rather than added.** 13.10
-    builds the VoiceOver control dialog from scratch; a name field costs nothing
-    there and costs a revision later.
+    **Lane 3 gets it cheaply if it is designed in rather than added.** Lane 3
+    builds its control dialog from scratch; a name field costs nothing there and
+    costs a revision later.
+    **Half of lane 3's half is Done (2026-08-30).** 13.10 made the endpoint name
+    a persisted SETTING rather than a constant -- `BridgeConfig.endpointName`,
+    stored, read by the launcher, and accepting an absolute socket path on POSIX
+    exactly as 11.35 decided the server would honour. What is still owed there is
+    the FIELD: a way for a human to edit it without a `defaults` command, which
+    belongs to the control dialog (13.14). Lane 1 owes both halves still.
     Why it is wanted at all, beyond symmetry: more than one reader on a machine,
     more than one NVDA profile, and per-user isolation on a shared host — none
     of which the single shipped default can express.

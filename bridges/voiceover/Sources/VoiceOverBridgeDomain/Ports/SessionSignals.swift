@@ -1,11 +1,17 @@
 // ROLE: port -- audible cues for the human at the keyboard, telling them the
 // bridge has taken or released control of their screen reader.
 //
-// IMPLEMENTED BY: FakeSessionSignals today (Tests/Fakes); the real macOS cue
-// adapter arrives with the control dialog (13.10), which is also where the
-// on/off preference lives.
+// IMPLEMENTED BY: AudibleSessionSignals (adapters), over the Tones seam and the
+// Announcer port; `ReportingSignals` in the launcher, which prints each cue and
+// passes it on; FakeSessionSignals (Tests/Fakes).
 // USED BY: the Session controller -- once, when a session establishes, and once
 // on the way out.
+//
+// THE REAL ONE ARRIVED AT 13.10, with the human channel that gives it words: the
+// tones say control was taken and the Announcer says what it was taken AS, both
+// outside VoiceOver, because a cue routed through a reader this session has muted
+// is the one thing the human cannot hear. `BridgeConfig.cuesEnabled` is the
+// preference that silences them, read on every cue rather than at construction.
 //
 // BOTH CUES CAN FAIL, AND THE TYPE SAYS SO. In Python a port that raises looks
 // exactly like one that does not, so lane 1 wraps every teardown step in a
