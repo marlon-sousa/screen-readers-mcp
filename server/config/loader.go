@@ -34,6 +34,25 @@ import (
 // defaultsJSON is the shipped endpoint set: every reader we ship a bridge for,
 // each naming every place that bridge is known to listen, in order.
 //
+// TWO READERS SINCE 13.11, and the pair is what makes this file worth reading.
+// `local:<reader>McpBridge` satisfies protocol.md §1's naming convention against
+// each bridge's own `reader.name`, and resolves per platform (spec 0044) -- a
+// named pipe on Windows for NVDA, a Unix domain socket under $XDG_RUNTIME_DIR or
+// ~ on macOS for VoiceOver. So one shipped default reaches a local bridge on
+// every host, and an agent never has to configure one by hand.
+//
+// SHARING TCP PORT 8765 IS DELIBERATE AND SAFE. The two readers cannot run on one
+// host -- NVDA is Windows, VoiceOver is macOS -- so the defaults cannot collide in
+// practice, and a second default port would be a divergence bought for nothing.
+// If a third reader ever shares a host with one of these, that is the moment to
+// give it its own, not before.
+//
+// LISTING A READER HERE HAS A SECOND EFFECT worth knowing before adding one:
+// adapters/mcp/surface_text_test.go reads THIS FILE for the reader names it
+// polices, so a reader added here starts guarding the agent-visible surface
+// against mentions of its own name for free. That is spec 0022 A.6's
+// self-maintaining half.
+//
 //go:embed defaults.json
 var defaultsJSON []byte
 

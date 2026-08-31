@@ -282,6 +282,8 @@ it, so it can never drift from the published contract.
 
 ## Setting up to test against a live NVDA
 
+*(The macOS equivalent, for VoiceOver, is the section after this one.)*
+
 The headless and conformance tiers fake NVDA. The one thing they cannot do is
 prove the whole stack with a **real NVDA and a human who can hear the speech** —
 which is how every live-NVDA checklist in a pull request is run. Get the
@@ -390,6 +392,153 @@ Two things must be true before the tools appear:
 From that session, ask the agent to list readers, connect, and drive NVDA; the
 tools are the same ones the driver calls, so a pull request's checklist reads the
 same either way.
+
+## Setting up to test against a live VoiceOver
+
+The macOS equivalent of the section above, and the shape is the same — build,
+install, confirm it is listening, then drive it — but three of the four steps are
+genuinely different, because a screen reader that ships with the operating system
+is installed differently from one you download.
+
+**Everything here needs macOS.** The server is built and tested on every host;
+a bridge works where its reader does (`uv run poe bridges` says which tiers run
+on this machine, and why not, if not).
+
+### 1. Build the server binary
+
+```sh
+uv run poe build-server
+```
+
+No arguments are ever needed to reach a local VoiceOver bridge: since board entry
+13.11 the binary ships knowing `local:voiceoverMcpBridge`
+(`--print-default-config` shows them).
+
+### 2. Build the bundle, and register the capture voice
+
+```sh
+uv run poe build-bridge     # assembles build/VoiceOverCaptureSpike.app
+```
+
+The bridge captures speech by publishing a **speech synthesis provider** that
+macOS hands every utterance to. It ships as an app extension inside an app,
+because a macOS app extension cannot be installed on its own. Register it, and
+confirm the system published it:
+
+```sh
+cd bridges/voiceover
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f build/VoiceOverCaptureSpike.app
+pluginkit -a                # the extension should be listed and enabled
+./build/probe               # "FOUND ours: ..." among the system's voices
+```
+
+**Registering is not publishing, and the difference costs a reader restart.**
+`pluginkit` will list the extension while `probe` still cannot see the voice: the
+system publishes a newly registered provider only after VoiceOver restarts. That
+cost is real, it is paid **every time the provider changes**, and it is scripted
+rather than manual — it needs only the AppleEvents grant, never Accessibility:
+
+```sh
+osascript -e 'tell application "VoiceOver" to quit'
+sleep 3
+osascript -e 'tell application "VoiceOver" to activate'
+sleep 14                    # measured: about 14 s before it answers again
+./build/probe               # now it should be found
+```
+
+If it still does not appear, re-register and restart once more before concluding
+anything — that is a known state, recorded as board entry 13.13a, and improvising
+past it is how an evening goes missing.
+
+You do **not** need to select the voice in VoiceOver Utility. The bridge selects
+it at the handshake and puts your own voice back on every teardown path.
+
+### 3. Switch on AppleScript control of VoiceOver
+
+VoiceOver Utility → **General** → *Allow VoiceOver to be controlled with
+AppleScript*. **No API sets this and the bridge cannot**: without it every
+gesture, every liveness check and the VoiceOver-cursor route of `get_focus_info`
+fail with `-1743`. The launcher prints whether it is on before anything is
+pressed.
+
+macOS will also ask for **Automation** permission the first time the bridge sends
+the reader an event, and for **Accessibility** the first time a session calls
+`type_text` — and only then, which is the design. A session that presses commands
+and reads speech asks for neither.
+
+> **If you are working over SSH, the consent dialog names something that looks
+> unrelated.** macOS attributes an event to the process it holds *responsible*,
+> which for anything launched from an SSH session is
+> `/usr/libexec/sshd-keygen-wrapper` rather than the app — and granting it grants
+> every SSH session on the machine, which is worth deciding deliberately. The
+> chain is walked all the way up, so an editor launched over SSH passes its
+> identity to everything it starts.
+
+### 4. Start the bridge listening
+
+There is no control dialog yet — it is board entry 13.14, deliberately held back
+until the bridge can drive VoiceOver over its own window. Until then:
+
+```sh
+cd bridges/voiceover
+swift build --product BridgeListener
+.build/debug/BridgeListener              # add --unattended if nobody is there
+```
+
+It prints where it is listening, where it reads captured speech from, and what
+the machine can do before anything is pressed: the capture voice's state, whether
+AppleScript control is on, and which permissions are held. Reading those costs
+nothing and asks nobody for anything.
+
+**Redirect it to a file if you like; do NOT wrap it in `script(1)`.** Running the
+bridge under a pty breaks the accessibility reads — every `get_focus_info`
+answers `-25204` — and the failure looks exactly like a broken bridge. Its stdout
+is unbuffered, so a plain `> run.log` shows everything as it happens.
+
+Confirm the endpoint exists:
+
+```sh
+ls ~/.screenreader-mcp/voiceoverMcpBridge.sock
+```
+
+### 5. Drive it
+
+`scripts/voiceover_announce.sh` is the guided instrument, and it is what
+`uv run poe live` runs on this host. It opens a **silent** session, presses one
+harmless command to show the reader is inaudible, then announces through the
+bridge's own synthesizer to show the bridge is not — the two halves only mean
+something together — and finally asks you a question and collects your answer.
+
+```sh
+bash scripts/voiceover_announce.sh
+```
+
+**It makes the machine speak, and that is the thing being tested.** Its read-only
+siblings (`voiceover_focus.sh`, `voiceover_cursors.sh`, `voiceover_modifiers.sh`,
+`voiceover_keyboard.sh`) are safe by default; this one cannot be, because a
+channel cannot be tested without using it.
+
+To drive the whole stack as an agent instead, register the built binary as a
+project MCP server exactly as the NVDA section describes — the `.mcp.json` is
+identical, and `./server/screenreader-mcp` carries the host's own executable
+convention. Then `list_readers` names `voiceover`, and `connect_reader` reaches
+it with no flags.
+
+### What to expect, so you do not misread it
+
+- **VoiceOver renders in your own language.** Nothing in this repo compares the
+  reader's words, and neither should a check you write: compare structure —
+  roles, counts, order, whether something was announced at all.
+- **VoiceOver crashes.** The reader restarting underneath a session is normal
+  weather on macOS rather than an edge case, which is why every check in lane 3
+  is independently re-runnable from a cold start. Its own crash reports are in
+  `~/Library/Logs/DiagnosticReports/` (and `Retired/` beneath it), and the reader
+  keeps a count of its unplanned shutdowns in
+  `com.apple.VoiceOver4.local.plist`.
+- **A wedged application under test looks exactly like a dead reader.** Every
+  cursor read answers `missing value` and dispatches appear to do nothing, while
+  VoiceOver is entirely healthy and saying so out loud. Check what is in front
+  before blaming the reader.
 
 ## Opening a pull request
 

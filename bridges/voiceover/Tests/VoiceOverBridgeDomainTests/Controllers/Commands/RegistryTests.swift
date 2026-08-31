@@ -22,7 +22,7 @@ struct RegistryTests {
 		)
 	}
 
-	@Test("a session's four, `speech`'s five, both halves of input, focus, and `interact`'s three")
+	@Test("a session's four, `speech`'s five, input's two, focus, `interact`'s three, guidance")
 	func theCommandSet() {
 		#expect(
 			Set(registry().keys) == [
@@ -31,6 +31,7 @@ struct RegistryTests {
 				"waitForSpeech", "waitForSpeechToFinish",
 				"pressGesture", "typeText", "getFocusInfo",
 				"announce", "askUser", "waitForUserReply",
+				"getGuidance",
 			])
 	}
 
@@ -41,9 +42,13 @@ struct RegistryTests {
 		}
 	}
 
-	@Test("it announces speech, gestures, typing, focus and interact -- what this build serves")
+	@Test("it announces all six -- and at 13.11 that is the complete set, not a step")
 	func capabilitiesDescribeWhatWorks() {
-		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus, .interact])
+		// Spec 0046 settles this bridge's capabilities at six and requires them to
+		// arrive ONE ENTRY AT A TIME. This assertion is what made each of those
+		// entries prove it had arrived; with `guidance` it is also the statement
+		// that the lane's capability set is complete.
+		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus, .interact, .guidance])
 	}
 
 	@Test("every command an announced capability promises has a handler, and nothing extra")
@@ -74,6 +79,12 @@ struct RegistryTests {
 			// without `waitForUserReply`, and both are only audible because
 			// `announce`'s channel goes around the reader.
 			.interact: ["announce", "askUser", "waitForUserReply"],
+			// THE FIRST CAPABILITY HERE THAT GATES SOMETHING OTHER THAN A TOOL: the
+			// server turns it into the `screenreader://reader-guidance` resource. It
+			// still has exactly one command behind it, which is why it belongs in
+			// this table like the others -- the difference is on the server's side of
+			// the wire, not on this one.
+			.guidance: ["getGuidance"],
 		]
 		let served = registry()
 		for (capability, commands) in promised {

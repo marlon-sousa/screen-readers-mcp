@@ -73,6 +73,30 @@ MODULE="CaptureVoice"
 STUB_MODULE="CaptureVoiceExtension"
 TARGET="$(uname -m)-apple-macos14.0"
 
+# THE VERSION IS DECLARED IN SWIFT AND DERIVED HERE, not spelled twice (13.11).
+#
+# Until then Wiring said `0.1.0-dev` while all three plists below said `1.0`, so
+# the version an agent read in `hello` and the version macOS shows in Get Info
+# were unrelated numbers. Sources/VoiceOverBridgeAdapters/BridgeVersion.swift is
+# now the one declaration and this reads it -- lane 1's shape, where buildVars.py
+# declares `addon_version` and scons reads it, for lane 1's reason: the value
+# belongs with the code that ships it.
+#
+# EXTRACTED BY sed RATHER THAN BY A SWIFT BUILD, because this runs before
+# anything is compiled and must work when nothing compiles at all. It depends on
+# that file's declaration keeping its shape -- a `let` with a double-quoted
+# literal -- which that file's header says in as many words. A missing or
+# unreadable value FAILS the build rather than defaulting: a bundle stamped with
+# an empty version installs fine and is then impossible to tell apart from any
+# other build of it.
+VERSION_FILE="Sources/VoiceOverBridgeAdapters/BridgeVersion.swift"
+VERSION="$(sed -n 's/^public let voiceOverBridgeVersion = "\(.*\)"$/\1/p' "$VERSION_FILE")"
+if [[ -z "$VERSION" ]]; then
+	echo "could not read the bridge version from $VERSION_FILE" >&2
+	echo "it must contain a line of the form: public let voiceOverBridgeVersion = \"1.2.3\"" >&2
+	exit 1
+fi
+
 BUILD="build"
 APP="$BUILD/$APP_NAME.app"
 EXT="$APP/Contents/PlugIns/$EXT_NAME.appex"
@@ -108,7 +132,7 @@ cat > "$FW/Versions/A/Resources/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>$FW_ID</string>
 	<key>CFBundleName</key><string>$MODULE</string>
 	<key>CFBundlePackageType</key><string>FMWK</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 </dict></plist>
 PLIST
@@ -145,7 +169,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>$APP_ID</string>
 	<key>CFBundleName</key><string>$APP_NAME</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>LSUIElement</key><true/>
@@ -166,7 +190,7 @@ cat > "$EXT/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>$EXT_ID</string>
 	<key>CFBundleName</key><string>$EXT_NAME</string>
 	<key>CFBundlePackageType</key><string>XPC!</string>
-	<key>CFBundleShortVersionString</key><string>1.0</string>
+	<key>CFBundleShortVersionString</key><string>$VERSION</string>
 	<key>CFBundleVersion</key><string>1</string>
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>NSExtension</key><dict>

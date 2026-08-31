@@ -696,8 +696,17 @@ def _server_build_inputs() -> Iterator[Path]:
 	Scoped to ``documents/`` rather than every .md under server/, so that editing
 	``server/README.md`` -- which no build consumes -- does not manufacture a
 	rebuild.
+
+	AND ``_test.go`` IS EXCLUDED, for the same reason from the other direction: a
+	test file's bytes never enter ``cmd/screenreader-mcp``, so counting one made
+	this check report a binary as stale after a change that could not possibly
+	have altered it. That is not a safe conservatism -- it is a false alarm on the
+	one check whose entire value is that it is believed, and the fix it prescribes
+	(``poe redeploy``) kills every attached agent's MCP session to rebuild a
+	binary that was already current. Found by 13.11, which added a conformance
+	scenario and was told to redeploy for it.
 	"""
-	yield from (ROOT / "server").rglob("*.go")
+	yield from (path for path in (ROOT / "server").rglob("*.go") if not path.name.endswith("_test.go"))
 	yield from (ROOT / "server").rglob("documents/*.md")
 
 

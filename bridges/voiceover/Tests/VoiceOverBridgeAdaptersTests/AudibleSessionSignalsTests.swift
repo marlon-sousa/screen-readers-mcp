@@ -107,4 +107,28 @@ struct AudibleSessionSignalsTests {
 		tones.fails = true
 		#expect(throws: FakeTones.ToneFailed.self) { try signals(tones: tones).sessionEnded() }
 	}
+
+	@Test("a cue is TWO beeps, at lane 1's own rhythm, not one sound that changes pitch")
+	func theCueRhythmMatchesLaneOne() throws {
+		// The property is that a listener can COUNT the beeps. Two tones played
+		// back to back are heard as one sound changing pitch halfway, which is what
+		// this bridge did until 13.11 and what the maintainer -- who uses the NVDA
+		// bridge daily -- described as "light" beside lane 1's "clear".
+		//
+		// The numbers are lane 1's, from nvda_session_signals.py: _TONE_MS = 180
+		// and _GAP_MS = 300 start-to-start, so 180 ms of tone and 120 ms of silence.
+		// Asserted rather than left to a constant, because the whole defect was a
+		// constant nobody had argued for.
+		let tones = FakeTones()
+		let signals = AudibleSessionSignals(
+			tones: tones, announcer: FakeAnnouncer(), config: FakeBridgeConfig())
+		try signals.sessionStarted(persona: "user")
+
+		let rhythm = try #require(tones.rhythms.first)
+		#expect(rhythm.seconds == 0.18)
+		#expect(rhythm.gap == 0.12)
+		// 300 ms start to start, which is what makes the pair countable.
+		#expect(rhythm.seconds + rhythm.gap == 0.30)
+	}
+
 }

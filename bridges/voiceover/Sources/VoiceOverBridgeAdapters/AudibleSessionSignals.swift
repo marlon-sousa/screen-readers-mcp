@@ -46,9 +46,25 @@ public final class AudibleSessionSignals: SessionSignals {
 		static let warning: [Double] = [440, 440]
 		/// Rising, like taking control, because something is being given back.
 		static let lifted: [Double] = [660, 990]
-		/// Short enough not to be in the way, long enough to be heard as a tone
-		/// rather than a click.
-		static let seconds: Double = 0.09
+		/// How long each tone sounds, and how much silence separates the pair.
+		///
+		/// MATCHED TO LANE 1, WHICH IS THIS REPO'S OWN "NVDA STANDARD" and the one
+		/// number here that can be checked rather than recalled:
+		/// `nvda_session_signals.py` uses `_TONE_MS = 180` and `_GAP_MS = 300`
+		/// start-to-start, which is 180 ms of tone and 120 ms of silence between
+		/// the two. This bridge used 90 ms with NO gap, so its pair was heard as a
+		/// single 180 ms sound that changed pitch halfway.
+		///
+		/// CHANGED ON A USER'S REPORT, 2026-08-31, which is the only evidence that
+		/// counts for a sound: the maintainer -- who uses NVDA daily and is blind --
+		/// said this cue was "light" where NVDA's is "clear". Two beeps a listener
+		/// can count are what makes a cue recognisable in a fraction of a second,
+		/// which is what the seam's own header says the cue is for.
+		static let seconds: Double = 0.18
+		/// The silence between the two tones: 300 ms start-to-start, minus the
+		/// 180 ms the first tone occupies. Lane 1's spacing, arrived at the same
+		/// way.
+		static let gapSeconds: Double = 0.12
 	}
 
 	private let tones: any Tones
@@ -63,7 +79,7 @@ public final class AudibleSessionSignals: SessionSignals {
 
 	public func sessionStarted(persona: String) throws {
 		guard config.cuesEnabled else { return }
-		try tones.play(Cue.taken, seconds: Cue.seconds)
+		try tones.play(Cue.taken, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
 		let stance = persona.trimmingCharacters(in: .whitespacesAndNewlines)
 		try announcer.announce(
 			stance.isEmpty
@@ -73,12 +89,12 @@ public final class AudibleSessionSignals: SessionSignals {
 
 	public func sessionEnded() throws {
 		guard config.cuesEnabled else { return }
-		try tones.play(Cue.released, seconds: Cue.seconds)
+		try tones.play(Cue.released, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
 	}
 
 	public func silenceWarning() throws {
 		guard config.cuesEnabled else { return }
-		try tones.play(Cue.warning, seconds: Cue.seconds)
+		try tones.play(Cue.warning, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
 		// SPOKEN, not only sounded: protocol.md §6.1 asks for a warning to the
 		// human, and a tone cannot say that their machine is about to come back.
 		try announcer.announce("your machine has been quiet for a while, and is about to speak again")
@@ -86,6 +102,6 @@ public final class AudibleSessionSignals: SessionSignals {
 
 	public func silenceLifted() throws {
 		guard config.cuesEnabled else { return }
-		try tones.play(Cue.lifted, seconds: Cue.seconds)
+		try tones.play(Cue.lifted, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
 	}
 }

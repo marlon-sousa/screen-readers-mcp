@@ -85,6 +85,20 @@ def main() -> int:
 			why = tier.reason or f"its {tier.name} tier is declared for {', '.join(tier.hosts) or 'no host'}"
 			print(f"  SKIP {bridge.name}: {why}")
 			continue
+		# A TIER WHOSE DECLARED TOOLS ARE ABSENT SKIPS, exactly as one on the wrong
+		# host does. Before 13.11 the `tools` list was printed by `poe bridges`,
+		# checked by `poe doctor` and IGNORED here -- so the first CI job to run a
+		# build task tried `scons` on a runner without it and failed the whole run
+		# with a raw `[Errno 2] No such file or directory`. A missing dependency is
+		# a thing this machine cannot do, not a thing that is broken; the doctor is
+		# where you go to find out you are missing one.
+		if missing := tier.missing_tools():
+			print(
+				f"  SKIP {bridge.name}: its {tier.name} tier needs "
+				f"{', '.join(missing)}, which this machine does not have "
+				f"(run `uv run poe doctor` for how to install it)"
+			)
+			continue
 		for command in tier.tasks[args.task]:
 			ran += 1
 			if _run(command) != 0:

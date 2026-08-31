@@ -129,6 +129,21 @@ public final class HelloHandler: CommandHandler {
 			synth: selectedSynth(adapters.providerLifecycle),
 			logPath: context.transcript.logPath,
 			bridgeVersion: bridgeVersion,
+			// THIS READER'S GUIDANCE, SENT IN THE HANDSHAKE (protocol.md §3, spec
+			// 0022 A.5). The persona arrived in these very params and this reply was
+			// already being written, so the document costs NO ADDITIONAL ROUND TRIP
+			// and connect stays one.
+			//
+			// COMPOSED BY THE SAME CODE `getGuidance` USES, because the contract
+			// requires both routes to describe one document and a server that
+			// receives this field must not call the command as well. Two
+			// compositions would be a handshake and a command that agree today.
+			//
+			// IT IS SENT ONLY BECAUSE THIS BUILD ANNOUNCES `guidance` -- the
+			// capabilities list above and this field are the same claim made twice,
+			// and §3 says a bridge that does not announce the capability MUST omit
+			// it. They cannot disagree here because both come from the Registry.
+			guidance: try GetGuidanceHandler.guidance(for: params.persona),
 			// The machine's own policy on how long a human may be left unable to
 			// hear it (protocol.md §6.1). Sent in BOTH modes: it describes the
 			// machine rather than this session, and it is derived from the same

@@ -29,10 +29,17 @@ first.
 
 **`.github/workflows/ci.yml` no longer spells out any commands.** Each job
 installs a toolchain and calls one task — `uv run poe ci-shared`, `ci-server`,
-`ci-bridge`, `ci-conformance`, one per job, named after it. So **a change to
-what CI checks is a change to `pyproject.toml`**, which you can run and prove
-before pushing; the workflow changes only when a job needs a different
+`ci-bridge`, `ci-conformance`, `ci-portable`, one per job, named after it. So
+**a change to what CI checks is a change to `pyproject.toml`**, which you can run
+and prove before pushing; the workflow changes only when a job needs a different
 toolchain. Keep the job↔task pairing 1:1.
+
+`ci-portable` is the newest of them and shows the rule working: board entry 13.11
+wanted macOS CI to build the VoiceOver bundle, and the answer was to give the
+`portable` job a task that is `ci` **plus** `build-bridge` rather than to add a
+second workflow step or a second job. It is deliberately not folded into `ci`:
+building both bridges' artifacts takes about 12 seconds, which is cheap for a CI
+job and a fifth of the inner loop's one-minute budget.
 
 That unification is not cosmetic. While the two lists were maintained by hand
 they drifted, in both directions: `poe ci` grew a `lint` task the workflow never
@@ -295,13 +302,26 @@ go -C server test -tags integration ./...     # whole server, real transports
 go -C server vet ./...
 go -C server generate ./adapters/wire         # regenerate the binding from the schema
 
-# Cross-language conformance: the built binary against the REAL Python bridge,
-# over real loopback TCP -- and, on Windows only, a real named pipe as well (that
-# scenario is //go:build conformance && windows, since both transports' leaves
-# are). Needs a Python 3.13 on PATH, or CONFORMANCE_PYTHON set to one; `poe` puts
-# the workspace venv's 3.13 on PATH, so usually neither is anything you do. It
-# FAILS rather than skips if it cannot reach the real bridge -- that is the whole
-# point of the tier.
+# Cross-language conformance: the built binary against EVERY real bridge that can
+# exist on this host.
+#
+#   * the REAL Python bridge, over real loopback TCP -- and, on Windows only, a
+#     real named pipe as well (that scenario is //go:build conformance && windows,
+#     since both transports' leaves are). Needs a Python 3.13 on PATH, or
+#     CONFORMANCE_PYTHON set to one; `poe` puts the workspace venv's 3.13 on PATH,
+#     so usually neither is anything you do.
+#   * on macOS, the REAL SWIFT bridge as well (//go:build conformance && darwin),
+#     which the run builds for itself with `swift build --product
+#     ConformanceBridge`. Added by board entry 13.11: it is the first time the
+#     wire contract's THIRD binding exchanges bytes with the server, and
+#     `scripts/drift.py --swift` cannot substitute for it -- that gate reads the
+#     binding's source against the schema, so it catches a field that was never
+#     written and not one written differently from how the server reads it.
+#
+# The darwin tag is not a skip: on another host that bridge cannot exist, so the
+# files do not compile in at all (spec 0042 -- the server is everywhere, a bridge
+# is somewhere). Where a bridge CAN be reached and is not, the tier FAILS rather
+# than skipping -- that is the whole point of it.
 go -C server test -tags conformance -count=1 ./tests/conformance/
 
 # NVDA addon: copy the shared module in, then run headless tests + pyright.

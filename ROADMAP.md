@@ -280,8 +280,15 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.14**
-in lane 3, and the next free spec number is **0048**. Spec **0047** and board
+The next free board number is **11.38** in the convergence series and **13.16**
+in lane 3, and the next free spec number is **0048**. Board number **13.15** was
+spent on 2026-08-31 by the voice-substitution finding that came out of 13.11's
+live run, and this line moved in the same commit. Board number **13.14** was
+spent on 2026-08-30 when the control dialog was split out of 13.10, and this line
+was not moved with it -- corrected by 13.11, which spent no number of its own and
+found the gap while looking for one. **13.11 took no spec number either**: its
+spec is 0046's 13.11 section, which already existed, and its amendments went in
+there. Spec **0047** and board
 number **13.13** were spent on 2026-08-29 by the measurement that came out of
 asking whether the capture voice could be selected without a human; it moved this
 line in the same commit that spent both. Spec **0046** was spent on
@@ -387,7 +394,7 @@ by whichever PR consumes a number.)
 ## Status board — lane 3: the macOS VoiceOver bridge
 
 **Lane 3 was opened on 2026-08-28** by the rule under "How to use this board";
-its board was written on 2026-08-29. Its head is **13.11**: **13.1 through 13.10
+its board was written on 2026-08-29. Its head is **13.12**: **13.1 through 13.11
 are Done**, so the lane now has a declared bridge the tooling can see, a capture
 voice, the wire contract's Swift binding, a bridge that **listens**, one that
 **hears** -- an agent can read back what the reader said -- one that can make the
@@ -406,8 +413,20 @@ so it is audible in the one mode where the reader is mute -- which is what makes
 `pressGesture`'s and `typeText`'s `announce` field honourable at all -- and
 `askUser` / `waitForUserReply` put a question in front of them and collect the
 answer later, without ever blocking the thread that renews the silence lease.
-`hello` announces `speech`, `gestures`, `typing`, `focus` and `interact`, and
-their eleven commands answer.
+And since 13.11 it **says what it is** -- `guidance` serves this reader's own
+account of the stance a session declared, written against a vocabulary that
+already worked, which is why that capability came last -- and it is **packaged**:
+`poe build` assembles the `.app`, `poe conformance` drives the real Go binary
+against the real **Swift** bridge as well as the real Python one, and the reader
+ships in `server/config/defaults.json` so no agent has to configure one.
+
+So `hello` announces `speech`, `gestures`, `typing`, `focus`, `interact` and
+`guidance`, and their sixteen commands answer. **Six of the contract's eleven
+capability groups, and the five it omits -- braille, state, config, log,
+document -- are absent from the READER rather than unimplemented here.** That is
+the capability gate visibly doing its job, and it is the first bridge in the repo
+where it is visible at all: the NVDA one announces every group, so its
+conformance run has no unannounced capability to exercise and this one's does.
 
 **The two halves stay apart because they cost different permissions, and that is
 the lane's one design lever.** Pressing a command is an AppleEvent; typing is
@@ -422,8 +441,9 @@ grant is held through a one-method adapter seam that shows no dialog, and the
 object it holds cannot request anything. 13.10 did not spend it either: the
 three commands it adds talk to a PERSON rather than to the system, and the
 counting-broker scenario drives all of them past a broker that is asked nothing.
-The next step is packaging, CI and the live run (13.11), against [spec
-0046](specs/0046-the-voiceover-bridge-class-by-class.md).
+The next step is **13.12**, the measurement that asks whether VoiceOver can be
+told what mode it is in -- and after it **13.14**, the control dialog, which
+needed 13.11's live tier and now has it.
 
 **The control dialog is NOT part of 13.10 any more, and that is a decision worth
 reading before anyone re-opens it.** Taken by Marlon on 2026-08-30, while 13.10
@@ -963,7 +983,7 @@ rule intends.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), whose
     13.10 section carries fifteen layout amendments, each with its why -- starting
     with the split.
-13.11. **Packaging, CI, and the live run** (lane 3). `poe build` produces the
+13.11. **Done (2026-08-31)** -- **Packaging, CI, and the live run** (lane 3). `poe build` produces the
     `.app`; a macOS CI job builds and headless-tests the bridge; the
     `conformance` gate runs the real Go binary against the real Swift bridge, as
     it already does against the real Python one; `server/config/defaults.json`
@@ -998,6 +1018,31 @@ rule intends.
     nothing about the key after it, so the guidance must say that `pressGesture`
     reaches commands and single keys and not chords, and that a chord needs
     `typeText`'s route and its grant.
+    **What shipped, and the five things that differed from the plan** -- each
+    recorded as an amendment in spec 0046's 13.11 section with its measurement:
+    a **defect 13.10 shipped is fixed here**, because
+    `Permission.automationVoiceOver` was read with an API that answers about the
+    CALLING BINARY while this bridge sends every AppleEvent from an `osascript`
+    subprocess -- measured 2026-08-30, `-1744` from the API against a successful
+    reader reply on the same machine seconds apart, so the launcher printed a
+    false negative about a machine that was working; it now asks the channel and
+    reads the number, and `PermissionState` gained `cannotTell` for the answers
+    that are not about a permission at all. **No second macOS CI job was added**:
+    `portable (macos-latest)` already built and headless-tested the bridge, so it
+    gained the packaging step instead -- `build.sh` is 220 lines that nothing had
+    ever run in CI. **The doctor gains no staleness check for the Swift
+    documents**, because SwiftPM already tracks them (measured), which makes this
+    rendering of the trap the least dangerous of the three rather than an equal.
+    **`build.sh` does not copy the resource bundle** into `Contents/Resources`
+    yet, because the `.app` contains no code that could read a guidance document
+    until 13.14 gives it the domain's edge. And **the bundle identity was not
+    renamed**: dropping `spike` unregisters the published voice and needs a
+    reader restart to recover, and it was deferred rather than paid on a week
+    when the machine's publication state was already unreliable (13.13a) and no
+    human was there to rescue it -- it should ride with 13.14, which touches
+    `build.sh` anyway. The **version** half was paid:
+    `BridgeVersion.swift` is now the one declaration and `build.sh` derives from
+    it.
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md).
 13.12. **Can VoiceOver be asked what mode it is in?** (lane 3; a measurement, not
     a feature). Taken 2026-08-29 by 13.1, in the shape of
@@ -1137,6 +1182,14 @@ rule intends.
     and the audible cues. `BridgeListener` reads all of them today; the dialog
     replaces it as the thing a human drives, and adds the ability to EDIT the
     settings without a `defaults` command.
+    **AND IT IS NOW THE ONLY PLACE `askUser` CAN BE CHECKED AT ALL.** Measured
+    2026-08-31 by 13.11's live run: `AppKitPromptWindow` calls
+    `NSApp.activate(ignoringOtherApps:)` and its header says a real window needs an
+    `NSApplication` -- which `BridgeListener` does not have, ending as it does in
+    `dispatchMain()`. So `askUser` returned a ticket, no window appeared, and the
+    session died mid-poll. `announce` is unaffected and was confirmed audible in a
+    silent session; the other two thirds of `interact` have no live check until
+    this entry supplies the run loop. Spec 0046, amendment 17.
     **Three things it must do that nothing else can**, each already written down
     where whoever builds it will read them: give the app its dependency edge in
     `Package.swift` and its executable in `build.sh` (spec 0046, amendment 12);
@@ -1149,6 +1202,53 @@ rule intends.
     amendment 13).
     Spec: [spec 0046](specs/0046-the-voiceover-bridge-class-by-class.md), section
     13.14.
+
+13.15. **A voice the reader offers and the system will not speak** (lane 3).
+    Raised by Marlon on 2026-08-31, out of 13.11's live run, and it is a
+    USER-FACING honesty problem rather than a bug in this bridge.
+
+    **What was measured.** With VoiceOver set to `com.apple.eloquence.pt-BR.Reed`,
+    a live session's pass-through came out in Luciana. The bridge was innocent at
+    every step: it recorded the user's voice before writing ours, wrote it
+    verbatim into the marker (`{"silent":false,"voice":"com.apple.eloquence.pt-BR.Reed"}`),
+    and asked for it. The substitution is the SYSTEM's. Proved without ears, by
+    the repo's own "compare states, not strings" technique
+    ([`docs/how-we-found-the-voice-store.md`](docs/how-we-found-the-voice-store.md)):
+    rendering one sentence with `say` produced **byte-identical audio** for
+    Eloquence Reed, Eloquence Grandma and Luciana (53760 bytes, one SHA-256), and
+    the same for Eloquence Reed and Samantha in English (41984 bytes). **The
+    language is obeyed and the synthesizer is not.** Eloquence is advertised in
+    the catalogue -- it appears in `speechVoices()`, in `say -v '?'` and in
+    VoiceOver Utility -- and no payload is installed, so every request falls back,
+    **including VoiceOver's own**.
+
+    **Why it needs an entry.** Nothing in any API says a substitution happened:
+    `AVSpeechSynthesisVoice(identifier:)` returns an object that names itself
+    correctly, and `didStart` and `didFinish` both fire. So an agent, a
+    maintainer, or this bridge's own log will all report the requested voice as
+    though it were the delivered one -- which is exactly what happened, and what
+    13.11 fixed at the log's end by renaming the field.
+
+    **What the entry owes.** IF the bridge can determine that the reader's
+    selected voice is not installed -- and the byte-comparison above shows it is
+    determinable offline, so the question is whether it is determinable *cheaply
+    at a handshake* -- then it must **say so plainly**: that the user's chosen
+    voice will not be used, that the language default will be heard instead, and
+    **how to install the voice outside VoiceOver** (System Settings >
+    Accessibility > Spoken Content > System Voice > Manage Voices). A bridge that
+    silently changes how somebody's machine sounds is doing the one thing Rule 0
+    exists to prevent, even when the substitution is not its doing.
+
+    If it turns out NOT to be determinable at reasonable cost, that is a real
+    answer too and is written down permanently rather than re-investigated --
+    the shape spec 0041 and spec 0047 both used.
+
+    **It affects `live` sessions only.** A silent session renders nothing, so
+    nothing is substituted; this quietly strengthens the standing advice to prefer
+    silent.
+
+    Spec: none yet -- a measurement-and-decision entry in the shape of
+    [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
 ## Convergence (requires C and D both Done)
 

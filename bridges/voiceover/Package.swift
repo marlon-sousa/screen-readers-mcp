@@ -49,8 +49,18 @@ let package = Package(
 		// The headless launcher. NOT part of the shipped bundle -- build.sh does
 		// not copy it -- because it exists to make the bridge listen from a
 		// terminal, which is what a live check needs and what nothing else can do
-		// until the control dialog lands in 13.10.
+		// until the control dialog lands in 13.14.
 		.executable(name: "BridgeListener", targets: ["BridgeListener"]),
+		// The conformance harness (13.11): a REAL bridge with a fake reader behind
+		// it, startable as a process so the Go conformance tier can drive it with
+		// the real server binary. A PRODUCT rather than only a target because the
+		// Go side builds it by name -- `swift build --product ConformanceBridge` --
+		// and a target with no product cannot be asked for that way.
+		//
+		// NOT part of the shipped bundle either, and it must never become one: it
+		// depends on Tests/Fakes, which is where every double that keeps a test off
+		// the developer's real machine lives.
+		.executable(name: "ConformanceBridge", targets: ["ConformanceBridge"]),
 	],
 	targets: [
 		// ELEMENT 1 of the five (spec 0046, part 3): the speech provider, its own
@@ -82,10 +92,34 @@ let package = Package(
 		// that imported VoiceOverBridgeAdapters would fail to build, which is a
 		// better rendering of lane 1's convention-and-review rule and costs
 		// nothing.
+		//
+		// IT CARRIES RESOURCES SINCE 13.11, AND THEY ARE DOCUMENTS RATHER THAN
+		// ASSETS. `Entities/Documents/*.md` is this reader's own guidance, which by
+		// the repo's rule (root AGENTS.md, invariant 9) is a .md file beside the
+		// package that serves it and never a string literal in code. `embed` is
+		// stdlib on the Go side and `Bundle.module` is SwiftPM's equivalent here, so
+		// a pure domain target may carry them without acquiring a dependency.
+		//
+		// `.copy` RATHER THAN `.process`: these are markdown read verbatim, and
+		// `.process` reserves the right to transform what it finds. Copy keeps the
+		// bytes in the bundle exactly as they are in the repository, which is what
+		// makes "the file IS the document" true.
+		//
+		// THE TRAP THIS DECLARATION SETS, written where whoever trips it will look:
+		// SwiftPM puts the generated bundle beside the executable it built, so
+		// `swift test` and `BridgeListener` find it with no help. A .app that
+		// build.sh ASSEMBLES does not get it for free -- whoever gives the app the
+		// bridge's dependency edge (13.14, spec 0046 amendment 12) must copy
+		// `VoiceOverBridge_VoiceOverBridgeDomain.bundle` into Contents/Resources in
+		// the same breath, or the failure is a runtime trap rather than a compile
+		// error. Nothing in the app reads the domain today, which is why 13.11 did
+		// not add that copy: a resource nothing loads is a step that cannot be
+		// tested.
 		.target(
 			name: "VoiceOverBridgeDomain",
 			dependencies: ["ScreenReaderWire"],
-			path: "Sources/VoiceOverBridgeDomain"
+			path: "Sources/VoiceOverBridgeDomain",
+			resources: [.copy("Entities/Documents")]
 		),
 
 		// The only place macOS frameworks, the filesystem and real IO live -- plus
@@ -150,6 +184,30 @@ let package = Package(
 			dependencies: ["VoiceOverBridgeDomain", "VoiceOverBridgeAdapters", "ScreenReaderWire"],
 			path: "Tests/Fakes"
 		),
+		// THE CONFORMANCE HARNESS: an EXECUTABLE that depends on the fakes, which is
+		// a shape nothing else in this package has and which is deliberate.
+		//
+		// It is the Swift twin of bridges/nvda/tests/support/conformance_bridge.py,
+		// and it lives under Tests/ for that file's reason: it is scaffolding a
+		// CHECK depends on, and a check's dependencies are versioned rather than
+		// improvised (the 2026-08-22 rule). SwiftPM has no notion of a
+		// test-support executable, so it is an ordinary executable target that
+		// happens to sit in Tests/ -- and `Fakes` is a plain target rather than a
+		// test target, which is what makes that possible at all.
+		//
+		// IT MUST NEVER BE COPIED INTO THE BUNDLE. build.sh does not copy it, and
+		// the reason is stronger than for the probe and the launcher: this binary
+		// carries the doubles that exist to keep code away from a real reader, a
+		// real grant and a real voice. Shipping it would ship a bridge that only
+		// pretends to drive VoiceOver.
+		.executableTarget(
+			name: "ConformanceBridge",
+			dependencies: [
+				"VoiceOverBridgeAdapters", "VoiceOverBridgeDomain", "ScreenReaderWire", "Fakes",
+			],
+			path: "Tests/ConformanceBridge"
+		),
+
 		.testTarget(
 			name: "CaptureVoiceTests",
 			dependencies: ["CaptureVoice"],

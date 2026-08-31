@@ -225,9 +225,20 @@ func probePython(candidate []string) error {
 // in somebody's editor.
 func startServer(t *testing.T, endpoint string) *testsupport.MCPHarness {
 	t.Helper()
+	return startServerForReader(t, "nvda", endpoint)
+}
+
+// startServerForReader is the same, for whichever bridge a scenario reached.
+//
+// PARAMETERISED BY READER SINCE 13.11, when the Swift bridge joined this tier.
+// The reader NAME is not decoration here: it is what `connect_reader` is called
+// with, so a scenario that named the wrong one would be gated away from its own
+// bridge by the server's configuration rather than by anything about the wire.
+func startServerForReader(t *testing.T, reader, endpoint string) *testsupport.MCPHarness {
+	t.Helper()
 
 	binary := buildServer(t)
-	command := exec.Command(binary, "--reader", "nvda="+endpoint, "--verbose")
+	command := exec.Command(binary, "--reader", reader+"="+endpoint, "--verbose")
 	stderr := &syncBuffer{}
 	command.Stderr = stderr
 	t.Cleanup(func() {

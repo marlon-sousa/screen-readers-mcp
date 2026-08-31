@@ -110,15 +110,45 @@ public final class CaptureController {
 		// preferred voice makes the common path shorter rather than longer -- and
 		// it is nil whenever the bridge named none, which is every utterance
 		// spoken while no session holds the marker.
+		// THE BRIDGE'S ASK AND WHETHER THIS PROCESS CAN SEE IT are two different
+		// facts, and 13.11 learned the hard way that only recording the second-hand
+		// result conflates them. When a pass-through came out in the wrong voice,
+		// the question "did the extension's own catalogue contain the voice the
+		// bridge named?" could only be answered by reasoning backwards from which
+		// voice the domain then chose. It is one boolean; it is now written down.
+		let preferred = directive.preferredVoice.flatMap { catalogue.voice(identifier: $0) }
+		if let asked = directive.preferredVoice {
+			fields["passthrough_voice_asked"] = .text(asked)
+			fields["passthrough_voice_in_catalogue"] = .text(preferred == nil ? "no" : "yes")
+		}
 		let voice = choice.resolve(
-			preferred: directive.preferredVoice.flatMap { catalogue.voice(identifier: $0) },
+			preferred: preferred,
 			languageDefault: catalogue.defaultVoice(for: choice.effectiveLanguage),
 			candidates: catalogue.allVoices()
 		)
 		fields["passthrough_language"] = .text(choice.effectiveLanguage)
-		// Named rather than inferred from how the audio sounds. This is the field
-		// that would have caught the Arabic-reading-Portuguese bug in one glance.
-		fields["passthrough_voice"] = .text(voice?.identifier ?? "<none>")
+		// THE VOICE THIS ASKED FOR, NEVER THE ONE THAT WAS HEARD, and the name says
+		// so since 13.11. There is no API that reports which voice actually
+		// rendered an utterance: `AVSpeechSynthesisVoice(identifier:)` returns an
+		// object that names itself correctly, `didStart` and `didFinish` both fire,
+		// and the system may substitute an entirely different voice in between
+		// without a word.
+		//
+		// MEASURED 2026-08-31, and it cost an hour of the maintainer's evening. A
+		// session recorded `passthrough_voice: com.apple.eloquence.pt-BR.Reed`
+		// while Luciana was what came out of the speakers -- so this field was read
+		// back to him as evidence that the pass-through had honoured his voice, and
+		// it had not. (The cause was not this bridge: Eloquence is ADVERTISED on
+		// that machine and not installed, so every request for it falls back, in
+		// `say` and in VoiceOver itself as much as here. Rendering the same
+		// sentence with Eloquence and with Luciana produced byte-identical audio,
+		// which is how it was finally settled -- see board entry 13.15.)
+		//
+		// The lesson is the one the repo keeps paying for: a field that reports
+		// INTENT must not be named as though it reported OUTCOME, because the
+		// person reading it will be looking for evidence and will find a sentence
+		// instead.
+		fields["passthrough_voice_requested"] = .text(voice?.identifier ?? "<none>")
 		sink.emit(CaptureEvent(kind: .synthesize, fields: fields))
 
 		guard let voice else {

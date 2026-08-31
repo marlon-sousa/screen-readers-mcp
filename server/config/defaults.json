@@ -6,6 +6,13 @@
         "local:nvdaMcpBridge",
         "tcp:127.0.0.1:8765"
       ]
+    },
+    {
+      "name": "voiceover",
+      "endpoints": [
+        "local:voiceoverMcpBridge",
+        "tcp:127.0.0.1:8765"
+      ]
     }
   ]
 }

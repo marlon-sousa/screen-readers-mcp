@@ -179,7 +179,18 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 	/// -- an en-US-only voice would never appear in its list at all.
 	public override var speechVoices: [AVSpeechSynthesisProviderVoice] {
 		get {
-			controller.report(CaptureEvent(kind: .speechVoicesRead, fields: [:]))
+			// IT CARRIED NO FIELDS AT ALL UNTIL 13.11, which made it an event that
+			// recorded only that something happened. When a live run needed to know
+			// what this extension had published -- and under which identity -- the
+			// log could not say, and the answer had to be inferred from a later
+			// event. An event worth emitting is worth saying something.
+			controller.report(
+				CaptureEvent(
+					kind: .speechVoicesRead,
+					fields: [
+						"offered": .count(1),
+						"identifier": .text(ourVoiceIdentifier),
+					]))
 			return [
 				AVSpeechSynthesisProviderVoice(
 					name: "Capture Spike",
