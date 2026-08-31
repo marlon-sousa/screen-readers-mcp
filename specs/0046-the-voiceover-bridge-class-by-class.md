@@ -1940,6 +1940,51 @@ It had never bitten before because no task that declared tools had ever been run
 by anything but a developer who had them. Spec 0042's structure was right and one
 of its readers was incomplete.
 
+**17. `askUser` CANNOT BE EXERCISED FROM THE LAUNCHER, and that is a real gap
+this entry found rather than one it created.** `AppKitPromptWindow`'s own header
+says *"a real window needs an NSApplication"*, and it calls
+`NSApp.activate(ignoringOtherApps:)`. **`BridgeListener` has no `NSApplication`** —
+it ends in `dispatchMain()`, which is a dispatch main queue and not an AppKit
+run loop. Measured 2026-08-31, driving `scripts/voiceover_announce.sh` against a
+real reader with the maintainer at the machine: `askUser` returned a ticket, **no
+window appeared**, and the session then died mid-poll — the driver saw its next
+reply arrive empty and raised a `JSONDecodeError`.
+
+So two of the three `interact` commands have no way to be checked live today.
+That does **not** move the capability: `announce` is the channel the other two are
+built on, it works, and the headless tier drives all three past a fake
+`PromptWindow` exactly as designed. What it moves is the CHECK, and it lands on
+**13.14** — the entry that brings `NSApplication` with it, and whose Views table
+is the first thing that will need a window to appear at all. The board entry now
+says so.
+
+**18. THE SILENCE CAP WAS CONFIRMED LIVE, unplanned, by leaving a session open.**
+Not on any checklist, and worth keeping because it is the one watchdog whose whole
+value is that a human hears it. The maintainer reported, in order: the reader
+silent, then the announcement, then *"another message saying that the machine was
+silent for a while and was about to speak"*. The bridge's own log agrees —
+`SILENCE CAP: the human has not heard their machine for a while`, then
+`SILENCE CAP: LIFTED -- the machine is audible again`, then `session ended`. That
+is protocol.md §6.1's warn-then-lift, spoken through the same out-of-band channel
+`announce` uses, on a session that declared `attended` (45 s warn, 90 s lift).
+
+**19. `scripts/voiceover_announce.sh` COULD NEVER HAVE COMPLETED, in any terminal,
+for anyone.** It ran its Python as `python3 - <<'PY'`, which tells Python to read
+the **program** from stdin — so stdin was exhausted before the program started and
+its `input()` prompt could only raise `EOFError`. 13.10 shipped it as the
+instrument for its one unmeasurable promise, and 13.11's live tier points `poe
+live` at it, so neither entry had ever run it to the end.
+
+**The first fix was worse than the bug**, and is recorded because it fails
+silently: `python3 /dev/fd/3 3<<'PY'` on macOS reads an **empty** program — bash
+backs a heredoc with a temp file, and re-opening it through `/dev/fd` yields
+nothing — so Python exits 0 having run nothing at all, while the script goes on to
+print its closing summary as though it had measured something. A check that
+reports success having done nothing is the worst failure a check can have. The
+program is now passed with `-c`, which leaves fd 0 alone, and the human pause
+falls back to a countdown when stdin is not a terminal so that a wrapper cannot
+turn a harness fault into an apparent bridge failure.
+
 **12. Three `server/` tests asserted a READER COUNT where they meant a layering
 property, and shipping the second reader turned them red for a reason none of
 them was testing.** `TestEmbeddedDefaultsShipTheNVDABridgeEndpointsInOrder`

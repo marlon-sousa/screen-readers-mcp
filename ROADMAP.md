@@ -1180,6 +1180,14 @@ rule intends.
     and the audible cues. `BridgeListener` reads all of them today; the dialog
     replaces it as the thing a human drives, and adds the ability to EDIT the
     settings without a `defaults` command.
+    **AND IT IS NOW THE ONLY PLACE `askUser` CAN BE CHECKED AT ALL.** Measured
+    2026-08-31 by 13.11's live run: `AppKitPromptWindow` calls
+    `NSApp.activate(ignoringOtherApps:)` and its header says a real window needs an
+    `NSApplication` -- which `BridgeListener` does not have, ending as it does in
+    `dispatchMain()`. So `askUser` returned a ticket, no window appeared, and the
+    session died mid-poll. `announce` is unaffected and was confirmed audible in a
+    silent session; the other two thirds of `interact` have no live check until
+    this entry supplies the run loop. Spec 0046, amendment 17.
     **Three things it must do that nothing else can**, each already written down
     where whoever builds it will read them: give the app its dependency edge in
     `Package.swift` and its executable in `build.sh` (spec 0046, amendment 12);

@@ -85,10 +85,26 @@ fi
 # The session itself, in Python because bash cannot hold a conversation over a
 # unix socket: it has to read each reply before it knows what to send next -- the
 # ticket `askUser` mints is the whole point of `waitForUserReply`.
-python3 - "$SOCKET" <<'PY'
+#
+# THE PROGRAM IS PASSED WITH -c SO THAT STDIN STAYS THE TERMINAL, and that is a
+# bug fix rather than a flourish. It was `python3 - <<'PY'`, which tells Python to
+# read the PROGRAM from stdin -- so by the time the program ran stdin was
+# exhausted, and the `input()` below could only ever raise `EOFError`. Measured
+# 2026-08-31, the first time anybody ran this script to completion: it died at
+# step 1 on the maintainer's own machine, before the announcement it exists to
+# measure, and it would have died the same way in any terminal.
+#
+# `python3 /dev/fd/3 3<<'PY'` WAS TRIED FIRST AND IS WRONG ON macOS: bash backs a
+# heredoc with a temp file, and re-opening it through /dev/fd yields an EMPTY
+# program -- Python exits 0 having run nothing, which is the worst possible
+# failure for a check, because the script goes on to print its closing summary as
+# though it had measured something. Measured the same day. A command-line program
+# has no such subtlety and leaves fd 0 alone.
+PROGRAM=$(cat <<'PY'
 import json
 import socket
 import sys
+import time
 
 path = sys.argv[1]
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -126,7 +142,17 @@ if "interact" not in hello["capabilities"]:
 
 print()
 print("== 1. the READER should be inaudible")
-input("   press return, then LISTEN -- you should hear nothing from VoiceOver: ")
+# A HUMAN GETS THE PROMPT; ANYTHING ELSE GETS A COUNTDOWN. `poe live` may be run
+# from a wrapper with no terminal on stdin, and a script that CRASHED there would
+# report a failure of the bridge when what failed was the harness -- which is
+# exactly what happened before the fd-3 fix above. Neither path skips the pause:
+# its whole purpose is that somebody is listening when the reader is asked to
+# speak.
+if sys.stdin.isatty():
+	input("   press return, then LISTEN -- you should hear nothing from VoiceOver: ")
+else:
+	print("   no terminal on stdin; listening in 5 seconds -- you should hear NOTHING")
+	time.sleep(5)
 pressed = call(
 	"pressGesture", gestures=["describe item in voiceover cursor"], graceMs=1500, announce=""
 )
@@ -169,6 +195,8 @@ print("== ending the session, which puts your reader and your voice back")
 call("bye")
 sock.close()
 PY
+)
+python3 -c "$PROGRAM" "$SOCKET"
 
 echo
 # Single quotes, deliberately: the sentence contains backticks, and in double
