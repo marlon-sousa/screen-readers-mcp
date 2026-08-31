@@ -432,18 +432,27 @@ where it is visible at all: the NVDA one announces every group, so its
 conformance run has no unannounced capability to exercise and this one's does.
 
 **The two halves stay apart because they cost different permissions, and that is
-the lane's one design lever.** Pressing a command is an AppleEvent; typing is
-Accessibility -- so **the Accessibility grant is requested on the first
-`typeText` of a session and from nowhere else in the bridge**, which makes *"a
-session that only presses commands and reads speech never triggered an
-Accessibility request"* a statement the test suite checks rather than one the
-documentation asserts. Windows has no equivalent gate, so lane 1 has no analogue
+the lane's one design lever.** Pressing a command NAME is an AppleEvent; typing,
+and pressing a CHORD, are Accessibility -- so **the Accessibility grant is
+requested by the two commands that post a system event and from nowhere else in
+the bridge**, which makes *"a session that presses only the reader's COMMAND
+NAMES and reads speech never triggered an Accessibility request"* a statement the
+test suite checks rather than one the documentation asserts. **That sentence lost
+one word at 13.17 and kept its point**: until then `pressGesture` took only
+command names, and the bridge could not send Command-L at all. Windows has no equivalent gate, so lane 1 has no analogue
 and there was nothing to copy. **13.9 was the entry that could have quietly spent
 that lever and did not** -- focus wants the same grant, so it reads whether the
 grant is held through a one-method adapter seam that shows no dialog, and the
 object it holds cannot request anything. 13.10 did not spend it either: the
 three commands it adds talk to a PERSON rather than to the system, and the
 counting-broker scenario drives all of them past a broker that is asked nothing.
+And since 13.17 it can press a **chord**: `pressGesture` takes keystrokes as well
+as command names -- `command+l`, which is how anybody opens a location bar and
+which this bridge simply could not send through four entries, because a true
+measurement about the reader's modifier commands had been generalised into a
+false claim about the platform. The keycode comes from the layout that is
+actually active, read through Text Input Services, so it presses the right key on
+a Brazilian keyboard and fails BY NAME on a character the layout cannot reach.
 The next step is **13.12**, the measurement that asks whether VoiceOver can be
 told what mode it is in -- and after it **13.14**, the control dialog, which
 needed 13.11's live tier and now has it.
@@ -776,9 +785,13 @@ rule intends.
     `Command does not exist (6)` — which is the property this repo already wants
     from `Request.cmd`. AppleEvents only; no Accessibility grant is asked for
     here, which is what makes 13.8's laziness checkable. Gesture ids are English
-    command names and nothing else, so a KEYSTROKE sent as a gesture is refused
-    by name -- both notations, `control+l` and VoiceOver's own `VO-D` -- because
-    synthesizing one needs the grant 13.8 exists to keep lazy.
+    command names and nothing else at this entry, so a KEYSTROKE sent as a gesture
+    is refused by name -- both notations, `control+l` and VoiceOver's own `VO-D` --
+    because synthesizing one needs the grant 13.8 exists to keep lazy.
+    **The `+`-joined half of that refusal was deleted by 13.17**, in the commit
+    that made a chord pressable, and the `VO-D` half stands: `VO` is whatever the
+    person bound their VoiceOver modifier to, so pressing it would mean guessing
+    at somebody's configuration.
     **THE COMMAND IS ADDRESSED TO THE `commander object`, NEVER TO
     `application "VoiceOver"`, and that one line retired this entry's measured
     risk.** Spec 0047 recorded `perform command` as dead on the maintainer's
@@ -821,13 +834,19 @@ rule intends.
     gate: the two halves of input cost different permissions, and keeping them
     apart is what makes *"this bridge never asked for Accessibility"* a checkable
     statement rather than an intention.
-    **The laziness is structural, and it is checked rather than intended.** The
-    only call to `PermissionBroker.request` in the repository is in the `typeText`
-    handler: not at construction, not in `Wiring`, not in the adapter factory, not
-    in the doctor, not in a probe, and not in a test. A round trip in
-    `Tests/Integration/SessionRoundTripTests.swift` drives a handshake, a gesture
-    and a speech read past the broker and asserts it was asked **nothing at all**,
-    then types and asserts it was asked exactly once.
+    **The laziness is structural, and it is checked rather than intended.** Every
+    call to `PermissionBroker.request` in the repository is in a COMMAND HANDLER
+    about to post a system event: not at construction, not in `Wiring`, not in the
+    adapter factory, not in the doctor, not in a probe, and not in a test. A round
+    trip in `Tests/Integration/SessionRoundTripTests.swift` drives a handshake, a
+    gesture and a speech read past the broker and asserts it was asked **nothing
+    at all**, then types and asserts it was asked exactly once.
+    **13.17 gave it a second caller and narrowed the claim by one word**, which is
+    written here rather than left to be discovered: a keystroke `pressGesture` is
+    a system event costing the same grant, so the sentence the tests check is now
+    *"a session that presses only the reader's COMMAND NAMES and reads speech
+    never triggers an Accessibility request"*. The check itself moved into
+    `AccessibilityGrant`, shared by the two handlers.
     **No test may touch the real grant or post a real event**, for the reason
     `Tests/Fakes/Support/ReaderEdge.swift` already existed: the real broker's
     request raises a system dialog and leaves the process granted with no undo,
@@ -895,7 +914,8 @@ rule intends.
     (AppleEvents only), the `describe` commands read through captured speech
     (AppleEvents only), and the accessibility tree (Accessibility). `getFocusInfo`
     answers from the tree when the grant exists and from the VoiceOver cursor when
-    it does not, and **never requests the grant itself**. Two measured traps ride
+    it does not, and **never requests the grant itself** -- the grant belongs to
+    the commands that POST an event, and reading where the focus is is not one. Two measured traps ride
     with it: `AXUIElementCreateSystemWide()` fails with `-25204
     kAXErrorCannotComplete` — not a permission error, so no grant fixes it — and
     VoiceOver publishes no accessibility tree of its own.
@@ -911,8 +931,8 @@ rule intends.
     `AccessibilityTrust`, that `TCCPermissionBroker` also answers**, rather than
     by handing the inspector the domain's `PermissionBroker` or by widening the
     port to `focusInfo(accessibilityGranted:)`. So 13.8's lever survives the
-    entry that wanted the same grant, **structurally**: the object focus holds
-    cannot request a permission, and a round trip in
+    entry that wanted the same grant without moving the machine to earn it,
+    **structurally**: the object focus holds cannot request a permission, and a round trip in
     `Tests/Integration/SessionRoundTripTests.swift` drives `getFocusInfo` down
     BOTH routes past a counting broker and asserts it was asked nothing at all.
     `appModule` is the frontmost application's **bundle identifier** and `role`
@@ -1289,14 +1309,70 @@ rule intends.
     Spec: none yet — a measurement entry in the shape of [spec
     0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
-13.17. **Chords — the bridge cannot press one, and a blind user presses them
-    constantly** (lane 3; **a v1 blocker for the `user` persona**). Raised by
-    Marlon on 2026-08-31, in the sharpest possible form: *"All blind users will
-    use chords to operate, no matter what. If chords aren't pressable, we need a
-    driver."*
+13.17. **Done** -- **Chords: `pressGesture` takes keystrokes too** (lane 3; was
+    **a v1 blocker for the `user` persona**). Raised by Marlon on 2026-08-31, in
+    the sharpest possible form: *"All blind users will use chords to operate, no
+    matter what. If chords aren't pressable, we need a driver."*
 
-    **The gap, exactly.** Neither of this bridge's two input routes can send
-    Command-L:
+    **What shipped.** A gesture id is now either one of VoiceOver's own English
+    command names, which goes to the reader as before, or a **keystroke** --
+    `+`-joined, modifiers first and the key last, `command+l` -- which is posted
+    at the system as a `CGEvent`. `CommandVocabulary` classifies rather than
+    refusing, and the **space rule** decides: a separator counts as keystroke
+    notation only in an id with no spaces at all, so `command key` still goes to
+    the reader and `command+l` does not. **No new wire command**, because
+    protocol.md §5 already calls a gesture id "the reader's own user-facing
+    command notation" and on NVDA that notation IS keystrokes -- so this is the
+    contract being met rather than stretched, and which of the bridge's routes
+    carries an id stays the bridge's business.
+
+    **The keyboard layout was the real work, and there is no table in this
+    repository.** A `CGEvent` carries a virtual keycode and which one produces
+    `l` depends on the active layout; a hard-coded ANSI table would have compiled,
+    passed every test its author wrote, and pressed the wrong key on the
+    maintainer's Brazilian keyboard. So `CurrentKeyboardLayout` asks
+    `TISCopyCurrentKeyboardInputSource` and `UCKeyTranslate` and caches the
+    reverse map **by input-source id, re-read per press**, so switching layouts
+    mid-session needs no observer. A character the layout cannot reach is a
+    **named failure that posts nothing** -- never a wrong key. Measured live on
+    `com.apple.keylayout.Brazilian-Pro`: 110 characters mapped, `$` on the shifted
+    layer of the `4` key, `ç` unreachable and reported as such.
+
+    **The bug this entry produced, found by its own live run, is worth reading
+    before anyone touches a `CGEvent` here again.** The first implementation set
+    modifier FLAGS on the key event and posted no transitions -- which is what spec
+    0048 §2.5 decided, on the reasoning that flags are what menu shortcuts match.
+    They are, and the very first `command+l` opened Safari's location bar. It also
+    left **Command held down on the maintainer's keyboard**, with
+    `CGEventSource.flagsState` saying so and nothing else in the system doing:
+    every keystroke afterwards was a chord, and the symptom that surfaced was
+    `typeText` reporting `typed: 11` into an address bar the reader read back as
+    empty. So v1 posts real modifier transitions, cumulative down and reversed up,
+    **released from a `defer` even when the press failed**. `voiceover_modifiers.sh`
+    had warned about that exact hazard in its header for a day and asserts against
+    it after every probe; this entry's own instrument did not, on its first
+    version, and so reported a successful chord on a machine it had just broken.
+    It does now. Spec 0048 §2.5, amended with the measurement.
+
+    **The lazy-grant lever survived and narrowed by one word.** The grant is
+    requested on the first keystroke of a session exactly as on the first
+    `typeText`, through a shared `AccessibilityGrant` -- so there are two callers,
+    both command handlers about to post an event, and *"a session that presses
+    only the reader's COMMAND NAMES and reads speech never triggers an
+    Accessibility request"* is still what the counting-broker scenario asserts.
+    That sentence was stated in **far more places than the eleven** spec 0046's
+    amendment 13 counted -- 27 inside this bridge and 13 outside it -- and every
+    one was rewritten in this PR rather than left to go quietly false. **A key
+    with no modifier stays a command name** (`return key`), because routing it
+    through the event path would spend the grant for a keypress that never needed
+    one.
+
+    **`VO-D` is still refused**, and no feature retires that: `VO` is whatever the
+    person bound their VoiceOver modifier to, so pressing it would mean guessing
+    at somebody's own configuration. The refusal names both alternatives.
+
+    **The gap it closed, and why it lasted.** Neither of this bridge's two input
+    routes could send Command-L:
 
     - `pressGesture` dispatches VoiceOver's own command names through the reader.
       Its vocabulary contains single keys and modifier commands, and **the
@@ -1317,38 +1393,30 @@ rule intends.
     about VoiceOver, and that was wrong — recorded here because the wrong framing
     is what let the gap sit unnoticed through four entries.
 
-    **What it should probably look like**, to be settled in the spec conversation:
+    **The three open questions were settled by asking what NVDA does**, on
+    2026-08-31, and its answer pointed the same way in all three: NVDA's gesture
+    ids are keystrokes and nothing else, `inputCore` decides whether the reader
+    eats the key or the application gets it, the bridge writes `control+o` and
+    `NVDA+t` on identical transcript lines, and one `gestures` capability covers
+    the lot. So: **one transcript verb** for both routes here too, because a
+    transcript is read across readers and a verb only this bridge could emit would
+    make two runs of the same task structurally different; **one capability**,
+    because capabilities gate command groups and both halves are `pressGesture`;
+    and **the key goes last**, which is the rule
+    `keyboard_gesture_name.press_order` already enforces in lane 1 -- so
+    `command+l` is the same string on both readers and `l+command` is a named
+    failure on both.
 
-    - **Keystrokes ride on `pressGesture`**, routed to the event path instead of
-      AppleEvents. That is *consistent with the contract rather than a stretch* —
-      protocol.md calls a gesture id "the reader's own user-facing command
-      notation", and on NVDA that notation IS keystrokes. `CommandVocabulary`'s
-      blanket refusal is the thing that has to narrow.
-    - **The lazy-grant lever survives**, which is why this is not a regression of
-      13.8: the grant is requested on the first *keystroke*, exactly as it is on
-      the first `typeText`, so a session that only presses reader commands and
-      reads speech still asks for nothing.
-    - **The hard part is the keyboard LAYOUT**, and it should not be
-      underestimated. A chord needs a virtual keycode, and which keycode produces
-      "l" depends on the active layout — the maintainer's machine is Brazilian. A
-      hard-coded ANSI table would work in review and mispress on his keyboard, so
-      the mapping has to go through `TISCopyCurrentKeyboardInputSource` /
-      `UCKeyTranslate`, and the fallback when a character is unreachable on the
-      current layout has to be a **named failure** rather than a wrong key.
-    - **`EventPoster` gains a second shape** (`post(keyCode:flags:keyDown:)`)
-      beside the Unicode one, keeping every decision above the seam as 13.8's
-      header requires.
-
-    **Why it blocks v1 for the `user` persona.** That stance's whole claim is that
+    **Why it blocked v1 for the `user` persona.** That stance's whole claim is that
     a task is driven with what an ordinary user has. On macOS that includes chords
     in the first minute of any session — opening a location, finding on a page,
     switching windows. A `user` run that cannot press them is not a restricted
     stand-in, it is an incomplete one, and its "the task failed" findings would be
     about the bridge rather than the interface under test.
 
-    Spec: [spec 0048](specs/0048-pressing-a-chord.md), written 2026-08-31 and
-    **awaiting agreement in conversation** before any code — its class/file layout
-    is the review gate.
+    Spec: [spec 0048](specs/0048-pressing-a-chord.md). Instrument:
+    `scripts/voiceover_chords.sh` with `scripts/voiceover_chord_press.swift`.
+    Done (PR #92, 2026-08-31).
 
 ## Convergence (requires C and D both Done)
 

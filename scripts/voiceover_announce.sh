@@ -41,8 +41,9 @@
 #     anything running (13.6, hard invariant 3 in its macOS form).
 #   * It presses ONE VoiceOver command -- `describe item in voiceover cursor` by
 #     default -- which describes what the cursor is already on and moves nothing.
-#   * It types nothing, so it needs no Accessibility grant and raises no consent
-#     dialog. Pressing a command is an AppleEvent; that is 13.8's whole lever.
+#   * It types nothing and presses no chord, so it needs no Accessibility grant
+#     and raises no consent dialog. Pressing a command NAME is an AppleEvent;
+#     that is 13.8's whole lever, as 13.17 narrowed it.
 #   * It writes no preference. The bridge itself selects the capture voice at the
 #     handshake and puts your own voice back on every teardown path.
 #

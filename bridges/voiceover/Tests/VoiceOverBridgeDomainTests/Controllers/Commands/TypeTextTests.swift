@@ -1,11 +1,13 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/TypeText.swift.
 //
-// ONE PROPERTY CARRIES MOST OF THIS FILE, and it is the entry's whole claim: THE
-// ACCESSIBILITY GRANT IS ASKED FOR ON A `typeText` AND NOWHERE ELSE. A test can
-// only check that with a broker that counts requests separately from status
-// reads, which is what FakePermissionBroker is for -- and none of these tests
-// touches the real grant, because the real one raises a system dialog and
-// changes the developer's machine permanently.
+// ONE PROPERTY CARRIES MOST OF THIS FILE, and it is 13.8's whole claim: THE
+// ACCESSIBILITY GRANT IS ASKED FOR ONLY BY A COMMAND THAT IS ABOUT TO POST A
+// SYSTEM EVENT -- this one, and since 13.17 a KEYSTROKE `pressGesture`, which
+// asserts its half in `PressGestureTests`. A test can only check that with a
+// broker that counts requests separately from status reads, which is what
+// FakePermissionBroker is for -- and none of these tests touches the real grant,
+// because the real one raises a system dialog and changes the developer's
+// machine permanently.
 //
 // The second property is the one protocol.md §5 puts on this command: THE TEXT
 // IS NEVER LOGGED AND `typed` IS A LENGTH. Typing is exactly how a secret is
@@ -95,10 +97,10 @@ struct TypeTextTests {
 
 	@Test("the grant is REQUESTED on a typeText that does not already have it")
 	func theGrantIsRequestedWhenTyping() throws {
-		// The one place in the bridge that may ask. Everything else -- the
-		// handshake, a gesture, a speech read -- goes past without a request, which
-		// is what makes "this bridge never asked for Accessibility" a checkable
-		// statement about a session rather than an intention.
+		// One of the two places in the bridge that may ask. Everything else -- the
+		// handshake, a COMMAND-NAME gesture, a speech read, a focus read -- goes past
+		// without a request, which is what makes "this session was never asked for
+		// Accessibility" a checkable statement rather than an intention.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		let typer = FakeTextTyper()
 		#expect(throws: CommandError.self) {

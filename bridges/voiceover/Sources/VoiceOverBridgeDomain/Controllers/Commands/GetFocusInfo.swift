@@ -8,11 +8,12 @@
 // did without pressing anything else.
 //
 // IT NEVER REQUESTS A PERMISSION, AND THIS IS THE ENTRY'S ONE STANDING CLAIM.
-// The Accessibility grant is asked for from exactly one place in this bridge,
-// the TypeText controller, on a `typeText` (13.8). Focus answers RICHER when
-// that grant is already held and thinner when it is not, and the difference is
-// decided inside the adapter by a read that shows no dialog -- so a session that
-// only presses commands, reads speech and asks where it is never triggers a
+// The Accessibility grant is asked for only by a command that is about to POST A
+// SYSTEM EVENT -- a `typeText` (13.8), and since 13.17 a keystroke `pressGesture`
+// -- both through `AccessibilityGrant`. Focus answers RICHER when that grant is
+// already held and thinner when it is not, and the difference is decided inside
+// the adapter by a read that shows no dialog -- so a session that presses only
+// the reader's COMMAND NAMES, reads speech and asks where it is never triggers a
 // request. Adding a broker call here would spend the lane's one design lever;
 // `Tests/Integration/SessionRoundTripTests.swift` asserts that nobody has.
 //

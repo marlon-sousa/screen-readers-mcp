@@ -120,15 +120,16 @@ public enum Wiring {
 	/// ONE PER PROCESS, like the lifecycle: it describes this process's standing
 	/// with the system, which cannot change because a socket was accepted.
 	///
-	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the entry's whole
+	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the lane's whole
 	/// design. Wiring builds the broker at startup and never calls `request`; the
-	/// only call to it in this repository is in the TypeText handler, on the first
-	/// `typeText` of a session. That is what makes "a session that only presses
-	/// commands and reads speech never triggers an Accessibility request" a
-	/// checkable statement rather than an intention -- so nothing here, in the
-	/// factory, in the doctor or in a probe may ask it anything. Reading `status`
-	/// is a different question and the launcher does print it, because reading
-	/// shows no dialog.
+	/// only calls to it in this repository are in TWO COMMAND HANDLERS -- the first
+	/// `typeText` of a session (13.8), and the first KEYSTROKE `pressGesture` of
+	/// one (13.17), both through `AccessibilityGrant`. That is what makes "a
+	/// session that presses only the reader's COMMAND NAMES and reads speech never
+	/// triggers an Accessibility request" a checkable statement rather than an
+	/// intention -- so nothing here, in the factory, in the doctor or in a probe
+	/// may ask it anything. Reading `status` is a different question and the
+	/// launcher does print it, because reading shows no dialog.
 	///
 	/// IT IS HANDED THE APPLESCRIPT RUNNER SINCE 13.11, because one of the two
 	/// permissions is a fact about the CHANNEL rather than about this process and
@@ -141,13 +142,29 @@ public enum Wiring {
 	}
 
 	/// How a synthesized keystroke leaves this process: one Core Graphics event
-	/// per chunk of text.
+	/// per chunk of text, or per key of a chord.
 	///
 	/// ONE PER PROCESS, and stateless like the script runner. THE ONLY PLACE THE
 	/// REAL ONE IS BUILT -- a test that built it would type into whatever window
 	/// the developer had in front of them.
 	public static func eventPoster() -> any EventPoster {
 		CGEventPoster()
+	}
+
+	/// Which physical key produces a character on the layout that is active now.
+	///
+	/// ONE PER PROCESS, and unlike the poster it holds STATE worth sharing: the
+	/// reverse map costs 256 UCKeyTranslate calls to build, and one instance per
+	/// session would rebuild it per handshake for an answer that is a property of
+	/// the machine. It re-reads the input source's id on every lookup, so a shared
+	/// one still follows a person who switches layouts mid-session.
+	///
+	/// IT ASKS FOR NO PERMISSION AND POSTS NOTHING -- reading the keyboard layout
+	/// is free, which is why it is built here rather than being another thing
+	/// `ReaderEdge.swift` has to keep out of tests. What a test must not build is
+	/// the POSTER beneath it.
+	public static func keyboardLayout() -> any KeyboardLayout {
+		CurrentKeyboardLayout()
 	}
 
 	/// How this bridge reads another application's accessibility tree.
@@ -177,8 +194,8 @@ public enum Wiring {
 	/// which class asks the system, is preserved.
 	///
 	/// IT ASKS NOBODY ANYTHING, exactly as constructing the broker does not:
-	/// `isTrusted` shows no dialog, and the only call to `request` in this
-	/// repository is in the TypeText handler.
+	/// `isTrusted` shows no dialog, and every call to `request` in this repository
+	/// is in a command handler that is about to move the machine.
 	///
 	/// THE RUNNER IT IS GIVEN IS NEVER USED ON THIS PATH: `isTrusted` reads
 	/// `AXIsProcessTrusted` and talks to no channel at all. It is a constructor
@@ -308,6 +325,7 @@ public enum Wiring {
 		scripts: (any AppleScriptRunner)? = nil,
 		permissions: (any PermissionBroker)? = nil,
 		poster: (any EventPoster)? = nil,
+		layout: (any KeyboardLayout)? = nil,
 		tree: (any AccessibilityTree)? = nil,
 		frontmost: (any FrontmostApplication)? = nil,
 		trust: (any AccessibilityTrust)? = nil,
@@ -322,6 +340,7 @@ public enum Wiring {
 				scripts: scripts ?? appleScriptRunner(),
 				permissions: permissions ?? permissionBroker(),
 				poster: poster ?? eventPoster(),
+				layout: layout ?? keyboardLayout(),
 				tree: tree ?? accessibilityTree(),
 				frontmost: frontmost ?? frontmostApplication(),
 				trust: trust ?? accessibilityTrust(),

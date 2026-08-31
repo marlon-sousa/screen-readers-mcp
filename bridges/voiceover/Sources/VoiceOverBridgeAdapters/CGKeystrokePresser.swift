@@ -1,0 +1,239 @@
+// ROLE: adapter -- IMPLEMENTS the KeyPresser domain port, over the
+// KeyboardLayout and EventPoster seams.
+//
+// BUILT BY: VoiceOverAdapterFactory. USED BY: the PressGesture handler, through
+// the port, on a gesture id written as a keystroke.
+//
+// IT HOLDS EVERY DECISION ON THIS EDGE: which keycode a named key is, what a
+// modifier does to the event's flags, what a shifted layer adds, in what order
+// the two halves go out, and what happens when the layout has no key for a
+// character. Below it, `CurrentKeyboardLayout` reads the system's answer and
+// `CGEventPoster` builds one event -- neither decides anything.
+//
+// ============================================================================
+// AN UNREACHABLE CHARACTER IS A NAMED FAILURE AND POSTS NOTHING.
+// ============================================================================
+//
+// That is the rule this class exists to enforce, and it is spec 0048 §2.4's
+// whole point. Which key produces `l` depends on the active layout, and the
+// maintainer's is Brazilian: a hard-coded ANSI table would pass review, pass
+// every test its author wrote, and press the WRONG KEY on his machine. So there
+// is no table of characters here at all -- the layout is asked, and if it has no
+// answer the press fails saying so. "This layout has no key that produces `\`"
+// is something an agent can act on; pressing something else is not, and a chord
+// that quietly did the wrong thing is the worst failure available on an edge
+// nobody can watch.
+//
+// NOTHING IS POSTED BEFORE THE KEYCODE IS KNOWN, which is why the whole
+// keystroke is resolved before the first event. Half a chord -- a key-down with
+// no key-up, or a modifier flag on an event that never arrives -- would leave
+// whatever watches the event stream believing a key is still held.
+//
+// NAMED KEYS SKIP THE LAYOUT ENTIRELY, and the table below is theirs. Return is
+// in the same place on every keyboard sold, so these are constants rather than
+// questions -- and having them here rather than behind the layout seam keeps the
+// seam answering only what genuinely varies. It is also why they are the ONE
+// table this file is allowed to contain: a physical position is not a layout.
+//
+// ============================================================================
+// THE MODIFIERS ARE PRESSED AND RELEASED, NOT MERELY SET AS FLAGS.
+// ============================================================================
+//
+// Spec 0048 §2.5 said flags on the key event and no separate modifier events,
+// "until something measured needs more". Something measured needed more within
+// the hour, and it is the sharpest bug this entry produced.
+//
+// FLAGS ALONE DELIVER THE CHORD AND NEVER PUT THE MODIFIER BACK. Measured live
+// on 2026-08-31: one `command+l` posted with `.maskCommand` on the key-down and
+// the key-up opened Safari's location bar exactly as intended -- and left
+// `CGEventSource.flagsState(.combinedSessionState)` reporting **Command held**.
+// Every keystroke on that machine afterwards was a chord. `typeText` posted its
+// characters and nothing arrived anywhere, silently, because each one was a
+// Command-chord; the first symptom was an empty text field and no error at all.
+//
+// That is not an app-compatibility nicety. It is somebody's own keyboard left in
+// a state they did not put it in, by a bridge whose Rule 0 is that it gives the
+// machine back. So the sequence is what a real keyboard produces:
+//
+//   1. a `flagsChanged` per modifier, in a fixed order, each carrying the
+//      CUMULATIVE state so far -- which is what such an event means
+//   2. the key down, then the key up, both carrying the full flags
+//   3. a `flagsChanged` per modifier in REVERSE, each carrying the state with
+//      that modifier removed, ending at `[]`
+//
+// AND STEP 3 RUNS EVEN WHEN STEP 2 FAILED. A press that threw half-way through
+// would otherwise leave exactly the state this section is about, so the release
+// is in a `defer` and its own failures are swallowed: there is nothing a caller
+// could usefully do with "the chord failed AND the release failed", and reporting
+// the second in place of the first would hide the one that matters. Leaving a
+// person's Command key down is worse than any error this class could return.
+//
+// A `voiceover_modifiers.sh`-style ASSERTION IS WHAT WOULD HAVE CAUGHT IT, and
+// that script's header had warned about exactly this hazard for a day: "a sticky
+// modifier that stays down would make every subsequent keystroke on the machine a
+// chord". `scripts/voiceover_chords.sh` now proves the keyboard is clean after
+// the chord, the same way.
+
+import CoreGraphics
+import VoiceOverBridgeDomain
+
+public final class CGKeystrokePresser: KeyPresser {
+	private let layout: any KeyboardLayout
+	private let poster: any EventPoster
+
+	public init(layout: any KeyboardLayout, poster: any EventPoster) {
+		self.layout = layout
+		self.poster = poster
+	}
+
+	public func press(_ keystroke: Keystroke) throws {
+		// EVERYTHING IS RESOLVED BEFORE ANYTHING IS POSTED. Half a chord -- a
+		// modifier held for a key that turned out to be unreachable -- is the state
+		// this class exists to prevent.
+		let resolved = try resolve(keystroke.key)
+		var modifiers = keystroke.modifiers
+		// A character on the shifted layer needs the Shift the agent did not ask
+		// for: on a French layout the digits live there, so `command+4` is really
+		// Command-Shift-<that key>. The seam reports the layer; the decision to add
+		// it is this line, above it.
+		if resolved.shifted { modifiers.insert(.shift) }
+		let held = Keystroke.Modifier.allCases.filter(modifiers.contains)
+		let flags = Self.flags(for: modifiers)
+
+		// See the header: this runs whatever happened above it, and its own
+		// failures are swallowed rather than replacing the caller's error.
+		defer { release(held) }
+		do {
+			try hold(held)
+			// DOWN THEN UP, BOTH CARRYING THE FLAGS, exactly as
+			// `AccessibilityTextTyper` sends both halves of a typed chunk: an
+			// application that acts on key-down and one that acts on key-up would
+			// otherwise disagree about whether the chord happened, and a key-down
+			// with no key-up leaves a key held as far as anything watching is
+			// concerned.
+			try poster.post(keyCode: resolved.keyCode, flags: flags, keyDown: true)
+			try poster.post(keyCode: resolved.keyCode, flags: flags, keyDown: false)
+		} catch let failure as EventPostingFailure {
+			throw KeyPressFailure(failure.description)
+		}
+	}
+
+	/// Press the modifiers, one transition at a time, each carrying the state the
+	/// keyboard is in after it.
+	private func hold(_ held: [Keystroke.Modifier]) throws {
+		var sofar: CGEventFlags = []
+		for modifier in held {
+			sofar.insert(Self.flag(for: modifier))
+			try poster.postFlagsChanged(keyCode: Self.modifierKeyCodes[modifier] ?? 0, flags: sofar)
+		}
+	}
+
+	/// Release them in reverse, ending at no modifiers held at all.
+	///
+	/// IT CANNOT THROW, and that is deliberate rather than lazy -- see the header.
+	/// A release that failed would be reported in place of the failure that
+	/// actually matters, and there is nothing a caller could do about it either
+	/// way; what there must not be is a `press` that returns with a modifier down.
+	private func release(_ held: [Keystroke.Modifier]) {
+		var sofar = Self.flags(for: Set(held))
+		for modifier in held.reversed() {
+			sofar.remove(Self.flag(for: modifier))
+			try? poster.postFlagsChanged(keyCode: Self.modifierKeyCodes[modifier] ?? 0, flags: sofar)
+		}
+	}
+
+	// -- the decisions -----------------------------------------------------------
+
+	/// Which key to press, or why this machine cannot press it.
+	private func resolve(_ key: Keystroke.Key) throws -> LayoutKey {
+		switch key {
+		case .named(let named):
+			guard let keyCode = Self.namedKeyCodes[named] else {
+				// Unreachable while the table covers the enumeration, and a named
+				// failure rather than a crash if a future case is added without one.
+				throw KeyPressFailure(
+					"this bridge has no keycode for the '\(named.described)' key")
+			}
+			return LayoutKey(keyCode: keyCode, shifted: false)
+		case .character(let character):
+			guard let found = layout.key(for: character) else {
+				throw KeyPressFailure(
+					"the keyboard layout active on this machine has no key that produces "
+						+ "'\(character)', so there is no chord to press. Nothing was sent. Try a key "
+						+ "this layout does have, or one of the named keys (return, tab, escape, the "
+						+ "arrows, f1 to f20), or ask the person at the machine which key it is on")
+			}
+			return found
+		}
+	}
+
+	/// The flag one modifier sets.
+	///
+	/// `fn` is `.maskSecondaryFn`, which is the flag the window server sets for a
+	/// laptop's Fn key; the other four are the flags every menu shortcut is
+	/// matched against. Option is `.maskAlternate`, which is the one whose name
+	/// does not match what is written on the key.
+	static func flag(for modifier: Keystroke.Modifier) -> CGEventFlags {
+		switch modifier {
+		case .command: return .maskCommand
+		case .control: return .maskControl
+		case .option: return .maskAlternate
+		case .shift: return .maskShift
+		case .fn: return .maskSecondaryFn
+		}
+	}
+
+	/// The flags for a set of modifiers.
+	static func flags(for modifiers: Set<Keystroke.Modifier>) -> CGEventFlags {
+		modifiers.reduce(into: CGEventFlags()) { $0.insert(flag(for: $1)) }
+	}
+
+	/// The LEFT-HAND modifier keys, by their `kVK_` constants.
+	///
+	/// Left rather than right, and it is a choice rather than an accident: a
+	/// keyboard has two of most of these and the system treats either as the
+	/// modifier, so one has to be picked and the left one is what a person's hand
+	/// reaches by default. They are layout-independent constants, exactly as the
+	/// named keys above are, and for the same reason.
+	static let modifierKeyCodes: [Keystroke.Modifier: UInt16] = [
+		.command: 0x37,
+		.shift: 0x38,
+		.option: 0x3A,
+		.control: 0x3B,
+		.fn: 0x3F,
+	]
+
+	/// The keys whose position is the same on every keyboard.
+	///
+	/// These are the `kVK_` constants, written out rather than imported from
+	/// Carbon so that this table reads as what it is -- and so that the one file
+	/// in this bridge that talks to Text Input Services stays the leaf below.
+	static let namedKeyCodes: [Keystroke.NamedKey: UInt16] = {
+		var codes: [Keystroke.NamedKey: UInt16] = [
+			.space: 0x31,
+			.return: 0x24,
+			.tab: 0x30,
+			.escape: 0x35,
+			.delete: 0x33,
+			.forwardDelete: 0x75,
+			.left: 0x7B,
+			.right: 0x7C,
+			.down: 0x7D,
+			.up: 0x7E,
+			.home: 0x73,
+			.end: 0x77,
+			.pageUp: 0x74,
+			.pageDown: 0x79,
+		]
+		// f1 to f20, in the order macOS assigns them -- which is not consecutive
+		// and is why this is a literal list rather than arithmetic.
+		let functionKeys: [UInt16] = [
+			0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D,
+			0x67, 0x6F, 0x69, 0x6B, 0x71, 0x6A, 0x40, 0x4F, 0x50, 0x5A,
+		]
+		for (index, keyCode) in functionKeys.enumerated() {
+			codes[.function(index + 1)] = keyCode
+		}
+		return codes
+	}()
+}

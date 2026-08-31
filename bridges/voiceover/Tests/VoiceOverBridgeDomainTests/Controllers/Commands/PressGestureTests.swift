@@ -1,12 +1,19 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/PressGesture.swift.
 //
-// Two properties carry most of this file. The first is ATTRIBUTION: each press
+// Three properties carry most of this file. The first is ATTRIBUTION: each press
 // owns the half-open span the ring stood at either side of ITS dispatch, so an
-// empty span means "this command said nothing" rather than "we read too late" --
+// empty span means "this gesture said nothing" rather than "we read too late" --
 // and that is only testable if speech can be made to arrive as a consequence of
-// a particular command, which is what FakeGestureSender's `onPress` is for. The
+// a particular gesture, which is what FakeGestureSender's `onPress` is for. The
 // second is that a FAILURE IS NAMED: spec 0041's requirement is that a bridge on
 // this route never answers a machine-level fault with an empty read-back.
+//
+// THE THIRD ARRIVED WITH 13.17 AND IS THE ROUTING: one command, two routes, and
+// the id decides. A command name goes to the reader and costs no permission; a
+// keystroke goes to the system and costs the Accessibility grant. Both halves
+// are asserted here -- that each id reaches the right port, and that a batch of
+// COMMAND NAMES still goes past a counting broker without being asked anything,
+// which is 13.8's lever as this entry narrowed it.
 
 import Fakes
 import ScreenReaderWire
@@ -23,6 +30,8 @@ struct PressGestureTests {
 		mode: CaptureMode = .live,
 		sender: FakeGestureSender = FakeGestureSender(),
 		liveness: FakeReaderLiveness = FakeReaderLiveness(),
+		keys: FakeKeyPresser = FakeKeyPresser(),
+		permissions: FakePermissionBroker = FakePermissionBroker(),
 		transcript: FakeTranscript = FakeTranscript(),
 		announcer: FakeAnnouncer = FakeAnnouncer()
 	) -> SessionContext {
@@ -30,7 +39,8 @@ struct PressGestureTests {
 			clock: FakeClock(), transcript: transcript, attended: true, close: { _ in })
 		context.mode = mode
 		context.adapters = fakeAdapterSet(
-			mode: mode, gestureSender: sender, readerLiveness: liveness, announcer: announcer)
+			mode: mode, gestureSender: sender, readerLiveness: liveness, keyPresser: keys,
+			permissions: permissions, announcer: announcer)
 		context.speech = SpeechBuffer(clock: FakeClock())
 		return context
 	}
@@ -88,16 +98,192 @@ struct PressGestureTests {
 
 	// -- the vocabulary --------------------------------------------------------
 
-	@Test("a key combo is refused BEFORE any of the batch is dispatched")
-	func aKeyComboRefusesTheWholeBatch() throws {
+	@Test("an id this reader cannot take is refused BEFORE any of the batch is dispatched")
+	func aRefusedIdStopsTheWholeBatch() throws {
 		// The ordering that matters for a mutating command: catching a bad id in
 		// position two after position one has already moved the machine would
-		// leave the reader somewhere neither side asked for.
+		// leave the reader somewhere neither side asked for. `VO-D` is the id that
+		// is still refused after 13.17, because "VO" is whatever the user bound
+		// their VoiceOver modifier to.
 		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
 		#expect(throws: CommandError.self) {
-			try handler.execute(context(sender: sender), request(["go to desktop", "VO-D"]))
+			try handler.execute(context(sender: sender, keys: keys), request(["go to desktop", "VO-D"]))
 		}
 		#expect(sender.pressed.isEmpty)
+		#expect(keys.pressed.isEmpty)
+	}
+
+	@Test("a MALFORMED KEYSTROKE stops the batch too, and says what is wrong with the id")
+	func aMalformedKeystrokeStopsTheWholeBatch() throws {
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		do {
+			_ = try handler.execute(
+				context(sender: sender, keys: keys), request(["go to desktop", "cmd+l"]))
+			Issue.record("expected 'cmd+l' to be refused")
+		} catch let error as CommandError {
+			// The notation was right and the contents were wrong, so the message has
+			// to be about the modifier rather than about sending a command name.
+			#expect(error.description.contains("is not a modifier"))
+		}
+		#expect(sender.pressed.isEmpty)
+		#expect(keys.pressed.isEmpty)
+	}
+
+	// -- the two routes, which is what 13.17 added ------------------------------
+
+	@Test("A KEYSTROKE GOES TO THE KEY PRESSER AND NOT TO THE READER")
+	func aKeystrokeTakesTheSystemRoute() throws {
+		// The entry's whole point: `command+l` is not a command VoiceOver has, and
+		// dispatching it as one would fail with `Command does not exist` while the
+		// location bar stayed shut.
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		let value = try handler.execute(
+			context(sender: sender, keys: keys), request(["command+l"]))
+		let result = try #require(value as? GestureResult)
+
+		#expect(sender.pressed.isEmpty)
+		#expect(keys.describedPresses == ["command+l"])
+		#expect(result.pressed.map(\.gesture) == ["command+l"])
+	}
+
+	@Test("a batch may MIX the two, and each id takes its own route in order")
+	func aBatchMayMixBothRoutes() throws {
+		// What driving a Mac actually looks like: open the location bar with a
+		// chord, ask the reader where it landed, then commit with the reader's own
+		// `return key` -- which costs no grant and is why the last one goes to the
+		// SENDER rather than the presser.
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		let value = try handler.execute(
+			context(sender: sender, keys: keys),
+			request(["command+l", "describe item with keyboard focus", "return key"]))
+		let result = try #require(value as? GestureResult)
+
+		#expect(sender.pressed == ["describe item with keyboard focus", "return key"])
+		#expect(keys.describedPresses == ["command+l"])
+		// The result reports all three, in the order they were sent, whichever
+		// route each took -- because which route carried it is the bridge's
+		// business and not the agent's.
+		#expect(
+			result.pressed.map(\.gesture)
+				== ["command+l", "describe item with keyboard focus", "return key"])
+	}
+
+	@Test("A KEY WITH NO MODIFIERS IS A COMMAND NAME, and that is the cheap route on purpose")
+	func aBareKeyStaysWithTheReader() throws {
+		// The `+` is the whole discriminator, so a lone key is never a keystroke --
+		// which is the right answer rather than an accident of the rule. The
+		// vocabulary contains 30 commands ending in `key` (`return key`, `tab key`,
+		// the four arrows, `f1 key` to `f12 key`), the reader dispatches them
+		// itself, and they cost NO Accessibility grant. Routing them through the
+		// event path would spend the grant for a keypress that never needed it.
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		let permissions = FakePermissionBroker(state: .notGranted)
+		_ = try handler.execute(
+			context(sender: sender, keys: keys, permissions: permissions),
+			request(["return key", "tab key"]))
+		#expect(sender.pressed == ["return key", "tab key"])
+		#expect(keys.pressed.isEmpty)
+		#expect(permissions.requests.isEmpty)
+	}
+
+	@Test("the transcript records what the bridge UNDERSTOOD, in one verb for both routes")
+	func theTranscriptRecordsBothRoutesTheSameWay() throws {
+		// ONE VERB, WHICH IS LANE 1's SHAPE. NVDA writes `control+o` -- which its
+		// reader passes to the application -- and `NVDA+t` -- which it consumes --
+		// on identical lines, and a transcript is read across readers. The notation
+		// itself says which route it took.
+		let transcript = FakeTranscript()
+		_ = try handler.execute(
+			context(transcript: transcript), request(["Command+L", "go to desktop"]))
+		#expect(transcript.gestures == ["command+l", "go to desktop"])
+	}
+
+	@Test("a keystroke this machine cannot press is reported with the id that failed")
+	func anUnpressableKeystrokeIsNamed() throws {
+		let keys = FakeKeyPresser()
+		keys.failures["command+ç"] = KeyPressFailure(
+			"the keyboard layout active on this machine has no key that produces 'ç'")
+		do {
+			_ = try handler.execute(context(keys: keys), request(["command+ç"]))
+			Issue.record("expected the press to fail")
+		} catch let error as CommandError {
+			#expect(error.description.contains("'command+ç' could not be pressed"))
+			#expect(error.description.contains("no key that produces"))
+		}
+	}
+
+	@Test("a mid-batch keystroke failure aborts the REMAINDER, like an unknown command")
+	func aKeystrokeFailureAbortsTheRest() throws {
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		keys.failures["command+ç"] = KeyPressFailure("no key produces that")
+		#expect(throws: CommandError.self) {
+			try handler.execute(
+				context(sender: sender, keys: keys),
+				request(["go to desktop", "command+ç", "mute sound toggle"]))
+		}
+		#expect(sender.pressed == ["go to desktop"])
+	}
+
+	// -- the grant, which is 13.8's lever as 13.17 narrowed it -------------------
+
+	@Test("A BATCH OF COMMAND NAMES ASKS THE BROKER NOTHING AT ALL")
+	func commandNamesNeverTouchTheBroker() throws {
+		// The property worth having, and the one this entry had to keep. Pressing
+		// the reader's own commands is an AppleEvent; nothing about it needs
+		// Accessibility, and a bridge that asked anyway would raise a consent
+		// dialog on somebody's machine for a command that never needed one.
+		let permissions = FakePermissionBroker(state: .notGranted)
+		_ = try handler.execute(
+			context(permissions: permissions),
+			request(["go to desktop", "describe item in voiceover cursor"]))
+		#expect(permissions.requests.isEmpty)
+		#expect(permissions.statusReads.isEmpty)
+	}
+
+	@Test("A KEYSTROKE ASKS FOR THE ACCESSIBILITY GRANT, exactly as a `typeText` does")
+	func aKeystrokeAsksForTheGrant() throws {
+		let permissions = FakePermissionBroker(state: .granted)
+		let keys = FakeKeyPresser()
+		_ = try handler.execute(
+			context(keys: keys, permissions: permissions), request(["command+l"]))
+		// Held already, so it is READ and not requested -- which is what makes a
+		// session on a granted machine cost nothing.
+		#expect(permissions.statusReads == [.accessibility])
+		#expect(permissions.requests.isEmpty)
+		#expect(keys.describedPresses == ["command+l"])
+	}
+
+	@Test("WITHOUT THE GRANT, NOTHING IS PRESSED -- not even the command names in the batch")
+	func withoutTheGrantNothingMoves() throws {
+		// The check comes before the first dispatch because the injection cannot
+		// fail visibly: an event posted by an untrusted process is dropped by the
+		// window server with nothing said anywhere, so a batch that pressed its
+		// command names and then silently dropped its chord would report a success
+		// that did half of what was asked.
+		let permissions = FakePermissionBroker(state: .notGranted)
+		let sender = FakeGestureSender()
+		let keys = FakeKeyPresser()
+		do {
+			_ = try handler.execute(
+				context(sender: sender, keys: keys, permissions: permissions),
+				request(["go to desktop", "command+l"]))
+			Issue.record("expected the missing grant to refuse the batch")
+		} catch let error as CommandError {
+			#expect(error.description.contains("System Settings"))
+			#expect(error.description.contains("nothing was pressed"))
+			// And it names the route that still works without the grant, because an
+			// agent that cannot type can still drive the reader.
+			#expect(error.description.contains("COMMAND NAMES"))
+		}
+		#expect(permissions.requests == [.accessibility])
+		#expect(sender.pressed.isEmpty)
+		#expect(keys.pressed.isEmpty)
 	}
 
 	// -- attribution and the grace window --------------------------------------

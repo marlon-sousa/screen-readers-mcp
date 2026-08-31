@@ -18,6 +18,17 @@
 # like Option-Forward-Delete is reachable through `pressGesture` alone -- and the
 # lazy lever is wider than either spec 0041 or spec 0046 claims.
 #
+# IT DOES NOT, AND 13.17 IS WHAT THAT COST. This script's answer -- measured
+# 2026-08-30, four runs, all negative -- is a fact about the reader's MODIFIER
+# COMMANDS and nothing more. It was read as a fact about the bridge, and then as
+# a fact about the platform, and the shipped guidance document ended up telling
+# agents that a chord could not be pressed here at all while a blind user's
+# commonest act stayed unreachable for four entries. Chords ARE pressable: as
+# `CGEvent`s with a virtual keycode and modifier flags, which is what
+# `pressGesture` does with a `+`-joined id since 13.17, and what
+# `scripts/voiceover_chords.sh` measures. Keep this script's conclusion inside
+# its own sentence.
+#
 # It does NOT change `typeText`: the table has no letter keys at all (checked by
 # this script), so literal text cannot come out of it. What it changes is what
 # 13.11's guidance document should tell an agent to reach for FIRST.

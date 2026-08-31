@@ -33,6 +33,7 @@ struct SessionRoundTripTests {
 			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner(),
 			permissions: FakePermissionBroker = FakePermissionBroker(),
 			poster: FakeEventPoster = FakeEventPoster(),
+			layout: FakeKeyboardLayout = FakeKeyboardLayout(),
 			tree: FakeAccessibilityTree = FakeAccessibilityTree(),
 			frontmost: FakeFrontmostApplication = FakeFrontmostApplication(),
 			trust: FakeAccessibilityTrust = FakeAccessibilityTrust(),
@@ -51,8 +52,8 @@ struct SessionRoundTripTests {
 					?? Registry.build(
 						factory: testAdapterFactory(
 							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster,
-							tree: tree, frontmost: frontmost, trust: trust, announcer: announcer,
-							prompter: prompter
+							layout: layout, tree: tree, frontmost: frontmost, trust: trust,
+							announcer: announcer, prompter: prompter
 						),
 						readerVersion: "macOS 15.0.0",
 						bridgeVersion: "1.2.3"
@@ -381,7 +382,7 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("A SESSION THAT ONLY PRESSES COMMANDS NEVER ASKS FOR THE ACCESSIBILITY GRANT")
+	@Test("A SESSION THAT ONLY PRESSES COMMAND NAMES NEVER ASKS FOR THE ACCESSIBILITY GRANT")
 	func gesturesNeverTriggerAPermissionRequest() throws {
 		// 13.8'S WHOLE CLAIM, ASSERTED END TO END RATHER THAN INTENDED. The two
 		// halves of input cost different permissions on macOS (spec 0041) and
@@ -389,12 +390,20 @@ struct SessionRoundTripTests {
 		// has that lane 1 cannot have -- and it is worth only as much as its
 		// checkability. A handshake, a gesture and a speech read go past here
 		// without the broker being asked anything at all; the first `typeText`
-		// asks, and nothing else in the bridge ever does.
+		// asks, and nothing else in the bridge does except a KEYSTROKE, below.
 		//
 		// AND THIS SCENARIO DID NOT HAVE TO CHANGE AT 13.10, which is the point of
 		// it: that entry adds three commands -- telling the human something, asking
 		// them something, and collecting the answer -- and none of them touches the
 		// broker, so they are simply driven past it here as well.
+		//
+		// 13.17 DID CHANGE IT, BY ONE WORD, AND THAT IS THE HONEST RECORD OF WHAT
+		// THAT ENTRY SPENT. `pressGesture` now takes keystrokes as well as command
+		// names, and a keystroke is a system event costing the same grant -- so the
+		// claim narrowed from "only presses commands" to "presses only the reader's
+		// COMMAND NAMES", which is the property that was ever worth having. The
+		// gesture driven past the broker below is a command name, and the keystroke
+		// leg at the end asserts the other half rather than leaving it implied.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		let peer = Peer(permissions: permissions)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
@@ -415,13 +424,58 @@ struct SessionRoundTripTests {
 		#expect(permissions.requests.isEmpty)
 		#expect(permissions.statusReads.isEmpty)
 
-		// And now the one command that may ask. The grant is not held, so the
+		// And now the two commands that may ask. The grant is not held, so each
 		// reply says what to do about it rather than reporting a success that
-		// typed nothing anywhere.
+		// changed nothing anywhere.
 		try peer.send(id: 4, cmd: "typeText", params: ["text": .string("hello")])
 		let refused = try peer.reply()
 		#expect(try #require(refused.error).message.contains("System Settings"))
 		#expect(permissions.requests == [.accessibility])
+
+		// THE SECOND CALLER, WHICH IS 13.17's. Same command as the gesture at id 2,
+		// a different NOTATION -- and that is the whole difference the grant turns
+		// on: `go to desktop` went to the reader and cost nothing, `command+l` is a
+		// system event and costs this.
+		try peer.send(
+			id: 5, cmd: "pressGesture",
+			params: ["gestures": .array([.string("command+l")]), "graceMs": .int(0)])
+		let refusedChord = try peer.reply()
+		#expect(try #require(refusedChord.error).message.contains("nothing was pressed"))
+		#expect(permissions.requests == [.accessibility, .accessibility])
+		peer.hangUp()
+	}
+
+	@Test("A CHORD OFF THE WIRE REACHES THE EVENT PATH AND NOT THE APPLESCRIPT RUNNER")
+	func aChordOffTheWireReachesTheEventPath() throws {
+		// THE TEST THE UNITS CANNOT WRITE. Every unit above runs against a
+		// hand-built `AdapterSet`; this one goes in at the socket, through the real
+		// Registry, the real handler, the real `VoiceOverAdapterFactory` and the
+		// real `CGKeystrokePresser`, and comes out at the two seams that touch the
+		// machine. It is what proves the wiring, and it is the assertion that would
+		// have caught the bridge dispatching `command+l` to VoiceOver as though it
+		// were one of the reader's own command names -- which is what it did until
+		// this entry, right up to `Command does not exist (6)`.
+		let poster = FakeEventPoster()
+		let scripts = FakeAppleScriptRunner()
+		let peer = Peer(scripts: scripts, poster: poster)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: ["gestures": .array([.string("command+l")]), "graceMs": .int(0)])
+		let reply = try peer.reply()
+		#expect(reply.error == nil)
+
+		// Down then up, on the key the FAKE LAYOUT named -- 201, which is not the
+		// ANSI keycode for `l` and could not have come from a table.
+		#expect(poster.keyed.map(\.keyCode) == [201, 201])
+		#expect(poster.keyed.allSatisfy { $0.flags == .maskCommand })
+		#expect(poster.keyed.map(\.keyDown) == [true, false])
+		// AND NOT ONE APPLESCRIPT WAS RUN. The chord never went near the reader.
+		#expect(scripts.scripts.isEmpty)
+		// Nor did it arrive as typed text, which would have inserted an `l` where
+		// a location bar should have opened.
+		#expect(poster.posted.isEmpty)
 		peer.hangUp()
 	}
 

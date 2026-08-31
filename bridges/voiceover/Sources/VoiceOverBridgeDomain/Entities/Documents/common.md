@@ -9,37 +9,80 @@ Read the next section before anything else. It is the one place where this reade
 differs from every other one you may have driven, and getting it wrong produces
 failures that look like a broken interface.
 
-## A gesture here is a COMMAND NAME, not a keystroke
+## `press_gesture` takes TWO notations, and the difference matters
 
-On this reader `press_gesture` does not take `control+option+rightArrow`. It takes
-VoiceOver's own English command name:
+On this reader a gesture id is either **one of VoiceOver's own English command
+names**, which the reader dispatches itself, or **a keystroke**, which this
+bridge posts at the system:
 
-    press_gesture { gestures: ["describe item in voiceover cursor"] }
+    press_gesture { gestures: ["describe item in voiceover cursor"] }   # the reader
+    press_gesture { gestures: ["command+l"] }                           # the system
 
-The reader does its own dispatch. That is why this document does not contain a
-table of key combinations, and why one would be worse than useless: what a user
-has bound to a command is theirs, it differs between the desktop and the laptop
-layout and between the three commanders, and none of it changes the command's
-name.
+**The rule that tells them apart is the space.** A command name is a phrase and
+always contains one; a keystroke is a single `+`-joined token and never does. So
+`command key` is a command the reader performs and `command+l` is a chord the
+system receives.
 
-Three consequences that save round trips:
+**Prefer the command name whenever one exists.** It costs no permission at all,
+it works whatever the user has rebound, and the reader diagnoses it for you. The
+keystroke route exists for the chords the reader has no command for — which is
+most of the ones an ordinary Mac user presses.
 
-- **An unknown name fails cleanly and changes nothing.** The reader answers
-  `Command does not exist (6)`. So guessing a name costs one round trip and is
-  safe — which makes trying one a legitimate way to find out whether this reader
-  has a facility, and a better one than trusting a list that goes stale every
-  macOS release.
-- **A keystroke sent as a gesture is refused before it is sent**, by this bridge
-  rather than by the reader — `control+l`, and VoiceOver's own `VO-D` notation.
-  That is the one mistake the reader cannot diagnose usefully, so it is caught
-  here.
+Four consequences that save round trips:
+
+- **An unknown command name fails cleanly and changes nothing.** The reader
+  answers `Command does not exist (6)`. So guessing a name costs one round trip
+  and is safe — which makes trying one a legitimate way to find out whether this
+  reader has a facility, and a better one than trusting a list that goes stale
+  every macOS release.
 - **The vocabulary is large** — 414 commands on macOS 15.0 — and this document
   names only what a session actually needs. The reader is the authority on the
   rest.
+- **This document contains no table of key combinations for reader commands**,
+  and one would be worse than useless: what a user has bound to a command is
+  theirs, it differs between the desktop and the laptop layout and between the
+  three commanders, and none of it changes the command's name.
+- **VoiceOver's own `VO-D` shorthand is refused**, by this bridge rather than by
+  the reader. It is neither a command name the reader will dispatch nor a chord
+  this bridge can press: `VO` is whatever the person has bound their VoiceOver
+  modifier to — Control-Option, or Caps Lock, or both — so pressing it would mean
+  guessing at somebody's own configuration. Send the command name, or write the
+  literal keys out as `control+option+d`.
 
-## `press_gesture` reaches commands and single KEYS, and NOT chords
+## Keystrokes: how to write one, and what it costs
 
-This is a measured limit, not a caution, and it is the one that will bite you.
+    command+l          control+option+space          shift+command+4
+
+**Modifiers first, the key last, joined by `+`.** The modifiers are `command`,
+`control`, `option`, `shift` and `fn`; case does not matter and neither does the
+order of the modifiers among themselves. The key is a single character, or one of
+these names: `space`, `return`, `tab`, `escape`, `delete`, `forwarddelete`,
+`left`, `right`, `up`, `down`, `home`, `end`, `pageup`, `pagedown`, and `f1`
+through `f20`.
+
+- **A key with NO modifier is a command name, not a keystroke.** Send
+  `return key`, `tab key`, `left arrow key`, `f8 key` — the reader performs those
+  itself and they cost nothing. `return` on its own is not a gesture id here.
+- **A keystroke costs the Accessibility grant**, exactly as `type_text` does, and
+  the request is raised on the first one of a session. A session that presses only
+  command names and reads speech is never asked for anything — so if you do not
+  need a chord, do not send one.
+- **The keyboard layout is the machine's, not yours.** Which physical key
+  produces `l` depends on the layout the person is typing on, and this bridge asks
+  the live layout rather than assuming an American keyboard. If the active layout
+  has no key for a character, the press **fails by name and sends nothing** — it
+  never presses a different key instead. That failure is a real answer: try
+  another chord, or ask the person at the machine.
+- **What arrives is still not what was sent.** The application may swallow or
+  reinterpret a chord, and nothing here can see that. A check that needs to know
+  what happened asks the application or the reader afterwards.
+
+Re-runnable as `bash scripts/voiceover_chords.sh` in this repository.
+
+## Do NOT build a chord out of the reader's modifier commands
+
+This is a measured limit, and it is the one that will bite you if you go looking
+for a cheaper route than the one above.
 
 The vocabulary contains 30 commands whose name ends in `key`, and they work:
 `tab key`, `return key`, `delete key`, `forward delete key`, the four arrows
@@ -58,17 +101,12 @@ error tells you it did not work.
 
 So:
 
-- **A chord is not expressible through `press_gesture` on this reader.** Do not
-  build one out of two calls; it will report success and do the wrong thing.
-- **AND `type_text` CANNOT PRESS ONE EITHER.** It synthesizes a key event carrying
-  a Unicode *payload*, which is how literal text arrives; it does not press a key
-  with a modifier held. So **this bridge currently has no way at all to send
-  Command-L, Command-F or any other chord** — a real and serious gap, because a
-  blind user drives macOS with chords constantly. It is a gap in this bridge and
-  **not** a limit of the platform: Core Graphics sends chords perfectly well given
-  a virtual keycode and modifier flags. Board entry 13.17 owns closing it. Until
-  it lands, a task that needs a chord **cannot be completed here** — report that,
-  rather than trying to build one out of parts.
+- **Never send `command key` followed by a letter and expect a chord.** It will
+  report success twice and do the wrong thing. Send `command+l`, which is one
+  call and really is a chord.
+- **`type_text` cannot press one either.** It carries a Unicode *payload*, which
+  is how literal text arrives; it does not hold a modifier down. Typing and
+  chording are two different acts and this reader has a route for each.
 - The table has **no letter keys at all**, so literal text can never come out of
   it. `type_text` is how text is entered, always.
 
@@ -109,8 +147,14 @@ document exists.
 
 **Acting on things**, through the key commands above: `return key` to activate,
 `space` — which is not in the vocabulary, so use `return key` or the item's own
-command — `tab key` and `shift`+`tab` are **not** expressible as a chord, so use
-`tab key` alone and reach backwards with `move left` instead.
+command — and `tab key` to move forward. Backwards is `shift+tab`, which is a
+keystroke and costs the Accessibility grant, so `move left` is the cheaper way
+when the VoiceOver cursor will do.
+
+**The chords an ordinary Mac user presses in the first minute**, all of which are
+keystrokes rather than command names: `command+l` (the location bar),
+`command+f` (find), `command+t` (a new tab), `command+n`, `command+s`,
+`command+a`, `command+z`, `command+shift+tab`. Use them the way a person would.
 
 **Typing** is `type_text`, into whatever holds keyboard focus. It presses no
 Enter and submits nothing.

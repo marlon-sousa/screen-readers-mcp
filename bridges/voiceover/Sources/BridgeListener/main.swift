@@ -230,8 +230,9 @@ case .unknown:
 	print("AppleScript control of VoiceOver: cannot tell (neither location could be read)")
 }
 // The permissions, READ and never requested: `status` shows no dialog, which is
-// what makes it safe to print on a machine nobody is sitting at. The only
-// COMMAND that asks for one is `typeText`.
+// what makes it safe to print on a machine nobody is sitting at. The commands
+// that ask for one are `typeText` and a KEYSTROKE `pressGesture` -- the two that
+// post a system event; pressing the reader's own command names asks nothing.
 //
 // THIS ROW USED TO LIE, AND 13.11 IS WHERE IT STOPPED. Until then the automation
 // permission was read with `AEDeterminePermissionToAutomateTarget`, which answers

@@ -47,10 +47,12 @@
 // difference between drawing a row and raising a consent dialog on a machine
 // nobody is sitting at.
 //
-// ONLY `request` RAISES ANYTHING, AND THE ONLY CALL TO IT IN THIS REPOSITORY IS
-// IN THE TYPETEXT HANDLER -- which is what makes "a session that only presses
-// commands and reads speech never triggers an Accessibility request" a checkable
-// statement about this bridge. Nothing here may be called from Wiring, the
+// ONLY `request` RAISES ANYTHING, AND EVERY CALL TO IT IN THIS REPOSITORY IS IN
+// A COMMAND HANDLER THAT IS ABOUT TO POST A SYSTEM EVENT -- a `typeText` (13.8),
+// or a keystroke `pressGesture` (13.17), both through `AccessibilityGrant`.
+// There are two, and that is what makes "a session that presses only the
+// reader's COMMAND NAMES and reads speech never triggers an Accessibility
+// request" a checkable statement about this bridge. Nothing here may be called from Wiring, the
 // adapter factory, the doctor or a probe. The counting-broker scenario in
 // `Tests/Integration/SessionRoundTripTests.swift` is where it is asserted.
 //

@@ -1,9 +1,36 @@
-// ROLE: controller -- `pressGesture`: press the reader's own commands in order,
-// then report what it said.
+// ROLE: controller -- `pressGesture`: press the given gestures in order, then
+// report what the reader said.
 //
-// BUILT BY: Registry. DRIVES: the GestureSender port (dispatch), the
-// CommandVocabulary entity (what may be sent at all), the session's SpeechBuffer
-// (the grace window), and -- only on a failure -- the ReaderLiveness port.
+// BUILT BY: Registry. DRIVES: the CommandVocabulary entity (what may be sent at
+// all, and WHICH ROUTE it takes), the GestureSender port (a command name), the
+// KeyPresser port (a keystroke), the PermissionBroker port (the grant a
+// keystroke costs), the session's SpeechBuffer (the grace window), and -- only
+// on a failure -- the ReaderLiveness port.
+//
+// ============================================================================
+// ONE COMMAND, TWO ROUTES, AND THE AGENT DOES NOT HAVE TO CHOOSE.
+// ============================================================================
+//
+// A gesture id here is either one of VoiceOver's own English command names or a
+// keystroke, and this handler decides which by asking `CommandVocabulary`:
+//
+//   press_gesture { gestures: ["describe item in voiceover cursor"] }  -> reader
+//   press_gesture { gestures: ["command+l"] }                          -> system
+//
+// protocol.md §5 calls a gesture id "the reader's own user-facing command
+// notation", and on NVDA that notation IS keystrokes -- so taking both here is
+// consistent with the contract rather than a stretch, and a new wire command was
+// declined for exactly that reason (spec 0048 §2.1). The agent picks an id by
+// what it wants to HAPPEN; which of this bridge's two routes carries it is the
+// bridge's business, which is the whole point of an opaque gesture id.
+//
+// THE KEYSTROKE HALF COSTS THE ACCESSIBILITY GRANT, and it is asked for ONCE,
+// BEFORE THE FIRST GESTURE OF A BATCH THAT CONTAINS ONE. Not per keystroke, and
+// not lazily inside the loop: a batch is checked before any of it moves the
+// machine (see below), and a grant that failed in position three would leave the
+// reader somewhere neither side asked for. `AccessibilityGrant` carries the rest
+// of that argument, and is shared with `typeText` so the two commands cannot
+// come to differ about when somebody's machine raises a consent dialog.
 //
 // `mutatesReader = true`, AND THIS IS THE FIRST HANDLER IN THE BRIDGE THAT SETS
 // IT. Pressing a command moves the user's machine, so an observe-only session
@@ -57,31 +84,42 @@ public final class PressGestureHandler: CommandHandler {
 		// machine, nothing should happen to it.
 		try HumanWarning.honour(context, params.announce)
 
-		// Every id, checked before the first one goes out. See the header.
-		let commands = try params.gestures.map { gesture -> String in
+		// Every id, classified before the first one goes out. See the header.
+		let gestures = try params.gestures.map { gesture -> Gesture in
 			do {
-				return try CommandVocabulary.accept(gesture)
+				return try CommandVocabulary.classify(gesture)
 			} catch let refusal as GestureIdRefused {
 				throw CommandError(refusal.description)
 			}
 		}
 
+		// ONCE, FOR THE WHOLE BATCH, AND ONLY IF IT CONTAINS A KEYSTROKE. A batch
+		// of command names goes past here without the broker being asked anything
+		// at all, which is 13.8's lever as 13.17 narrowed it -- and asking here
+		// rather than inside the loop is the same argument as the vocabulary check
+		// above: nothing should move the machine before everything that can be
+		// settled up front has been.
+		if gestures.contains(where: \.isKeystroke) {
+			try AccessibilityGrant.ensure(adapters.permissions, orElse: "nothing was pressed")
+		}
+
 		let startIndex = buffer.nextIndex()
 		var pressed: [GesturePress] = []
-		for command in commands {
-			// BEFORE dispatch: the coordinate the ring stood at when this command
+		for gesture in gestures {
+			// BEFORE dispatch: the coordinate the ring stood at when this gesture
 			// went out. See the header on why that is not the same as reading
 			// afterwards and subtracting.
 			let pressFrom = buffer.nextIndex()
-			context.transcript.gesture(command)
-			do {
-				try adapters.gestureSender.press(command)
-			} catch let failure as GestureError {
-				throw CommandError(explain(failure, command, adapters.readerLiveness))
-			}
+			// WHAT THE BRIDGE UNDERSTOOD, NOT WHAT IT WAS HANDED. A command name is
+			// the trimmed id; a keystroke is its canonical spelling, so `Command+L`
+			// is recorded and reported as `command+l` and a reader of either can see
+			// which keys went out.
+			let identifier = gesture.described
+			context.transcript.gesture(identifier)
+			try dispatch(gesture, identifier, adapters)
 			_ = buffer.collectSince(pressFrom, grace: grace)
 			pressed.append(
-				GesturePress(gesture: command, speechFrom: pressFrom, speechTo: buffer.nextIndex())
+				GesturePress(gesture: identifier, speechFrom: pressFrom, speechTo: buffer.nextIndex())
 			)
 		}
 
@@ -109,6 +147,29 @@ public final class PressGestureHandler: CommandHandler {
 			throw CommandError("a gesture was pressed before `hello` built the reader edge")
 		}
 		return adapters
+	}
+
+	/// Send one gesture down whichever of the two routes it belongs to.
+	///
+	/// THE ONLY PLACE THE ROUTING HAPPENS, and the two failures stay in their own
+	/// vocabularies until here: an unknown command name is the reader's answer and
+	/// may mean the scripting channel died, while an unpressable keystroke is this
+	/// machine's keyboard layout answering and means nothing of the kind.
+	private func dispatch(_ gesture: Gesture, _ identifier: String, _ adapters: AdapterSet) throws {
+		switch gesture {
+		case .readerCommand(let command):
+			do {
+				try adapters.gestureSender.press(command)
+			} catch let failure as GestureError {
+				throw CommandError(explain(failure, command, adapters.readerLiveness))
+			}
+		case .keystroke(let keystroke):
+			do {
+				try adapters.keyPresser.press(keystroke)
+			} catch let failure as KeyPressFailure {
+				throw CommandError("'\(identifier)' could not be pressed: \(failure.description)")
+			}
+		}
 	}
 
 	/// Turn a dispatch failure into something an agent can act on.

@@ -17,10 +17,11 @@
 // over, is recorded in spec 0046's 13.9 section.
 //
 // NOTHING HERE REQUESTS A PERMISSION, AND NOTHING BELOW IT MAY EITHER. 13.8's
-// lever is that the Accessibility grant is requested from ONE place, the
-// TypeText controller, on a `typeText`. Focus READS whether the grant is held --
-// a question that asks nobody anything and raises no dialog -- and uses one that
-// typing already obtained. A session that only presses commands and reads
+// lever is that the Accessibility grant is requested only by a COMMAND THAT IS
+// ABOUT TO POST A SYSTEM EVENT -- a `typeText`, and since 13.17 a keystroke
+// `pressGesture`. Focus READS whether the grant is held -- a question that asks
+// nobody anything and raises no dialog -- and uses one that those already
+// obtained. A session that presses only the reader's COMMAND NAMES and reads
 // speech, focus included, never triggers a request.
 
 /// What is focused, in the wire's own vocabulary (protocol.md §5).
