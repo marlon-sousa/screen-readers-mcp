@@ -507,6 +507,119 @@ same lesson for the tree itself — filter by role and predicate, assert exactly
 one match, prefer structure over words, confirm by meaning — and it is what any
 later entry that WALKS the tree has to follow.
 
+## Speech is paced by the CAPTURE VOICE, and an announcement is two utterances
+
+Measured 2026-08-31 in Safari web content, and it explains every capture-fidelity
+question this bridge has. **Landing on an element produces two utterances — the
+role, then the text — and the gap between them is 50–110 ms in a silent session
+and ~1505 ms in a live one.**
+
+**THE READER PACES ITS QUEUE ON OUR RENDER COMPLETION, which is what that
+twentyfold difference proves.** A silent session renders near-zero-length audio,
+so the extension signals completion at once and VoiceOver hands over the next
+utterance immediately; a live one renders real speech and VoiceOver waits for it
+to be spoken. So the pacing is ours to observe and — in principle — ours to
+change. Any command that arrives inside that window makes VoiceOver **cancel**
+the pending utterance, and a cancelled utterance is one this bridge never sees at
+all: the capture point is the SYNTHESIZER, downstream of the reader's own queue.
+
+**That is one of two architectural differences from lane 1, and both are worth
+knowing in both directions.**
+
+**BOTH READERS PACE THEIR QUEUE ON THE SYNTHESIZER. What differs is where capture
+sits relative to that pacing** — read out of `../nvda` at `release-2026.1`,
+2026-08-31, rather than assumed:
+
+- NVDA's `SpeechManager` holds `pendingSequences` and pushes the next one when the
+  synth reports done: `_onSynthDoneSpeaking` → `_handleDoneSpeaking` →
+  `_pushNextSpeech(True)` (`source/speech/manager.py`). So it waits, exactly as
+  VoiceOver does.
+- **But `filter_speechSequence.apply(speechSequence)` is the FIRST LINE of
+  `speak()`** (`source/speech/speech.py:1096`) — before the priority handling,
+  before the manager, before the synth exists in the story. Lane 1 therefore
+  captures **upstream of its own queue**, and this bridge captures **at the
+  synthesizer**, downstream of the reader's.
+
+So the agent-visible consequence, which is the part to tell an agent: on NVDA a
+session sees everything the reader **decided to say**, at the instant it decided,
+whatever the synth is doing and whether or not the speech is later cancelled. Here
+a session sees what got as far as **being spoken**. `getSpeech` means "what the
+reader queued" on one bridge and "what the reader handed to a synthesizer" on the
+other — neither is wrong, and they are not the same sentence. **It is also why
+`silent` versus `live` changes what an agent can read here and changes nothing at
+all on NVDA.**
+
+**AND THE CAPTURE PATH IS IPC HERE AND A FUNCTION CALL THERE**, which is the
+difference that decides how wide a wait has to be. Lane 1's bridge is an add-on
+**inside the NVDA process**: `filter_speechSequence` is called on NVDA's own
+thread, so capture costs a function call and its latency is nil. Here the reader,
+the capture voice and the bridge are **three processes**. VoiceOver hands the
+utterance to the capture voice (its own `.appex`), which appends a JSON line to a
+file in its container, which `FileLineTailer` **polls every 50 ms** — a cadence
+its own header calls "a deliberate floor on the feed's latency, and the one number
+in this class a live run should be measured against".
+
+**So `graceMs`'s default of 100 ms is about two poll intervals wide here, and
+effectively unbounded there.** Same field, same number, same contract — and on
+this bridge some of it is spent before any utterance is visible at all. Nothing
+has yet measured how much of a real grace window the pipe consumes; that is board
+entry 13.18, and it is why that entry is an investigation rather than a parameter.
+
+**AND THE TEXT HALF MUST STAY AHEAD OF THE AUDIO HALF -- it already is, and it is
+load-bearing.** `CaptureController.capture()` emits to the `UtteranceSink`
+**before** it calls `synthesizer.speak`, so a session sees an utterance the moment
+VoiceOver hands it over, whether or not anything is about to be spoken aloud. That
+is what makes **first-utterance latency identical in live and silent**, which is
+the property lane 1 gets for free by capturing at queue time. The spike did it the
+other way round -- the line was written after the prebuffer wait -- and every
+captured utterance reached the file about 0.2 s late; the order was changed
+deliberately and its header says so. **Anyone "tidying" that emit to sit beside
+the `speak` call reintroduces it, and makes live worse than silent for every first
+utterance.**
+
+So the live/silent difference is NOT that our capture waits for audio. It is that
+VoiceOver will not hand over utterance N+1 until N has finished rendering -- the
+delay is upstream of this bridge, in the reader's own queue, and it is a person
+listening.
+
+**What the pipe does NOT distort is `emittedAt`.** The stamp is taken in the
+capture voice's own process at the moment the utterance arrives
+(`ContainerFileUtteranceSink`, `at: Date().timeIntervalSince1970`) and travels in
+the line; `ContainerFileSpeechSource` reads it rather than re-stamping, "so
+`emittedAt` means the instant of EMISSION and survives". **That is what makes the
+gaps above trustworthy** — they are differences between two upstream stamps, not
+between two poll ticks, and the silent figure landing near the poll interval is a
+coincidence rather than a measurement of our own tailer. What the pipe delays is
+*when a session can see* an utterance, which is what a grace window is actually
+racing.
+
+**`graceMs` returns on the FIRST utterance**, in both bridges and by contract
+(`protocol.md` §5, spec 0025) — `SpeechBuffer.collectSince` waits for speech to
+have STARTED. Lane 1's docstring states the assumption behind it out loud: "the
+common case is one announcement ~124 ms after a keystroke". That is an NVDA fact.
+Here it means a batched `pressGesture` fires the next key as soon as the role
+lands and cancels the text, **in silent as well as live** — measured, 2 of 4 titles
+lost in a silent batch. What the reader needs and neither bridge has is the
+COMPOSITION of the two waits this repo already owns: start, then quiet.
+`collectSince` is start-only and `waitToFinish` is quiet-only, and quiet-only
+cannot work on its own, for the reason its own docstring gives.
+
+**Responding asynchronously for pass-through was considered and declined**, and
+the reasoning is kept because it is the only lever that exists. Signalling
+completion as soon as the utterance is captured, and playing the audio out of
+band, would give a live session a silent session's fidelity — the pacing finding
+above says it would work. It also makes THIS BRIDGE the owner of interruption:
+VoiceOver would cancel what it believes is current, which by then is a later
+utterance, while our queue of already-"completed" ones keeps playing. A person
+presses a key to stop the reader and it carries on talking about where they used
+to be, and that is the single most-used gesture a screen reader user has. Audio
+would also drift further behind the cursor the faster somebody drives, and the
+queue lifecycle would land in the render path that must not allocate or block.
+**The trade-off it tries to beat is one the contract already draws** (`protocol.md`
+§4): a live session is paced by audio because a human is listening, and you cannot
+have audio-paced delivery and non-audio-paced capture for the same listener.
+Prefer silent when reading; that is what it is for.
+
 ## The endpoint, and why the derivation is duplicated on purpose
 
 The bridge **listens**; the server dials

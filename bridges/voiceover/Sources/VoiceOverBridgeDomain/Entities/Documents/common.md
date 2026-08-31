@@ -112,6 +112,79 @@ So:
 
 Re-runnable as `bash scripts/voiceover_modifiers.sh` in this repository.
 
+## AN ANNOUNCEMENT HERE IS TWO UTTERANCES, and that changes how you read
+
+This is the section to read before you write a loop, and it is where an agent
+that has driven NVDA will get it wrong without any error to tell it so.
+
+**Landing on an element produces two separate utterances**: its role, then its
+text.
+
+```
+"nível de título 2  link"                                   <- the role
+", COMO ESCREVER CARACTERES ACENTUADOS NO IOS 11.0 …"       <- the text
+```
+
+**If you have driven NVDA, this is where your instincts are wrong.** Both readers
+wait for the synthesizer before moving on — that part is the same. What differs is
+that NVDA's bridge captures speech *before* the reader queues it, so a session
+there sees everything the reader decided to say whatever the synthesizer is doing,
+and whether or not the speech was later cancelled. **Here the capture point is the
+synthesizer itself.** An utterance the reader cancels before speaking it is one
+you never see — it is not delayed, it is gone. That is why `silent` and `live`
+change what you can read on this reader and change nothing on that one.
+
+**And there is a pipe between the reader and you.** On this platform the reader,
+the voice that captures its speech and this bridge are three separate processes,
+so an utterance reaches a session over IPC rather than in memory — which is not
+true of every reader, and means a wait that is generous elsewhere can be tight
+here. Budget for it: when in doubt, give a grace window more room than you think
+it needs, and read again from `speech_to` rather than concluding the reader said
+nothing.
+
+Measured on macOS 15.0, 2026-08-31, in Safari web content — these are differences
+between two emission stamps, so they are the reader's own timing and not the
+pipe's:
+
+| Session | Role → text gap |
+|---|---|
+| `silent` | **50–110 ms** |
+| `live` | **~1505 ms** |
+
+**A live session is paced by audio**, because the reader waits for one utterance
+to be spoken before it hands over the next. That is not a defect: it is a person
+listening. But it means any command you send inside that window **cancels the
+text before it is ever spoken**, and it is then gone — not delayed, not
+recoverable, never captured.
+
+Three rules follow, and they are the practical content of this section.
+
+- **`grace_ms` returns as soon as the FIRST utterance arrives**, by contract. So
+  it hands you the role and the text is still in flight. If you need the text,
+  read again from `speech_to`, or press one gesture per call with a generous
+  grace — never batch several gestures into one `press_gesture` and expect their
+  text.
+- **In a live session, SEQUENCE TO ACT, NOT TO READ.** `run_sequence` is excellent
+  here for a known plan — open a location bar, type an address, commit it — and
+  that works perfectly. But a sequence whose purpose is *reading* captures the
+  first utterance of each step and loses the rest. Measured: four moves batched
+  in one call returned four utterances and **not one heading title**.
+- **Prefer a `silent` session whenever you are reading.** It is already the right
+  default; this is the concrete reason. Nothing is spoken aloud, so nothing waits
+  for audio, so the queue drains in milliseconds and the text arrives with the
+  role. The same nine moves that lost every title in a live batch captured
+  **twenty utterances, every title present**, in a silent `run_sequence` with a
+  400 ms gap.
+
+**Do not use `wait_for_speech_to_finish` to solve this.** It asks "has speech
+stopped?", and silence before speech starts is indistinguishable from silence
+after it ends — so it returns immediately in the gap between the role and the
+text and tells you nothing. The same is true of a `settle` step inside
+`run_sequence`. What works is a fixed gap between steps, or one gesture per call.
+
+**`wait_for_speech` is case-sensitive.** Matching `"Blindtec"` will not find an
+utterance reading `https://www.blindtec.com.br/blog/`.
+
 ## The ordinary vocabulary on this reader
 
 This is what the macOS accessibility contract assumes of an ordinary VoiceOver

@@ -280,8 +280,12 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.18**
-in lane 3, and the next free spec number is **0049**. Spec **0048** was spent on
+The next free board number is **11.38** in the convergence series and **13.20**
+in lane 3, and the next free spec number is **0049**. Board numbers **13.18** and
+**13.19** were spent on 2026-08-31 by two findings that came out of 13.17's live
+run -- how much of an announcement a session can capture, and the discovery that
+an unmodified letter key has no notation -- and this line moved in the same
+commit. Spec **0048** was spent on
 2026-08-31 by 13.17, and this line moved in the same commit. Board numbers **13.15**,
 **13.16** and **13.17** were spent on 2026-08-31 by two findings that came out of 13.11's live
 run — the voice substitution, whether `journal.plist` narrows this lane's "no reader
@@ -450,7 +454,11 @@ And since 13.17 it can press a **chord**: `pressGesture` takes keystrokes as wel
 as command names -- `command+l`, which is how anybody opens a location bar and
 which this bridge simply could not send through four entries, because a true
 measurement about the reader's modifier commands had been generalised into a
-false claim about the platform. The keycode comes from the layout that is
+false claim about the platform. **13.17's own live run then found two more
+things, which are 13.18 and 13.19**: an announcement on this reader is TWO
+utterances whose gap is the audio in a live session, so a batched press captures
+the role and loses the text; and an unmodified letter key -- `h` with Quick Nav
+on -- has no notation at all, because 13.17 made the `+` the discriminator. The keycode comes from the layout that is
 actually active, read through Text Input Services, so it presses the right key on
 a Brazilian keyboard and fails BY NAME on a character the layout cannot reach.
 The next step is **13.12**, the measurement that asks whether VoiceOver can be
@@ -1417,6 +1425,135 @@ rule intends.
     Spec: [spec 0048](specs/0048-pressing-a-chord.md). Instrument:
     `scripts/voiceover_chords.sh` with `scripts/voiceover_chord_press.swift`.
     Done (PR #92, 2026-08-31).
+
+13.18. **How much of an announcement can a session actually capture?** (lane 3;
+    **a measurement, not code**; VoiceOver only). Raised by Marlon on 2026-08-31,
+    out of 13.17's live run, and it is the entry that decides whether this lane
+    needs a new wait primitive or only better documentation.
+
+    **What was measured, and it is already enough to make the entry worth
+    opening.** Landing on an element in Safari web content produces **two**
+    utterances -- the role, then the text -- and the gap between them is **50-110
+    ms in a silent session and ~1505 ms in a live one**. Any command sent inside
+    that window makes VoiceOver CANCEL the pending text, and a cancelled utterance
+    is one this bridge never sees: the capture point is the synthesizer,
+    downstream of the reader's own queue. Four moves batched into one
+    `pressGesture` in a live session returned four utterances and **not one
+    heading title**; the same nine moves in a silent `run_sequence` with a 400 ms
+    gap captured twenty utterances with **every title present**.
+
+    **One thing that is NOT a cause, checked rather than assumed, so nobody
+    investigates it twice.** This bridge does not wait for audio before reporting:
+    `CaptureController.capture()` emits to the `UtteranceSink` BEFORE it calls
+    `synthesizer.speak`, so a session sees an utterance the moment VoiceOver hands
+    it over and **first-utterance latency is identical in live and silent**. The
+    spike did it the other way round and every utterance reached the file ~0.2 s
+    late; the order was changed deliberately. What differs between the modes is
+    when the NEXT utterance arrives, which is the reader's queue and not ours.
+
+    **Two causes, and only one of them is VoiceOver's.** The first is that a live
+    session is paced by AUDIO, because the reader waits for one utterance to be
+    spoken before handing over the next -- which is a person listening, and not a
+    defect. The second is OURS: `graceMs` returns as soon as the FIRST utterance
+    arrives (`protocol.md` §5, spec 0025), so a batched press fires the next key
+    the moment the role lands and cancels the text **in silent as well as live** --
+    measured, 2 of 4 titles lost in a silent batch.
+
+    **The primitive this reader wants does not exist in either bridge.**
+    `SpeechBuffer.collectSince` waits for speech to have STARTED; `waitToFinish`
+    waits for it to have STOPPED and cannot work alone, because silence before
+    speech and silence after it are the same observable -- which is also why a
+    `settle` step inside `run_sequence` returns immediately in the gap and is no
+    help. What is missing is the COMPOSITION: start, **then** quiet. That has a
+    start condition, so the objection against quiescence does not reach it.
+
+    **AND THE THIRD CAUSE IS OUR OWN PIPE, which nothing has measured.** Lane 1's
+    bridge runs INSIDE the NVDA process -- `filter_speechSequence` is a function
+    call on NVDA's own thread -- so its capture latency is nil and `graceMs` races
+    nothing. Here the reader, the capture voice and the bridge are **three
+    processes**: VoiceOver hands the utterance to the `.appex`, which appends a
+    JSON line to a file in its container, which `FileLineTailer` **polls every 50
+    ms**. Its own header already calls that cadence "a deliberate floor on the
+    feed's latency, and the one number in this class a live run should be measured
+    against" (spec 0046, open question 3). **So `graceMs`'s default of 100 ms is
+    about two poll intervals wide on this bridge and effectively unbounded on the
+    other one** -- the same field, the same number, and a different meaning.
+
+    The gap figures above are NOT distorted by that, and it is worth saying why
+    before anyone re-derives it: `emittedAt` is stamped in the capture voice's own
+    process when the utterance arrives and travels in the line, so a gap is the
+    difference between two upstream stamps rather than between two poll ticks. What
+    the pipe delays is WHEN A SESSION CAN SEE an utterance -- which is exactly what
+    a grace window races.
+
+    **Why this is an investigation and not a wire change.** The obvious answer is a
+    second field beside `graceMs` meaning "wait for it to start, then for it to
+    stop" -- and it would be wrong to ship on the reasoning above, because nobody
+    has yet separated the three causes. Until the pipe's own contribution is known,
+    any constant chosen would be fitted to a number that is partly ours.
+
+    **So the entry owes measurements before it owes a design**, and they are
+    cheap:
+    - **how much of a grace window the pipe consumes**: time from `emittedAt` to
+      the instant the utterance becomes readable in a session, and how that moves
+      when `FileLineTailer`'s poll interval is varied. That separates our latency
+      from the reader's and is the first thing to know;
+    - the role-to-text gap in a NATIVE window against WEB content, in silent, on
+      the same command shape -- which sizes any cap, or shows that a cap is the
+      wrong shape;
+    - whether the gap tracks the length of the role utterance, which would say
+      whether the pacing is per-utterance or per-command;
+    - whether a session can distinguish "the text is still coming" from "this
+      element has no text", which is what any wait has to answer and may not be
+      answerable at all.
+
+    **It is VoiceOver-only, deliberately, and that was verified rather than
+    assumed.** Read out of `../nvda` at `release-2026.1` on 2026-08-31: NVDA's
+    `SpeechManager` DOES wait for the synth before pushing the next sequence
+    (`_onSynthDoneSpeaking` -> `_handleDoneSpeaking` -> `_pushNextSpeech(True)`,
+    `source/speech/manager.py`), so "NVDA does not pace" would have been wrong.
+    What makes lane 1 immune is that `filter_speechSequence.apply()` is the FIRST
+    LINE of `speak()` (`source/speech/speech.py:1096`) -- upstream of the manager,
+    the queue and the synth alike. So it captures what the reader DECIDED to say;
+    this bridge captures what got as far as being SPOKEN. Lane 1 also captures
+    in-process, so it has no pipe to race. A contract change made for
+    this reader's problem would make lane 1 pay a settle on every keypress for an
+    announcement that has already arrived -- which is what spec 0025 chose the
+    early return to avoid.
+
+    Instrument: none yet; it wants one, in the shape of
+    `scripts/voiceover_chords.sh`. Spec: none yet -- a measurement-and-decision
+    entry in the shape of [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
+
+13.19. **An unmodified letter key has no notation** (lane 3). Found by Marlon on
+    2026-08-31, driving 13.17's own build: with single-key Quick Nav on, an
+    ordinary VoiceOver user presses **`h`** to move by heading, and this bridge
+    cannot express it.
+
+    **The gap, exactly.** 13.17 made the `+` the discriminator between the two
+    notations `pressGesture` accepts, so an id with no `+` is a reader COMMAND
+    NAME. That is right for `return key` and `tab key`, which the reader dispatches
+    itself for free -- and it means a bare `h` is looked up as a command and
+    refused: *"this reader has no command called 'h'"*. There is no way to ask for
+    the letter key.
+
+    **The capability exists and is reachable through the wrong tool.** Measured in
+    the same run: `type_text "h"` DOES drive Quick Nav -- it moved to "nível de
+    título 1" -- because the Unicode-payload event reaches the same place. So an
+    agent can do it today by typing, which is precisely the confusion the two
+    notations were separated to prevent, and which the guidance document currently
+    contradicts ("a key with NO modifier is a command name").
+
+    **What it must not break.** The reason a bare key stays a command name is the
+    Accessibility grant: `return key` costs nothing and routing it through the
+    event path would spend the grant for a keypress that never needed one. So the
+    answer is not "a lone token is a keystroke" -- it is a way for an agent to say
+    WHICH it means. An explicit prefix (`key:h`) is the obvious candidate and is a
+    bridge-local notation rather than a wire change, since gesture ids pass through
+    opaquely; whether that is better than widening `typeText`'s documented remit is
+    the decision the entry owes.
+
+    Spec: none yet.
 
 ## Convergence (requires C and D both Done)
 
