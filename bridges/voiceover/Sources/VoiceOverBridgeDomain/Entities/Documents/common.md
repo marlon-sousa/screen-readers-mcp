@@ -60,8 +60,15 @@ So:
 
 - **A chord is not expressible through `press_gesture` on this reader.** Do not
   build one out of two calls; it will report success and do the wrong thing.
-- **A chord needs `type_text`'s route**, which synthesizes real system events and
-  costs the Accessibility grant.
+- **AND `type_text` CANNOT PRESS ONE EITHER.** It synthesizes a key event carrying
+  a Unicode *payload*, which is how literal text arrives; it does not press a key
+  with a modifier held. So **this bridge currently has no way at all to send
+  Command-L, Command-F or any other chord** — a real and serious gap, because a
+  blind user drives macOS with chords constantly. It is a gap in this bridge and
+  **not** a limit of the platform: Core Graphics sends chords perfectly well given
+  a virtual keycode and modifier flags. Board entry 13.17 owns closing it. Until
+  it lands, a task that needs a chord **cannot be completed here** — report that,
+  rather than trying to build one out of parts.
 - The table has **no letter keys at all**, so literal text can never come out of
   it. `type_text` is how text is entered, always.
 

@@ -280,10 +280,13 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.16**
-in lane 3, and the next free spec number is **0048**. Board number **13.15** was
-spent on 2026-08-31 by the voice-substitution finding that came out of 13.11's
-live run, and this line moved in the same commit. Board number **13.14** was
+The next free board number is **11.38** in the convergence series and **13.18**
+in lane 3, and the next free spec number is **0049**. Spec **0048** was spent on
+2026-08-31 by 13.17, and this line moved in the same commit. Board numbers **13.15**,
+**13.16** and **13.17** were spent on 2026-08-31 by two findings that came out of 13.11's live
+run — the voice substitution, whether `journal.plist` narrows this lane's "no reader
+log" claim, and the discovery that this bridge cannot press a chord at all — and
+this line moved in the same commit. Board number **13.14** was
 spent on 2026-08-30 when the control dialog was split out of 13.10, and this line
 was not moved with it -- corrected by 13.11, which spent no number of its own and
 found the gap while looking for one. **13.11 took no spec number either**: its
@@ -1249,6 +1252,103 @@ rule intends.
 
     Spec: none yet -- a measurement-and-decision entry in the shape of
     [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
+
+13.16. **Does `journal.plist` change what "this reader has no log" means?** (lane
+    3; a measurement, not code). Raised by Marlon on 2026-08-31, out of the voice
+    work: the three-preference-file sweep found
+    `com.apple.VoiceOver4/journal.plist`, **a per-key last-changed index** mapping
+    every key in `default.plist` to the `CFAbsoluteTime` it was last written — and
+    it appears in no public documentation.
+
+    **Why it deserves re-examination now.** This lane has said, in the guidance
+    document an agent reads and in `Registry.capabilities`, that VoiceOver **keeps
+    no diagnostic log**, so the `log` capability group is absent from the READER
+    rather than unimplemented. That claim was made against the question *"is there
+    an NVDA-style event log?"* — and journalling is a different shape of answer:
+    not what the reader DID, but **when each of its settings last changed**. If
+    that is live and prompt, it is a real, if narrow, observation channel, and
+    "there is no log here" is too strong a sentence to leave in a document agents
+    are told to trust.
+
+    **What is already known, and it cuts both ways.** [Spec
+    0047](specs/0047-selecting-the-capture-voice-without-a-human.md) measured the
+    journal **refreshing timestamps on restarts for settings nobody touched**, so
+    it cannot be read as a change log as it stands — an earlier draft inferred the
+    opposite from two data points and was wrong. But that experiment altered a
+    **voice**, not a **toggle**, which is exactly the gap board entry **13.12**
+    still has open.
+
+    **So this entry and 13.12 should probably be answered together**, by one
+    controlled experiment: toggle a setting whose key is known, watch all three
+    files with `cfprefsd` in the picture, and see whether `journal.plist` moves
+    promptly and *only* for that key. Whatever the answer, it settles two entries:
+    whether a read-only `state` is implementable, and whether the guidance
+    document's "no reader log" sentence needs narrowing to "no event log; setting
+    changes are timestamped, with these caveats".
+
+    Spec: none yet — a measurement entry in the shape of [spec
+    0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
+
+13.17. **Chords — the bridge cannot press one, and a blind user presses them
+    constantly** (lane 3; **a v1 blocker for the `user` persona**). Raised by
+    Marlon on 2026-08-31, in the sharpest possible form: *"All blind users will
+    use chords to operate, no matter what. If chords aren't pressable, we need a
+    driver."*
+
+    **The gap, exactly.** Neither of this bridge's two input routes can send
+    Command-L:
+
+    - `pressGesture` dispatches VoiceOver's own command names through the reader.
+      Its vocabulary contains single keys and modifier commands, and **the
+      modifiers do not compose** — measured 2026-08-30, `bash
+      scripts/voiceover_modifiers.sh`. `CommandVocabulary` therefore *refuses* a
+      keystroke id outright.
+    - `typeText` synthesizes a `CGEvent` with `virtualKey: 0` and a **Unicode
+      payload** (`CGEventPoster.post(unicode:keyDown:)`). That is how literal text
+      arrives; it never presses a key with a modifier held.
+
+    So the bridge can drive the reader and can enter text, and **cannot press
+    Command-L, Command-F, Command-W or Command-T** — which is how everybody
+    actually uses a Mac.
+
+    **It is OUR gap, not the platform's.** Core Graphics sends chords given a
+    virtual keycode and `event.flags`; we already hold the Accessibility grant
+    that costs. The 13.11 live run stated the limitation as though it were a fact
+    about VoiceOver, and that was wrong — recorded here because the wrong framing
+    is what let the gap sit unnoticed through four entries.
+
+    **What it should probably look like**, to be settled in the spec conversation:
+
+    - **Keystrokes ride on `pressGesture`**, routed to the event path instead of
+      AppleEvents. That is *consistent with the contract rather than a stretch* —
+      protocol.md calls a gesture id "the reader's own user-facing command
+      notation", and on NVDA that notation IS keystrokes. `CommandVocabulary`'s
+      blanket refusal is the thing that has to narrow.
+    - **The lazy-grant lever survives**, which is why this is not a regression of
+      13.8: the grant is requested on the first *keystroke*, exactly as it is on
+      the first `typeText`, so a session that only presses reader commands and
+      reads speech still asks for nothing.
+    - **The hard part is the keyboard LAYOUT**, and it should not be
+      underestimated. A chord needs a virtual keycode, and which keycode produces
+      "l" depends on the active layout — the maintainer's machine is Brazilian. A
+      hard-coded ANSI table would work in review and mispress on his keyboard, so
+      the mapping has to go through `TISCopyCurrentKeyboardInputSource` /
+      `UCKeyTranslate`, and the fallback when a character is unreachable on the
+      current layout has to be a **named failure** rather than a wrong key.
+    - **`EventPoster` gains a second shape** (`post(keyCode:flags:keyDown:)`)
+      beside the Unicode one, keeping every decision above the seam as 13.8's
+      header requires.
+
+    **Why it blocks v1 for the `user` persona.** That stance's whole claim is that
+    a task is driven with what an ordinary user has. On macOS that includes chords
+    in the first minute of any session — opening a location, finding on a page,
+    switching windows. A `user` run that cannot press them is not a restricted
+    stand-in, it is an incomplete one, and its "the task failed" findings would be
+    about the bridge rather than the interface under test.
+
+    Spec: [spec 0048](specs/0048-pressing-a-chord.md), written 2026-08-31 and
+    **awaiting agreement in conversation** before any code — its class/file layout
+    is the review gate.
 
 ## Convergence (requires C and D both Done)
 
