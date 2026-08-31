@@ -112,6 +112,69 @@ So:
 
 Re-runnable as `bash scripts/voiceover_modifiers.sh` in this repository.
 
+## AN ANNOUNCEMENT HERE IS TWO UTTERANCES, and that changes how you read
+
+This is the section to read before you write a loop, and it is where an agent
+that has driven NVDA will get it wrong without any error to tell it so.
+
+**Landing on an element produces two separate utterances**: its role, then its
+text.
+
+```
+"nível de título 2  link"                                   <- the role
+", COMO ESCREVER CARACTERES ACENTUADOS NO IOS 11.0 …"       <- the text
+```
+
+**The second one's delay belongs to the APPLICATION, not to the reader.** This
+reader passes your keystroke down to the application first and announces what
+comes back — so the text arrives when the application's accessibility tree
+answers. In a native window that is milliseconds. In web content it crosses into
+the browser's out-of-process accessibility and takes as long as it takes. **On
+the other reader in this contract the order is reversed** — it reports first and
+passes the key down afterwards — which is why a habit brought from there
+misfires here.
+
+Measured on macOS 15.0, 2026-08-31, in Safari web content:
+
+| Session | Role → text gap |
+|---|---|
+| `silent` | **50–110 ms** |
+| `live` | **~1505 ms** |
+
+**A live session is paced by audio**, because the reader waits for one utterance
+to be spoken before it hands over the next. That is not a defect: it is a person
+listening. But it means any command you send inside that window **cancels the
+text before it is ever spoken**, and it is then gone — not delayed, not
+recoverable, never captured.
+
+Three rules follow, and they are the practical content of this section.
+
+- **`grace_ms` returns as soon as the FIRST utterance arrives**, by contract. So
+  it hands you the role and the text is still in flight. If you need the text,
+  read again from `speech_to`, or press one gesture per call with a generous
+  grace — never batch several gestures into one `press_gesture` and expect their
+  text.
+- **In a live session, SEQUENCE TO ACT, NOT TO READ.** `run_sequence` is excellent
+  here for a known plan — open a location bar, type an address, commit it — and
+  that works perfectly. But a sequence whose purpose is *reading* captures the
+  first utterance of each step and loses the rest. Measured: four moves batched
+  in one call returned four utterances and **not one heading title**.
+- **Prefer a `silent` session whenever you are reading.** It is already the right
+  default; this is the concrete reason. Nothing is spoken aloud, so nothing waits
+  for audio, so the queue drains in milliseconds and the text arrives with the
+  role. The same nine moves that lost every title in a live batch captured
+  **twenty utterances, every title present**, in a silent `run_sequence` with a
+  400 ms gap.
+
+**Do not use `wait_for_speech_to_finish` to solve this.** It asks "has speech
+stopped?", and silence before speech starts is indistinguishable from silence
+after it ends — so it returns immediately in the gap between the role and the
+text and tells you nothing. The same is true of a `settle` step inside
+`run_sequence`. What works is a fixed gap between steps, or one gesture per call.
+
+**`wait_for_speech` is case-sensitive.** Matching `"Blindtec"` will not find an
+utterance reading `https://www.blindtec.com.br/blog/`.
+
 ## The ordinary vocabulary on this reader
 
 This is what the macOS accessibility contract assumes of an ordinary VoiceOver

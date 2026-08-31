@@ -507,6 +507,65 @@ same lesson for the tree itself — filter by role and predicate, assert exactly
 one match, prefer structure over words, confirm by meaning — and it is what any
 later entry that WALKS the tree has to follow.
 
+## Speech is paced by the CAPTURE VOICE, and an announcement is two utterances
+
+Measured 2026-08-31 in Safari web content, and it explains every capture-fidelity
+question this bridge has. **Landing on an element produces two utterances — the
+role, then the text — and the gap between them is 50–110 ms in a silent session
+and ~1505 ms in a live one.**
+
+**THE READER PACES ITS QUEUE ON OUR RENDER COMPLETION, which is what that
+twentyfold difference proves.** A silent session renders near-zero-length audio,
+so the extension signals completion at once and VoiceOver hands over the next
+utterance immediately; a live one renders real speech and VoiceOver waits for it
+to be spoken. So the pacing is ours to observe and — in principle — ours to
+change. Any command that arrives inside that window makes VoiceOver **cancel**
+the pending utterance, and a cancelled utterance is one this bridge never sees at
+all: the capture point is the SYNTHESIZER, downstream of the reader's own queue.
+
+**That is the architectural difference from lane 1, and it is worth knowing in
+both directions.** The NVDA bridge captures at `speech.extensions.filter_speechSequence`
+— *queue* time, upstream of any cancellation — so a cancelled utterance there has
+already been captured. `getSpeech` therefore means "what the reader queued" on one
+bridge and "what the reader handed to a synthesizer" on the other. Neither is
+wrong; they are not the same sentence.
+
+**The ORDER of announcement and dispatch also differs**, and this is the half that
+decides how long a wait has to be. NVDA reports and then passes the key down, so
+the announcement is the reader's own and its latency is the reader's. VoiceOver
+passes the key down FIRST and announces what comes back — so the text utterance is
+a *reaction*, and its delay belongs to the APPLICATION. A native window answers in
+milliseconds; web content crosses into the browser's out-of-process accessibility
+and takes as long as it takes. **No constant is right for both**, which is why
+board entry 13.18 is an investigation rather than a parameter.
+
+**`graceMs` returns on the FIRST utterance**, in both bridges and by contract
+(`protocol.md` §5, spec 0025) — `SpeechBuffer.collectSince` waits for speech to
+have STARTED. Lane 1's docstring states the assumption behind it out loud: "the
+common case is one announcement ~124 ms after a keystroke". That is an NVDA fact.
+Here it means a batched `pressGesture` fires the next key as soon as the role
+lands and cancels the text, **in silent as well as live** — measured, 2 of 4 titles
+lost in a silent batch. What the reader needs and neither bridge has is the
+COMPOSITION of the two waits this repo already owns: start, then quiet.
+`collectSince` is start-only and `waitToFinish` is quiet-only, and quiet-only
+cannot work on its own, for the reason its own docstring gives.
+
+**Responding asynchronously for pass-through was considered and declined**, and
+the reasoning is kept because it is the only lever that exists. Signalling
+completion as soon as the utterance is captured, and playing the audio out of
+band, would give a live session a silent session's fidelity — the pacing finding
+above says it would work. It also makes THIS BRIDGE the owner of interruption:
+VoiceOver would cancel what it believes is current, which by then is a later
+utterance, while our queue of already-"completed" ones keeps playing. A person
+presses a key to stop the reader and it carries on talking about where they used
+to be, and that is the single most-used gesture a screen reader user has. Audio
+would also drift further behind the cursor the faster somebody drives, and the
+queue lifecycle would land in the render path that must not allocate or block.
+**The trade-off it tries to beat is one the contract already draws** (`protocol.md`
+§4): a live session is paced by audio because a human is listening, and you cannot
+have audio-paced delivery and non-audio-paced capture for the same listener.
+Prefer silent when reading; that is what it is for.
+
 ## The endpoint, and why the derivation is duplicated on purpose
 
 The bridge **listens**; the server dials
