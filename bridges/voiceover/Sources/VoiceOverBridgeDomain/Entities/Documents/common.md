@@ -269,6 +269,12 @@ vocabulary too — press the letters the way a person would.
 Two things to know before you rely on it. It is a **mode**, and it is off unless
 somebody turned it on; `toggle single-key quick nav on or off` flips it and says
 which way it went, which is how you find out (see "How you read state" below).
+**Turn it on with that command and not with the key chord you may know from
+Apple's own documentation** — a person toggles Quick Nav by pressing Left Arrow
+and Right Arrow *together*, and this bridge cannot press two ordinary keys at the
+same time (see "What this reader does not offer"). All three toggles have command
+names, they cost no permission, and they say out loud which way they went, which
+the chord does not.
 And while it is on, those letters no longer reach the page as text — which is
 what makes it worth turning off again before you type into a field.
 
@@ -400,6 +406,14 @@ do not assume a facility exists because another reader has one.
 - **No "list open windows" that this bridge can drive**, but `describe open
   applications` and `item chooser` between them cover most of what you would want
   it for.
+- **No two ordinary keys pressed at the same time.** A keystroke here is
+  modifiers plus **one** key: `command+l` is expressible and
+  `leftArrow+rightArrow` is not. Some things a Mac user does are exactly that
+  chord — toggling Quick Nav is the one you will meet first — and **the answer is
+  the reader's own command name**, which exists for every such act this bridge
+  has looked for, costs no permission, and announces its result. If you find one
+  that has no command name, say so: it is a gap worth recording rather than a
+  thing to work around with `type_text`, which sends characters and not keys.
 
 ## Your session was SET UP before you were handed it
 
