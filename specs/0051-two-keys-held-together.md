@@ -109,6 +109,40 @@ detecting **simultaneity**, and a synthesized chord satisfies it.
 toggles it exactly as a 15 ms spacing does. So the presser needs no timing
 machinery, which is one fewer thing to get wrong on a machine under load.
 
+### 2.1 The chord is NOT a clean toggle of one setting, and that cost a correction
+
+The first version of the instrument watched the arrow-key flag alone, on the
+reasonable assumption that Left+Right toggles one boolean. It does not. Measured
+2026-09-01, starting from `arrow=0 single=1`:
+
+| step | arrow-key | single-key |
+|---|---|---|
+| start | `0` | `1` |
+| chord | `1` | `1` |
+| chord again | `0` | **`0`** |
+
+So the chord took **single-key Quick Nav down with it**, and a probe watching one
+flag reported "restored" while it had quietly turned off a setting the maintainer
+uses every day. It was caught by reading both keys afterwards, and put back
+through the reader's own `toggle single-key quick nav on or off`.
+
+**Three things follow, and they are the useful part of this entry.**
+
+- **The instrument now snapshots and restores BOTH**, and restores through the
+  **command names** rather than by pressing the chord again — each command moves
+  exactly one setting, and restoring with the very thing under test is what left
+  the setting off the first time. That is the 2026-08-29 rule doing its work: a
+  probe must assert the hazard is gone, and it can only assert about what it looks
+  at.
+- **It sharpens §3.5 rather than weakening it.** The command names are not merely
+  cheaper than the chord, they are *more precise*: each moves one setting and says
+  which way it went. The chord moves two and says nothing. An agent that reaches
+  for the chord to turn arrow-key Quick Nav on may silently change how letter keys
+  behave as well.
+- **It is a fact about the READER, not about this bridge**, so a person pressing
+  those two keys gets the same compound effect. Nothing here should try to
+  "correct" it — the bridge presses what a person presses.
+
 ## 3. Decisions (proposed)
 
 ### 3.1 The notation is `+`, and there is no new separator
@@ -226,6 +260,11 @@ notation entry should have.
   Left+Right — against one detector. Another VoiceOver chord could be detected
   some other way, and "this bridge can express it" is not "the reader will act on
   it". §5 item 2 is what turns the expression into evidence.
+- **What the chord actually does is compound** (§2.1), and this entry does not
+  model it. `pressGesture` reports what it PRESSED and never what the reader did
+  with it — which is the contract's own rule (protocol.md §7.3) and is right here:
+  an agent that wants to know where Quick Nav ended up reads the speech, or uses
+  the command names, which move one setting each.
 - **`SCRCInvertedTCommanderCaptureEnabled` is not a public API.** It is the key
   the reader happens to write, found by state comparison; it is used by the
   *instrument* and by nothing that ships. No adapter reads it, and this entry

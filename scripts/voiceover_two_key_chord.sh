@@ -18,10 +18,21 @@
 # looked right and was not, and the events had to be real transitions.
 #
 # WHAT IT MEASURES, AND WHY THE ANSWER IS READABLE. VoiceOver answers no query
-# about any of its 45 toggles, so this reads the state from the preference it
+# about any of its 45 toggles, so this reads the state from the preferences it
 # writes instead:
 #
-#     SCRCInvertedTCommanderCaptureEnabled   (arrow-key Quick Nav, 0 or 1)
+#     SCRCInvertedTCommanderCaptureEnabled                    (arrow-key Quick Nav)
+#     SCRCUserDefaultsIndependentSingleLetterQuickNavEnabled  (single-key Quick Nav)
+#
+# BOTH, AND THE SECOND ONE COST A CORRECTION. The first version of this script
+# watched the arrow-key flag alone, on the reasonable assumption that Left+Right
+# toggles one boolean. MEASURED 2026-09-01: it does not. From
+# arrow=0 single=1, one chord gave arrow=1 single=1 and the NEXT chord gave
+# arrow=0 single=0 -- so the chord took single-key Quick Nav down with it, and a
+# probe watching one flag reported "restored" while it had quietly changed a
+# setting the maintainer uses. That is exactly the hazard the 2026-08-29 rule is
+# about: a probe must assert the hazard is GONE, and it can only assert about
+# what it looks at.
 #
 # in ~/Library/Group Containers/group.com.apple.VoiceOver/Library/Preferences/
 # com.apple.VoiceOver4/default.plist. That key was FOUND rather than recalled, by
@@ -53,6 +64,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRESS="$HERE/voiceover_chord_press.swift"
 PREFS="$HOME/Library/Group Containers/group.com.apple.VoiceOver/Library/Preferences/com.apple.VoiceOver4/default.plist"
 FLAG="SCRCInvertedTCommanderCaptureEnabled"
+SINGLE="SCRCUserDefaultsIndependentSingleLetterQuickNavEnabled"
 # VoiceOver writes the preference a moment after the toggle, not synchronously.
 SETTLE=2
 
@@ -63,6 +75,19 @@ say() { printf '%-42s %s\n' "$1" "$2"; }
 # failure.
 read_flag() {
 	plutil -p "$PREFS" 2>/dev/null | grep "$FLAG" | sed 's/.*=> //' | tr -d ' '
+}
+
+read_single() {
+	plutil -p "$PREFS" 2>/dev/null | grep "$SINGLE" | sed 's/.*=> //' | tr -d ' '
+}
+
+# Set one toggle by its own COMMAND NAME, which moves exactly that setting --
+# unlike the chord, which is what this script exists to characterise.
+set_toggle() {
+	local command="$1"
+	osascript -e "tell application \"VoiceOver\" to tell commander to perform command \"$command\"" \
+		>/dev/null 2>&1
+	sleep "$SETTLE"
 }
 
 if ! pgrep -x VoiceOver >/dev/null; then
@@ -76,6 +101,7 @@ if [[ ! -f "$PRESS" ]]; then
 fi
 
 START="$(read_flag)"
+START_SINGLE="$(read_single)"
 if [[ -z "$START" ]]; then
 	echo "the preference '$FLAG' is not present yet on this machine." >&2
 	echo "Toggle arrow-key Quick Nav once by hand (or with the reader's own" >&2
@@ -86,24 +112,36 @@ fi
 # RESTORED ON EVERY EXIT PATH, including a failure partway: the one setting this
 # touches is somebody's own, and a probe that left Quick Nav on would change how
 # their arrow keys behave for the rest of the day.
+# RESTORED THROUGH THE COMMAND NAMES, NOT BY PRESSING THE CHORD AGAIN. Each
+# command moves exactly one setting and says which way it went; the chord moves
+# both and is the thing under test. Restoring with the instrument being measured
+# is how the first version of this script left single-key Quick Nav off.
 restore() {
-	local now
+	local now single
 	now="$(read_flag)"
 	if [[ "$now" != "$START" ]]; then
 		say "restoring" "arrow-key Quick Nav back to $START"
-		swift "$PRESS" together leftArrow rightArrow >/dev/null 2>&1
-		sleep "$SETTLE"
+		set_toggle "toggle arrow-key quick nav on or off"
 		now="$(read_flag)"
-		if [[ "$now" != "$START" ]]; then
-			echo "COULD NOT RESTORE: arrow-key Quick Nav is $now and started at $START." >&2
-			echo "Put it back with VoiceOver's own 'toggle arrow-key quick nav on or off'." >&2
-		fi
+	fi
+	single="$(read_single)"
+	if [[ -n "$START_SINGLE" && "$single" != "$START_SINGLE" ]]; then
+		say "restoring" "single-key Quick Nav back to $START_SINGLE"
+		set_toggle "toggle single-key quick nav on or off"
+		single="$(read_single)"
+	fi
+	if [[ "$now" != "$START" || ( -n "$START_SINGLE" && "$single" != "$START_SINGLE" ) ]]; then
+		echo "COULD NOT RESTORE. arrow-key is $now (started $START), single-key is" >&2
+		echo "$single (started $START_SINGLE). Put them back in VoiceOver Utility or with" >&2
+		echo "the reader's own 'toggle arrow-key quick nav on or off' and" >&2
+		echo "'toggle single-key quick nav on or off'." >&2
 	fi
 }
 trap restore EXIT
 
-echo "arrow-key Quick Nav, read from the reader's own preference"
-say "at the start" "$START"
+echo "Quick Nav, read from the reader's own preferences"
+say "arrow-key at the start" "$START"
+say "single-key at the start" "${START_SINGLE:-<not set>}"
 echo
 
 # -- the control ---------------------------------------------------------------
@@ -135,6 +173,7 @@ if [[ "$AFTER_TOGETHER" == "$START" ]]; then
 	exit 3
 fi
 say "  it flipped" "the reader saw two ordinary keys held together"
+say "  single-key Quick Nav is" "$(read_single)   <- watched, because the chord moves it too"
 echo
 
 # -- the control again ---------------------------------------------------------
@@ -151,3 +190,7 @@ fi
 echo
 echo "MEASURED: two ordinary keys pressed together ARE a chord to this reader,"
 echo "and the same two pressed separately are not. Board entry 13.22, spec 0051."
+echo
+echo "AND THE CHORD IS NOT A CLEAN TOGGLE OF ONE SETTING: it moves single-key"
+echo "Quick Nav as well, which is why the reader's own command names are the"
+echo "route a session should take and this chord is only the thing being proved."

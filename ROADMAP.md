@@ -1731,6 +1731,16 @@ rule intends.
     the state-comparison technique in `docs/how-we-found-the-voice-store.md`
     rather than recalled. **No inter-event delay is needed.**
 
+    **And the chord is NOT a clean toggle of one setting**, which cost a
+    correction to the instrument and is the useful part of the entry: from
+    `arrow=0 single=1`, one chord gave `arrow=1 single=1` and the next gave
+    `arrow=0 single=0` -- so it takes SINGLE-KEY Quick Nav down with it, and the
+    first version of the probe reported "restored" while having quietly turned off
+    a setting the maintainer uses daily. It now watches and restores both, through
+    the COMMAND NAMES rather than by pressing the chord again. That sharpens the
+    recommendation rather than weakening it: each command name moves exactly one
+    setting and says which way it went; the chord moves two and says nothing.
+
     **What it must not do:** displace the command name as the recommended route
     (it costs no grant and announces its result), or spend 13.8's lever -- a chord
     is a `CGEvent` like any other keystroke, so `request` still has two callers.
