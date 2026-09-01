@@ -4,9 +4,9 @@
 #
 #     bash scripts/voiceover_chords.sh
 #
-# ROLE: the versioned instrument board entry 13.17 owes -- the one a live
-# checklist cites instead of a measurement nobody can re-run (the rule AGENTS.md
-# records from 2026-08-22).
+# ROLE: the versioned instrument board entries 13.17 and 13.19 owe -- the one a
+# live checklist cites instead of a measurement nobody can re-run (the rule
+# AGENTS.md records from 2026-08-22).
 #
 # WHAT IT ANSWERS. Until 13.17 this bridge could dispatch VoiceOver's own command
 # names and could type literal text, and could not press Command-L -- which is
@@ -59,6 +59,9 @@ reset_doc() { osascript -e 'tell application "TextEdit" to set text of front doc
 
 PROBE='alpha beta gamma'
 ONE_CHAR_GONE='alpha beta gamm'
+# What the caret sits at the end of the reset text produces when `h` is pressed
+# with no modifier at all -- 13.19's shape.
+LETTER_ADDED='alpha beta gammah'
 
 echo "== the machine"
 say "macOS" "$(sw_vers -productVersion) ($(sw_vers -buildVersion))"
@@ -95,7 +98,7 @@ fi
 echo
 echo "== control: the Delete key alone, with no modifier"
 reset_doc; sleep 0.5
-swift "$PRESS" press delete >/dev/null
+swift "$PRESS" press backspace >/dev/null
 sleep 0.6
 plain=$(doc_text)
 say "document now" "${plain:-<empty>}"
@@ -107,12 +110,37 @@ if [[ "$plain" != "$ONE_CHAR_GONE" ]]; then
 	exit 1
 fi
 
+# 13.19: THE SAME PRESS WITH NO MODIFIERS AT ALL, which is what `kb:h` posts.
+# Until that entry a lone key had no notation on this bridge -- the `+` was the
+# whole discriminator, so `h` was looked up as one of the reader's command names
+# and refused, while an ordinary user with single-key Quick Nav on presses it to
+# move by heading. This half proves the MECHANICAL claim: an unmodified keycode
+# press arrives, and holds nothing down afterwards. Whether Quick Nav answers it
+# is the live checklist's question, because that needs the reader and a page.
+echo
+echo "== an unmodified key: the letter h, which is what kb:h presses"
+reset_doc; sleep 0.5
+swift "$PRESS" press h
+sleep 0.6
+letter=$(doc_text)
+say "document now" "${letter:-<empty>}"
+if [[ "$letter" == "$LETTER_ADDED" ]]; then
+	echo "   THE LETTER ARRIVED, on the keycode this layout answered with. That is"
+	echo "   the event kb:h posts, and no modifier went down or had to come up."
+elif [[ "$letter" == "$PROBE" ]]; then
+	echo "   NOTHING REACHED THE DOCUMENT. Suspect the Accessibility grant -- though"
+	echo "   the control above should already have caught that."
+else
+	echo "   SOMETHING ELSE ARRIVED, which is worth reporting verbatim: the document"
+	echo "   reads '$letter' rather than '$LETTER_ADDED'."
+fi
+
 echo
 echo "== the probe: Command-A, then Delete"
 reset_doc; sleep 0.5
 swift "$PRESS" press command a
 sleep 0.5
-swift "$PRESS" press delete >/dev/null
+swift "$PRESS" press backspace >/dev/null
 sleep 0.6
 after=$(doc_text)
 say "document now" "${after:-<empty>}"
@@ -128,7 +156,7 @@ say "document now" "${after:-<empty>}"
 echo
 echo "== proving the keyboard is clean again"
 reset_doc; sleep 0.5
-swift "$PRESS" press delete >/dev/null
+swift "$PRESS" press backspace >/dev/null
 sleep 0.6
 clean=$(doc_text)
 say "one plain Delete now leaves" "${clean:-<empty>}"

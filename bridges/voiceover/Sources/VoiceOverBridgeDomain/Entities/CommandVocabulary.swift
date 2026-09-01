@@ -31,6 +31,31 @@
 // added, and would buy nothing the reader does not already give for free. That
 // is also why spec 0046 gives this entry no `GestureResolver` port.
 //
+// ============================================================================
+// THREE RULES DECIDE, AND THE FIRST IS THE SOURCE PREFIX -- 13.19.
+// ============================================================================
+//
+// 1. A SOURCE PREFIX, if there is one, settles it outright. `kb:h` is the
+//    keyboard's `h`; `h` is one of the reader's command names. The prefix is
+//    NVDA's own -- lane 1 strips exactly this shape in
+//    `adapters/keyboard_gesture_name.bare_key_name` -- and spec 0018 reserved
+//    the namespace for precisely this case: a reader where an id with no prefix
+//    does NOT mean the keyboard. Everything up to and including the first `:` is
+//    the source, and `kb` is the only one there is.
+// 2. Otherwise `VO-D` is refused by name, for the reason below.
+// 3. Otherwise a `+` means a keystroke, and anything else is a command name.
+//
+// WHY THIS HAD TO EXIST: with single-key Quick Nav on, an ordinary VoiceOver
+// user presses `h` to move by heading. Under 13.17's rules -- where the `+` was
+// the whole discriminator -- that id was looked up as a command and refused, and
+// there was NO WAY AT ALL to ask for the letter key. The capability was reachable
+// only by calling `type_text "h"`, which means something else entirely and was
+// exactly the confusion the two notations were separated to prevent. Spec 0049.
+//
+// THE PREFIX OUTRANKS THE SHAPE OF WHAT FOLLOWS IT. `kb:go to desktop` is a
+// malformed keystroke and not a command name: the agent said which vocabulary it
+// meant, and the answer to a mistake is to name it rather than to guess past it.
+//
 // WHAT IS STILL REFUSED, AND BY NAME: VoiceOver's own `VO-D` notation. It is
 // neither a command the reader will dispatch nor a keystroke this bridge can
 // construct, because `VO` is whatever the user has configured their VoiceOver
@@ -39,12 +64,12 @@
 // which is the exact mistake this type was written to catch. The refusal says to
 // send `control+option+d` if that is what was meant.
 //
-// THE DISCRIMINATOR IS THE SPACE RULE, and it is the one this file already lived
-// by. A separator counts as keystroke notation only in an id with NO SPACES AT
-// ALL: every real command name that carries one carries spaces too ("mute sound
-// toggle", "toggle single-key quick nav on or off"), and no command in the
-// vocabulary is a bare `+`-joined token. So "command key" still goes to the
-// reader and "command+l" does not.
+// THE DISCRIMINATOR BEHIND ALL THREE IS THE SPACE RULE, and it is the one this
+// file already lived by. A separator -- `:`, `+` or `-` -- counts as notation
+// only in an id with NO SPACES AT ALL: every real command name that carries one
+// carries spaces too ("mute sound toggle", "toggle single-key quick nav on or
+// off"), and no command in the vocabulary is a bare joined token. So "command
+// key" still goes to the reader and "command+l" does not.
 
 import Foundation
 
@@ -67,10 +92,18 @@ public enum Gesture: Equatable {
 	/// entry report. A command name is the trimmed id; a keystroke is its
 	/// canonical spelling, so an agent that wrote `Command+L` is told `command+l`
 	/// went out rather than being echoed its own text back.
+	///
+	/// THE SOURCE PREFIX APPEARS EXACTLY WHERE DROPPING IT WOULD LIE. A keystroke
+	/// with modifiers spells itself `command+l`, which is lane 1's documented form
+	/// and needs nothing added; one with no modifiers spells itself `kb:h`,
+	/// because `h` fed back in is a command name and a transcript whose lines
+	/// cannot be replayed is not doing its job.
 	public var described: String {
 		switch self {
 		case .readerCommand(let command): return command
-		case .keystroke(let keystroke): return keystroke.described
+		case .keystroke(let keystroke):
+			guard keystroke.modifiers.isEmpty else { return keystroke.described }
+			return "\(CommandVocabulary.keyboardSource):\(keystroke.described)"
 		}
 	}
 
@@ -101,6 +134,13 @@ public struct GestureIdRefused: Error, Equatable, CustomStringConvertible {
 }
 
 public enum CommandVocabulary {
+	/// The one gesture source this bridge knows, and it is NVDA's spelling.
+	///
+	/// Public because the guidance document, the tests and `Gesture.described`
+	/// all have to agree about it, and a second spelling of a notation is how a
+	/// notation stops being one.
+	public static let keyboardSource = "kb"
+
 	/// Classify a gesture id, or refuse it by name with its reason.
 	///
 	/// A command name comes back as the input with surrounding whitespace removed
@@ -118,8 +158,14 @@ public enum CommandVocabulary {
 			throw GestureIdRefused(
 				gesture: gesture,
 				reason: "it is empty -- this reader's gestures are English command names, "
-					+ "such as \"go to desktop\", or keystrokes, such as \"command+l\""
+					+ "such as \"go to desktop\", or keystrokes, such as \"command+l\" and \"kb:h\""
 			)
+		}
+		if let (source, rest) = sourcePrefix(of: trimmed) {
+			guard source == keyboardSource else {
+				throw GestureIdRefused(gesture: trimmed, reason: reasonNoSuchSource(source))
+			}
+			return .keystroke(try keystroke(rest, quoting: trimmed))
 		}
 		guard !isReaderModifierNotation(trimmed) else {
 			throw GestureIdRefused(
@@ -135,11 +181,63 @@ public enum CommandVocabulary {
 		guard isKeystrokeNotation(trimmed) else {
 			return .readerCommand(trimmed)
 		}
+		return .keystroke(try keystroke(trimmed, quoting: trimmed))
+	}
+
+	// -- the pieces --------------------------------------------------------------
+
+	/// Parse a keystroke, re-quoting the refusal against the id the agent SENT.
+	///
+	/// A `kb:h` that fails must say `kb:h` and not `h`, or the agent is left
+	/// looking for an id it never wrote.
+	private static func keystroke(_ id: String, quoting sent: String) throws -> Keystroke {
 		do {
-			return .keystroke(try Keystroke.parse(trimmed))
+			return try Keystroke.parse(id)
 		} catch let malformed as KeystrokeMalformed {
-			throw GestureIdRefused(gesture: trimmed, reason: malformed.reason)
+			throw GestureIdRefused(gesture: sent, reason: malformed.reason)
 		}
+	}
+
+	/// The source prefix and what follows it, or nil when the id carries none.
+	///
+	/// Everything up to and including the FIRST `:` is the source, which is lane
+	/// 1's rule (`bare_key_name`) rather than one invented here.
+	///
+	/// THE SPACE RULE GUARDS THE SOURCE ITSELF, NOT THE WHOLE ID, and that is the
+	/// one place this differs from the `+` and the `-`. A source is a single token,
+	/// so a phrase before the colon means the colon is part of a command name --
+	/// while a phrase AFTER it is a malformed keystroke, because the agent has
+	/// already said which vocabulary it meant and the answer to a mistake is to
+	/// name it rather than to guess past it.
+	///
+	/// Checked on the machine rather than assumed, 2026-08-31: none of the 415
+	/// entries in `SCRStringsToCommandsMap.scrconfig` contains a `:` -- the same
+	/// thing that was checked of the `+` before it became a discriminator.
+	private static func sourcePrefix(of gesture: String) -> (source: String, rest: String)? {
+		guard let colon = gesture.firstIndex(of: ":") else { return nil }
+		let source = String(gesture[gesture.startIndex..<colon])
+		guard !source.contains(" ") else { return nil }
+		return (source: source.lowercased(), rest: String(gesture[gesture.index(after: colon)...]))
+	}
+
+	/// Why a source is not one here, answering the qualified form by name.
+	///
+	/// `kb(laptop):` is a real NVDA id shape and an agent that has driven that
+	/// reader will write it. It selects one of NVDA's own gesture MAPS, which has
+	/// no counterpart here -- the layout that matters on this machine is the
+	/// system's own, and it is read live at press time (spec 0048 §2.4) rather
+	/// than chosen by an id.
+	private static func reasonNoSuchSource(_ source: String) -> String {
+		if source.hasPrefix("\(keyboardSource)(") {
+			return "this bridge has no gesture maps to qualify a source with. NVDA's "
+				+ "\"kb(laptop):\" picks one of its own keyboard layouts; here the layout that "
+				+ "matters is the machine's own and it is read live when the key is pressed. Send "
+				+ "\"kb:\" with no qualifier"
+		}
+		return "'\(source):' is not a gesture source this bridge knows. It knows one, \"kb:\", which "
+			+ "says the id is a KEYSTROKE rather than one of the reader's command names -- as in "
+			+ "\"kb:h\", the letter key an ordinary user presses with single-key Quick Nav on. An id "
+			+ "with no source at all is a command name"
 	}
 
 	/// Whether an id is written as a keystroke: `+`-joined, and one token.
@@ -149,6 +247,12 @@ public enum CommandVocabulary {
 	/// The space rule is what keeps it that way: a command name is a phrase, a
 	/// keystroke is a single token, so an id with a space in it is a command name
 	/// whatever else it contains.
+	///
+	/// A LONE KEY IS NOT ONE OF THESE, and that is 13.17's amendment 5 surviving
+	/// 13.19 intact: the vocabulary's 30 `… key` commands cost no grant, so
+	/// routing a bare `return` through the event path would spend an Accessibility
+	/// request on a keypress that never needed one. The prefix is how an agent
+	/// says it meant the key itself.
 	private static func isKeystrokeNotation(_ gesture: String) -> Bool {
 		gesture.contains("+") && !gesture.contains(" ")
 	}

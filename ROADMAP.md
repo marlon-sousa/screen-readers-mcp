@@ -281,8 +281,9 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.38** in the convergence series and **13.20**
-in lane 3, and the next free spec number is **0049**. Board numbers **13.18** and
-**13.19** were spent on 2026-08-31 by two findings that came out of 13.17's live
+in lane 3, and the next free spec number is **0050**. Spec **0049** was spent on
+2026-08-31 by 13.19, and this line moved in the same commit. Board numbers
+**13.18** and **13.19** were spent on 2026-08-31 by two findings that came out of 13.17's live
 run -- how much of an announcement a session can capture, and the discovery that
 an unmodified letter key has no notation -- and this line moved in the same
 commit. Spec **0048** was spent on
@@ -1373,7 +1374,8 @@ rule intends.
     one was rewritten in this PR rather than left to go quietly false. **A key
     with no modifier stays a command name** (`return key`), because routing it
     through the event path would spend the grant for a keypress that never needed
-    one.
+    one -- which 13.19 kept while giving the key itself a notation (`kb:enter`),
+    so the lever's sentence survived that entry word for word.
 
     **`VO-D` is still refused**, and no feature retires that: `VO` is whatever the
     person bound their VoiceOver modifier to, so pressing it would mean guessing
@@ -1525,7 +1527,8 @@ rule intends.
     `scripts/voiceover_chords.sh`. Spec: none yet -- a measurement-and-decision
     entry in the shape of [spec 0047](specs/0047-selecting-the-capture-voice-without-a-human.md).
 
-13.19. **An unmodified letter key has no notation** (lane 3). Found by Marlon on
+13.19. **Done** -- **A key that is not a command: `kb:h`** (lane 3; was "an
+    unmodified letter key has no notation"). Found by Marlon on
     2026-08-31, driving 13.17's own build: with single-key Quick Nav on, an
     ordinary VoiceOver user presses **`h`** to move by heading, and this bridge
     cannot express it.
@@ -1548,12 +1551,41 @@ rule intends.
     Accessibility grant: `return key` costs nothing and routing it through the
     event path would spend the grant for a keypress that never needed one. So the
     answer is not "a lone token is a keystroke" -- it is a way for an agent to say
-    WHICH it means. An explicit prefix (`key:h`) is the obvious candidate and is a
-    bridge-local notation rather than a wire change, since gesture ids pass through
-    opaquely; whether that is better than widening `typeText`'s documented remit is
-    the decision the entry owes.
+    WHICH it means.
 
-    Spec: none yet.
+    **The notation is `kb:`, which is NVDA's, and that was Marlon's call on
+    2026-08-31** over the `key:h` this entry had proposed and over widening
+    `typeText`'s remit. `protocol.md` §5 had called `kb:` a *legacy* prefix that an
+    NVDA bridge merely tolerates; it is now the contract's **source prefix** --
+    redundant on a reader whose gesture notation is keystrokes and nothing else,
+    load-bearing on a reader with two vocabularies. That is the namespace [spec
+    0018](specs/0018-input-vocabulary.md) reserved, spent by the mirror image of
+    the case it anticipated: not a new KIND of gesture, but the first reader whose
+    unprefixed ids are not the keyboard.
+
+    **And the instruction that made the entry bigger than its fix:** *"let's
+    standardize the maximum we can with what nvda already does."* Read out of
+    `../nvda/source/vkCodes.py` rather than recalled, this bridge's key names
+    diverged from lane 1's in four places -- three that merely FAIL there
+    (`return`, the four arrows, the casing of `pageUp`) and one that presses A
+    DIFFERENT KEY: `delete` is this machine's erases-backwards key and Windows'
+    erases-FORWARDS one. So NVDA's names are now the canonical ones, the Mac's are
+    synonyms where they name the same key, and **a name that would mean a different
+    key is refused by name** (`delete`, `insert`, and the `nvda` and `windows`
+    modifiers), each carrying the alternative it should have been. One rule, and
+    it is the one to keep: *a name that differs with no hazard is tolerated; a name
+    that differs with a hazard is refused.* One key is irreducible -- NVDA calls
+    forward delete `delete` -- and the guidance says so.
+
+    **13.8's lever survives word for word**, which is why no forty-place sweep was
+    needed this time: a keystroke costs the Accessibility grant whether or not it
+    has modifiers, so *"a session that presses only the reader's command names and
+    reads speech never triggers an Accessibility request"* is unchanged, and
+    `return key` still costs nothing while `kb:enter` costs the grant.
+
+    Spec: [spec 0049](specs/0049-a-key-that-is-not-a-command.md). Instrument:
+    `scripts/voiceover_chords.sh`, which gained an unmodified-key press.
+    Done (PR #94, 2026-08-31).
 
 ## Convergence (requires C and D both Done)
 

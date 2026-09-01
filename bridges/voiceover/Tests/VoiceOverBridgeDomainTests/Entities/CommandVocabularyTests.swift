@@ -90,6 +90,84 @@ struct CommandVocabularyTests {
 		#expect(try CommandVocabulary.classify("command+l").isKeystroke == true)
 	}
 
+	// -- the source prefix, which is 13.19 --------------------------------------
+
+	@Test("`kb:h` IS THE LETTER KEY AND `h` IS A COMMAND NAME -- the whole of 13.19")
+	func theSourcePrefixSaysWhichVocabulary() throws {
+		// With single-key Quick Nav on, an ordinary VoiceOver user presses `h` to
+		// move by heading, and until this entry there was no way to ask for it: the
+		// `+` was the whole discriminator, so a bare `h` was looked up as one of the
+		// reader's commands and refused. The prefix is NVDA's own -- lane 1 strips
+		// exactly this shape -- and spec 0018 reserved the namespace for the first
+		// reader where an unprefixed id does not mean the keyboard. This one.
+		#expect(
+			try CommandVocabulary.classify("kb:h")
+				== .keystroke(Keystroke(modifiers: [], key: .character("h"))))
+		#expect(try CommandVocabulary.classify("h") == .readerCommand("h"))
+	}
+
+	@Test("the prefix is accepted on a chord too, and changes nothing about it")
+	func theSourcePrefixIsAcceptedOnAChord() throws {
+		// An agent that has learned the prefix should not have to learn where NOT
+		// to write it, and lane 1 accepts it on everything.
+		#expect(try CommandVocabulary.classify("kb:command+l") == CommandVocabulary.classify("command+l"))
+		#expect(try CommandVocabulary.classify("KB:Down").described == "kb:downArrow")
+	}
+
+	@Test("THE PREFIX OUTRANKS THE SHAPE OF WHAT FOLLOWS IT")
+	func anExplicitPrefixIsNotSecondGuessed() {
+		// `kb:go to desktop` is a malformed keystroke and not a command name. The
+		// agent said which vocabulary it meant; the answer to a mistake is to name
+		// it rather than to route around it.
+		do {
+			_ = try CommandVocabulary.classify("kb:go to desktop")
+			Issue.record("expected 'kb:go to desktop' to be refused")
+		} catch let refusal as GestureIdRefused {
+			#expect(refusal.gesture == "kb:go to desktop")
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a source this bridge does not know is refused BY NAME, naming the one it knows")
+	func unknownSourcesAreRefusedByName() {
+		for id in ["mouse:left", "touch:swipe"] {
+			do {
+				_ = try CommandVocabulary.classify(id)
+				Issue.record("expected '\(id)' to be refused")
+			} catch let refusal as GestureIdRefused {
+				#expect(refusal.description.contains("kb:"))
+			} catch {
+				Issue.record("unexpected error: \(error)")
+			}
+		}
+	}
+
+	@Test("NVDA's layout-qualified source is refused, and says why there is none here")
+	func theQualifiedSourceIsRefused() {
+		// `kb(laptop):` picks one of NVDA's own gesture maps. Here the layout that
+		// matters is the machine's own, read live when the key is pressed -- so
+		// there is nothing for a qualifier to select, and saying so is more use
+		// than "unknown source".
+		do {
+			_ = try CommandVocabulary.classify("kb(laptop):h")
+			Issue.record("expected 'kb(laptop):h' to be refused")
+		} catch let refusal as GestureIdRefused {
+			#expect(refusal.description.contains("read live"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a COLON INSIDE A PHRASE is not a source -- the space rule again")
+	func aColonAfterAPhraseIsNotASource() throws {
+		// Checked on the machine rather than assumed: none of the 415 entries in
+		// `SCRStringsToCommandsMap.scrconfig` contains a colon. If one ever does,
+		// this is the rule that keeps it a command name.
+		#expect(
+			try CommandVocabulary.classify("say this: now") == .readerCommand("say this: now"))
+	}
+
 	@Test("a malformed keystroke is refused as a GESTURE ID, carrying the parse's reason")
 	func malformedKeystrokesAreRefusedWithTheirReason() {
 		// The classification is right and the contents are wrong, so the agent must
@@ -169,5 +247,19 @@ struct CommandVocabularyTests {
 		// text.
 		#expect(try CommandVocabulary.classify("  go to desktop ").described == "go to desktop")
 		#expect(try CommandVocabulary.classify("Command+L").described == "command+l")
+	}
+
+	@Test("THE SOURCE PREFIX APPEARS EXACTLY WHERE DROPPING IT WOULD LIE")
+	func describedCarriesThePrefixOnlyWhenLoadBearing() throws {
+		// A transcript line has to be replayable, and `h` fed back in is a command
+		// name -- so a modifier-free keystroke keeps its prefix. A chord does not
+		// need one, and going without keeps the spelling identical to lane 1's
+		// documented form, which is the point of standardizing on it.
+		#expect(try CommandVocabulary.classify("kb:h").described == "kb:h")
+		#expect(try CommandVocabulary.classify("kb:command+l").described == "command+l")
+		for id in ["kb:h", "command+l", "kb:downArrow", "shift+command+4"] {
+			let described = try CommandVocabulary.classify(id).described
+			#expect(try CommandVocabulary.classify(described).described == described)
+		}
 	}
 }

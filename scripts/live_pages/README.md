@@ -17,7 +17,7 @@ measurement nobody else could reproduce.
 
 | Page | Serves | Why it looks like that |
 |---|---|---|
-| `snapshot-test.html` | Spec 0026, items 1–8; spec 0037, item 4 | Heading levels, links, a radio group, and a **five-item list**. Every element is load-bearing; the file's own comment says what each one proves. 0037 reuses it for a different property entirely — its `<title>` is "Snapshot Test Page", so NVDA+t speaks a known phrase and a `run_sequence` plan can wait for a word of it. **Do not rename the title** without fixing that checklist. |
+| `snapshot-test.html` | Spec 0026, items 1–8; spec 0037, item 4; spec 0049, item 1 | Heading levels, links, a radio group, and a **five-item list**. Every element is load-bearing; the file's own comment says what each one proves. 0037 reuses it for a different property entirely — its `<title>` is "Snapshot Test Page", so NVDA+t speaks a known phrase and a `run_sequence` plan can wait for a word of it. **Do not rename the title** without fixing that checklist. 0049 reuses it a third time, for its heading levels alone: with single-key Quick Nav on, `kb:h` has to move between them. |
 | `dynamic-test.html` | Spec 0026, item 10 | Appends a line every five seconds, so "a snapshot is one instant" can be observed rather than asserted. |
 | `make_long_page.py` → `long-test.html` | Spec 0026, item 9 | 600 paragraphs, which browse mode wraps to ~1100 buffer lines. Generated rather than committed: 66 KB of `Paragraph number N` is not a reviewable artefact. Run `py -3.13 scripts/live_pages/make_long_page.py`. |
 

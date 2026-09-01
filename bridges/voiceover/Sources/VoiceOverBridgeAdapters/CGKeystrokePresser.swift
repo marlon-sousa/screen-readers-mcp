@@ -160,7 +160,7 @@ public final class CGKeystrokePresser: KeyPresser {
 				throw KeyPressFailure(
 					"the keyboard layout active on this machine has no key that produces "
 						+ "'\(character)', so there is no chord to press. Nothing was sent. Try a key "
-						+ "this layout does have, or one of the named keys (return, tab, escape, the "
+						+ "this layout does have, or one of the named keys (enter, tab, escape, the "
 						+ "arrows, f1 to f20), or ask the person at the machine which key it is on")
 			}
 			return found
@@ -211,15 +211,15 @@ public final class CGKeystrokePresser: KeyPresser {
 	static let namedKeyCodes: [Keystroke.NamedKey: UInt16] = {
 		var codes: [Keystroke.NamedKey: UInt16] = [
 			.space: 0x31,
-			.return: 0x24,
+			.enter: 0x24,
 			.tab: 0x30,
 			.escape: 0x35,
-			.delete: 0x33,
+			.backspace: 0x33,
 			.forwardDelete: 0x75,
-			.left: 0x7B,
-			.right: 0x7C,
-			.down: 0x7D,
-			.up: 0x7E,
+			.leftArrow: 0x7B,
+			.rightArrow: 0x7C,
+			.downArrow: 0x7D,
+			.upArrow: 0x7E,
 			.home: 0x73,
 			.end: 0x77,
 			.pageUp: 0x74,
