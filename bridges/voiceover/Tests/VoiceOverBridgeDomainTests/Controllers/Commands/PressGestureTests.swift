@@ -355,7 +355,10 @@ struct PressGestureTests {
 			Issue.record("expected the dispatch to fail")
 		} catch let error as CommandError {
 			#expect(error.description.contains(ReaderCondition.scriptingChannelDead.rawValue))
-			#expect(error.description.contains("restart VoiceOver"))
+			// SPELLED AS A PAIR since 13.20: `killall` on its own was measured NOT to
+			// bring the reader back, and a recovery that stopped there would leave a
+			// blind person with no screen reader.
+			#expect(error.description.contains(readerRestartCommand))
 		}
 		#expect(liveness.asked == 1)
 	}

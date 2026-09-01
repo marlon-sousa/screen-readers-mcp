@@ -401,6 +401,37 @@ do not assume a facility exists because another reader has one.
   applications` and `item chooser` between them cover most of what you would want
   it for.
 
+## Your session was SET UP before you were handed it
+
+`connect_reader` does not merely open a channel here. Before it answers it reads
+the two permissions this bridge needs, starts VoiceOver if it is not running,
+registers the capture voice's extension with the system if the system has
+forgotten it, points the reader at that voice, and then makes the reader speak
+and requires the words to arrive. If any of that could not be done, **you get a
+named failure instead of a session** — which step, what was wrong, and what you
+must do, usually "tell the person at this machine to do X, then connect again".
+
+Two consequences worth holding on to:
+
+- **An empty `get_speech` now means the reader said nothing.** It used to be able
+  to mean "this machine cannot capture at all", and the two were
+  indistinguishable. They are not any more: a session that exists is a session
+  whose capture was proved a moment ago. So an empty read is a fact about the
+  interface you are testing, not a fault to go hunting for.
+- **The first utterance of every session is not yours.** Index 1 holds what the
+  reader said when the setup asked it to describe what its cursor is on — real
+  speech, recorded like any other, and incidentally a useful statement of where
+  you are starting from. Your own first utterance is index 2. Take a bookmark
+  with `get_next_speech_index` before you act, as you would anyway, and none of
+  this matters.
+
+One thing the bridge will **not** do for you: restart the reader. macOS only
+publishes a newly registered voice after VoiceOver restarts, so if the setup had
+to register the extension, the connect fails and tells you to ask the person at
+the machine to run `killall VoiceOver && open -a VoiceOver` and connect again.
+That is not the bridge being timid — restarting somebody's screen reader without
+asking is taking their computer away mid-sentence.
+
 ## Two things about the machine you are driving
 
 - **Speech is captured through a voice this bridge installs.** In a `silent`

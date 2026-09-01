@@ -42,11 +42,27 @@ import VoiceOverBridgeAdapters
 import VoiceOverBridgeDomain
 
 /// A factory that touches nothing outside this test's own temporary files.
+///
+/// IT HANDS BACK A HEALTHY MACHINE BY DEFAULT, WHICH SINCE 13.20 INCLUDES A
+/// READER THAT SPEAKS. The handshake now climbs the ProviderState ladder and its
+/// last rung presses `describe item in voiceover cursor` and requires the
+/// utterance to ARRIVE -- so a factory whose fake reader said nothing would be a
+/// machine no test could connect to, and every scenario in this suite would fail
+/// for a reason none of them is about. `captureProbeSpeaks: false` is how a test
+/// asks for the machine where nothing comes back.
+///
+/// THE WRITE GOES THROUGH THE REAL FEED, on purpose. `capturePath` is this test's
+/// own temporary file and the factory builds the REAL `ContainerFileSpeechSource`
+/// over the REAL `FileLineTailer`, so an integration handshake proves the whole
+/// capture path -- a line appended by another writer, tailed, parsed and
+/// buffered -- with no extension and no reader on the machine. The IO lives here,
+/// in scaffolding, and never inside a port double.
 public func testAdapterFactory(
 	capturePath: String = unusedCapturePath(),
 	markerPath: String = unusedMarkerPath(),
 	lifecycle: any ProviderLifecycle = FakeProviderLifecycle(),
 	scripts: any AppleScriptRunner = FakeAppleScriptRunner(),
+	tools: any ProcessRunner = FakeProcessRunner(),
 	permissions: any PermissionBroker = FakePermissionBroker(),
 	poster: any EventPoster = FakeEventPoster(),
 	layout: any KeyboardLayout = FakeKeyboardLayout(),
@@ -54,13 +70,18 @@ public func testAdapterFactory(
 	frontmost: any FrontmostApplication = FakeFrontmostApplication(),
 	trust: any AccessibilityTrust = FakeAccessibilityTrust(),
 	announcer: any Announcer = FakeAnnouncer(),
-	prompter: any UserPrompter = FakeUserPrompter()
+	prompter: any UserPrompter = FakeUserPrompter(),
+	captureProbeSpeaks: Bool = true
 ) -> VoiceOverAdapterFactory {
-	VoiceOverAdapterFactory(
+	if captureProbeSpeaks, let fake = scripts as? FakeAppleScriptRunner {
+		answerTheCaptureProbe(on: fake, writingTo: capturePath)
+	}
+	return VoiceOverAdapterFactory(
 		capturePath: capturePath,
 		markerPath: markerPath,
 		lifecycle: lifecycle,
 		scripts: scripts,
+		tools: tools,
 		permissions: permissions,
 		poster: poster,
 		layout: layout,
@@ -72,6 +93,40 @@ public func testAdapterFactory(
 	)
 }
 
+/// Make a fake script runner behave like a HEALTHY reader: one that answers its
+/// own name, and that speaks when the capture probe is pressed.
+///
+/// TWO SCRIPTS, BECAUSE THE HANDSHAKE SENDS TWO. Rung 2 asks the reader its own
+/// name through the real `VoiceOverLiveness`, and rung 5 presses the probe
+/// through the real `VoiceOverGestureSender` -- both over this one seam. A fake
+/// that answered the name script with the empty default would report a dead
+/// reader on every machine, and the whole suite would fail at rung 2 for a reason
+/// none of it is about.
+///
+/// The name is answered from the SCRIPT the adapter publishes rather than from a
+/// copy of it, so a change to what liveness asks cannot leave this rig answering
+/// a question nobody sends any more.
+///
+/// The speech is one `synthesize` line in the capture voice's own feed format,
+/// appended when the probe command goes out. The format is the extension's, not
+/// ours to invent: `ContainerFileSpeechSource` reads `event`, `text` and `at`,
+/// and a line with no `ssml` is the documented fallback path.
+public func answerTheCaptureProbe(on scripts: FakeAppleScriptRunner, writingTo path: String) {
+	scripts.scriptedAnswers[VoiceOverLiveness.readerNameScript] = "VoiceOver"
+	scripts.onScript = { script in
+		guard script.contains(ReaderEdgeSetup.captureProbeCommand) else { return }
+		let line = Data(
+			"{\"event\":\"synthesize\",\"text\":\"\(captureProbeUtterance)\",\"at\":0}\n".utf8)
+		if let handle = FileHandle(forWritingAtPath: path) {
+			handle.seekToEndOfFile()
+			handle.write(line)
+			try? handle.close()
+		} else {
+			try? line.write(to: URL(fileURLWithPath: path))
+		}
+	}
+}
+
 /// An AdapterSet of doubles, for tests that install a reader edge by hand.
 ///
 /// The fields arrived one entry at a time and will keep doing so, so a test that
@@ -80,6 +135,12 @@ public func testAdapterFactory(
 /// with 13.7, two more with 13.8, one with 13.9, two with 13.10 and one with
 /// 13.17, and this helper is why nothing but the factory noticed any of the five
 /// times.
+///
+/// SINCE 13.20 THE GESTURE SENDER ANSWERS THE CAPTURE PROBE, for the reason the
+/// factory above does: the handshake requires an utterance to come back, and a
+/// set whose reader is mute is a machine no session can be established on. Here
+/// it is a direct `emit` on the fake source rather than a file, because these are
+/// port doubles all the way down and there is no feed to tail.
 public func fakeAdapterSet(
 	mode: CaptureMode = .live,
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
@@ -92,9 +153,13 @@ public func fakeAdapterSet(
 	permissions: FakePermissionBroker = FakePermissionBroker(),
 	focusInspector: FakeFocusInspector = FakeFocusInspector(),
 	announcer: FakeAnnouncer = FakeAnnouncer(),
-	userPrompter: FakeUserPrompter = FakeUserPrompter()
+	userPrompter: FakeUserPrompter = FakeUserPrompter(),
+	captureProbeSpeaks: Bool = true
 ) -> AdapterSet {
-	AdapterSet(
+	if captureProbeSpeaks {
+		answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
+	}
+	return AdapterSet(
 		mode: mode,
 		speechSource: speechSource,
 		silenceControl: silenceControl,
@@ -109,3 +174,33 @@ public func fakeAdapterSet(
 		userPrompter: userPrompter
 	)
 }
+
+/// Make a pair of port doubles behave like a reader that speaks when the capture
+/// probe is pressed.
+///
+/// THE ONE DEFINITION OF A HEALTHY FAKE READER AT THE PORT LEVEL, called by
+/// `fakeAdapterSet` here and by `FakeAdapterFactory` beside it. Two copies of it
+/// would be two ideas of what a working machine does, and they would differ the
+/// first time somebody changed the probe.
+///
+/// It CHAINS rather than replacing: a test that installed its own `onPress` to
+/// make speech arrive as a consequence of ITS command keeps working.
+public func answerTheCaptureProbe(
+	pressing sender: FakeGestureSender, speaking source: FakeSpeechSource
+) {
+	let previous = sender.onPress
+	sender.onPress = { command in
+		previous?(command)
+		guard command == ReaderEdgeSetup.captureProbeCommand else { return }
+		source.emit(captureProbeUtterance)
+	}
+}
+
+/// What a fake reader "says" when the capture proof presses its probe.
+///
+/// Recognisable on sight, so an assertion that trips over it in a buffer says
+/// what put it there. It is REAL SPEECH as far as the session is concerned --
+/// the reader was asked to describe its cursor and it did -- so it lands at
+/// index 1 of every session's buffer, which is a consequence tests have to
+/// account for rather than one the bridge hides.
+public let captureProbeUtterance = "capture probe, fake reader"

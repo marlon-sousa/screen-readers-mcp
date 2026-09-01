@@ -280,8 +280,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.20**
-in lane 3, and the next free spec number is **0050**. Spec **0049** was spent on
+The next free board number is **11.38** in the convergence series and **13.21**
+in lane 3, and the next free spec number is **0051**. Spec **0050** and board
+number **13.20** were spent on 2026-09-01 by the finding that `connect_reader`
+established sessions on a machine that could not capture, and this line moved in
+the same commit. Spec **0049** was spent on
 2026-08-31 by 13.19, and this line moved in the same commit. Board numbers
 **13.18** and **13.19** were spent on 2026-08-31 by two findings that came out of 13.17's live
 run -- how much of an announcement a session can capture, and the discovery that
@@ -1586,6 +1589,69 @@ rule intends.
     Spec: [spec 0049](specs/0049-a-key-that-is-not-a-command.md). Instrument:
     `scripts/voiceover_chords.sh`, which gained an unmodified-key press.
     Done (PR #94, 2026-08-31).
+
+13.20. **Done** -- **The handshake climbs the ladder** (lane 3). Found by Marlon
+    on 2026-08-31, driving 13.19's live checklist.
+
+    **The problem.** `connect_reader` established a session on a machine that
+    cannot capture speech and said nothing about it. `poe build` deletes and
+    replaces the capture-voice bundle -- `build.sh` begins `rm -rf build` -- so
+    the system forgets the extension; every session afterwards returned
+    `speech: []`, which is indistinguishable from "the reader said nothing" and
+    is the one answer [spec 0041](specs/0041-can-voiceover-say-what-it-said.md)
+    says a bridge on this route must never give. It cost that checklist an hour,
+    **and the bridge knew**: `BridgeListener` printed `providerNotRunning` at
+    startup and the handshake went ahead anyway.
+
+    **The decision.** `hello` stops REPORTING where the `ProviderState` ladder
+    stopped and starts CLIMBING it, failing by name at the one rung it cannot
+    climb. Five rungs, all eager: read both permissions; get the reader running
+    (`open -a VoiceOver` -- `killall` alone was measured NOT to relaunch it);
+    register the extension (`lsregister -f` then `pluginkit -a`, confirmed by
+    POLLING, because `pluginkit` hands the work to `pkd` and returns); select the
+    voice; and then make the reader speak and require the utterance to ARRIVE,
+    which is the only evidence `capturing` accepts.
+
+    **13.8's lever survives word for word, and there was no sweep.** The
+    handshake READS the grants and never requests one -- a handshake that waited
+    on a consent dialog nobody may be looking at is a handshake that hangs -- so
+    `PermissionBroker.request` still has exactly two callers, both command
+    handlers about to post a system event. What it cost is stated rather than
+    hidden: a machine that has never granted Accessibility can no longer open a
+    session at all, which is the property `scripts/voiceover_channels.sh` was
+    written for. That script is unaffected; it drives the reader directly.
+
+    **Fatal in BOTH modes**, which is not 13.6's asymmetry reversed. 13.6 is
+    about a promise concerning a human's ears, which only `silent` makes. This is
+    about a promise that `getSpeech` means anything at all, which a live session
+    announces just as loudly -- and "it may become healthy while it runs" is a
+    reasonable thing to say about a state nobody is repairing and an unreasonable
+    one about a state the handshake has just tried to repair and failed.
+
+    **The rule to keep is one sentence: SESSION state is restored at teardown --
+    the voice selection, hard invariant 3, unchanged -- and MACHINE state is
+    not.** There is deliberately no `unregister()`: undoing the registration
+    would recreate this exact bug, and the accept loop is serial today but will
+    not always be, so one client's disconnect must never deregister the voice
+    under another.
+
+    **The honest limit**, and it is `registered` to `published`: the system
+    publishes a newly registered voice only after VoiceOver RESTARTS, and a
+    handshake may not restart a blind person's screen reader. So registration
+    succeeds, the proof still fails, and the failure names the restart and gives
+    the command -- always as a pair, `killall VoiceOver && open -a VoiceOver`.
+
+    **One consequence worth knowing before you read a transcript**: the proof's
+    utterance is real speech and stays in the buffer, so index 1 of every session
+    is the reader describing where its cursor is and a session's own speech
+    starts at 2.
+
+    Spec: [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md). Open
+    question it deliberately does not answer: **how a human grants these
+    permissions** -- a button in the bridge is the candidate and has a real
+    problem, since TCC attributes a grant to the process it holds RESPONSIBLE,
+    measured on 2026-08-31 to be `/usr/libexec/sshd-keygen-wrapper`. That is its
+    own entry.
 
 ## Convergence (requires C and D both Done)
 

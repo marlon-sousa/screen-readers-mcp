@@ -21,8 +21,16 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 	public var selectionRefusal: ProviderError?
 	/// When set, `restoreVoice` throws it -- the case that must not stop teardown.
 	public var restoreRefusal: ProviderError?
+	/// When set, `register` throws it and the machine state is left alone.
+	public var registrationRefusal: ProviderError?
+	/// What `register` promotes the machine to when it succeeds. `published` is
+	/// the honest default for a fake of a MACHINE that has just been registered
+	/// and whose reader has restarted; a test that wants the rung this bridge
+	/// cannot climb sets `.registered` and gets exactly that failure.
+	public var stateAfterRegistering: ProviderState = .published
 
 	public private(set) var selectCalls = 0
+	public private(set) var registerCalls = 0
 	public private(set) var restored: [String] = []
 
 	public init(
@@ -44,9 +52,27 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 		selected.map { SelectedVoice(identifier: $0, isCaptureVoice: $0 == captureVoiceIdentifier) }
 	}
 
+	/// COUNTED, and never undone. `register()` is MACHINE state: the port says in
+	/// as many words that there is no `unregister()` and that nothing at teardown
+	/// may be paired with this, so a fake that counted nothing could not tell a
+	/// bridge that registers once from one that registers on every connect -- nor
+	/// catch the `unregister()` somebody adds for symmetry, which would put the
+	/// next session back in the state 13.20 exists to repair.
+	public func register() throws {
+		registerCalls += 1
+		if let registrationRefusal { throw registrationRefusal }
+		machineState = stateAfterRegistering
+	}
+
 	public func selectCaptureVoice() throws {
 		selectCalls += 1
 		if let selectionRefusal { throw selectionRefusal }
+		// MIRRORS THE REAL ADAPTER, which cannot select a voice the system has not
+		// published and says so by name. A fake that wrote the selection anyway
+		// would let a test climb a rung the machine cannot.
+		guard machineState >= .published else {
+			throw ProviderError("cannot select the capture voice: " + state().report)
+		}
 		selected = captureVoiceIdentifier
 	}
 

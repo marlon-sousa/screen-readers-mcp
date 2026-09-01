@@ -13,6 +13,13 @@ public final class FakeReaderLiveness: ReaderLiveness {
 	/// nearly every test is in.
 	public var answersItsOwnName: Bool
 	public private(set) var asked = 0
+	public private(set) var activations = 0
+
+	/// What `activate()` makes of the reader. Defaults to "it comes up", because
+	/// that is what `open -a VoiceOver` does on a working machine -- and a fake
+	/// that could not model it could not tell a handshake that starts the reader
+	/// from one that gives up on it.
+	public var activationSucceeds = true
 
 	public init(answersItsOwnName: Bool = true) {
 		self.answersItsOwnName = answersItsOwnName
@@ -21,5 +28,14 @@ public final class FakeReaderLiveness: ReaderLiveness {
 	public func readerAnswersItsOwnName() -> Bool {
 		asked += 1
 		return answersItsOwnName
+	}
+
+	/// COUNTED, and the count is the point: `activate()` may be called only when
+	/// the reader did not answer. A fake that started the reader silently would
+	/// let a handshake run `open -a VoiceOver` on every connect, and no test would
+	/// notice a session that keeps taking somebody's screen over.
+	public func activate() {
+		activations += 1
+		if activationSucceeds { answersItsOwnName = true }
 	}
 }

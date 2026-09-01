@@ -27,13 +27,33 @@
 // past it -- which is the whole reason ProviderState has five states and not a
 // boolean.
 //
-// REGISTRATION IS NOT PERFORMED HERE, and that is a deliberate absence rather
-// than an omission: re-registering only takes effect after the reader restarts
-// (finding 6), and restarting a blind person's screen reader is not a decision a
-// handshake may take. The recovery is REPORTED, by name, with its order --
-// `lsregister -f` first and `pluginkit -a` second, because the first alone was
-// measured not to be enough (spec 0041, C1) -- and the control dialog is where a
-// human will drive it.
+// REGISTRATION IS PERFORMED HERE SINCE 13.20, AND THIS PARAGRAPH USED TO SAY IT
+// WAS NOT. The old text called the absence deliberate, on the grounds that
+// re-registering only takes effect after the reader restarts (finding 6) and
+// that no handshake may restart a blind person's screen reader. That is right
+// about the RESTART and was over-applied to the REGISTRATION: registering is two
+// silent subprocesses that change nothing a running reader can see. So this
+// class does it, and the restart is still reported rather than taken.
+//
+// THE ORDER IS THE CONTRACT: `lsregister -f` on the .app FIRST and `pluginkit
+// -a` on the .appex SECOND, because the first alone was measured not to be
+// enough (spec 0041, C1).
+//
+// AND IT IS CONFIRMED BY POLLING, NOT BY AN EXIT STATUS. MEASURED 2026-08-31:
+// `pluginkit -a` hands the work to `pkd` and returns, so an immediate re-read
+// reports failure on a registration that worked. A false alarm here is worse
+// than no check at all -- it sends a human to redo something already done -- so
+// the confirmation is `isRegistered()` polled over a window, on the injected
+// Clock so a test pays none of it.
+//
+// THE PATHS ARE NOT DERIVED HERE. This class knows identifiers; Wiring knows
+// where a bundle is (see CaptureBundle). Given none, `register()` is a NAMED
+// FAILURE that carries both commands so a human can run them by hand -- which is
+// strictly better than guessing at a path and reporting success for an
+// `lsregister` that registered nothing.
+//
+// THERE IS NO `unregister()`. See the port: SESSION state is restored at
+// teardown, MACHINE state is not.
 
 import Foundation
 import VoiceOverBridgeDomain
@@ -44,29 +64,54 @@ public final class PluginKitProviderLifecycle: ProviderLifecycle {
 	/// Apple's own SiriAUSP.appex rather than recalled (spec 0046, part 3).
 	static let speechExtensionPoint = "com.apple.AudioUnit-Speech"
 
+	/// Where LaunchServices lives. Absolute, like every other tool this bridge
+	/// runs, so nothing depends on the caller's PATH.
+	static let launchServicesTool =
+		"/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework"
+		+ "/Support/lsregister"
+
+	/// How long `register()` waits for pkd to catch up before calling it a
+	/// failure. Wide, because a false negative here is the expensive direction.
+	static let registrationConfirmationSeconds: Double = 5.0
+
+	/// How often it re-asks inside that window.
+	static let registrationPollInterval: Double = 0.25
+
 	private let runner: any ProcessRunner
 	private let published: any PublishedVoices
 	private let store: any VoiceStore
 	private let extensionBundleID: String
 	private let voiceIdentifierSuffix: String
+	private let bundlePaths: CaptureBundlePaths?
+	private let clock: any Clock
 
 	/// `extensionBundleID` is what pluginkit lists; `voiceIdentifierSuffix` is
 	/// what the audio unit declares, and what the published identifier ENDS with.
 	/// Both are passed in rather than read from a constant here, so this class
 	/// stays the place that knows what an answer means and not the place that
 	/// knows what we are called.
+	/// `bundlePaths` is what `register()` points the two tools at, and nil is a
+	/// legitimate answer: a process that is not running out of the assembled
+	/// bundle and cannot find one beside the package has nothing truthful to
+	/// register. The `Clock` is the registration poll's, injected for the reason
+	/// every clock in this repo is -- so its test costs microseconds rather than
+	/// five real seconds.
 	public init(
 		runner: any ProcessRunner,
 		published: any PublishedVoices,
 		store: any VoiceStore,
 		extensionBundleID: String,
-		voiceIdentifierSuffix: String
+		voiceIdentifierSuffix: String,
+		bundlePaths: CaptureBundlePaths? = nil,
+		clock: any Clock = RealClock()
 	) {
 		self.runner = runner
 		self.published = published
 		self.store = store
 		self.extensionBundleID = extensionBundleID
 		self.voiceIdentifierSuffix = voiceIdentifierSuffix
+		self.bundlePaths = bundlePaths
+		self.clock = clock
 	}
 
 	// -- the state machine ----------------------------------------------------
@@ -84,6 +129,54 @@ public final class PluginKitProviderLifecycle: ProviderLifecycle {
 	public func selectedVoice() -> SelectedVoice? {
 		guard let identifier = store.selectedVoice() else { return nil }
 		return SelectedVoice(identifier: identifier, isCaptureVoice: isOurs(identifier))
+	}
+
+	public func register() throws {
+		guard let paths = bundlePaths else {
+			throw ProviderError(
+				"this bridge does not know where its own app bundle is, so it cannot register the "
+					+ "capture voice's extension. Run these two, in this order: "
+					+ "\(Self.launchServicesTool) -f <path to \(captureAppName).app> "
+					+ "&& /usr/bin/pluginkit -a <that path>/Contents/PlugIns/\(captureExtensionName).appex")
+		}
+		// THE ORDER IS THE CONTRACT. lsregister first: pluginkit alone was
+		// measured not to be enough (spec 0041, C1).
+		try run(Self.launchServicesTool, ["-f", paths.app], step: "register the app bundle")
+		try run(Self.pluginKitTool, ["-a", paths.appex], step: "add the speech extension")
+
+		// CONFIRMED BY POLLING. pluginkit hands the work to pkd and returns, so
+		// the exit status above says nothing about whether the extension is
+		// listed yet.
+		let deadline = clock.monotonic() + Self.registrationConfirmationSeconds
+		while !isRegistered() {
+			guard clock.monotonic() < deadline else {
+				throw ProviderError(
+					"the capture voice's extension was registered and pluginkit still does not list it "
+						+ "after \(Int(Self.registrationConfirmationSeconds)) seconds. "
+						+ ReaderCondition.providerNotRunning.described)
+			}
+			clock.sleep(Self.registrationPollInterval)
+		}
+	}
+
+	/// One registration tool, with its failure named as itself.
+	///
+	/// A tool that could not be LAUNCHED and one that ran and refused are
+	/// different problems with different recoveries, and both are reported as
+	/// what they were rather than folded into "registration failed".
+	private func run(_ tool: String, _ arguments: [String], step: String) throws {
+		let result: ProcessResult
+		do {
+			result = try runner.run(tool, arguments)
+		} catch {
+			throw ProviderError("could not run \(tool) to \(step): \(error)")
+		}
+		guard result.succeeded else {
+			let detail = result.standardError.isEmpty ? result.output : result.standardError
+			throw ProviderError(
+				"\(tool) refused to \(step) (exit \(result.status))"
+					+ (detail.isEmpty ? "" : ": \(detail.trimmingCharacters(in: .whitespacesAndNewlines))"))
+		}
 	}
 
 	public func selectCaptureVoice() throws {

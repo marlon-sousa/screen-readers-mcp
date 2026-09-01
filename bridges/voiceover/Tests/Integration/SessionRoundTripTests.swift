@@ -84,6 +84,29 @@ struct SessionRoundTripTests {
 		}
 	}
 
+	/// The scripts a COMMAND sent, with the handshake's own two removed.
+	///
+	/// SINCE 13.20 EVERY `hello` SENDS TWO SCRIPTS DOWN THIS SEAM: rung 2 asks the
+	/// reader its own name, and rung 5 presses the capture probe and requires the
+	/// utterance to come back. Every assertion in this file is about what a
+	/// COMMAND did, so the handshake's two are taken out here -- BY NAME rather
+	/// than by count, so that a handshake which stopped sending one fails loudly
+	/// instead of quietly consuming a command's script in its place.
+	private func commandScripts(_ scripts: FakeAppleScriptRunner) -> [String] {
+		var remaining = scripts.scripts
+		for expected in [
+			VoiceOverLiveness.readerNameScript,
+			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand),
+		] {
+			guard let index = remaining.firstIndex(of: expected) else {
+				Issue.record("the handshake no longer sends: \(expected)")
+				continue
+			}
+			remaining.remove(at: index)
+		}
+		return remaining
+	}
+
 	@Test("a live handshake answers with this bridge's identity and its capability set")
 	func theHandshake() throws {
 		let peer = Peer()
@@ -204,7 +227,14 @@ struct SessionRoundTripTests {
 		// cannot be selected, so nothing can be silenced -- and the agent is told
 		// which condition it is and what repairs it, rather than being handed a
 		// session that quietly means something else.
-		let peer = Peer(lifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		// THE RUNG THIS BRIDGE CANNOT CLIMB, modelled: the handshake registers the
+		// extension itself now (13.20), and the system publishes a newly registered
+		// voice only after VoiceOver RESTARTS -- which no handshake may do. So
+		// registering succeeds, `published` is never reached, and the refusal is
+		// what an agent gets.
+		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
+		lifecycle.stateAfterRegistering = .registered
+		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(
 			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
 		guard case .failure(let error) = try peer.reply().outcome() else {
@@ -215,22 +245,34 @@ struct SessionRoundTripTests {
 		#expect(error.message.contains("pluginkit"))
 	}
 
-	@Test("a LIVE handshake on the same machine is NOT refused, because selecting applies live")
-	func liveSurvivesAnUnhealthyEdge() throws {
-		// Not squeamishness, and not an inconsistency: writing the voice takes
-		// effect live, in both directions (spec 0047, finding 17), so a live
-		// session that starts unhealthy can become healthy while it runs. Silence
-		// promised at the handshake has to hold from the handshake.
-		let peer = Peer(lifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+	@Test("A LIVE HANDSHAKE ON THE SAME MACHINE IS REFUSED TOO, and 13.20 is where that changed")
+	func liveIsRefusedOnAnUnusableEdge() throws {
+		// UNTIL 13.20 THIS TEST ASSERTED THE OPPOSITE, and the reversal is the
+		// entry. A live session used to be established on an unhealthy edge with a
+		// note in the transcript, because writing the voice applies live in both
+		// directions (spec 0047, finding 17) and such a session could heal itself.
+		// What that produced in practice was a session answering `speech: []` --
+		// indistinguishable from "the reader said nothing" -- for an hour of a live
+		// checklist on 2026-08-31.
+		//
+		// The 13.6 asymmetry it came from is still right where it is made: `silent`
+		// is a promise about a human's EARS and has to hold from the handshake.
+		// This is a different promise -- that `getSpeech` means anything at all --
+		// and a live session announces the `speech` capability just as loudly.
+		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
+		lifecycle.stateAfterRegistering = .registered
+		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
-		guard case .success(let value) = try peer.reply().outcome() else {
-			Issue.record("expected a live session to be established anyway")
+		guard case .failure(let error) = try peer.reply().outcome() else {
+			Issue.record("expected a live session to be refused on an unusable reader edge")
 			return
 		}
-		#expect(try value.decoded(as: HelloResult.self).mode == .live)
-		// And the transcript says why, by name, for the human reading it later.
-		#expect(peer.transcript.notes.contains { $0.contains(ReaderCondition.providerNotRunning.rawValue) })
-		peer.hangUp()
+		#expect(error.message.contains(SetupRung.voiceSelection.rawValue))
+		#expect(error.message.contains(ReaderCondition.providerNotRunning.rawValue))
+		// And it tried: the bridge registered the extension before it gave up, which
+		// is the half of the recovery a human no longer has to perform.
+		#expect(lifecycle.registerCalls == 1)
+		#expect(peer.transcript.notes.contains { $0.contains("registering it") })
 	}
 
 	@Test("a wrong protocol version ends the handshake, and the reply says both numbers")
@@ -338,7 +380,7 @@ struct SessionRoundTripTests {
 
 		// The script the real sender built, off the real wire request. This is the
 		// end-to-end form of the finding that unblocked this entry.
-		let script = try #require(scripts.scripts.first)
+		let script = try #require(commandScripts(scripts).first)
 		#expect(script == "tell application \"VoiceOver\" to tell commander to perform command \"go to desktop\"")
 		#expect(peer.transcript.gestures == ["go to desktop"])
 		peer.hangUp()
@@ -404,10 +446,24 @@ struct SessionRoundTripTests {
 		// COMMAND NAMES", which is the property that was ever worth having. The
 		// gesture driven past the broker below is a command name, and the keystroke
 		// leg at the end asserts the other half rather than leaving it implied.
-		let permissions = FakePermissionBroker(state: .notGranted)
+		//
+		// AND 13.20 CHANGED HOW IT IS SET UP WITHOUT WEAKENING WHAT IT ASSERTS. The
+		// handshake now READS both grants and refuses a session that does not hold
+		// them, so this scenario can no longer begin on a machine with nothing
+		// granted -- which is the one capability that entry took away, and it is
+		// written down in spec 0050 §2.2. The grant is therefore held at the
+		// handshake and REVOKED immediately after, which is a thing macOS itself
+		// does live; what the scenario proves is unchanged, and the claim it can now
+		// make is strictly stronger: the handshake READS both and REQUESTS neither.
+		let permissions = FakePermissionBroker(state: .granted)
 		let peer = Peer(permissions: permissions)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		// Exactly the handshake's own two reads, and not one request.
+		#expect(permissions.statusReads == Permission.allCases)
+		#expect(permissions.requests.isEmpty)
+		permissions.state = .notGranted
+
 		try peer.send(
 			id: 2, cmd: "pressGesture",
 			params: ["gestures": .array([.string("go to desktop")]), "graceMs": .int(0)])
@@ -422,7 +478,9 @@ struct SessionRoundTripTests {
 		try peer.send(id: 11, cmd: "askUser", params: ["prompt": .string("ready?")])
 		_ = try peer.reply()
 		#expect(permissions.requests.isEmpty)
-		#expect(permissions.statusReads.isEmpty)
+		// Nothing SINCE the handshake has even read a grant, let alone asked for
+		// one: the two reads below are the ones asserted above.
+		#expect(permissions.statusReads == Permission.allCases)
 
 		// And now the two commands that may ask. The grant is not held, so each
 		// reply says what to do about it rather than reporting a success that
@@ -471,8 +529,9 @@ struct SessionRoundTripTests {
 		#expect(poster.keyed.map(\.keyCode) == [201, 201])
 		#expect(poster.keyed.allSatisfy { $0.flags == .maskCommand })
 		#expect(poster.keyed.map(\.keyDown) == [true, false])
-		// AND NOT ONE APPLESCRIPT WAS RUN. The chord never went near the reader.
-		#expect(scripts.scripts.isEmpty)
+		// AND NOT ONE APPLESCRIPT WAS RUN BY THE COMMAND. The chord never went near
+		// the reader; the only scripts on the seam are the handshake's own two.
+		#expect(commandScripts(scripts).isEmpty)
 		// Nor did it arrive as typed text, which would have inserted an `l` where
 		// a location bar should have opened.
 		#expect(poster.posted.isEmpty)
@@ -511,7 +570,7 @@ struct SessionRoundTripTests {
 		#expect(poster.flagTransitions.isEmpty)
 		// Not to the reader, and not as typed text -- which is the route that made
 		// this reachable by accident and meant something else entirely.
-		#expect(scripts.scripts.isEmpty)
+		#expect(commandScripts(scripts).isEmpty)
 		#expect(poster.posted.isEmpty)
 		// What the session is TOLD it pressed keeps the prefix, so the line can be
 		// replayed: `h` fed back in is a command name.
@@ -526,7 +585,10 @@ struct SessionRoundTripTests {
 			id: 3, cmd: "pressGesture",
 			params: ["gestures": .array([.string("h")]), "graceMs": .int(0)])
 		_ = try peer.reply()
-		#expect(scripts.scripts == ["tell application \"VoiceOver\" to tell commander to perform command \"h\""])
+		#expect(
+			commandScripts(scripts) == [
+				"tell application \"VoiceOver\" to tell commander to perform command \"h\""
+			])
 		#expect(poster.keyed.count == 2)
 		peer.hangUp()
 	}
@@ -606,7 +668,7 @@ struct SessionRoundTripTests {
 		#expect(result.appModule == "com.apple.TextEdit")
 
 		#expect(
-			scripts.scripts == [
+			commandScripts(scripts) == [
 				"tell application \"VoiceOver\" to return text under cursor of vo cursor"
 			])
 		peer.hangUp()
@@ -620,7 +682,10 @@ struct SessionRoundTripTests {
 		// no dialog, and never through the broker -- so a session that presses,
 		// reads speech and asks where it is goes past a counting broker without
 		// asking it anything at all, on BOTH routes.
-		let permissions = FakePermissionBroker(state: .notGranted)
+		// The grant is held at the handshake (13.20 refuses a session without it)
+		// and revoked immediately after, so the commands below run on a machine
+		// that does not hold it -- which is the state this scenario is about.
+		let permissions = FakePermissionBroker(state: .granted)
 		let trust = FakeAccessibilityTrust(trusted: false)
 		let peer = Peer(permissions: permissions, trust: trust)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
@@ -633,7 +698,9 @@ struct SessionRoundTripTests {
 		_ = try peer.reply()
 
 		#expect(permissions.requests.isEmpty)
-		#expect(permissions.statusReads.isEmpty)
+		// The handshake's own two reads and nothing since: focus reads the grant
+		// through a seam that cannot request it, and never through the broker.
+		#expect(permissions.statusReads == Permission.allCases)
 		// It did ask the cheap question -- once per command, on both routes.
 		#expect(trust.reads == 2)
 		peer.hangUp()
@@ -754,10 +821,14 @@ struct SessionRoundTripTests {
 		// chosen for, and the session tolerating it is what makes a test run
 		// survive a command the agent got wrong.
 		let scripts = FakeAppleScriptRunner()
-		scripts.failNext(number: 6, message: "Command does not exist.")
 		let peer = Peer(scripts: scripts)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		// QUEUED AFTER THE HANDSHAKE, which is 13.20's doing: the handshake sends
+		// two scripts of its own down this seam, and a failure queued before it
+		// would be spent on the reader-name probe instead of on the command this
+		// test is about.
+		scripts.failNext(number: 6, message: "Command does not exist.")
 
 		try peer.send(
 			id: 2, cmd: "pressGesture", params: ["gestures": .array([.string("no such command")])])

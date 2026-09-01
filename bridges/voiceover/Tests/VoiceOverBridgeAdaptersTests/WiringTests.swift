@@ -74,6 +74,50 @@ struct WiringTests {
 		#expect(server.status.state == .stopped)
 	}
 
+	@Test("THE BUNDLE PATHS RESOLVE TO THE build/ DIRECTORY BESIDE THE PACKAGE, or to nothing")
+	func theBundlePathsAreResolvedHere() throws {
+		// THE ONE PLACE THAT KNOWS WHERE A BUNDLE LIVES (13.20).
+		// `PluginKitProviderLifecycle` knows identifiers and must not know layout,
+		// so `register()` is handed a path or told there is none.
+		//
+		// An INVENTED package directory rather than this one's, so the answer does
+		// not depend on whether the developer happens to have run `build.sh`: both
+		// branches are exercised on every machine, every time.
+		let root = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("wiring-package-\(UUID().uuidString)")
+		defer { try? FileManager.default.removeItem(at: root) }
+		let pretendSource = root
+			.appendingPathComponent("Sources/VoiceOverBridgeAdapters/Wiring.swift").path
+		let notAnApp = Bundle(for: BundleAnchor.self)
+
+		// NIL IS AN ANSWER, and not a fallback to a guess: `register()` then fails
+		// by name carrying both commands, where a guessed path would let
+		// `lsregister -f` register nothing and report success.
+		#expect(
+			Wiring.captureBundlePaths(main: notAnApp, packageDirectory: pretendSource) == nil)
+
+		let build = root.appendingPathComponent("build")
+		try FileManager.default.createDirectory(
+			at: build.appendingPathComponent("\(captureAppName).app"), withIntermediateDirectories: true)
+		#expect(
+			Wiring.captureBundlePaths(main: notAnApp, packageDirectory: pretendSource)
+				== CaptureBundlePaths.inside(directory: build.path))
+	}
+
+	@Test("running INSIDE the .app resolves to that bundle")
+	func anAppBundleResolvesToItself() {
+		// The first candidate, and the one that matters once the bridge ships: a
+		// process running out of the assembled bundle registers ITS OWN extension
+		// rather than whatever a developer last built.
+		let temporary = URL(fileURLWithPath: NSTemporaryDirectory())
+			.appendingPathComponent("wiring-\(UUID().uuidString).app")
+		try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: temporary) }
+		let resolved = Wiring.captureBundlePaths(
+			main: Bundle(url: temporary) ?? .main, packageDirectory: #filePath)
+		#expect(resolved?.app == temporary.path)
+	}
+
 	@Test("the marker path is the extension's container, and the override is honoured")
 	func theMarkerPathIsResolvedHere() {
 		// Wiring is the one place in the bridge that reads the environment, so the
@@ -128,3 +172,9 @@ struct WiringTests {
 		#expect(SilenceCapPolicy(enabled: FakeBridgeConfig(attended: false).attended).enabled == false)
 	}
 }
+
+/// A class in this test bundle, so `Bundle(for:)` names the .xctest rather than
+/// the test runner. `Bundle.main` under `swift test` is the runner's, which is
+/// not a `.app` -- and asserting against whatever the runner happens to be is
+/// how a test starts depending on the harness rather than on the code.
+private final class BundleAnchor {}

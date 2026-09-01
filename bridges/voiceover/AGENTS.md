@@ -115,11 +115,83 @@ machine where the capture voice is not registered, not published, or would not
 stick is refused **by named condition, with its recovery** — never established
 and quietly turned into something else.
 
-**A LIVE handshake in the same state is not refused**, and the asymmetry is
-deliberate rather than squeamish: writing the voice applies live, in both
-directions (spec 0047, finding 17), so a live session that starts unhealthy can
-become healthy while it runs. Silence promised at the handshake has to hold from
-the handshake.
+**A LIVE handshake in the same state was not refused until 13.20**, and the
+asymmetry was deliberate rather than squeamish: writing the voice applies live,
+in both directions (spec 0047, finding 17), so a live session that starts
+unhealthy can become healthy while it runs. Silence promised at the handshake has
+to hold from the handshake. **That reasoning still holds and no longer decides
+the question** — the handshake now climbs the ladder and refuses in BOTH modes,
+for a promise neither mode is exempt from. See "The handshake CLIMBS the ladder"
+above.
+
+## The handshake CLIMBS the ladder, and it never restarts the reader
+
+`connect_reader` makes its own setup (spec 0050, board entry 13.20). `hello` used
+to REPORT where `ProviderState` had stopped — refusing a silent session by named
+condition and letting a live one through with a note — and what that produced was
+a session answering `speech: []`, which is indistinguishable from "the reader
+said nothing" and is the one answer `ReaderCondition`'s header says a bridge on
+this route must never give. It cost an hour of 13.19's live checklist on
+2026-08-31, and the trigger is our own build: `build.sh` begins `rm -rf build`,
+so the system forgets the extension every time this bridge is rebuilt.
+
+`ReaderEdgeSetup` now runs five rungs, all eager, in this order, each failing by
+name with what the AGENT must do:
+
+| # | Rung | What it does | Costs |
+|---|---|---|---|
+| 1 | `permissions` | READS Accessibility and Automation-of-VoiceOver | one subprocess (the automation grant is a fact about the channel) |
+| 2 | `readerRunning` | asks the reader its name; if silent, `open -a VoiceOver` and asks again | one subprocess, usually one |
+| 3 | `registration` | `lsregister -f` then `pluginkit -a`, **only** from `notRegistered`, confirmed by polling | nothing on a healthy machine |
+| 4 | `voiceSelection` | records the user's voice, writes ours, confirms | unchanged from 13.6 |
+| 5 | `captureProof` | presses `describe item in voiceover cursor` and requires the utterance to arrive | one command and one poll interval |
+
+Five rules bind anyone editing this.
+
+**IT IS FATAL IN BOTH MODES, AND THAT IS NOT 13.6's ASYMMETRY REVERSED.** 13.6's
+rule is about a promise concerning a human's EARS, which only `silent` makes, and
+it stands where it is made. This is a different promise — that `getSpeech` means
+anything at all — and a live session announces the `speech` capability just as
+loudly. "A live session may become healthy while it runs" was a reasonable thing
+to say about a state nobody was repairing and is an unreasonable one about a
+state the handshake has just tried to repair and failed.
+
+**THE HANDSHAKE READS GRANTS AND NEVER REQUESTS ONE.** `PermissionBroker.request`
+still has exactly TWO callers, both command handlers about to post a system
+event, both through `AccessibilityGrant` — so 13.8's lever survives 13.20 word
+for word, and no sweep was needed. A handshake that raised a consent dialog would
+be a handshake that hangs, on a machine where nobody may be looking at the
+screen. **What it cost** is stated rather than hidden: a machine that has never
+granted Accessibility can no longer open a session at all, which is the property
+`scripts/voiceover_channels.sh` was written to exercise. That script still runs —
+it drives the reader directly and opens no session.
+
+**SESSION STATE IS RESTORED AT TEARDOWN; MACHINE STATE IS NOT.** The voice
+SELECTION is session state and goes back on every teardown path (hard invariant
+3, unchanged). The REGISTRATION is machine state and stays. There is deliberately
+no `unregister()` and nothing at teardown may be paired with `register()`,
+however much the symmetry appeals: undoing it recreates the exact bug this entry
+fixes, and the accept loop is serial today but will not always be — one client's
+disconnect must never deregister the voice under another.
+
+**THE RUNG THIS BRIDGE CANNOT CLIMB IS `registered` → `published`**, because the
+system publishes a newly registered voice only after VoiceOver RESTARTS and no
+handshake may restart a blind person's screen reader. So rung 3 succeeds, rung 5
+fails, and the failure names the restart as the remaining action. **Every
+sentence in this repo that names a restart spells it as a pair** —
+`killall VoiceOver && open -a VoiceOver`, through `readerRestartCommand`, because
+`killall` on its own was MEASURED on 2026-08-31 not to relaunch the reader and
+would leave somebody with no screen reader at all.
+
+**THE PROOF'S UTTERANCE IS REAL SPEECH AND IT STAYS IN THE BUFFER.** Index 1 of
+every session holds what the reader said when it was asked to describe its
+cursor; a session's own speech starts at 2. Hiding it would mean the buffer is
+not the record of what the reader said that it claims to be — and the tests say
+so out loud rather than reading from a fresh mark, because "everything this
+session captured" is what several of them are about. The probe is
+`describe item in voiceover cursor` because the guidance already calls it the
+safe one: it describes and MOVES NOTHING. It is pressed **after** suppression is
+in force, so in a silent session it is inaudible.
 
 ## Silence is a LEASE, and nothing may come to depend on a teardown path
 

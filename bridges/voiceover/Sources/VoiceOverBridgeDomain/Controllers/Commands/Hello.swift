@@ -12,22 +12,32 @@
 // then ends the session, which is what "a failure before hello ends the
 // handshake" means in practice.
 //
-// AND SINCE 13.6 IT REFUSES A PROMISE IT CANNOT KEEP. `silent` says a human will
-// not hear their machine while an agent reads back what it said; on this route
-// that is delivered by the capture voice rendering silence, which requires
-// VoiceOver to actually be SPEAKING with the capture voice. So the handshake
-// asks the provider lifecycle, and a silent session on a machine where the voice
-// is not registered, not published, or would not stick is refused BY NAMED
-// CONDITION with its recovery -- never established and quietly turned into
-// something else. A LIVE session in the same state is NOT refused, and the
-// difference is not squeamishness: selecting the voice applies live, in both
-// directions (spec 0047, finding 17), so a live session that starts unhealthy
-// can become healthy while it runs -- whereas silence promised at the handshake
-// has to hold from the handshake.
+// AND SINCE 13.20 IT MAKES ITS OWN SETUP RATHER THAN REPORTING ON ONE. The
+// reader edge is established by `ReaderEdgeSetup`, a controller of its own that
+// CLIMBS the ProviderState ladder -- permissions, a running reader, the
+// extension's registration, the voice, and a proof that what the reader says
+// actually arrives -- and fails BY NAMED RUNG at the one it cannot climb. This
+// handler builds it (its collaborators do not exist until the factory above has
+// run) and runs it, and that is all this file knows about the machine.
 //
-// THE ORDER OF THE VOICE WORK IS LOAD-BEARING. The user's own voice is read and
-// recorded on the context BEFORE ours is written, so every teardown path holds
-// what to put back even if a later step of this handshake throws -- and it is
+// WHAT 13.6 PUT HERE AND 13.20 MOVED. Until this entry the voice work was a
+// private method on this handler, and it REPORTED where the ladder had stopped:
+// a `silent` session was refused by named condition and a `live` one carried on
+// with a note in the transcript. The refusal was right and the asymmetry was
+// right for what it was about -- `silent` is a promise about a human's ears and
+// has to hold from the handshake, while writing the voice applies live in both
+// directions (spec 0047, finding 17), so a live session could heal itself.
+//
+// IT IS NOW FATAL IN BOTH MODES, and that does not contradict the above because
+// it is a different promise: what the new rungs establish is that `getSpeech`
+// means anything at all, and a LIVE session announces the `speech` capability
+// exactly as loudly. "It may become healthy while it runs" is a reasonable thing
+// to say about a state nobody is repairing and an unreasonable one about a state
+// the handshake has just tried to repair and failed. Spec 0050 §2.7.
+//
+// THE ORDER OF THE VOICE WORK IS LOAD-BEARING AND MOVED INTACT. The user's own
+// voice is read and recorded on the context BEFORE ours is written, so every
+// teardown path holds what to put back even if a later step throws -- and it is
 // recorded only when it is NOT ours, because a previous session that died
 // without restoring leaves our own voice looking like the user's, and restoring
 // that would be a bridge quietly keeping the machine on its capture voice.
@@ -105,8 +115,9 @@ public final class HelloHandler: CommandHandler {
 		// the other end of the same feed: pointing the reader at the capture voice
 		// is what makes utterances start arriving, so the tailer has to be attached
 		// before it happens or the first thing the reader says is the one nobody
-		// can wait for.
-		try establishReaderEdge(context, mode: params.mode, adapters: adapters)
+		// can wait for. Since 13.20 the setup's last rung DEPENDS on that order --
+		// it presses a command and requires the utterance to reach this buffer.
+		try ReaderEdgeSetup(adapters: adapters, context: context, speech: speech).establish()
 
 		context.transcript.sessionOpened(
 			mode: params.mode.rawValue,
@@ -159,59 +170,6 @@ public final class HelloHandler: CommandHandler {
 			// never has to infer it from a silence cap it may not have been sent.
 			attended: context.attended
 		)
-	}
-
-	// -- the reader edge -------------------------------------------------------
-
-	/// Read the user's voice, point the reader at ours, and open the marker
-	/// channel -- refusing a silent session this machine cannot deliver.
-	///
-	/// Every failure here is REPORTED BY NAME, with its recovery, because the
-	/// alternative on this route is an agent reading back nothing and concluding
-	/// the reader is silent (spec 0041's sharpest requirement; ReaderCondition
-	/// carries the argument).
-	private func establishReaderEdge(
-		_ context: SessionContext, mode: CaptureMode, adapters: AdapterSet
-	) throws {
-		let lifecycle = adapters.providerLifecycle
-
-		// BEFORE ANYTHING IS WRITTEN. See the header for why "ours" is recorded as
-		// nothing to restore rather than as the user's own voice.
-		let previous = lifecycle.selectedVoice()
-		if let previous, !previous.isCaptureVoice {
-			context.previousVoice = previous.identifier
-		}
-
-		var failure: String?
-		let initial = lifecycle.state()
-		if initial < .published {
-			// Nothing to select: the voice is not on this machine to be chosen.
-			failure = initial.report
-		} else if previous?.isCaptureVoice != true {
-			do {
-				try lifecycle.selectCaptureVoice()
-			} catch {
-				failure = (error as? ProviderError)?.description ?? String(describing: error)
-			}
-		}
-
-		if let failure {
-			context.transcript.note("reader edge: \(failure)")
-			guard mode != .silent else {
-				throw CommandError(
-					"this bridge cannot run a silent session on this machine right now: \(failure)")
-			}
-		}
-
-		// The channel the capture voice reads, open in BOTH modes: it carries the
-		// user's own voice so pass-through is acoustically invisible (Rule 0), and
-		// it is a LEASE the session renews -- a bridge that dies un-mutes the
-		// machine by doing nothing at all.
-		try adapters.silenceControl.begin(preferredVoice: context.previousVoice)
-		if mode == .silent {
-			try adapters.silenceControl.suppress()
-			context.transcript.note("silence: suppressing, on a lease the session renews")
-		}
 	}
 
 	/// The voice this session is hearing or silencing, named for a human when it

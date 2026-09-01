@@ -15,6 +15,26 @@
 // anything the reader has to consult its own object model for, would turn this
 // into a second copy of the failing call rather than a control for it.
 //
+// AND SINCE 13.20 IT CAN START THE READER, WHICH IS THE OPPOSITE QUESTION ASKED
+// BY A DIFFERENT CALLER. `ReaderEdgeSetup` asks BEFORE anything, because a
+// session that is about to drive VoiceOver needs one running; when the probe
+// says no it calls `activate()` and asks again.
+//
+// `activate()` GOES THROUGH A SECOND SEAM, AND THAT IS A REAL CHOICE. Launching
+// an application is not an AppleScript question -- routing it through one would
+// have meant reaching for a scripting term nobody here has measured, on a
+// channel that by definition is not answering. So this class holds a
+// ProcessRunner as well, and runs the command that WAS measured:
+//
+//   MEASURED 2026-08-31: `killall VoiceOver` does NOT relaunch the reader.
+//   `open -a VoiceOver` does.
+//
+// That measurement is why `ReaderCondition`'s recoveries never say "restart
+// VoiceOver" on their own: a human who followed a bare `killall` would be left
+// with no screen reader. STARTING is all this does. A RESTART takes the reader
+// away from somebody who is using it, and no handshake in this bridge may decide
+// on one -- the failures name `readerRestartCommand` and a human runs it.
+//
 // IT SWALLOWS EVERY ERROR, WHICH IS THE PORT'S CONTRACT AND NOT LAZINESS: the
 // question is a boolean, its one caller is already handling a failure, and every
 // way this can fail -- the grant is gone, the reader is not running, the tool
@@ -39,10 +59,16 @@ public final class VoiceOverLiveness: ReaderLiveness {
 	/// and miss the other.
 	public static let readerNameScript = "tell application \"VoiceOver\" to return name"
 
-	private let runner: any AppleScriptRunner
+	/// How the reader is started. `open` is what was measured to work; `killall`
+	/// on its own is what was measured NOT to, and nothing here ever kills.
+	public static let openTool = "/usr/bin/open"
 
-	public init(runner: any AppleScriptRunner) {
+	private let runner: any AppleScriptRunner
+	private let tools: any ProcessRunner
+
+	public init(runner: any AppleScriptRunner, tools: any ProcessRunner) {
 		self.runner = runner
+		self.tools = tools
 	}
 
 	public func readerAnswersItsOwnName() -> Bool {
@@ -56,5 +82,16 @@ public final class VoiceOverLiveness: ReaderLiveness {
 		// same trap `OSAScriptRunner` records for error messages. That it
 		// answered AT ALL is the whole signal.
 		return !name.isEmpty
+	}
+
+	/// Ask the system to start VoiceOver, and answer nothing.
+	///
+	/// `open` hands the launch to the launch services daemon and returns, so
+	/// there is nothing here to report on -- the port says as much, and the only
+	/// evidence that counts is `readerAnswersItsOwnName` afterwards. A failure to
+	/// even run the tool is swallowed for the same reason every failure in this
+	/// class is: the caller is about to ask the question that actually matters.
+	public func activate() {
+		_ = try? tools.run(Self.openTool, ["-a", "VoiceOver"])
 	}
 }

@@ -25,25 +25,27 @@ struct ReaderConditionTests {
 		}
 	}
 
-	@Test("the lost-voice recovery puts RE-REGISTRATION before the restart")
-	func reRegistrationComesFirst() {
+	@Test("the lost-voice recovery leaves the human ONE step, because the bridge does the other")
+	func theBridgeHasAlreadyReRegistered() {
+		// UNTIL 13.20 THIS ASSERTED AN ORDER -- re-register, THEN restart -- because
+		// both halves were the human's. The handshake registers the extension
+		// itself now, so the recovery that reaches an agent has to say so: a
+		// sentence telling somebody to re-register something the bridge just
+		// re-registered is a sentence that wastes their afternoon differently.
 		let recovery = ReaderCondition.captureVoiceNotOfferedByReader.recovery
-		guard let register = recovery.range(of: "pluginkit -a"),
-			let restart = recovery.range(of: "restart VoiceOver")
-		else {
-			Issue.record("the recovery no longer names both steps")
-			return
-		}
-		#expect(register.lowerBound < restart.lowerBound)
-		// And it says the restart alone is not enough, which is the half that was
-		// measured and would otherwise be re-derived by whoever tries it.
+		#expect(recovery.contains(readerRestartCommand))
+		#expect(recovery.contains("already done the re-registration"))
+		// And it still says the restart alone is not enough, which is the measured
+		// half and would otherwise be re-derived by whoever tries it.
 		#expect(recovery.contains("NOT to be enough"))
 	}
 
 	@Test("registration names lsregister BEFORE pluginkit, because the first alone was not enough")
 	func lsregisterComesFirst() {
 		// Spec 0041, C1: `lsregister -f` on the app then `pluginkit -a` on the
-		// .appex; the first on its own did not register the voice.
+		// .appex; the first on its own did not register the voice. The order is
+		// still stated even though the bridge now performs it, because this is what
+		// a human runs by hand when the bridge could not find its own bundle.
 		let recovery = ReaderCondition.providerNotRunning.recovery
 		guard let lsregister = recovery.range(of: "lsregister -f"),
 			let pluginkit = recovery.range(of: "pluginkit -a")
@@ -52,6 +54,30 @@ struct ReaderConditionTests {
 			return
 		}
 		#expect(lsregister.lowerBound < pluginkit.lowerBound)
+	}
+
+	@Test("EVERY RESTART IS SPELLED AS A PAIR, because a bare killall leaves no screen reader")
+	func aRestartIsNeverJustAKillall() {
+		// MEASURED 2026-08-31: `killall VoiceOver` does NOT relaunch the reader.
+		// A recovery that stopped after the kill is one somebody could follow into
+		// silence, so no sentence in this file may name the kill without the open.
+		for condition in ReaderCondition.allCases where condition.recovery.contains("killall") {
+			#expect(condition.recovery.contains(readerRestartCommand))
+		}
+		#expect(readerRestartCommand == "killall VoiceOver && open -a VoiceOver")
+	}
+
+	@Test("a reader that is not running is its OWN condition, separate from a dead object model")
+	func theReaderNotRunningIsNamed() {
+		// 13.20 needs the distinction: `scriptingChannelDead` is the reader
+		// answering its name and nothing else, and this is the reader not answering
+		// at all. Different diagnoses, different recoveries -- which is the whole
+		// argument for this file being an enum rather than a string in a handler.
+		#expect(ReaderCondition.readerNotRunning != ReaderCondition.scriptingChannelDead)
+		#expect(ReaderCondition.readerNotRunning.recovery.contains("open -a VoiceOver"))
+		// It does NOT tell a human to restart: the bridge starts the reader itself,
+		// and a restart takes it away from somebody who may be using it.
+		#expect(!ReaderCondition.readerNotRunning.recovery.contains("killall"))
 	}
 
 	@Test("the described form carries the name, the summary and the recovery together")
@@ -67,6 +93,6 @@ struct ReaderConditionTests {
 		// Written down before anything reports it, deliberately: this file is the
 		// vocabulary, and a condition that lives in a spec and in no type is one
 		// that gets rediscovered as an empty read-back.
-		#expect(ReaderCondition.scriptingChannelDead.recovery.contains("restart VoiceOver"))
+		#expect(ReaderCondition.scriptingChannelDead.recovery.contains(readerRestartCommand))
 	}
 }

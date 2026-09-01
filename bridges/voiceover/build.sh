@@ -62,9 +62,21 @@ done
 # maintainer -- a trip to VoiceOver Utility to re-select a voice that silently
 # vanished. Entry 13.2 promotes the code; entry 13.11 owns packaging and
 # identifiers, and is where that one-time cost is worth paying. See README.md.
-APP_NAME="VoiceOverCaptureSpike"
+#
+# APP_NAME AND EXT_NAME ARE DECLARED IN SWIFT AND READ HERE (13.20), the same
+# pattern as VERSION below and for the same reason: `Wiring.captureBundlePaths`
+# has to point `lsregister -f` and `pluginkit -a` at the bundle this script
+# assembles, and two spellings of one name is how a rename half-lands -- with
+# `lsregister` registering nothing and reporting success.
+BUNDLE_FILE="Sources/VoiceOverBridgeAdapters/CaptureBundle.swift"
+APP_NAME="$(sed -n 's/^public let captureAppName = "\(.*\)"$/\1/p' "$BUNDLE_FILE")"
+EXT_NAME="$(sed -n 's/^public let captureExtensionName = "\(.*\)"$/\1/p' "$BUNDLE_FILE")"
+if [[ -z "$APP_NAME" || -z "$EXT_NAME" ]]; then
+	echo "could not read the bundle names from $BUNDLE_FILE" >&2
+	echo "it must contain lines of the form: public let captureAppName = \"Something\"" >&2
+	exit 1
+fi
 APP_ID="org.screen-readers-mcp.spike.capture"
-EXT_NAME="CaptureVoice"
 EXT_ID="$APP_ID.voice"
 # The Swift module, and therefore the first half of NSExtensionPrincipalClass.
 # It matches the SwiftPM target name in Package.swift on purpose: two spellings of

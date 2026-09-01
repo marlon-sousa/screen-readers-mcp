@@ -59,7 +59,9 @@ struct UnheardSpeechTests {
 			Issue.record("expected the silence to be explained")
 		} catch let error as CommandError {
 			#expect(error.description.contains(ReaderCondition.captureVoiceNotSelected.rawValue))
-			#expect(error.description.contains("pluginkit"))
+			// The one step left to a human: the bridge re-registers the extension at
+			// every handshake now, so what it cannot do is restart the reader.
+			#expect(error.description.contains(readerRestartCommand))
 		} catch {
 			Issue.record("unexpected error: \(error)")
 		}

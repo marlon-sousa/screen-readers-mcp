@@ -43,4 +43,29 @@ public protocol ReaderLiveness: AnyObject {
 	/// force the one caller -- itself already handling a failure -- to handle a
 	/// second one in order to learn a boolean.
 	func readerAnswersItsOwnName() -> Bool
+
+	/// Ask the machine to start the reader. ADDED AT 13.20.
+	///
+	/// A SECOND CALLER ARRIVED AND IT ASKS THE OPPOSITE QUESTION. Everything in
+	/// this file's header is about a probe asked AFTER a failure; the handshake
+	/// asks BEFORE anything, because a session that is about to drive VoiceOver
+	/// needs one running. When the probe says no, `ReaderEdgeSetup` calls this
+	/// and asks again.
+	///
+	/// NEVER THROWS, AND ANSWERS NOTHING, which is the whole shape of it: this is
+	/// a REQUEST, and the only evidence that counts is `readerAnswersItsOwnName`
+	/// afterwards. An implementation that returned "it worked" would be reporting
+	/// on a launch it cannot have observed yet -- macOS hands `open` to the
+	/// launch services daemon and returns.
+	///
+	/// IT STARTS AND NEVER RESTARTS. Activating the reader is what a person's own
+	/// Command-F5 does, it announces itself out loud, and a session needs it. A
+	/// RESTART is a different act entirely -- it takes the reader away from
+	/// somebody who is using it -- and no handshake in this bridge may decide on
+	/// one. Where a restart is what is needed, the failure NAMES it and the human
+	/// runs `readerRestartCommand`.
+	///
+	/// MEASURED 2026-08-31: `killall VoiceOver` does not relaunch the reader;
+	/// `open -a VoiceOver` does. See VoiceOverLiveness.
+	func activate()
 }

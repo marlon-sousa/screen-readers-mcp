@@ -89,19 +89,61 @@ public enum Wiring {
 		return MarkerFileSilenceControl.containerMarkerPath(home: NSHomeDirectory())
 	}
 
+	/// Where this process's own `.app` bundle is, if it can be found at all.
+	///
+	/// THE ONE PLACE IN THIS BRIDGE THAT KNOWS WHERE A BUNDLE LIVES, which is why
+	/// it is here and not in `PluginKitProviderLifecycle`: that class's header
+	/// says it is "the place that knows what an answer means and not the place
+	/// that knows what we are called", and 13.20's `register()` would have made it
+	/// both. Two candidates, in order:
+	///
+	///  1. `Bundle.main`, when this code IS the assembled app.
+	///  2. The conventional `build/` directory beside the package, which is where
+	///     `build.sh` puts it and what the dev `BridgeListener` runs against.
+	///
+	/// NIL IS A LEGITIMATE ANSWER and not a fallback to a guess: with no bundle,
+	/// `register()` fails by NAME carrying both commands, which a human can run.
+	/// A guessed path would let `lsregister -f` register nothing and report
+	/// success.
+	public static func captureBundlePaths(
+		main: Bundle = .main,
+		fileManager: FileManager = .default,
+		packageDirectory: String = #filePath
+	) -> CaptureBundlePaths? {
+		if main.bundleURL.pathExtension == "app" {
+			return CaptureBundlePaths.inside(app: main.bundleURL.path)
+		}
+		// Sources/VoiceOverBridgeAdapters/Wiring.swift -> the package root.
+		let package = URL(fileURLWithPath: packageDirectory)
+			.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+		let candidate = CaptureBundlePaths.inside(
+			directory: package.appendingPathComponent("build").path)
+		return fileManager.fileExists(atPath: candidate.app) ? candidate : nil
+	}
+
 	/// The capture voice's lifecycle, over the three signals that answer for it.
 	///
 	/// ONE PER PROCESS, not one per session: it describes the MACHINE, so a
 	/// session-scoped one would run `pluginkit` again for an answer that cannot
 	/// have changed because a socket was accepted.
-	public static func providerLifecycle(runner: (any ProcessRunner)? = nil) -> any ProviderLifecycle {
+	///
+	/// IT IS HANDED THE BUNDLE PATHS AND A CLOCK SINCE 13.20, because `register()`
+	/// runs two tools against this bridge's own bundle and then POLLS for the
+	/// result -- pluginkit hands its work to pkd and returns.
+	public static func providerLifecycle(
+		runner: (any ProcessRunner)? = nil,
+		paths: CaptureBundlePaths? = nil,
+		clock: any Clock = RealClock()
+	) -> any ProviderLifecycle {
 		let tools = runner ?? SubprocessRunner()
 		return PluginKitProviderLifecycle(
 			runner: tools,
 			published: SystemPublishedVoices(),
 			store: SpeakSelectionVoiceStore(runner: tools),
 			extensionBundleID: captureExtensionBundleID,
-			voiceIdentifierSuffix: captureVoiceIdentifierSuffix
+			voiceIdentifierSuffix: captureVoiceIdentifierSuffix,
+			bundlePaths: paths ?? captureBundlePaths(),
+			clock: clock
 		)
 	}
 
@@ -323,6 +365,7 @@ public enum Wiring {
 		clock: any Clock = RealClock(),
 		lifecycle: (any ProviderLifecycle)? = nil,
 		scripts: (any AppleScriptRunner)? = nil,
+		tools: (any ProcessRunner)? = nil,
 		permissions: (any PermissionBroker)? = nil,
 		poster: (any EventPoster)? = nil,
 		layout: (any KeyboardLayout)? = nil,
@@ -336,8 +379,9 @@ public enum Wiring {
 			factory: VoiceOverAdapterFactory(
 				capturePath: capturePath(),
 				markerPath: markerPath(),
-				lifecycle: lifecycle ?? providerLifecycle(),
+				lifecycle: lifecycle ?? providerLifecycle(clock: clock),
 				scripts: scripts ?? appleScriptRunner(),
+				tools: tools ?? SubprocessRunner(),
 				permissions: permissions ?? permissionBroker(),
 				poster: poster ?? eventPoster(),
 				layout: layout ?? keyboardLayout(),
