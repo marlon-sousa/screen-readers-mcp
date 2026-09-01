@@ -223,6 +223,48 @@ Three consequences bind anyone editing this:
   not parse, a question that cannot be answered: the answer is "speak", on both
   sides of the file.
 
+## The silence cap LIFTS and then RE-ARMS, and the second half was missing
+
+`protocol.md` §6.1 rule 4: *"A lifted session may go quiet again, on a fresh
+window of the same length, and each re-suppression is audibly marked. So exposure
+stays bounded no matter how many times a session re-arms."* This bridge did the
+first half and not the second until 2026-09-01, and the sequence the maintainer
+hit is the whole of it:
+
+> connect silent, stay quiet, the cap warns, stay quiet, the cap **lifts**, the
+> agent **announces** — and the machine never went silent again.
+
+`SilenceCap.didLift` was a ONE-WAY LATCH: `check` answered `.none` for the rest
+of the session, so a single lift made a `silent` session permanently audible
+however much the agent narrated afterwards. **A lift is a bounded window ending,
+not a decision that this session is finished being silent.** `SilenceCap.swift`'s
+own header had said `resuppressed` was "left out rather than stubbed" and would
+arrive with 13.10 — 13.10 added `announce` and `askUser`, which reset the window,
+and the re-arm behind them was never added. A deferral that names the entry it is
+waiting for is only as good as the entry remembering it.
+
+Three rules bind anyone editing this.
+
+**THE RE-ARM IS A THIRD ACTION, NOT A METHOD A CALLER REMEMBERS.** Lane 1 puts it
+in its session context, which holds the announcer; here the Session is the only
+thing that may touch `SilenceControl` or play a cue, and it already acts on the
+cap's answers. So `heard` records that something audible happened after a lift
+and `check` returns `.resuppress` when it did — the entity keeps answering "given
+these instants, what should happen" and the Session does it.
+
+**NOTHING HEARD, NOTHING RE-ARMED.** The lift happened because the human had been
+told nothing for ninety seconds; re-arming on the clock alone would take their
+machine away again for the very reason it was given back. Only sound the human
+actually hears re-opens the window — the session cue, `announce`, `askUser` — and
+`SessionTests` carries the control for it as a named test.
+
+**IT NEEDS A TEST AT THE LAYER THAT REPEATS**, which is the 2026-08-30 lesson
+applied again: the entity's own tests pass perfectly well against a
+`checkSilence` that never acts on `.resuppress`, exactly as they did against a
+lease that was never renewed. The assertion that means anything is a session
+driving a whole script and checking the ORDER of the acts that change what a
+human can hear.
+
 ## The voice is the user's, and it is put back
 
 The bridge reads `VoiceOverDefaultVoiceSelections` in the **system speech**

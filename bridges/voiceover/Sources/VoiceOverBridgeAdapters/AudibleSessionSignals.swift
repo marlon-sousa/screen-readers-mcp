@@ -1,5 +1,5 @@
 // ROLE: adapter -- IMPLEMENTS the SessionSignals domain port. It decides what
-// the four cues sound like, whether the human has asked for them at all, and
+// the five cues sound like, whether the human has asked for them at all, and
 // which of them carry words.
 //
 // BUILT BY: Wiring, once per process. USED BY: the Session controller, through
@@ -35,7 +35,7 @@
 import VoiceOverBridgeDomain
 
 public final class AudibleSessionSignals: SessionSignals {
-	/// The four cues, as frequencies in hertz. Named rather than inline so the
+	/// The five cues, as frequencies in hertz. Named rather than inline so the
 	/// pairs are visibly each other's opposite -- taking control rises, releasing
 	/// it falls -- which is the whole of what a listener has to learn.
 	enum Cue {
@@ -46,6 +46,10 @@ public final class AudibleSessionSignals: SessionSignals {
 		static let warning: [Double] = [440, 440]
 		/// Rising, like taking control, because something is being given back.
 		static let lifted: [Double] = [660, 990]
+		/// THE LIFT'S PAIR, PLAYED BACKWARDS, because it is exactly the opposite
+		/// act: the machine that was given back is being taken again. A listener
+		/// only has to learn one shape to know which of the two just happened.
+		static let resuppressed: [Double] = [990, 660]
 		/// How long each tone sounds, and how much silence separates the pair.
 		///
 		/// MATCHED TO LANE 1, WHICH IS THIS REPO'S OWN "NVDA STANDARD" and the one
@@ -103,5 +107,17 @@ public final class AudibleSessionSignals: SessionSignals {
 	public func silenceLifted() throws {
 		guard config.cuesEnabled else { return }
 		try tones.play(Cue.lifted, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
+	}
+
+	public func silenceResuppressed() throws {
+		guard config.cuesEnabled else { return }
+		try tones.play(Cue.resuppressed, seconds: Cue.seconds, gapSeconds: Cue.gapSeconds)
+		// SPOKEN AS WELL AS SOUNDED, and the words matter more here than in any
+		// other cue: the human's machine is being taken away from them a second
+		// time, and two descending tones cannot say why it has gone quiet. Lane 1
+		// says "Speech suppressed again."; this is the same sentence with the
+		// reason it is happening, because on this route the person has just heard
+		// the agent narrate and that IS the reason.
+		try announcer.announce("speech is suppressed again, on a fresh window")
 	}
 }

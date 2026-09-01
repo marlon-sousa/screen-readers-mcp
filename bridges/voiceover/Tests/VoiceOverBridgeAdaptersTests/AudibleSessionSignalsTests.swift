@@ -82,6 +82,21 @@ struct AudibleSessionSignalsTests {
 		#expect(tones.played.count == 1)
 	}
 
+	@Test("THE RE-ARM IS THE LIFT'S CUE PLAYED BACKWARDS, and it carries words")
+	func theReArmIsMarkedAndSpoken() throws {
+		// §6.1 rule 4 asks for each re-suppression to be audibly marked, and this
+		// is the cue whose absence is worst: the machine is being taken away from
+		// the human a second time, and two tones cannot say why their reader has
+		// just gone quiet. The pair is the lift's, reversed -- one shape to learn,
+		// and which way it runs says which of the two just happened.
+		let tones = FakeTones()
+		let announcer = FakeAnnouncer()
+		try signals(tones: tones, announcer: announcer).silenceResuppressed()
+		#expect(tones.played.count == 1)
+		#expect(tones.played.first == AudibleSessionSignals.Cue.lifted.reversed())
+		#expect(announcer.spoken.count == 1)
+	}
+
 	@Test("CUES OFF MEANS SILENT, and it is read on every cue rather than at construction")
 	func theSwitchIsHonouredLive() throws {
 		let tones = FakeTones()
@@ -93,6 +108,7 @@ struct AudibleSessionSignalsTests {
 		try subject.sessionEnded()
 		try subject.silenceWarning()
 		try subject.silenceLifted()
+		try subject.silenceResuppressed()
 		// Only the first cue was made: a human who silences the cues mid-session
 		// means now, not next time.
 		#expect(tones.played.count == 1)

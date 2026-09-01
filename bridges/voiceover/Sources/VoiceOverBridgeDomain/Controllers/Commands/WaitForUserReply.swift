@@ -97,10 +97,12 @@ public final class WaitForUserReplyHandler: CommandHandler {
 	/// Take the window away and put back what asking cost.
 	///
 	/// IT RESUPPRESSES ONLY WHAT THIS PROMPT LIFTED, and only while the session is
-	/// still entitled to be silent: a cap that has already fired gave the human
-	/// their machine back for good (protocol.md §6.1 allows a fresh window, and
-	/// this bridge does not open one), so re-muting them here would take back a
-	/// guarantee rather than a courtesy.
+	/// still entitled to be silent -- but a cap that has already fired is NOT this
+	/// command's business to undo. It calls `humanHeard`, and since 2026-09-01 the
+	/// SESSION re-arms on the very next tick, audibly marked, on a fresh window
+	/// (protocol.md §6.1, rule 4). Re-muting from here would take the machine away
+	/// silently, in the one place where the person is standing at the keyboard
+	/// having just answered a question.
 	/// One rendering for every error these handlers report: `String(describing:)`
 	/// asks a `CustomStringConvertible` for its `description` first, so a
 	/// `CommandError` or an `AnnouncerError` reads as its own sentence. Spelled

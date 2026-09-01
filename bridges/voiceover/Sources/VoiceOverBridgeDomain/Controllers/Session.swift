@@ -276,6 +276,21 @@ public final class Session {
 			transcript.note("silence cap: LIFTED -- the human hears their machine again")
 			guarded("lifting the silence") { try silence.passThrough() }
 			guarded("the silence-cap lift cue") { try self.signals.silenceLifted() }
+		case .resuppress:
+			// THE OTHER HALF OF THE GUARANTEE, and it was missing until 2026-09-01:
+			// a lift is a bounded window ending, not a decision that this session is
+			// finished being silent. The agent has narrated, so the human has heard
+			// their machine and a fresh window of the same length may start
+			// (protocol.md §6.1, rule 4).
+			//
+			// THE CUE IS NOT OPTIONAL HERE THE WAY THE WARNING IS. §6.1 requires
+			// each re-suppression to be audibly marked, and it is the one cue whose
+			// absence leaves a person unable to explain why their computer stopped
+			// talking. It is still GUARDED, because a cue that could take a session
+			// down would be a courtesy with more power than the guarantee.
+			transcript.note("silence cap: suppression re-armed after the human heard their machine")
+			guarded("re-arming the silence") { try silence.suppress() }
+			guarded("the silence-cap re-arm cue") { try self.signals.silenceResuppressed() }
 		}
 	}
 

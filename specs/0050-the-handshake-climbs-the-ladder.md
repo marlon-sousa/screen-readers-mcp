@@ -5,7 +5,10 @@ on 2026-08-31. Every decision in §2 was settled in that conversation; this
 document records them with their reasons and adds the class/file layout that is
 the review gate. Amendments made while implementing are in §7.
 
-**Board entry:** [13.20](../ROADMAP.md), lane 3.
+**Board entry:** [13.20](../ROADMAP.md), lane 3. **§8 is board entry 13.21**, a
+separate defect found while using the bridge on 2026-09-01 and fixed in the same
+PR at the maintainer's request; it takes no spec number of its own, which is the
+13.11 precedent.
 
 **Found by:** Marlon, 2026-08-31, driving 13.19's live checklist.
 
@@ -497,3 +500,115 @@ In the PR body as checkboxes, driven against the maintainer's real VoiceOver.
    the field is ASKED rather than asserted, and a store that changed underneath
    must not be able to make it lie — and the test asserts what is left, which is
    that asking is idempotent across two sessions.
+
+
+## 8. Board entry 13.21 — the silence cap lifted and never re-armed
+
+**Status:** **Decided and implemented** — 2026-09-01, in 13.20's PR because
+Marlon asked for it there. Not a regression from 13.20: the defect predates this
+entry and predates 13.10.
+
+**Found by:** Marlon, 2026-09-01, driving the bridge:
+
+> 1. agent connected. 2. Agent stayed without announcing for some time.
+> 3. Machine announced that. 4. Agent kept without announcing. 5. Speech was
+> restored. 6. Agent announced again something. 7. Speech should have gone
+> silent, it didn't.
+
+### 8.1 What was wrong
+
+`protocol.md` §6.1 rule 4 says a lifted session **may go quiet again**, on a
+fresh window of the same length, each re-suppression audibly marked, *"so
+exposure stays bounded no matter how many times a session re-arms."*
+
+`SilenceCap.didLift` was a **one-way latch**. `check` opened with
+`guard policy.enabled, !didLift else { return .none }`, so after a single lift it
+answered `.none` for the rest of the session, and `heard` — which `announce` and
+`askUser` already called — reset a window nothing was measuring. A `silent`
+session was therefore permanently audible after its first lift, however much the
+agent narrated afterwards.
+
+**A lift is a bounded window ending, not a decision that this session is finished
+being silent.** The agent asked for `silent` and the human is entitled to have
+that back once they have been told what is going on.
+
+### 8.2 Why it survived
+
+`SilenceCap.swift`'s own header named the gap and deferred it:
+
+> WHAT LANE 1 HAS AND THIS DOES NOT: … `resuppressed` (a lifted session goes
+> quiet again only when something audible has happened, which is the same
+> 13.10). Left out rather than stubbed.
+
+13.10 arrived, added `announce` and `askUser` — the two things that reset the
+window — and did not add the re-arm behind them. **A deferral that names the
+entry it is waiting for is only as good as that entry remembering it**, and this
+one was not on 13.10's list. `WaitForUserReply` then wrote the omission down as
+though it were a decision (*"protocol.md §6.1 allows a fresh window, and this
+bridge does not open one"*), which is how a gap becomes a rule nobody re-examines.
+
+Lane 1 has had `SilenceCap.resuppressed` and `SilenceNotice.RESUPPRESSED` since
+its own cap entry, so the two bridges disagreed about a human's hearing.
+
+### 8.3 The fix
+
+- **`SilenceCapAction` gains `.resuppress`.** `heard` records `heardSinceLift`
+  when the cap is lifted; `check` returns `.resuppress` on the next call, clears
+  the latch, and starts a fresh full-length window **from the moment the machine
+  goes quiet** rather than from the announcement — the human could hear
+  everything up to that instant, so charging the new window for it would shorten
+  it.
+- **Nothing heard, nothing re-armed.** A timer alone must never re-mute: the lift
+  happened *because* the human had been told nothing, and re-arming on the clock
+  would take their machine away for the very reason it was given back.
+- **`SessionSignals` gains `silenceResuppressed()`**, because §6.1 requires each
+  re-suppression to be audibly marked — and this is the cue whose absence is
+  worst, since a person who does not hear it has no way to know why their reader
+  went quiet. It is the lift's rising pair played backwards, **and it carries
+  words**: two tones cannot say *why*.
+- **The Session acts on it**, in `checkSilence`, beside the warning and the lift.
+  Both steps are `guarded`: a cue that could undo the suppression would be a
+  courtesy with more power than the guarantee.
+- **`WaitForUserReply` stops re-suppressing on its own** and lets the cap do it,
+  so a prompt closing is marked like every other re-arm instead of taking the
+  machine away silently while the person is still at the keyboard.
+
+### 8.4 Class/file layout
+
+| File | Role | Change |
+|---|---|---|
+| `Entities/SilenceCap.swift` | entity — **amended** | `heardSinceLift`; `heard` records it; `check` returns `.resuppress` and re-opens the window. `SilenceCapAction` gains the case. |
+| `Ports/SessionSignals.swift` | port — **amended** | `silenceResuppressed()`. |
+| `Controllers/Session.swift` | controller — **amended** | `checkSilence` handles `.resuppress`: `suppress()`, a transcript note, the cue — each guarded. |
+| `Controllers/Commands/WaitForUserReply.swift` | controller — **comment only** | the old "this bridge does not open one" note replaced by what actually happens now. |
+| `AudibleSessionSignals.swift` | adapter — **amended** | the fifth cue: `Cue.resuppressed` (the lift reversed) plus spoken words. |
+| `BridgeListener/main.swift` | launcher — **amended** | `ReportingSignals` prints the fifth cue. |
+| `Tests/Fakes/SessionSignals.swift` | fake — amended | `resuppressedCount`, counted separately from the lift. |
+
+### 8.5 Tests
+
+| File | Tier | Asserts |
+|---|---|---|
+| `SilenceCapTests` | unit | a lifted cap re-arms once something is heard; **silence alone never re-arms**; the fresh window is full length and measured from the re-arm; exposure stays bounded across five re-arms; one re-arm per hearing |
+| `SessionTests` | unit (the layer that repeats) | the loop really re-suppresses after an `announce` and marks it; the control — a lifted session with no announcement stays audible; a cue that throws does not leave the machine audible |
+| `AudibleSessionSignalsTests` | unit | the cue is the lift's pair reversed and carries words; `cuesEnabled: false` silences it like the other four |
+
+**The session-level test is the one that matters**, and the reason is this
+lane's own 2026-08-30 lesson: a passing `swift test` does not prove the loop
+calls what you added. The entity's tests pass perfectly well against a
+`checkSilence` that never acts on `.resuppress` — which is the exact shape of the
+lease bug 13.6 shipped and a session-level assertion caught.
+
+### 8.6 Honest limits
+
+- **The re-arm lands on the next loop tick**, which in practice is the
+  `checkSilence` immediately after the announcing command's dispatch. A session
+  wedged inside a handler stays audible until it returns — the safe direction,
+  and the same one the lease takes.
+- **`paused`/`resumed` are still not modelled.** An open `askUser` window keeps
+  the window fresh by calling `heard` on every tick rather than by stopping the
+  clock. Same effect, one fewer piece of state — and it means a prompt closing
+  produces an ordinary marked re-arm.
+- **Nothing is pushed to the agent** (§6.1 rule 3). An agent that wants to know
+  whether words are being withheld reads `PingResult.suppressing`, exactly as
+  before.

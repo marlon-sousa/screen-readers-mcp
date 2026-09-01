@@ -280,8 +280,12 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.21**
-in lane 3, and the next free spec number is **0051**. Spec **0050** and board
+The next free board number is **11.38** in the convergence series and **13.22**
+in lane 3, and the next free spec number is **0051**. Board number **13.21** was
+spent on 2026-09-01 by a defect found while using the bridge -- a lifted silence
+cap that never re-armed -- and took **no spec number of its own**: its spec is
+[spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8, which is the 13.11
+precedent. Spec **0050** and board
 number **13.20** were spent on 2026-09-01 by the finding that `connect_reader`
 established sessions on a machine that could not capture, and this line moved in
 the same commit. Spec **0049** was spent on
@@ -1652,6 +1656,43 @@ rule intends.
     problem, since TCC attributes a grant to the process it holds RESPONSIBLE,
     measured on 2026-08-31 to be `/usr/libexec/sshd-keygen-wrapper`. That is its
     own entry.
+
+13.21. **Done** -- **The silence cap lifted and never re-armed** (lane 3). Found
+    by Marlon on 2026-09-01, driving the bridge. **Not a regression from 13.20**:
+    the defect predates it and predates 13.10. Fixed in 13.20's PR because that
+    is where it was asked for.
+
+    **What happened.** A silent session: the agent connected, went quiet, the cap
+    warned, it stayed quiet, the cap **lifted** -- and then the agent announced
+    something and the machine never went silent again.
+
+    **Why.** `SilenceCap.didLift` was a ONE-WAY LATCH: `check` answered `.none`
+    for the rest of the session, so `announce` and `askUser` reset a window
+    nothing was measuring. `protocol.md` §6.1 rule 4 says a lifted session **may
+    go quiet again**, on a fresh window of the same length, each re-suppression
+    audibly marked, *"so exposure stays bounded no matter how many times a session
+    re-arms"* -- and lane 1 has done exactly that since its own cap entry. **A
+    lift is a bounded window ending, not a decision that this session is finished
+    being silent.**
+
+    **How it survived, which is the part worth keeping.** `SilenceCap.swift`'s
+    header named the gap and deferred it to 13.10 by name. 13.10 arrived, added
+    the two commands that reset the window, and did not add the re-arm behind
+    them; `WaitForUserReply` then wrote the omission down as though it were a
+    decision. **A deferral that names the entry it is waiting for is only as good
+    as that entry remembering it** -- and a gap described as a rule stops being
+    re-examined.
+
+    **The fix.** A third `SilenceCapAction`, `.resuppress`, returned when the cap
+    is lifted and something audible has been heard since; a fifth cue,
+    `silenceResuppressed()`, which is the lift's rising pair played backwards and
+    carries words, because two tones cannot say why a reader just went quiet; and
+    the Session acting on both, guarded. **Nothing heard, nothing re-armed**: the
+    lift happened because the human had been told nothing, so re-arming on a timer
+    alone would take their machine away for the very reason it was given back.
+
+    Spec: [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8 -- no spec
+    number of its own, the 13.11 precedent. Done (PR #95, 2026-09-01).
 
 ## Convergence (requires C and D both Done)
 

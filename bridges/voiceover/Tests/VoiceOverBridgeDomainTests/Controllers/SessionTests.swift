@@ -513,6 +513,111 @@ struct SessionTests {
 		#expect(signals.liftedCount == 1)
 	}
 
+	@Test("THE SILENCE RE-ARMS AFTER AN ANNOUNCEMENT, AND THE LOOP IS WHAT DOES IT")
+	func theCapReArmsAfterTheHumanHears() {
+		// THE DEFECT, ASSERTED AT THE LAYER THAT REPEATS. Reported by Marlon on
+		// 2026-09-01 driving the bridge: connect silent, stay quiet, get warned,
+		// stay quiet, get lifted, then announce -- and the machine stayed audible
+		// for the rest of the session.
+		//
+		// It is a SESSION test rather than an entity one on purpose, and this file
+		// already carries the reason (AGENTS.md, learned 2026-08-30): a passing
+		// `swift test` does not prove the loop calls what you added. The entity's
+		// own tests would go on passing against a `checkSilence` that never acted
+		// on `.resuppress`, which is exactly the shape of the 13.6 lease bug.
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		// The command that tells the human something: it is the ONLY thing in this
+		// script that resets the window, which is the contract's own rule -- four
+		// hundred gestures would reset nothing.
+		let narrate = FakeHandler()
+		narrate.onExecute = { context, _ in context.humanHeard() }
+		let outcome = run(
+			// It ends at the announcement, on purpose: another two quiet reads at
+			// 50 s each would lift the FRESH window as well, which is correct
+			// behaviour and would make this test about something else.
+			[hello(), .quiet, .quiet, .quiet, request(2, "announce"), .closed],
+			handlers: ["hello": edgeHandler(set, mode: .silent), "announce": narrate],
+			// BOTH watchdogs held off, not just the heartbeat: this script advances
+			// the clock past the 120 s inactivity default, and a session torn down
+			// for going idle would answer the question by not reaching it.
+			config: SessionConfig(
+				readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000, inactivityTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		// Lifted once, then taken back once. The assertion that matters is the
+		// ORDER of the two acts that change what the human can hear: before this
+		// fix the sequence ended at `passThrough` and never came back, whatever the
+		// agent said afterwards. (`release` follows at teardown in every session,
+		// which is why the raw last act is not the thing to look at.)
+		#expect(signals.liftedCount == 1)
+		#expect(signals.resuppressedCount == 1)
+		let audibility = silence.acts.filter { $0 == .suppress || $0 == .passThrough }
+		#expect(audibility.contains(.passThrough))
+		#expect(audibility.last == .suppress)
+		#expect(outcome.transcript.notes.contains { $0.contains("re-armed") })
+	}
+
+	@Test("nothing audible, nothing re-armed: a lifted session stays audible until it is told")
+	func aLiftedSessionStaysAudibleWithoutAnAnnouncement() {
+		// The control for the test above, and the half that must not regress: the
+		// lift happened because the human had been told nothing for ninety seconds,
+		// so re-arming on the clock alone would take their machine away again for
+		// the very reason it was given back.
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		run(
+			[hello(), .quiet, .quiet, .quiet, .quiet, .quiet, .quiet],
+			handlers: ["hello": edgeHandler(set, mode: .silent)],
+			config: SessionConfig(
+				readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000, inactivityTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		#expect(signals.liftedCount == 1)
+		#expect(signals.resuppressedCount == 0)
+		let audibility = silence.acts.filter { $0 == .suppress || $0 == .passThrough }
+		#expect(audibility.last == .passThrough)
+	}
+
+	@Test("a re-arm cue that fails does not leave the machine audible")
+	func aFailedReArmCueStillSuppresses() {
+		// The same ranking the lift already has, pointing the other way: the cue is
+		// a courtesy and the suppression is what the session promised. A cue that
+		// could undo it would be a courtesy with more power than the guarantee.
+		let silence = FakeSilenceControl()
+		let set = fakeAdapterSet(silenceControl: silence, providerLifecycle: FakeProviderLifecycle())
+		let signals = FakeSessionSignals()
+		let narrate = FakeHandler()
+		narrate.onExecute = { context, _ in
+			context.humanHeard()
+			signals.fails = true
+		}
+		run(
+			// It ends at the announcement, on purpose: another two quiet reads at
+			// 50 s each would lift the FRESH window as well, which is correct
+			// behaviour and would make this test about something else.
+			[hello(), .quiet, .quiet, .quiet, request(2, "announce"), .closed],
+			handlers: ["hello": edgeHandler(set, mode: .silent), "announce": narrate],
+			// BOTH watchdogs held off, not just the heartbeat: this script advances
+			// the clock past the 120 s inactivity default, and a session torn down
+			// for going idle would answer the question by not reaching it.
+			config: SessionConfig(
+				readerVersion: "macOS 15.0.0", heartbeatTimeout: 1000, inactivityTimeout: 1000),
+			signals: signals,
+			advancePerRead: 50
+		)
+		// The suppression ran and the cue threw: the last act that changed what the
+		// human can hear is still the re-arm. (`isSuppressing` is false by the time
+		// this reads it, because teardown releases the marker on every path.)
+		let audibility = silence.acts.filter { $0 == .suppress || $0 == .passThrough }
+		#expect(audibility.last == .suppress)
+		#expect(signals.resuppressedCount == 1)
+	}
+
 	@Test("a LIVE session is never capped, because nothing is being withheld")
 	func liveIsNotCapped() {
 		let silence = FakeSilenceControl()
