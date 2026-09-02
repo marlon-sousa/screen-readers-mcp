@@ -1910,6 +1910,20 @@ rule intends.
     That case is about knowing WHICH application you are in, and belongs to its
     own entry.
 
+    **TAKEN NEXT, ahead of every lower-numbered entry in this lane** -- Decided
+    2026-09-02. The board's usual rule is that its first non-Done entry is the
+    next step; this entry overrides it, so 13.12, 13.13a, 13.14 and 13.24 all wait
+    behind it. The reason is that it changes what a session IS, and every hour
+    spent building on the command-name route is an hour spent on the wrong
+    premise.
+
+    **The deliverable is knowledge, not only a notation.** Lane 1's guidance
+    instructs an agent as if it had replaced the user -- what to press, what a
+    user would do next, where the ordinary vocabulary stops. This lane's guidance
+    is to be built to that same standard on VoiceOver's own keys, rather than
+    around a dispatch channel. `screenreader://reader-guidance` becomes an account
+    of what a VoiceOver user PRESSES.
+
     **What it costs elsewhere.** `protocol.md` §5, the reader-guidance document,
     13.7's recommendation, the persona profiles, and a refusal 13.19 wrote down.
     Spec: none yet -- and it is the next thing this lane writes.
