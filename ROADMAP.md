@@ -280,8 +280,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.25**
-in lane 3, and the next free spec number is **0052**. Board numbers **13.23** and
+The next free board number is **11.38** in the convergence series and **13.26**
+in lane 3, and the next free spec number is **0052**. Board number **13.25** was
+spent on 2026-09-02 by a question Marlon asked of the field report -- why a
+VoiceOver gesture is a command name where an NVDA one is `NVDA+t` -- and this line
+moved in the same commit. Board numbers **13.23** and
 **13.24** were spent on 2026-09-02 by two findings from 13.20's own live
 checklist -- a bridge that died of SIGPIPE rather than tearing down, and a voice
 identifier that is used without ever being resolved -- and neither took a spec
@@ -1853,6 +1856,63 @@ rule intends.
     spec conversation first: whether a session may proceed on the default voice
     with a warning, or must refuse, is exactly the kind of question 13.20 settled
     for capture and this has not settled for voices. Spec: none yet.
+
+13.25. **Not started** -- **A blind user sends KEYS, so the agent sends keys**
+    (lane 3). **The direction is Decided**, by Marlon on 2026-09-02, in these
+    words: *"an agent has to do what the user does, and what the user does is
+    pressing keys, like in nvda."* What is left to a spec is HOW, not WHETHER.
+
+    **Recorded honestly, because it is the reason this took three rounds:** this
+    was raised twice before it was accepted. The bridge's answers each time were
+    that the field report's agent had used the route the guidance recommends
+    (true), and that the recommendation is earned by the permission lever (also
+    true, and beside the point). Neither answers the premise. **The tool's whole
+    claim is that an agent stands in for a user; a user presses keys.**
+
+    **The fidelity problem.** A VoiceOver user presses `VO-M` to reach the menu
+    bar. This bridge dispatches `go to menu bar` through the reader's `commander
+    object`, and 13.7 made that the RECOMMENDED route -- it is the first section
+    of `screenreader://reader-guidance`. Those are two different paths through the
+    machine: a keystroke goes out through the window server, past the focused
+    application, and reaches VoiceOver's event tap; a command name is dispatched
+    INSIDE the reader and never passes the application at all.
+
+    **So the recommended route can hide the exact defects this tool exists to
+    find.** An application that swallows or reinterprets `VO-M` is invisible to
+    `perform command`, which reports the command succeeding while a real user is
+    stuck. The persona contract -- *"drive exactly as an ordinary user drives, so
+    that reachable means the same thing in your report as in theirs"* -- is not
+    honoured by a session reaching the reader through an automation channel no
+    user has.
+
+    **What it needs.** `vo` accepted as a modifier and resolved from the machine,
+    exactly as lane 1 resolves `nvda`. The reason given for refusing it does not
+    hold: NVDA's modifier is equally configurable (Insert, Extended Insert, Caps
+    Lock) and lane 1 resolves rather than refuses, and VoiceOver's is readable --
+    measured 2026-09-02, `com.apple.VoiceOver4/default.plist` stores deviations
+    only, so an absent modifier key IS the Control-Option default. Then keys
+    become the `user` persona's vocabulary, and the command name is demoted to
+    what it actually is: an automation convenience and a diagnosis aid.
+
+    **The cost is accepted, not discovered.** 13.8's lever is the sentence *"a
+    session that presses only the reader's command names and reads speech is never
+    asked for Accessibility"*. A faithful user-persona session presses keys, so it
+    needs the grant, and that sentence stops describing ordinary driving -- it
+    becomes a statement about reading-only sessions in the `validator` and
+    `expert` stances. **A lever bought by driving the reader in a way no user does
+    is bought with the fidelity this tool sells**, which is the trade Marlon made
+    and the spec must state rather than re-open.
+
+    **What it does NOT explain**, so the entry is not credited with more than it
+    earns: the field report's menu-bar near-miss, where `go to menu bar` reached
+    Finder's menu bar, was caused by an unbundled binary that macOS never makes
+    the active application. `VO-M` would have landed in Finder's menu bar too.
+    That case is about knowing WHICH application you are in, and belongs to its
+    own entry.
+
+    **What it costs elsewhere.** `protocol.md` §5, the reader-guidance document,
+    13.7's recommendation, the persona profiles, and a refusal 13.19 wrote down.
+    Spec: none yet -- and it is the next thing this lane writes.
 
 ## Convergence (requires C and D both Done)
 
