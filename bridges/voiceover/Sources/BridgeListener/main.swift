@@ -142,6 +142,11 @@ final class ReportingSignals: SessionSignals {
 		print("SILENCE CAP: LIFTED -- the machine is audible again")
 		try audible?.silenceLifted()
 	}
+
+	func silenceResuppressed() throws {
+		print("SILENCE CAP: RE-ARMED -- the machine is quiet again, on a fresh window")
+		try audible?.silenceResuppressed()
+	}
 }
 
 let config = LaunchConfig(stored: Wiring.bridgeConfig())

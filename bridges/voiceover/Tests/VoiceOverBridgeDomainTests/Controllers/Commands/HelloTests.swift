@@ -107,7 +107,14 @@ struct HelloTests {
 		factory.speechSource.emit("Documents, folder")
 		// Bridge-side and unconditional: this is the only account a run leaves if
 		// the agent crashed before it ever read the buffer.
-		#expect(transcript.speeches == ["Documents, folder"])
+		//
+		// THE FIRST LINE IS THE HANDSHAKE'S OWN (13.20). The capture proof asks the
+		// reader to describe what its cursor is on and requires the answer to
+		// arrive, so every session opens with one real utterance nobody commanded
+		// -- and it is recorded like any other, because the buffer and the
+		// transcript are a record of what the reader SAID and not of what the agent
+		// asked for.
+		#expect(transcript.speeches == [captureProbeUtterance, "Documents, folder"])
 	}
 
 	@Test("a refused mode leaves no buffer and starts nothing")
@@ -285,18 +292,24 @@ struct HelloTests {
 
 	@Test("A SILENT SESSION IS REFUSED when the reader edge cannot deliver silence, BY NAME")
 	func silentIsRefusedOnAnUnusableEdge() {
-		let factory = FakeAdapterFactory(
-			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
+		// THE RUNG THIS BRIDGE CANNOT CLIMB (13.20): the handshake registers the
+		// extension itself, and only a reader RESTART publishes a newly registered
+		// voice. So registering succeeds and the selection still cannot be made.
+		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
+		lifecycle.stateAfterRegistering = .registered
+		let factory = FakeAdapterFactory(providerLifecycle: lifecycle)
 		do {
 			_ = try makeHandler(factory: factory).execute(
 				makeContext(), request(["mode": .string("silent"), "protocolVersion": .int(1)]))
 			Issue.record("expected the silent handshake to be refused")
 		} catch let error as CommandError {
+			#expect(error.description.contains(SetupRung.voiceSelection.rawValue))
 			#expect(error.description.contains(ReaderCondition.providerNotRunning.rawValue))
-			#expect(error.description.contains(ReaderCondition.providerNotRunning.recovery))
 			// Nothing was suppressed on the way out: a refused promise leaves the
 			// machine exactly as it was.
 			#expect(factory.silenceControl.acts.isEmpty)
+			// And it tried the half that is the bridge's own before giving up.
+			#expect(lifecycle.registerCalls == 1)
 		} catch {
 			Issue.record("unexpected error: \(error)")
 		}
@@ -320,19 +333,34 @@ struct HelloTests {
 		}
 	}
 
-	@Test("a LIVE session on the same machine is established, and the condition is written down")
-	func liveSurvivesAnUnusableEdge() throws {
-		// Selecting the voice applies live, in both directions, so a live session
-		// that starts unhealthy can become healthy while it runs. It is told to the
-		// human rather than hidden.
+	@Test("A LIVE SESSION ON THE SAME MACHINE IS REFUSED TOO, which is 13.20's one reversal")
+	func liveIsRefusedOnAnUnusableEdge() {
+		// THIS TEST ASSERTED THE OPPOSITE UNTIL 13.20, and its old reasoning is
+		// worth keeping because half of it survives: selecting the voice applies
+		// live in both directions (spec 0047, finding 17), so a live session that
+		// starts unhealthy CAN become healthy while it runs. What that produced was
+		// a session answering `speech: []` -- the one answer this bridge must never
+		// give -- and it cost an hour of a live checklist on 2026-08-31.
+		//
+		// The 13.6 asymmetry stands where it is made: `silent` is a promise about a
+		// human's ears. This is a promise that `getSpeech` means anything at all,
+		// and both modes make it.
 		let transcript = FakeTranscript()
-		let factory = FakeAdapterFactory(
-			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
-		let result = try makeHandler(factory: factory).execute(
-			makeContext(transcript: transcript),
-			request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
-		#expect(try #require(result).mode == .live)
-		#expect(transcript.notes.contains { $0.contains(ReaderCondition.providerNotRunning.rawValue) })
+		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
+		lifecycle.stateAfterRegistering = .registered
+		let factory = FakeAdapterFactory(providerLifecycle: lifecycle)
+		do {
+			_ = try makeHandler(factory: factory).execute(
+				makeContext(transcript: transcript),
+				request(["mode": .string("live"), "protocolVersion": .int(1)]))
+			Issue.record("expected the live handshake to be refused as well")
+		} catch let error as CommandError {
+			#expect(error.description.contains(ReaderCondition.providerNotRunning.rawValue))
+			// The transcript still says what happened, for the human reading it later.
+			#expect(transcript.notes.contains { $0.contains("registering it") })
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	@Test("`synth` NAMES WHAT IS ACTUALLY SELECTED, so it cannot quietly disagree with reality")
@@ -341,15 +369,27 @@ struct HelloTests {
 			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
 		#expect(try #require(ours).synth == captureVoiceName)
 
-		// A machine where our voice cannot be selected reports the voice the reader
-		// is really using -- which is the honest answer, and the one that tells an
-		// agent its read-backs will be empty.
-		let elsewhere = try makeHandler(
-			factory: FakeAdapterFactory(
-				providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
-		).execute(makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)]))
-			as? HelloResult
-		#expect(try #require(elsewhere).synth == "com.apple.voice.compact.pt-BR.Luciana")
+		// AND 13.20 MADE THE DISAGREEING CASE UNREACHABLE THROUGH A SUCCESSFUL
+		// HANDSHAKE, which is worth writing down rather than testing around. The
+		// field used to be able to report somebody else's voice, because a live
+		// session was established on a machine where ours could not be selected;
+		// the setup now refuses that session, so anything that answers `hello` is a
+		// session whose reader IS on our voice. The `else` branch stays because the
+		// field is ASKED rather than asserted -- a store that changed underneath us
+		// must not be able to make this line lie -- and what is testable here is
+		// that asking is idempotent.
+		let lifecycle = FakeProviderLifecycle()
+		let second = try makeHandler(factory: FakeAdapterFactory(providerLifecycle: lifecycle)).execute(
+			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
+		#expect(try #require(second).synth == captureVoiceName)
+		#expect(lifecycle.selectCalls == 1)
+
+		// A second session on the same machine finds the reader already on our
+		// voice, writes nothing, and answers the same name.
+		let third = try makeHandler(factory: FakeAdapterFactory(providerLifecycle: lifecycle)).execute(
+			makeContext(), request(["mode": .string("live"), "protocolVersion": .int(1)])) as? HelloResult
+		#expect(try #require(third).synth == captureVoiceName)
+		#expect(lifecycle.selectCalls == 1)
 	}
 
 	@Test("the silence cap travels in hello, from the same machine fact as `attended`")

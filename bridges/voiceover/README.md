@@ -188,6 +188,19 @@ running.
 
 ## Registering the capture voice
 
+**The bridge does this for you at every `connect_reader`** (board entry 13.20).
+If the system has forgotten the extension — which it does every time `build.sh`
+runs, because that script begins `rm -rf build` — the handshake registers it
+again and then tells you the one thing it may not do on your behalf: **restart
+VoiceOver**, which is what publishes a newly registered voice. Selecting the
+voice is the bridge's job too and has been since 13.6, so VoiceOver Utility is no
+longer part of the ordinary path.
+
+The commands below are still what to run **by hand** when the bridge cannot find
+its own bundle — it looks inside `Bundle.main` when it is running as the `.app`,
+and in `build/` beside this package otherwise — and they are what the bridge
+itself runs.
+
 **Registration is two steps, and the first alone is not enough.** From this
 directory, after `build.sh`:
 
@@ -201,8 +214,17 @@ so the voice appears a little after the command returns, not immediately.
 `./build/probe list` says whether it is published; `./build/probe refresh` asks
 the system to look again now.
 
-Then select **Capture Spike** in VoiceOver Utility → Speech, and **restart
-VoiceOver**.
+Then **restart VoiceOver**:
+
+```sh
+killall VoiceOver && open -a VoiceOver
+```
+
+Always both: `killall` on its own does **not** bring the reader back, which on a
+machine somebody depends on is the worst thing this document could get wrong.
+Selecting **Capture Spike** in VoiceOver Utility → Speech is no longer necessary
+— the bridge writes that preference itself at every handshake and puts your own
+voice back at teardown.
 
 ### The bundle identity is frozen on purpose
 

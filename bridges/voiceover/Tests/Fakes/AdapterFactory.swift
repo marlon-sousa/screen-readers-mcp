@@ -52,12 +52,27 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
+	/// THE MACHINE THIS FACTORY STANDS FOR IS HEALTHY BY DEFAULT, AND SINCE 13.20
+	/// THAT INCLUDES A READER THAT SPEAKS. The handshake's last rung presses the
+	/// capture probe and requires the utterance to arrive, so a factory whose
+	/// reader was mute would be a machine no `hello` could complete on -- and
+	/// every test in HelloTests would fail for a reason none of them is about.
+	/// `captureProbeSpeaks: false` is how a test asks for the machine where
+	/// nothing comes back, which is the failure 13.20 exists to report.
+	///
+	/// The wiring itself is `Support/ReaderEdge.swift`'s, called rather than
+	/// copied: `fakeAdapterSet` needs the same behaviour, and two definitions of
+	/// "a working reader" would differ the first time the probe changed.
 	public init(
 		refusal: AdapterFactoryError? = nil,
-		providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle()
+		providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
+		captureProbeSpeaks: Bool = true
 	) {
 		self.refusal = refusal
 		self.providerLifecycle = providerLifecycle
+		if captureProbeSpeaks {
+			answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
+		}
 	}
 
 	public func build(mode: CaptureMode) throws -> AdapterSet {

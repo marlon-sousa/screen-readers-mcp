@@ -55,6 +55,76 @@ struct SilenceCapTests {
 		#expect(subject.check(1095) == SilenceCapAction.warn)
 	}
 
+	@Test("A LIFTED SESSION GOES QUIET AGAIN once the human has heard their machine")
+	func aLiftedSessionReArms() {
+		// THE DEFECT THIS EXISTS FOR, reported by Marlon on 2026-09-01 while
+		// driving the bridge: connect, stay quiet, get warned, stay quiet, get
+		// lifted, then announce -- and the machine never went silent again.
+		// `didLift` was a one-way latch and `check` answered `.none` forever after.
+		// protocol.md §6.1 rule 4 says a lifted session MAY go quiet again on a
+		// fresh window; a lift is a bounded window ending, not a decision that this
+		// session is finished being silent.
+		let subject = cap()
+		#expect(subject.check(1090) == SilenceCapAction.lift)
+		#expect(subject.lifted)
+		// Still nothing owed: the human has been told nothing since.
+		#expect(subject.check(1150) == SilenceCapAction.none)
+		subject.heard(1160)
+		#expect(subject.check(1161) == SilenceCapAction.resuppress)
+		#expect(!subject.lifted)
+	}
+
+	@Test("nothing HEARD, nothing re-armed: a timer must not mute somebody who was told nothing")
+	func silenceAloneNeverReArms() {
+		// The lift ends a window because the human has been mute for too long.
+		// Re-arming on the clock alone would take their machine away again for the
+		// very reason it was given back, which is the harm rather than the fix.
+		let subject = cap()
+		_ = subject.check(1090)
+		for instant in stride(from: 1100.0, through: 1400.0, by: 25.0) {
+			#expect(subject.check(instant) == SilenceCapAction.none)
+		}
+	}
+
+	@Test("the fresh window is a FULL one, measured from the moment it goes quiet")
+	func theFreshWindowIsFullLength() {
+		// "On a fresh window of the same length" (§6.1 rule 4). It starts at the
+		// re-arm and not at the announcement: the human could hear everything up to
+		// that instant, so charging the new window for it would shorten it.
+		let subject = cap()
+		_ = subject.check(1090)
+		subject.heard(1100)
+		#expect(subject.check(1200) == SilenceCapAction.resuppress)
+		#expect(subject.check(1244) == SilenceCapAction.none)
+		#expect(subject.check(1245) == SilenceCapAction.warn)
+		#expect(subject.check(1290) == SilenceCapAction.lift)
+	}
+
+	@Test("EXPOSURE STAYS BOUNDED across any number of re-arms")
+	func exposureIsBoundedAcrossReArms() {
+		// The rule's own reason for existing: an agent must not be able to
+		// accumulate unbounded silence out of bounded pieces. Every piece is
+		// bounded and every boundary is heard.
+		let subject = cap()
+		var now = 1000.0
+		for _ in 0..<5 {
+			now += 90
+			#expect(subject.check(now) == SilenceCapAction.lift)
+			subject.heard(now + 1)
+			now += 2
+			#expect(subject.check(now) == SilenceCapAction.resuppress)
+		}
+	}
+
+	@Test("one re-arm per hearing: a narrating agent does not re-arm on every tick")
+	func theReArmIsOwedOnce() {
+		let subject = cap()
+		_ = subject.check(1090)
+		subject.heard(1100)
+		#expect(subject.check(1101) == SilenceCapAction.resuppress)
+		#expect(subject.check(1102) == SilenceCapAction.none)
+	}
+
 	@Test("an unattended machine is never capped: un-muting an empty room is damage")
 	func unattendedNeverFires() {
 		let subject = cap(enabled: false)

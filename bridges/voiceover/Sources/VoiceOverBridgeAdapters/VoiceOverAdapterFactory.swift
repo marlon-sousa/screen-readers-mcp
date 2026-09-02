@@ -20,12 +20,16 @@
 // MarkerFileSilenceControl for why a `finally` was never enough here.
 //
 // THE REFUSAL MOVED RATHER THAN VANISHING. A mode is still an instruction a
-// bridge may be unable to carry out, and `silent` now fails at the HANDSHAKE
-// when the reader edge cannot deliver it -- see the Hello handler, which asks
-// the provider lifecycle and refuses by NAMED CONDITION with its recovery. That
-// is the same argument in the place that can now actually answer the question:
-// this factory builds collaborators, and only the handshake knows whether the
-// machine is in a state where they mean anything.
+// bridge may be unable to carry out, and it now fails at the HANDSHAKE when the
+// reader edge cannot deliver it. That is the same argument in the place that can
+// actually answer the question: this factory builds collaborators, and only the
+// handshake knows whether the machine is in a state where they mean anything.
+//
+// SINCE 13.20 THE HANDSHAKE CLIMBS RATHER THAN JUST REFUSING (see
+// ReaderEdgeSetup), and the refusal became one that BOTH modes get: what those
+// rungs establish is that `getSpeech` means anything at all, which a live
+// session promises as loudly as a silent one. 13.6's silent-only asymmetry was
+// about a different promise and it stands where it is made.
 //
 // BOTH MODES GET THE SAME COLLABORATORS, and the symmetry is the route's:
 // capture is identical either way, the marker channel carries the user's own
@@ -49,6 +53,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let markerPath: String
 	private let lifecycle: any ProviderLifecycle
 	private let scripts: any AppleScriptRunner
+	private let tools: any ProcessRunner
 	private let permissions: any PermissionBroker
 	private let poster: any EventPoster
 	private let layout: any KeyboardLayout
@@ -71,7 +76,11 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	/// The script runner is passed in for the same reason as the lifecycle: it is
 	/// not per-session either. It holds no state at all -- every call is a fresh
 	/// subprocess -- so one serves every session, and building one per handshake
-	/// would be construction for its own sake.
+	/// would be construction for its own sake. THE PROCESS RUNNER BESIDE IT
+	/// (13.20) is the same argument again, and it is here because starting the
+	/// reader is not an AppleScript question: `VoiceOverLiveness.activate()` runs
+	/// `open -a VoiceOver`, and a test that built the real one would launch the
+	/// developer's screen reader.
 	///
 	/// THE KEYBOARD LAYOUT IS PASSED IN FOR THE DETERMINISM REASON, not the safety
 	/// one: reading it changes nothing and asks for nothing, but its answer is
@@ -108,6 +117,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		markerPath: String,
 		lifecycle: any ProviderLifecycle,
 		scripts: any AppleScriptRunner,
+		tools: any ProcessRunner,
 		permissions: any PermissionBroker,
 		poster: any EventPoster,
 		layout: any KeyboardLayout,
@@ -121,6 +131,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.markerPath = markerPath
 		self.lifecycle = lifecycle
 		self.scripts = scripts
+		self.tools = tools
 		self.permissions = permissions
 		self.poster = poster
 		self.layout = layout
@@ -145,7 +156,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// with nothing: each is a thin wrapper over the one script runner, and
 			// the runner is what actually holds nothing.
 			gestureSender: VoiceOverGestureSender(runner: scripts),
-			readerLiveness: VoiceOverLiveness(runner: scripts),
+			readerLiveness: VoiceOverLiveness(runner: scripts, tools: tools),
 			textTyper: AccessibilityTextTyper(poster: poster),
 			// STATELESS TOO, and built per session over the two shared seams beneath
 			// it. THE LAYOUT IS SHARED AND THE PRESSER IS NOT, which is the ordinary

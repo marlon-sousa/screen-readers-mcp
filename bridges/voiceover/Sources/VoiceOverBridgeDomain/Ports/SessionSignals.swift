@@ -50,4 +50,20 @@ public protocol SessionSignals: AnyObject {
 	/// again later is entitled to have heard it come back in between, or the two
 	/// windows read as one long silence.
 	func silenceLifted() throws
+
+	/// The machine is going quiet again, on a fresh window (protocol.md §6.1,
+	/// rule 4).
+	///
+	/// THE OTHER HALF OF THE SENTENCE ABOVE, and it was missing until 2026-09-01:
+	/// the lift was marked and the re-arm was not, because there was no re-arm --
+	/// a lifted session stayed audible for the rest of its life. §6.1 asks for
+	/// each re-suppression to be audibly marked for the same reason it asks for
+	/// the lift to be, and this one matters more: the machine is being taken away
+	/// again, and a person who does not hear that happen has no way to know why
+	/// their computer stopped talking.
+	///
+	/// IT CARRIES WORDS, unlike the lift. A rising pair says "something came back"
+	/// on its own; nothing about a falling pair says "and this is why your reader
+	/// just went silent again".
+	func silenceResuppressed() throws
 }

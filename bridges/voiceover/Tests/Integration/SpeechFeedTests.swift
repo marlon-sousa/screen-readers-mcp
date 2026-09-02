@@ -111,6 +111,19 @@ struct SpeechFeedTests {
 		}
 	}
 
+	/// What every session's buffer already holds when the handshake returns.
+	///
+	/// SINCE 13.20 A SESSION IS SET UP RATHER THAN ASSUMED: the last rung of the
+	/// handshake presses `describe item in voiceover cursor` and requires the
+	/// utterance to ARRIVE, which is the only evidence that this feed works at all
+	/// -- everything below it is inference. So index 1 is real speech the reader
+	/// really produced, and a session's own speech starts at 2.
+	///
+	/// The tests below say that out loud instead of reading from a fresh mark,
+	/// because "everything this session captured" is exactly what several of them
+	/// are about, and a mark would quietly hide the very line that proves the feed.
+	private let handshakeSpeech = [captureProbeUtterance]
+
 	@Test("a line appended after the handshake is readable as speech, with its own stamp")
 	func aLineBecomesSpeech() throws {
 		let peer = Peer()
@@ -123,14 +136,14 @@ struct SpeechFeedTests {
 		).decoded(as: WaitForSpeechResult.self)
 		#expect(waited.found)
 		#expect(waited.text == "Documents, folder")
-		#expect(waited.index == 1)
+		#expect(waited.index == 2)
 		// The producer's own instant, rendered in the contract's shape -- the
 		// number that makes "X happened promptly after Y" answerable (spec 0028).
 		#expect(waited.emittedAt == Wallclock.format(1_700_000_000.5))
 
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
-		#expect(read.entries.map(\.text) == ["Documents, folder"])
-		#expect(read.toIndex == 2)
+		#expect(read.entries.map(\.text) == handshakeSpeech + ["Documents, folder"])
+		#expect(read.toIndex == 3)
 	}
 
 	@Test("the bookmark, the action and the read tile the way an agent uses them")
@@ -169,11 +182,12 @@ struct SpeechFeedTests {
 		_ = try peer.value(2, "waitForSpeech", ["text": .string("utterance 25"), "timeout": .double(5)])
 
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
-		#expect(read.entries.count == 25)
-		#expect(read.entries.map(\.index) == Array(1...25))
+		#expect(read.entries.count == 26)
+		#expect(read.entries.map(\.index) == Array(1...26))
+		#expect(read.entries.map(\.text).first == captureProbeUtterance)
 		let last = try peer.value(4, "getLastSpeech").decoded(as: LastSpeechResult.self)
 		#expect(last.text == "utterance 25")
-		#expect(last.index == 25)
+		#expect(last.index == 26)
 	}
 
 	@Test("what the reader said reaches the transcript without the agent asking for it")
@@ -184,7 +198,7 @@ struct SpeechFeedTests {
 
 		peer.speak("recorded bridge-side", at: 1_700_000_000)
 		_ = try peer.value(2, "waitForSpeech", ["text": .string("recorded"), "timeout": .double(5)])
-		#expect(peer.transcript.speeches == ["recorded bridge-side"])
+		#expect(peer.transcript.speeches == handshakeSpeech + ["recorded bridge-side"])
 	}
 
 	@Test("cancels and the provider's own observations never reach the buffer")
@@ -202,8 +216,8 @@ struct SpeechFeedTests {
 
 		_ = try peer.value(2, "waitForSpeech", ["text": .string("only"), "timeout": .double(5)])
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
-		#expect(read.entries.map(\.text) == ["the only utterance"])
-		#expect(read.toIndex == 2)
+		#expect(read.entries.map(\.text) == handshakeSpeech + ["the only utterance"])
+		#expect(read.toIndex == 3)
 	}
 
 	@Test("speech settles once the feed goes quiet")
@@ -232,6 +246,9 @@ struct SpeechFeedTests {
 		peer.speak("said during it", at: 1_700_000_000)
 		_ = try peer.value(2, "waitForSpeech", ["text": .string("during"), "timeout": .double(5)])
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
-		#expect(read.entries.map(\.text) == ["said during it"])
+		// The line from before the session is still absent, which is what this test
+		// is about; what is present is the handshake's own proof and then the
+		// session's speech.
+		#expect(read.entries.map(\.text) == handshakeSpeech + ["said during it"])
 	}
 }

@@ -25,6 +25,21 @@
 // 0047, finding 6) and is not the obvious one -- restarting the reader is
 // necessary and NOT sufficient, re-registration comes first, and getting that
 // order wrong wastes a person's afternoon on a reader that keeps not working.
+//
+// AND SINCE 13.20 THE BRIDGE PERFORMS THE FIRST HALF OF THAT RECOVERY ITSELF, so
+// these sentences had to change or they would be telling a human to do something
+// that has already been done. `hello` registers the extension and selects the
+// voice before it answers (spec 0050), which leaves exactly ONE action in a
+// human's hands -- the reader restart, which publishes a newly registered voice
+// and which no handshake may take on somebody's behalf. So each recovery below
+// now says what the bridge already tried and names the one thing it may not.
+//
+// THE RESTART IS ALWAYS SPELLED AS A PAIR, and that is not tidiness. MEASURED
+// 2026-08-31: `killall VoiceOver` does NOT relaunch the reader -- it leaves a
+// blind person with no screen reader at all, and `open -a VoiceOver` is what
+// brings it back. A recovery that said "restart VoiceOver" is a recovery
+// somebody could follow into silence, so every one of them below goes through
+// `readerRestartCommand` rather than spelling it again.
 
 public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 	/// The capture voice is not what VoiceOver is speaking with, so nothing this
@@ -42,6 +57,16 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 	/// because pass-through re-speaks with the very voice a failure falls back to
 	/// (spec 0047, finding 18).
 	case providerNotRunning
+
+	/// VoiceOver is not running, or is not answering at all -- which is a
+	/// different thing from the case below it, and the two have different
+	/// recoveries.
+	///
+	/// NAMED AT 13.20, which is the entry that first needs a reader before it can
+	/// do anything else. The bridge ACTIVATES the reader itself and asks again
+	/// before reporting this, so by the time an agent reads it the easy half has
+	/// already been tried.
+	case readerNotRunning
 
 	/// VoiceOver answers its own name and nothing else: the scripting object
 	/// model died without the reader dying (spec 0041, the input half).
@@ -62,6 +87,8 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 				"the capture voice is published system-wide, but whether VoiceOver offers it cannot be read"
 		case .providerNotRunning:
 			return "the capture voice's speech provider is not registered, not enabled, or has died"
+		case .readerNotRunning:
+			return "VoiceOver is not running, or is not answering at all"
 		case .scriptingChannelDead:
 			return "VoiceOver answers its own name but not its own state"
 		}
@@ -72,19 +99,29 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 		switch self {
 		case .captureVoiceNotSelected:
 			return
-				"the bridge selects the capture voice itself at session start; if it did not stick, the "
-				+ "voice is probably not in VoiceOver's list -- re-register the extension "
-				+ "(lsregister -f on the app, THEN pluginkit -a on the .appex) and restart VoiceOver"
+				"the bridge selects the capture voice itself at every handshake; if it did not stick, the "
+				+ "voice is not in VoiceOver's list yet -- the bridge has already re-registered the "
+				+ "extension, so what is left is to restart the reader: \(readerRestartCommand)"
 		case .captureVoiceNotOfferedByReader:
 			return
-				"re-register the extension (lsregister -f on the app, THEN pluginkit -a on the .appex) "
-				+ "and restart VoiceOver -- a restart alone was measured NOT to be enough"
+				"restart the reader -- \(readerRestartCommand) -- which is what publishes a newly "
+				+ "registered voice to it. The bridge has already done the re-registration a restart "
+				+ "alone was measured NOT to be enough without"
 		case .providerNotRunning:
 			return
-				"register the extension (lsregister -f on the app, THEN pluginkit -a on the .appex) and "
-				+ "restart VoiceOver, which is the only thing that re-binds the voice"
+				"the bridge registers the extension at every handshake (lsregister -f on the app, THEN "
+				+ "pluginkit -a on the .appex); if this is still the answer, either those could not run "
+				+ "-- the failure says so by name -- or the reader has not restarted since, and a "
+				+ "restart is the only thing that re-binds the voice: \(readerRestartCommand)"
 		case .scriptingChannelDead:
-			return "restart VoiceOver; nothing short of a reader restart recovers the scripting channel"
+			return
+				"restart the reader -- \(readerRestartCommand) -- because nothing short of a reader "
+				+ "restart recovers the scripting channel"
+		case .readerNotRunning:
+			return
+				"start VoiceOver: `open -a VoiceOver`, or Command-F5. The bridge tries this itself at "
+				+ "the handshake, so if this is the answer the reader would not come up -- check "
+				+ "whether it is asking for a password or showing a dialog on the machine's screen"
 		}
 	}
 
@@ -94,3 +131,14 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 		"\(rawValue): \(summary). Recovery: \(recovery)."
 	}
 }
+
+/// How a human restarts this reader, spelled as ONE string so it cannot be
+/// half-quoted anywhere.
+///
+/// MEASURED 2026-08-31: `killall VoiceOver` on its own does NOT relaunch it. A
+/// recovery that stopped after the kill would leave a blind person with no screen
+/// reader and no obvious way back, which is the single worst thing any sentence
+/// in this file could cause. `open -a VoiceOver` is what brings it back, so the
+/// two travel together everywhere -- here, in the setup failures, in the guidance
+/// document and in this bridge's README.
+public let readerRestartCommand = "killall VoiceOver && open -a VoiceOver"

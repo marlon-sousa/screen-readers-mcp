@@ -24,6 +24,7 @@ public final class FakeSessionSignals: SessionSignals {
 	/// When true, both cues throw AFTER recording that they were asked -- so a
 	/// test can assert both that the session tried and that it survived.
 	public var fails = false
+	public private(set) var resuppressedCount = 0
 
 	public init() {}
 
@@ -44,6 +45,15 @@ public final class FakeSessionSignals: SessionSignals {
 
 	public func silenceLifted() throws {
 		liftedCount += 1
+		if fails { throw CueFailed() }
+	}
+
+	/// COUNTED SEPARATELY FROM THE LIFT, and the count is the point: the defect
+	/// this method exists for was a session that lifted once and stayed audible
+	/// forever, so "it went quiet again, and how many times" is exactly what a
+	/// test has to be able to ask.
+	public func silenceResuppressed() throws {
+		resuppressedCount += 1
 		if fails { throw CueFailed() }
 	}
 }

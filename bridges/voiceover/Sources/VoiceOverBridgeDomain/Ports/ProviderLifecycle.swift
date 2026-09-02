@@ -19,13 +19,34 @@
 // live, in both directions, with no reader restart, no UI and no Accessibility
 // grant. Everything before that finding assumed a human in VoiceOver Utility.
 //
-// WHAT IS NOT HERE, AND WHY. `register()` / `unregister()` are named in spec
-// 0046's 13.6 table and are deliberately absent: re-registration only takes
-// effect after the reader is RESTARTED (spec 0047, finding 6), and restarting a
-// blind person's screen reader is not something a handshake may decide. They
-// arrive with the control dialog, beside the row that a human drives --
-// which is the same rule as "a capability is announced by the entry that
-// implements it", applied to a port.
+// REGISTERING IS THE BRIDGE'S JOB TOO, SINCE 13.20 -- AND THIS PARAGRAPH USED TO
+// SAY THE OPPOSITE. It read, until spec 0050:
+//
+//   "`register()` / `unregister()` are named in spec 0046's 13.6 table and are
+//    deliberately absent: re-registration only takes effect after the reader is
+//    RESTARTED (spec 0047, finding 6), and restarting a blind person's screen
+//    reader is not something a handshake may decide."
+//
+// The argument is right about the RESTART and was over-applied to the
+// REGISTRATION. Registering is silent: two subprocesses, nothing a running
+// reader can see, no dialog and no grant. Only its EFFECT needs a restart. So
+// `register()` is here and the restart is still not: the handshake climbs as far
+// as it can and NAMES the one action it may not take (see ReaderCondition).
+//
+// What it cost to leave it out is the reason 13.20 exists: `poe build` deletes
+// and reassembles the bundle, the system forgets the extension, and every
+// session afterwards answered `speech: []` -- indistinguishable from "the reader
+// said nothing". An hour of a live checklist, on 2026-08-31, with the bridge
+// printing `providerNotRunning` at startup the whole time.
+//
+// THERE IS NO `unregister()`, AND THERE MUST NOT BE. The symmetry is tempting
+// and the temptation is exactly the bug: SESSION state is restored at teardown
+// -- the voice SELECTION, hard invariant 3, `restoreVoice` below -- and MACHINE
+// state is not. Undoing the registration would put the next session back in the
+// state this entry exists to repair, and the bridge's accept loop is serial
+// today but will not always be: one client's disconnect must never deregister
+// the voice out from under another. A human who really wants it gone runs
+// `pluginkit -r` on the .appex, which this bridge's README documents.
 
 /// The voice VoiceOver is currently set to speak with.
 ///
@@ -68,6 +89,22 @@ public protocol ProviderLifecycle: AnyObject {
 
 	/// What the reader is set to speak with, or nil if the store cannot be read.
 	func selectedVoice() -> SelectedVoice?
+
+	/// Register the capture voice's extension with the system, and confirm it
+	/// took. ADDED AT 13.20; called by the handshake when `state()` is
+	/// `.notRegistered`, and by nothing at teardown -- see the header.
+	///
+	/// CONFIRMING MEANS POLLING HERE, not reading an exit status. Measured
+	/// 2026-08-31: `pluginkit -a` hands the work to `pkd` and returns, so an
+	/// immediate re-read reports failure on a registration that worked. A false
+	/// alarm is worse than no check, because it sends a human to redo something
+	/// that is already done.
+	///
+	/// IT DOES NOT PROMISE THE VOICE IS USABLE, and cannot: the system publishes
+	/// a newly registered voice only after VoiceOver RESTARTS (spec 0047, finding
+	/// 6). This gets the ladder to `registered`; whoever needs `published` needs
+	/// a human. That is the honest limit and the callers say so by name.
+	func register() throws
 
 	/// Point the reader at the capture voice, and confirm it took.
 	///

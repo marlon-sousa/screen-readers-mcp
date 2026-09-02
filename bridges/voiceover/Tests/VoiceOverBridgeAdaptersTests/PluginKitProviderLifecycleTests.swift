@@ -33,23 +33,137 @@ struct PluginKitProviderLifecycleTests {
 		 (3 plug-ins)
 		"""
 
+	/// A listing with ours absent, which is what `poe build` leaves behind.
+	static let listingWithoutOurs = """
+		     com.apple.texttospeech.SiriAUSP(1.0)\tCE39CFD2-4782-536B-B9D7-C2A3A527CCA7\t2024-09-17 02:00:41 +0000\t/System/Library/PrivateFrameworks/TextToSpeech.framework/PlugIns/SiriAUSP.appex
+		 (1 plug-in)
+		"""
+
+	static let paths = CaptureBundlePaths.inside(directory: "/somewhere/build")
+
 	private func subject(
 		listing text: String = listing,
 		listingStatus: Int32 = 0,
 		published: [String] = [publishedVoice],
-		selected: String? = usersVoice
+		selected: String? = usersVoice,
+		bundlePaths: CaptureBundlePaths? = paths,
+		clock: FakeClock = FakeClock()
 	) -> (PluginKitProviderLifecycle, FakeVoiceStore, FakeProcessRunner) {
 		let runner = FakeProcessRunner()
 		runner.answers["-m"] = ProcessResult(status: listingStatus, standardOutput: Data(text.utf8))
+		// The two registration tools succeed by default: an unknown verb answers
+		// non-zero here, which is what an unregistered machine does, and every test
+		// that is not about registration would then be about it by accident.
+		runner.answers["-f"] = ProcessResult(status: 0, standardOutput: Data())
+		runner.answers["-a"] = ProcessResult(status: 0, standardOutput: Data())
 		let store = FakeVoiceStore(voice: selected)
 		let lifecycle = PluginKitProviderLifecycle(
 			runner: runner,
 			published: FakePublishedVoices(voices: published),
 			store: store,
 			extensionBundleID: PluginKitProviderLifecycleTests.bundleID,
-			voiceIdentifierSuffix: PluginKitProviderLifecycleTests.suffix
+			voiceIdentifierSuffix: PluginKitProviderLifecycleTests.suffix,
+			bundlePaths: bundlePaths,
+			clock: clock
 		)
 		return (lifecycle, store, runner)
+	}
+
+	// -- registration (13.20) -------------------------------------------------
+
+	@Test("REGISTERING RUNS lsregister FIRST AND pluginkit SECOND, because that order was measured")
+	func registrationRunsBothToolsInOrder() throws {
+		// Spec 0041, C1: `lsregister -f` on the .app alone did not register the
+		// voice. The order is the contract, so it is asserted as an ARRAY rather
+		// than as two separate expectations that would pass in either sequence.
+		let (lifecycle, _, runner) = subject()
+		try lifecycle.register()
+		#expect(
+			runner.invocations.prefix(2) == [
+				FakeProcessRunner.Invocation(
+					executable: PluginKitProviderLifecycle.launchServicesTool,
+					arguments: ["-f", PluginKitProviderLifecycleTests.paths.app]),
+				FakeProcessRunner.Invocation(
+					executable: PluginKitProviderLifecycle.pluginKitTool,
+					arguments: ["-a", PluginKitProviderLifecycleTests.paths.appex]),
+			])
+	}
+
+	@Test("IT CONFIRMS BY POLLING, because pluginkit hands the work to pkd and returns")
+	func registrationPollsForTheResult() throws {
+		// MEASURED 2026-08-31. An immediate re-read reports failure on a
+		// registration that WORKED, and a false alarm here sends a human to redo
+		// something already done. So the listing answers "not ours" first and ours
+		// afterwards, and this must still succeed.
+		let clock = FakeClock()
+		let (lifecycle, _, runner) = subject(
+			listing: PluginKitProviderLifecycleTests.listingWithoutOurs, clock: clock)
+		var listings = 0
+		runner.beforeRun = { executable, arguments in
+			guard executable == PluginKitProviderLifecycle.pluginKitTool, arguments.first == "-m"
+			else { return }
+			listings += 1
+			if listings >= 3 {
+				runner.answers["-m"] = ProcessResult(
+					status: 0,
+					standardOutput: Data(PluginKitProviderLifecycleTests.listing.utf8))
+			}
+		}
+		try lifecycle.register()
+		#expect(listings >= 3)
+		// And the wait was SLEPT rather than spun, on the injected clock -- so this
+		// test costs microseconds where the real one costs seconds.
+		#expect(clock.sleeps.count == listings - 1)
+	}
+
+	@Test("a registration that never appears fails BY NAME after the window")
+	func registrationThatNeverTakesIsReported() {
+		let (lifecycle, _, _) = subject(listing: PluginKitProviderLifecycleTests.listingWithoutOurs)
+		do {
+			try lifecycle.register()
+			Issue.record("expected the unconfirmed registration to be reported")
+		} catch let error as ProviderError {
+			#expect(error.description.contains(ReaderCondition.providerNotRunning.rawValue))
+			#expect(error.description.contains("does not list it"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("WITH NO BUNDLE IT RUNS NOTHING and hands both commands to a human")
+	func registrationWithoutABundleIsNamed() {
+		// Guessing a path would let `lsregister -f` register nothing and report
+		// success, which is the failure shape this whole entry exists to remove.
+		let (lifecycle, _, runner) = subject(bundlePaths: nil)
+		do {
+			try lifecycle.register()
+			Issue.record("expected the missing bundle to be reported")
+		} catch let error as ProviderError {
+			#expect(error.description.contains("lsregister"))
+			#expect(error.description.contains("pluginkit -a"))
+			#expect(error.description.contains(".appex"))
+			#expect(runner.invocations.isEmpty)
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a tool that refuses is reported as ITSELF, not folded into `registration failed`")
+	func aRefusingToolIsNamed() {
+		let (lifecycle, _, runner) = subject()
+		runner.answers["-f"] = ProcessResult(
+			status: 1, standardOutput: Data(), standardError: "lsregister: no such bundle")
+		do {
+			try lifecycle.register()
+			Issue.record("expected the refusal to be reported")
+		} catch let error as ProviderError {
+			#expect(error.description.contains("no such bundle"))
+			#expect(error.description.contains("lsregister"))
+			// It stopped: pluginkit is never handed an app LaunchServices refused.
+			#expect(!runner.invocations.contains { $0.arguments.first == "-a" })
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	// -- the state machine ----------------------------------------------------
@@ -139,7 +253,9 @@ struct PluginKitProviderLifecycleTests {
 			Issue.record("expected the unconfirmed write to be reported")
 		} catch let error as ProviderError {
 			#expect(error.description.contains(ReaderCondition.captureVoiceNotOfferedByReader.rawValue))
-			#expect(error.description.contains("pluginkit -a"))
+			// The recovery is a READER RESTART since 13.20, because the bridge has
+			// already done the re-registration half by the time anybody reads this.
+			#expect(error.description.contains(readerRestartCommand))
 		} catch {
 			Issue.record("unexpected error: \(error)")
 		}

@@ -269,6 +269,12 @@ vocabulary too — press the letters the way a person would.
 Two things to know before you rely on it. It is a **mode**, and it is off unless
 somebody turned it on; `toggle single-key quick nav on or off` flips it and says
 which way it went, which is how you find out (see "How you read state" below).
+**Turn it on with that command and not with the key chord you may know from
+Apple's own documentation** — a person toggles Quick Nav by pressing Left Arrow
+and Right Arrow *together*, and this bridge cannot press two ordinary keys at the
+same time (see "What this reader does not offer"). All three toggles have command
+names, they cost no permission, and they say out loud which way they went, which
+the chord does not.
 And while it is on, those letters no longer reach the page as text — which is
 what makes it worth turning off again before you type into a field.
 
@@ -400,6 +406,45 @@ do not assume a facility exists because another reader has one.
 - **No "list open windows" that this bridge can drive**, but `describe open
   applications` and `item chooser` between them cover most of what you would want
   it for.
+- **No two ordinary keys pressed at the same time.** A keystroke here is
+  modifiers plus **one** key: `command+l` is expressible and
+  `leftArrow+rightArrow` is not. Some things a Mac user does are exactly that
+  chord — toggling Quick Nav is the one you will meet first — and **the answer is
+  the reader's own command name**, which exists for every such act this bridge
+  has looked for, costs no permission, and announces its result. If you find one
+  that has no command name, say so: it is a gap worth recording rather than a
+  thing to work around with `type_text`, which sends characters and not keys.
+
+## Your session was SET UP before you were handed it
+
+`connect_reader` does not merely open a channel here. Before it answers it reads
+the two permissions this bridge needs, starts VoiceOver if it is not running,
+registers the capture voice's extension with the system if the system has
+forgotten it, points the reader at that voice, and then makes the reader speak
+and requires the words to arrive. If any of that could not be done, **you get a
+named failure instead of a session** — which step, what was wrong, and what you
+must do, usually "tell the person at this machine to do X, then connect again".
+
+Two consequences worth holding on to:
+
+- **An empty `get_speech` now means the reader said nothing.** It used to be able
+  to mean "this machine cannot capture at all", and the two were
+  indistinguishable. They are not any more: a session that exists is a session
+  whose capture was proved a moment ago. So an empty read is a fact about the
+  interface you are testing, not a fault to go hunting for.
+- **The first utterance of every session is not yours.** Index 1 holds what the
+  reader said when the setup asked it to describe what its cursor is on — real
+  speech, recorded like any other, and incidentally a useful statement of where
+  you are starting from. Your own first utterance is index 2. Take a bookmark
+  with `get_next_speech_index` before you act, as you would anyway, and none of
+  this matters.
+
+One thing the bridge will **not** do for you: restart the reader. macOS only
+publishes a newly registered voice after VoiceOver restarts, so if the setup had
+to register the extension, the connect fails and tells you to ask the person at
+the machine to run `killall VoiceOver && open -a VoiceOver` and connect again.
+That is not the bridge being timid — restarting somebody's screen reader without
+asking is taking their computer away mid-sentence.
 
 ## Two things about the machine you are driving
 

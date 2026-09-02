@@ -23,7 +23,30 @@ public final class FakeAppleScriptRunner: AppleScriptRunner {
 	/// What a call answers once the queue is empty.
 	public var defaultAnswer = ""
 
+	/// Answers keyed by the EXACT script text, consulted after the queue and
+	/// before `defaultAnswer`.
+	///
+	/// IT ARRIVED WITH 13.20, BECAUSE THE HANDSHAKE NOW SENDS TWO DIFFERENT
+	/// SCRIPTS DOWN ONE RUNNER. Until then a test drove one adapter at a time and
+	/// a single `defaultAnswer` was enough; now `ReaderEdgeSetup` asks the reader
+	/// its own name AND presses a command, through the same seam, and a fake that
+	/// answered both the same way would either report a dead reader on every
+	/// healthy machine or put the reader's name into every gesture's reply. This
+	/// is `FakeProcessRunner`'s table keyed by verb, in the form this seam allows.
+	public var scriptedAnswers: [String: String] = [:]
+
 	public private(set) var scripts: [String] = []
+
+	/// Called with each script before it is answered, so scaffolding can make a
+	/// script have a CONSEQUENCE -- the way `FakeGestureSender.onPress` does.
+	///
+	/// It exists for 13.20's capture proof: the handshake presses a command and
+	/// requires an utterance to come back, so a fake reader that never says
+	/// anything is a fake machine that cannot be connected to. The IO that makes
+	/// that happen lives in `Support/ReaderEdge.swift`, never here -- a port
+	/// double that wrote files would be a double doing the thing doubles exist to
+	/// avoid.
+	public var onScript: ((String) -> Void)?
 
 	public init() {}
 
@@ -40,7 +63,8 @@ public final class FakeAppleScriptRunner: AppleScriptRunner {
 
 	public func run(_ script: String) throws -> String {
 		scripts.append(script)
-		guard !answers.isEmpty else { return defaultAnswer }
+		onScript?(script)
+		guard !answers.isEmpty else { return scriptedAnswers[script] ?? defaultAnswer }
 		return try answers.removeFirst().get()
 	}
 }
