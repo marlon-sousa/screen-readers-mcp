@@ -98,6 +98,12 @@ public enum Gesture: Equatable {
 	/// and needs nothing added; one with no modifiers spells itself `kb:h`,
 	/// because `h` fed back in is a command name and a transcript whose lines
 	/// cannot be replayed is not doing its job.
+	///
+	/// A MULTI-KEY CHORD WITH NO MODIFIERS TAKES THE PREFIX TOO -- 13.22 --
+	/// `kb:leftArrow+rightArrow`. It would round-trip without one, since the `+`
+	/// classifies it, and the rule stays "no modifiers, so say which vocabulary"
+	/// rather than growing a second clause: one rule that is occasionally
+	/// belt-and-braces beats two that a reader has to hold apart.
 	public var described: String {
 		switch self {
 		case .readerCommand(let command): return command

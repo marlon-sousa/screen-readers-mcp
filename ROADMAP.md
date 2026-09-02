@@ -1700,14 +1700,14 @@ rule intends.
     Spec: [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8 -- no spec
     number of its own, the 13.11 precedent. Done (PR #95, 2026-09-01).
 
-13.22. **Two keys held together** (lane 3). Found by an agent driving the bridge
+13.22. **Done** -- **Two keys held together** (lane 3). Found by an agent driving the bridge
     and relayed by Marlon on 2026-09-01: *"it could not activate quick nav
     because the command would be left and right arrows pressed together, and it
     can't press keys together. This needs to be generalized, if possible. On mac
     this is common."*
 
-    **The gap.** `Keystroke` is modifiers plus exactly ONE key, so
-    `kb:leftArrow+rightArrow` fails with *"'leftarrow' is not a modifier this
+    **The gap.** `Keystroke` was modifiers plus exactly ONE key, so
+    `kb:leftArrow+rightArrow` failed with *"'leftarrow' is not a modifier this
     bridge knows"* -- true, unhelpful, and pointing at the wrong thing. Arrow-key
     Quick Nav is that chord, and it is how an ordinary VoiceOver user turns on the
     mode they then navigate with all day.
@@ -1741,18 +1741,37 @@ rule intends.
     recommendation rather than weakening it: each command name moves exactly one
     setting and says which way it went; the chord moves two and says nothing.
 
-    **What it must not do:** displace the command name as the recommended route
+    **What it must not do, and did not:** displace the command name as the
+    recommended route
     (it costs no grant and announces its result), or spend 13.8's lever -- a chord
     is a `CGEvent` like any other keystroke, so `request` still has two callers.
     The sharpest rule is spec 0048's generalised: the keys are released in a
     `defer`, in reverse, so a post that fails partway cannot leave an arrow key
     held down.
 
-    Spec: [spec 0051](specs/0051-two-keys-held-together.md) -- **Proposed, not
-    yet agreed; no implementation exists.** Instrument:
-    `scripts/voiceover_two_key_chord.sh`, which carries the measurement.
-    **Stacked on PR #95** and to be opened once that merges, per one open PR per
-    lane.
+    **What shipped**, and the shape is the one a notation entry should have --
+    no new files, no new ports, no new capability: `Keystroke.key` became
+    `Keystroke.keys`, parsed by one rule (leading modifiers are modifiers, the
+    first token that is not one begins the keys, everything after it must be a
+    key); `CGKeystrokePresser` presses them down in order and releases them in
+    reverse from a SECOND `defer`, registered after the modifiers' one so Swift
+    runs it first -- the keys come up while the modifiers are still held, which is
+    what a real keyboard does. A press that fails partway releases exactly the
+    keys that went down; one unreachable key in a chord posts nothing at all.
+    `CommandVocabulary` needed no change, which is the reviewable claim rather
+    than an absence.
+
+    **Two amendments rode in the PR**, both in the spec: a token that names no key
+    is diagnosed by POSITION -- not-last is reported as a misspelled modifier
+    (`cmd+l`), last as a key -- because rule 3 moved which token fails; and
+    `FakeEventPoster` gained a `keyFailureAt`, without which "it released what it
+    pressed" cannot be asserted, since the existing `keyFailure` fails the release
+    too.
+
+    Spec: [spec 0051](specs/0051-two-keys-held-together.md) -- **Agreed
+    2026-09-02.** Instrument: `scripts/voiceover_two_key_chord.sh`, which carries
+    the measurement. **Stacked on PR #95** and opened once that merged, per one
+    open PR per lane. Done (PR #96, 2026-09-02).
 
 13.23. **Done** -- **The bridge died of SIGPIPE instead of tearing down** (lane
     3). Found on 2026-09-02 by 13.20's own live checklist, item 5, and fixed in

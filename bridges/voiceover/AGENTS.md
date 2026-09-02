@@ -317,6 +317,26 @@ name that carries one carries spaces too (`toggle single-key quick nav on or
 off`), and no command in the 415 is a bare `+`-joined token. The same rule
 decides the hyphen case, which is why the rule is one rule and not two.
 
+**AND THE KEY IS NOW KEYS — 13.22.** A keystroke is zero or more modifiers and
+**one or more** keys: the first token that is not a modifier begins the key list,
+and every token from there on has to be a key. `kb:leftArrow+rightArrow` is
+arrow-key Quick Nav, which is how an ordinary user turns on the mode they then
+navigate with all day, and until that entry it failed with *"'leftarrow' is not a
+modifier this bridge knows"* — true, unhelpful, and pointing at the wrong thing.
+There is **no second separator** (`+` already means "these together", and a
+second one would make `command+leftArrow+rightArrow` unspellable in either) and
+**no cap** on how many keys, because a limit of two is a number nobody could
+defend and the code is identical for three. A modifier appearing *after* a key
+stays a named failure, for the `press_order` reason below. **Whether VoiceOver
+accepts SYNTHESIZED simultaneity at all was measured rather than assumed**
+(2026-09-01, control-probe-control, `bash scripts/voiceover_two_key_chord.sh`):
+the two arrows sent sequentially move nothing, sent together they toggle
+arrow-key Quick Nav, and **no inter-event delay is needed**. What the same
+measurement found is the reason the command name stays the recommended route —
+**the chord moves TWO settings**, taking single-key Quick Nav down with
+arrow-key Quick Nav, and announces neither, while each command name moves one and
+says which way it went. Spec 0051.
+
 **`kb:` OUTRANKS ALL OF THAT, and it is what makes a lone key expressible.** A
 source prefix — everything up to and including the first `:`, lane 1's own rule
 in `bare_key_name` — says the id is a keystroke whatever shape it has, so `kb:h`
@@ -430,6 +450,17 @@ up, then transitions unwinding to `[]` — and **the release is in a `defer`, so
 runs even when the press failed**. Its own failures are swallowed: leaving
 somebody's Command key down is worse than any error this class could return. Spec
 0048 §2.5, reversed with the measurement it asked for.
+
+**13.22 GENERALISED THAT RULE, AND IT IS THE SHARPEST THING IN THAT ENTRY.** With
+several keys in one keystroke there are **two `defer`s**, and their registration
+order is load-bearing: Swift runs them in reverse, so the keys come up first (in
+reverse of the order they went down) and the modifiers after them, which is what
+a real keyboard does. A press that throws partway therefore releases **exactly
+the keys that went down** and no others — a stuck ordinary key is quieter than a
+stuck Command and just as bad, because every keystroke afterwards repeats it. And
+"nothing is posted before the keycode is known" now means **all** the keycodes:
+`leftArrow+rightArrow` with one key unreachable posts nothing at all rather than
+pressing the half it can.
 
 **The seam reports which LAYER the character sits on, and that is a decision
 rather than a detail.** Digits are unshifted here and on an American keyboard and

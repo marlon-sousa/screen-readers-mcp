@@ -84,6 +84,19 @@ public final class FakeEventPoster: EventPoster {
 	/// nothing.
 	public var keyFailure: EventPostingFailure?
 
+	/// Which single KEY event `keyFailure` applies to, counted from 1.
+	///
+	/// Nil means every one of them, which is what `keyFailure` meant before 13.22.
+	/// Set to 2 and the first key of a two-key chord goes down, the second does
+	/// not, and the RELEASE of the first still goes out -- which is the only way
+	/// to exercise the property that entry added: a press that fails partway
+	/// releases exactly the keys it managed to press, and no more.
+	public var keyFailureAt: Int?
+
+	/// Key events attempted, failures included -- which is what `keyFailureAt`
+	/// counts. `keyed` holds only the ones that went out.
+	private var keyAttempts = 0
+
 	public func post(unicode: String, keyDown: Bool) throws {
 		if let failure { throw failure }
 		posted.append(Posted(unicode: unicode, keyDown: keyDown))
@@ -92,7 +105,8 @@ public final class FakeEventPoster: EventPoster {
 
 	public func post(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) throws {
 		if let failure { throw failure }
-		if let keyFailure { throw keyFailure }
+		keyAttempts += 1
+		if let keyFailure, keyFailureAt == nil || keyFailureAt == keyAttempts { throw keyFailure }
 		keyed.append(Keyed(keyCode: keyCode, flags: flags, keyDown: keyDown))
 		sequence.append(.key(keyCode, flags: flags, keyDown: keyDown))
 	}

@@ -62,10 +62,11 @@ Four consequences that save round trips:
 ## Keystrokes: how to write one, and what it costs
 
     command+l          control+option+space          shift+command+4          kb:h
+    kb:leftArrow+rightArrow
 
-**Modifiers first, the key last, joined by `+`.** The modifiers are `command`,
+**Modifiers first, the keys last, joined by `+`.** The modifiers are `command`,
 `control`, `option` (`alt` also works), `shift` and `fn`; case does not matter
-and neither does the order of the modifiers among themselves. The key is a single
+and neither does the order of the modifiers among themselves. A key is a single
 character, or one of these names:
 
 | Key | Write | Also accepted |
@@ -100,6 +101,14 @@ readers has to spell that one key differently.
   performs them itself, and **they cost no permission at all**. Prefer them.
   `kb:` is for the keys the reader has no command for — which is every letter,
   and letters are what single-key Quick Nav is made of.
+- **Two ordinary keys may be held together** — `kb:leftArrow+rightArrow`, which
+  is arrow-key Quick Nav. Every part after the modifiers is a key, so there is no
+  second separator to learn and `command+leftArrow+rightArrow` says what it looks
+  like. The keys go down in the order you wrote them and come up in reverse, so
+  they really are held at the same moment — which is what the reader detects;
+  sending the two arrows as two gestures moves nothing. There is no limit of two.
+  **Prefer a command name anyway where one exists**: this is an expression, not a
+  recommendation, for the reasons under "What this reader does not offer".
 - **A keystroke costs the Accessibility grant**, exactly as `type_text` does, and
   the request is raised on the first one of a session. A session that presses only
   command names and reads speech is never asked for anything — so if you do not
@@ -271,10 +280,13 @@ somebody turned it on; `toggle single-key quick nav on or off` flips it and says
 which way it went, which is how you find out (see "How you read state" below).
 **Turn it on with that command and not with the key chord you may know from
 Apple's own documentation** — a person toggles Quick Nav by pressing Left Arrow
-and Right Arrow *together*, and this bridge cannot press two ordinary keys at the
-same time (see "What this reader does not offer"). All three toggles have command
-names, they cost no permission, and they say out loud which way they went, which
-the chord does not.
+and Right Arrow *together*, and this bridge can now press that
+(`kb:leftArrow+rightArrow`), which does not make it the way to do it. All three
+toggles have command names, they cost no permission, and each says out loud which
+way it went. The chord costs the Accessibility grant, says nothing — and it moves
+**two** settings rather than one: measured 2026-09-01, it takes single-key Quick
+Nav down with arrow-key Quick Nav, so an agent reaching for it to turn one on may
+silently change how the letter keys behave as well.
 And while it is on, those letters no longer reach the page as text — which is
 what makes it worth turning off again before you type into a field.
 
@@ -406,13 +418,13 @@ do not assume a facility exists because another reader has one.
 - **No "list open windows" that this bridge can drive**, but `describe open
   applications` and `item chooser` between them cover most of what you would want
   it for.
-- **No two ordinary keys pressed at the same time.** A keystroke here is
-  modifiers plus **one** key: `command+l` is expressible and
-  `leftArrow+rightArrow` is not. Some things a Mac user does are exactly that
-  chord — toggling Quick Nav is the one you will meet first — and **the answer is
-  the reader's own command name**, which exists for every such act this bridge
-  has looked for, costs no permission, and announces its result. If you find one
-  that has no command name, say so: it is a gap worth recording rather than a
+- **No account of what a chord DID.** Two ordinary keys held together are
+  expressible — `kb:leftArrow+rightArrow`, which is how a Mac user toggles Quick
+  Nav — but `press_gesture` reports what it PRESSED and never what the reader made
+  of it. The chord that toggles Quick Nav moves two settings and announces
+  neither, so **the reader's own command name is still the answer** where one
+  exists: it moves exactly one setting and says which way it went. If you meet an
+  act that has no command name, say so: it is a gap worth recording rather than a
   thing to work around with `type_text`, which sends characters and not keys.
 
 ## Your session was SET UP before you were handed it

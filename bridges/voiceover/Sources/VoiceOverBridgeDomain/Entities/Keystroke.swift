@@ -15,13 +15,45 @@
 // gap was OURS rather than the platform's (spec 0048 §1.1); this is the half of
 // closing it that can be reasoned about without a keyboard.
 //
-// THE NOTATION IS `+`-JOINED, MODIFIERS FIRST AND THE KEY LAST: `command+l`,
+// THE NOTATION IS `+`-JOINED, MODIFIERS FIRST AND THE KEYS LAST: `command+l`,
 // `control+option+space`, `shift+command+4`. Case is not significant and the
 // order of the MODIFIERS among themselves is not either, so `Command+L` and
 // `shift+command+4` and `command+shift+4` all parse; what comes back out of
 // `described` is one canonical spelling, which is what the transcript and the
 // result report so a reader of either sees what the bridge UNDERSTOOD rather
 // than what was typed at it.
+//
+// ============================================================================
+// TWO ORDINARY KEYS MAY BE HELD TOGETHER, AND THAT IS 13.22.
+// ============================================================================
+//
+// A keystroke here used to be modifiers plus exactly ONE key, so
+// `kb:leftArrow+rightArrow` failed with *"'leftarrow' is not a modifier this
+// bridge knows"* -- true, unhelpful, and pointing at the wrong thing. That chord
+// is arrow-key Quick Nav, which is how an ordinary VoiceOver user turns on the
+// navigation mode they then use all day, and the shape is not exotic on this
+// platform.
+//
+// So a keystroke is now ZERO OR MORE MODIFIERS AND ONE OR MORE KEYS, with no
+// second separator: `+` already means "these together" for modifiers, and making
+// an agent learn a second way to say "at the same time" would also make
+// `command+leftArrow+rightArrow` unspellable in either. The keys keep the order
+// they were written in, because that order is what "down in order, up in
+// reverse" means below the port and a transcript line has to be replayable.
+//
+// THE READER'S OWN COMMAND NAME IS STILL THE ROUTE TO PREFER, and this entry
+// adds an expression rather than a recommendation. All three Quick Nav toggles
+// exist as command names; each moves exactly one setting and says out loud which
+// way it went, costs no Accessibility grant, and works whatever the person has
+// rebound. The chord costs the grant, says nothing -- and was measured on
+// 2026-09-01 to move TWO settings, taking single-key Quick Nav down with
+// arrow-key Quick Nav. Spec 0051 §2.1.
+//
+// IT IS PARSEABLE ON THE OTHER READER TOO, as far as reading its source can say:
+// NVDA's `KeyboardInputGesture.fromName` takes everything before the last token
+// as held keys and does NOT filter non-modifiers out of them
+// (`../nvda/source/keyboardHandler.py` at `release-2026.1`, read 2026-09-01).
+// Nobody has pressed it there, so that is a code reading and not a claim.
 //
 // A KEYSTROKE MAY HAVE NO MODIFIERS AT ALL, AND THAT IS 13.19. With single-key
 // Quick Nav on, an ordinary VoiceOver user presses `h` to move by heading, and
@@ -58,17 +90,20 @@
 // A name that differs with no hazard is tolerated; a name that differs with a
 // hazard is refused. That is the whole line.
 //
-// THE KEY GOES LAST, AND THAT IS LANE 1's RULE RATHER THAN ONE INVENTED HERE.
-// NVDA's `KeyboardInputGesture.fromName` treats the last token as the key and
-// every earlier one as a modifier, which is why that bridge carries
-// `keyboard_gesture_name.press_order` to hoist modifiers to the front before it
-// presses anything. Following it means `command+l` is the same string on both
-// readers in this contract, and `l+command` is a named failure on both. WE DO
-// NOT COPY THE HOISTING ITSELF: `press_order` exists to undo NVDA's own
+// THE MODIFIERS GO FIRST AND THE KEYS LAST, AND THAT IS LANE 1's RULE RATHER
+// THAN ONE INVENTED HERE. NVDA's `KeyboardInputGesture.fromName` treats the last
+// token as the key and every earlier one as held, which is why that bridge
+// carries `keyboard_gesture_name.press_order` to hoist modifiers to the front
+// before it presses anything. Following it means `command+l` is the same string
+// on both readers in this contract, and `l+command` is a named failure on both.
+// WE DO NOT COPY THE HOISTING ITSELF: `press_order` exists to undo NVDA's own
 // normalizer, which sorts a stored gesture's parts alphabetically, and there is
 // no such normalizer here -- so a wrong order stays a named failure rather than
 // being quietly reordered, because the one place to hide a typo is not the place
-// that presses a key.
+// that presses a key. THE FIRST TOKEN THAT IS NOT A MODIFIER BEGINS THE KEYS,
+// and everything from there on has to be one: that is the whole of the rule
+// 13.22 changed, and it is why a modifier appearing after a key is still a
+// named failure and not a reordering.
 //
 // A MALFORMED ID FAILS BY NAME, and that is the entity's whole job. "command+"
 // is missing its key, "command+ll" names no key at all, and "cmd+l" uses a
@@ -99,12 +134,14 @@ public struct KeystrokeMalformed: Error, Equatable, CustomStringConvertible {
 	}
 }
 
-/// One key, pressed with zero or more modifiers held.
+/// One or more keys, pressed together with zero or more modifiers held.
 ///
 /// A DISCRETE PRESS AND RELEASE, which is already the contract's position
 /// (protocol.md §5): there is no key repeat here and no way to hold a modifier
-/// across several keys, because a gesture is one act. Lane 1 says the same thing
-/// about `alt+tab`.
+/// across several GESTURES, because a gesture is one act. Lane 1 says the same
+/// thing about `alt+tab`. Holding two keys down *within* one gesture is what
+/// 13.22 added and is the same act said properly -- `leftArrow+rightArrow` is
+/// one thing a person does, not two.
 public struct Keystroke: Equatable, Sendable {
 	/// The modifiers this bridge knows, in the order `described` writes them.
 	///
@@ -247,11 +284,22 @@ public struct Keystroke: Equatable, Sendable {
 	}
 
 	public let modifiers: Set<Modifier>
-	public let key: Key
 
-	public init(modifiers: Set<Modifier>, key: Key) {
+	/// The keys held together, IN THE ORDER THEY WERE WRITTEN.
+	///
+	/// A list rather than a set, and that is the one thing to keep about it: the
+	/// adapter presses them down in this order and releases them in reverse, so a
+	/// set would leave the order to a hash and make a transcript line unreplayable.
+	///
+	/// `parse` never produces an empty one. A hand-built keystroke with no keys is
+	/// a programming error rather than an agent's, and it costs nothing at the
+	/// edge -- the modifiers are held and given straight back, and nothing is
+	/// pressed -- so it is documented here rather than made unconstructible.
+	public let keys: [Key]
+
+	public init(modifiers: Set<Modifier>, keys: [Key]) {
 		self.modifiers = modifiers
-		self.key = key
+		self.keys = keys
 	}
 
 	/// Parse `command+l` or `h`, or say by name why it is not a keystroke.
@@ -265,6 +313,12 @@ public struct Keystroke: Equatable, Sendable {
 	/// A LONE KEY IS A KEYSTROKE HERE and is not one at the vocabulary: `h` alone
 	/// is a command name, `kb:h` is this. The prefix is the whole difference and
 	/// it is decided one layer up.
+	///
+	/// THE RULE IN THREE LINES, which is 13.22's: leading tokens that are
+	/// modifiers are modifiers; the first token that is not one begins the keys;
+	/// every token from there on has to be a key. The last token is always a key,
+	/// so `command+shift` is a keystroke missing its key rather than two
+	/// modifiers.
 	public static func parse(_ id: String) throws -> Keystroke {
 		let lowered = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 		let tokens = lowered.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
@@ -278,17 +332,32 @@ public struct Keystroke: Equatable, Sendable {
 		}
 
 		var modifiers: Set<Modifier> = []
-		for token in tokens.dropLast() {
-			guard let modifier = Modifier(token: token) else {
-				throw KeystrokeMalformed(id: id, reason: reasonNoSuchModifier(token))
-			}
+		var index = 0
+		// The last token is never taken as a modifier: it is the key, and
+		// `command+shift` has to fail as a keystroke with no key rather than parse
+		// as two modifiers pressing nothing.
+		while index < tokens.count - 1, let modifier = Modifier(token: tokens[index]) {
 			modifiers.insert(modifier)
+			index += 1
 		}
 
-		return Keystroke(modifiers: modifiers, key: try parseKey(tokens[tokens.count - 1], in: id))
+		var keys: [Key] = []
+		for (offset, token) in tokens[index...].enumerated() {
+			// A modifier AFTER a key is the named failure this bridge has always
+			// given for `l+command`, and it stays one: reordering it would hide the
+			// typo in the one place that presses a key.
+			if !keys.isEmpty, Modifier(token: token) != nil {
+				throw KeystrokeMalformed(id: id, reason: reasonModifierAfterKey(token))
+			}
+			keys.append(
+				try parseKey(token, in: id, isLast: index + offset == tokens.count - 1))
+		}
+
+		return Keystroke(modifiers: modifiers, keys: keys)
 	}
 
-	/// The canonical spelling: modifiers in the enumeration's order, then the key.
+	/// The canonical spelling: modifiers in the enumeration's order, then the keys
+	/// IN THE ORDER THEY WERE GIVEN.
 	///
 	/// It is what the transcript and the `pressed` entry report, so both say what
 	/// the bridge understood rather than echoing what it was handed. Feeding it
@@ -301,18 +370,29 @@ public struct Keystroke: Equatable, Sendable {
 	/// that decides notation.
 	public var described: String {
 		let held = Modifier.allCases.filter(modifiers.contains).map(\.rawValue)
-		return (held + [key.described]).joined(separator: "+")
+		return (held + keys.map(\.described)).joined(separator: "+")
 	}
 
 	// -- the pieces --------------------------------------------------------------
 
-	private static func parseKey(_ token: String, in id: String) throws -> Key {
+	/// One key token, or why it is not one.
+	///
+	/// `isLast` picks the DIAGNOSIS and never the outcome. A token that names no
+	/// key and has more tokens after it is almost always a misspelled modifier --
+	/// `cmd+l` is what an agent that has driven another platform writes -- so it
+	/// is told about the modifiers it could have meant; the last token is the key
+	/// position, so it is told about the keys. Both refuse; they differ in what
+	/// they say to do next, which is the whole reason this entity parses at all.
+	private static func parseKey(_ token: String, in id: String, isLast: Bool) throws -> Key {
 		if let reason = ambiguousKeyNames[token] {
 			throw KeystrokeMalformed(id: id, reason: reason)
 		}
 		if let named = NamedKey(token: token) { return .named(named) }
 		let characters = Array(token)
 		guard characters.count == 1, let character = characters.first else {
+			guard isLast else {
+				throw KeystrokeMalformed(id: id, reason: reasonNoSuchModifier(token))
+			}
 			throw KeystrokeMalformed(
 				id: id,
 				reason: "'\(token)' is neither a single character nor a key this bridge names. It "
@@ -346,6 +426,21 @@ public struct Keystroke: Equatable, Sendable {
 			+ "whatever it is bound to",
 	]
 
+	/// Why a modifier may not follow a key, and how to write what was probably
+	/// meant.
+	///
+	/// SINCE 13.22 THERE ARE TWO THINGS IT COULD HAVE BEEN, and the message says
+	/// both: `l+command` is a chord written backwards, and `leftArrow+rightArrow`
+	/// is two ordinary keys held together, which is now a thing this bridge can
+	/// press. The wrong order stays a refusal either way -- see the header.
+	private static func reasonModifierAfterKey(_ token: String) -> String {
+		"'\(token)' is a modifier, and a modifier may not follow a key: the modifiers come first "
+			+ "and the keys LAST, so \"command+l\" and not \"l+command\". This bridge does not "
+			+ "reorder them, because the one place not to hide a typo is the one that presses a "
+			+ "key. If you meant two ordinary keys held together, every part after the modifiers "
+			+ "has to be a key -- \"leftArrow+rightArrow\""
+	}
+
 	/// Why a token is not a modifier here, naming the fix where there is one.
 	///
 	/// The two Windows modifiers get their own answers, because an agent that has
@@ -361,10 +456,12 @@ public struct Keystroke: Equatable, Sendable {
 		case "windows", "win":
 			return "there is no Windows key on this machine; the key in that place is \"command\""
 		default:
-			return "'\(token)' is not a modifier this bridge knows. It knows "
+			return "'\(token)' is not a modifier this bridge knows, and it names no key either. "
+				+ "It knows the modifiers "
 				+ Modifier.allCases.map(\.rawValue).joined(separator: ", ")
-				+ " (and \"alt\" for option) -- and only the LAST part may be the key, so "
-				+ "\"command+l\" and not \"l+command\" is the spelling to write"
+				+ " (and \"alt\" for option), and they come first -- every part after them is a "
+				+ "key, so \"command+l\" and not \"l+command\" is the spelling to write. Two "
+				+ "ordinary keys held together are written the same way: \"leftArrow+rightArrow\""
 		}
 	}
 }

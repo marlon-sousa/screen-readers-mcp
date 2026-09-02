@@ -1,9 +1,11 @@
 # Spec 0051 — two keys held together
 
-**Status:** **Proposed** — board entry 13.22, lane 3. The measurement in §2 is
-done and re-runnable; the decisions in §3 are **not yet agreed** and no
-implementation exists. Per the workflow, code starts after this is approved in
-conversation.
+**Status:** **Agreed and implemented** — board entry 13.22, lane 3. The
+measurement in §2 was done first and is re-runnable; the decisions in §3 were
+agreed in conversation on 2026-09-02 and the implementation rides in the PR named
+below. Two amendments made while coding are marked **Amended** where they apply,
+per the workflow's "if the layout changes while coding, the amendment rides in
+the PR with a one-line why".
 
 **Board entry:** [13.22](../ROADMAP.md), lane 3. Stacked on
 [PR #95](https://github.com/marlon-sousa/screen-readers-mcp/pull/95) (13.20 and
@@ -175,6 +177,20 @@ on a live NVDA**, and this entry does not claim it works — see §6.
    `press_order` modifier hoisting exists to undo NVDA's own alphabetical
    normalizer; there is no such normalizer here and there must not be one.
 
+**Amended while coding**, and it is the one place the rule needed more than a
+plural. Under rule 2 the token that fails is no longer the same one: `l+command`
+used to fail on `l` ("not a modifier"), and now fails on `command` (a modifier
+after a key), while `cmd+l` — a misspelled modifier, which is what an agent that
+has driven another platform writes — would fall through to "`cmd` names no key"
+and lose the diagnosis that entry gave it. So **which message is given is decided
+by position**: a token that names no key and has more tokens after it is
+diagnosed as a modifier, and the last token is diagnosed as a key. Both refuse;
+they differ in what they tell the agent to do next, which is the whole reason
+this entity parses at all. Both messages now also name
+`leftArrow+rightArrow` as the other thing that was probably meant. `l+command`'s
+still says "the keys LAST" and still quotes `command+l`, so the assertions on it
+did not move.
+
 `described` writes modifiers in the enumeration's order, then the keys **in the
 order given** — because the order is what "down in order, up in reverse" means,
 and a transcript line has to be replayable.
@@ -225,11 +241,12 @@ notation entry should have.
 |---|---|---|
 | `Entities/Keystroke.swift` | entity — **amended** | `key: Key` becomes `keys: [Key]` (one or more). §3.2's parse rule; §3.3's ordering in `described`. The "modifier after a key" failure keeps its wording. |
 | `Entities/CommandVocabulary.swift` | entity — **unchanged** | the `+`/space/`kb:` rules already classify `kb:leftArrow+rightArrow` as a keystroke. Recorded because "no change" is the reviewable claim. |
-| `Ports/KeyPresser.swift` | port — **amended** | the DTO carries the key list; the port's shape is otherwise untouched. |
+| `Ports/KeyPresser.swift` | port — **amended (documentation only)** | its signature takes the `Keystroke` entity, so there was no DTO to change and none was added: `leftArrow+rightArrow` is one keystroke and stays one call. What `press` now promises — down in order, up in reverse, released in a `defer` — is stated on the method. |
 | `Controllers/Commands/PressGesture.swift` | controller — **unchanged** | it routes on the classification and asks for the grant when any gesture `isKeystroke`. Both already right. |
 | `CGKeystrokePresser.swift` | adapter — **amended** | every key down in order, then a `defer` releasing in reverse; the modifier transitions around it are untouched. |
 | `Tests/.../KeystrokeTests.swift` | unit — amended | a two-key keystroke parses and round-trips through `described`; order is preserved; `l+command` still fails; a modifier after a key fails by name |
-| `Tests/.../CGKeystrokePresserTests.swift` | unit — amended | the event order is down-down-up-up **reversed**; a post that fails partway still releases every key it pressed |
+| `Tests/.../CGKeystrokePresserTests.swift` | unit — amended | the event order is down-down-up-up **reversed**; the modifiers outlive the keys; a post that fails partway still releases every key it pressed and no others; one unreachable key in a chord posts nothing at all; a shifted layer under either key adds the one Shift |
+| `Tests/Fakes/EventPoster.swift` | fake — **amended (not in the spec's original layout)** | a `keyFailureAt`, so a test can fail the SECOND key event and leave the release working. Without it the fake's existing `keyFailure` fails the release too, and "it released what it pressed" is unassertable. |
 | `Tests/Integration/SessionRoundTripTests.swift` | integration — amended | `kb:leftArrow+rightArrow` off a real wire reaches the key presser as two keycodes and not the AppleScript runner; the counting-broker scenario keeps its claim |
 | `Entities/Documents/common.md` | document | one sentence: the chord is expressible now, and the command name is still the route |
 | `scripts/voiceover_two_key_chord.sh`, `voiceover_chord_press.swift` | instrument | **already landed with this spec** — the measurement of §2 |
