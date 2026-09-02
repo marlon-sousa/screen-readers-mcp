@@ -138,9 +138,13 @@ through the reader's own `toggle single-key quick nav on or off`.
   at.
 - **It sharpens §3.5 rather than weakening it.** The command names are not merely
   cheaper than the chord, they are *more precise*: each moves one setting and says
-  which way it went. The chord moves two and says nothing. An agent that reaches
-  for the chord to turn arrow-key Quick Nav on may silently change how letter keys
-  behave as well.
+  which way it went. The chord moves two and NAMES neither. **Amended 2026-09-02**
+  by this PR's own live run: the chord is not silent, as this section first said --
+  it announces a generic "Quick Nav on"/"off" -- but that announcement does not say
+  WHICH of the two settings moved, and it moved both. The recommendation is
+  unchanged and the reason is sharper: the chord tells you less than it appears to.
+  An agent that reaches for it to turn arrow-key Quick Nav on may silently change
+  how letter keys behave as well.
 - **It is a fact about the READER, not about this bridge**, so a person pressing
   those two keys gets the same compound effect. Nothing here should try to
   "correct" it — the bridge presses what a person presses.

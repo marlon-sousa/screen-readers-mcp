@@ -334,8 +334,11 @@ the two arrows sent sequentially move nothing, sent together they toggle
 arrow-key Quick Nav, and **no inter-event delay is needed**. What the same
 measurement found is the reason the command name stays the recommended route —
 **the chord moves TWO settings**, taking single-key Quick Nav down with
-arrow-key Quick Nav, and announces neither, while each command name moves one and
-says which way it went. Spec 0051.
+arrow-key Quick Nav, and NAMES neither, while each command name moves one and
+says which way it went. The chord is not silent -- measured 2026-09-02 on this
+entry's live run, it announces a generic "Quick Nav on"/"off" -- but that
+announcement does not say which of the two settings moved, so it tells you less
+than it appears to. Spec 0051.
 
 **`kb:` OUTRANKS ALL OF THAT, and it is what makes a lone key expressible.** A
 source prefix — everything up to and including the first `:`, lane 1's own rule

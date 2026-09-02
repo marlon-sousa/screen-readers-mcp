@@ -54,6 +54,23 @@
 # AppleEvents-to-VoiceOver only if you use --restore-with-command. That is the
 # same split as `voiceover_chords.sh`, for the same reason.
 #
+# IF THE PROBE SAYS "THE CHORD DID NOTHING", RESTART THE READER BEFORE BELIEVING
+# IT. Measured 2026-09-02, on this entry's own live run: this script reported the
+# chord doing nothing, exit 3, while the SAME chord through the bridge toggled the
+# setting minutes later. The Accessibility grant was present both times
+# (AXIsProcessTrusted and CGPreflightPostEventAccess both true) and the flag
+# reading was working (the reader's own command name moved it 0 -> 1 -> 0 on that
+# same instance). The one difference was the VoiceOver INSTANCE: the failing run
+# was against a reader that had been restarted repeatedly with its capture voice
+# deregistered. After a clean restart this script passes, from here and from the
+# bridge alike.
+#
+# So a reader can go on dispatching AppleScript commands correctly while no longer
+# SEEING synthesized key chords -- which reads exactly like "this platform cannot
+# do it" and is not. Which of those conditions mattered was NOT isolated; what is
+# recorded is that a restart cleared it. Do not conclude anything about VoiceOver
+# from a single exit 3.
+#
 # IT IS SAFE IN THE SPECIFIC SENSE THE OTHER PROBES ARE: it starts nothing,
 # restarts nothing, and the ONE setting it touches is the one it is measuring --
 # which it puts back on every exit path, including a failure. It presses only the

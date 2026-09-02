@@ -1739,7 +1739,10 @@ rule intends.
     a setting the maintainer uses daily. It now watches and restores both, through
     the COMMAND NAMES rather than by pressing the chord again. That sharpens the
     recommendation rather than weakening it: each command name moves exactly one
-    setting and says which way it went; the chord moves two and says nothing.
+    setting and says which way it went; the chord moves two and names neither.
+    (**Amended on the live run, 2026-09-02:** the chord is not silent -- it
+    announces a generic "Quick Nav on"/"off" -- but it does not say which of the
+    two settings moved, and it moved both.)
 
     **What it must not do, and did not:** displace the command name as the
     recommended route

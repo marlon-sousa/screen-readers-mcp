@@ -283,10 +283,14 @@ Apple's own documentation** — a person toggles Quick Nav by pressing Left Arro
 and Right Arrow *together*, and this bridge can now press that
 (`kb:leftArrow+rightArrow`), which does not make it the way to do it. All three
 toggles have command names, they cost no permission, and each says out loud which
-way it went. The chord costs the Accessibility grant, says nothing — and it moves
-**two** settings rather than one: measured 2026-09-01, it takes single-key Quick
-Nav down with arrow-key Quick Nav, so an agent reaching for it to turn one on may
-silently change how the letter keys behave as well.
+way it went. The chord costs the Accessibility grant, and it moves **two**
+settings rather than one: measured 2026-09-01, it takes single-key Quick Nav down
+with arrow-key Quick Nav, so an agent reaching for it to turn one on may silently
+change how the letter keys behave as well. It does announce something — measured
+2026-09-02, a generic "Quick Nav on" or "off" — but that announcement **does not
+say which of the two settings moved**, and it moved both. So the chord tells you
+less than it appears to, which is the reason to prefer the command name rather
+than merely a matter of permissions.
 And while it is on, those letters no longer reach the page as text — which is
 what makes it worth turning off again before you type into a field.
 
