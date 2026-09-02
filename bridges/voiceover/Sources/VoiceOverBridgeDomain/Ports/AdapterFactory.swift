@@ -28,7 +28,8 @@ import ScreenReaderWire
 /// | `textTyper`, `permissions` | 13.8, input: typing |
 /// | `focusInspector` | 13.9, focus |
 /// | `announcer`, `userPrompter` | 13.10, the human channel |
-/// | `keyPresser` | 13.17, chords -- here |
+/// | `keyPresser` | 13.17, chords |
+/// | `readerModifier` | 13.25, `vo` -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -95,6 +96,20 @@ public struct AdapterSet {
 	/// reader's COMMAND NAMES and reads speech still asks for nothing.
 	public let keyPresser: any KeyPresser
 
+	/// What the person at this machine has bound their VoiceOver modifier to, so
+	/// that `vo+m` presses the keys a VoiceOver user presses -- 13.25.
+	///
+	/// IT IS A PORT OF ITS OWN RATHER THAN A METHOD ON THE KEY PRESSER, and the
+	/// reason is the one that separates every other pair in this set: the presser
+	/// posts EVENTS and this reads a PREFERENCE FILE, and folding the second into
+	/// the first would put a plist path inside the adapter whose whole subtlety is
+	/// keycodes and layers. It is also read by the DOMAIN -- `Keystroke.parse`
+	/// decides what `vo` expands to -- so the answer has to cross the port boundary
+	/// as a value, which is exactly what a port is for.
+	///
+	/// READ PER CALL, NEVER CACHED. See the port.
+	public let readerModifier: any ReaderModifierSetting
+
 	/// What the system lets this process do, and the one place it may ask for
 	/// more. HELD BY THE SET AND COMBINED BY THE CONTROLLER, which is a layout
 	/// amendment to spec 0046's 13.8 table with its why: the spec has the TYPER
@@ -154,6 +169,7 @@ public struct AdapterSet {
 		readerLiveness: any ReaderLiveness,
 		textTyper: any TextTyper,
 		keyPresser: any KeyPresser,
+		readerModifier: any ReaderModifierSetting,
 		permissions: any PermissionBroker,
 		focusInspector: any FocusInspector,
 		announcer: any Announcer,
@@ -167,6 +183,7 @@ public struct AdapterSet {
 		self.readerLiveness = readerLiveness
 		self.textTyper = textTyper
 		self.keyPresser = keyPresser
+		self.readerModifier = readerModifier
 		self.permissions = permissions
 		self.focusInspector = focusInspector
 		self.announcer = announcer

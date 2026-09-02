@@ -73,17 +73,30 @@ public protocol EventPoster: AnyObject {
 	/// for an event that could not be BUILT or handed over at all.
 	func post(unicode: String, keyDown: Bool) throws
 
-	/// Post one keyboard event for `keyCode`, with `flags` held.
+	/// Post one keyboard event for `keyCode`, with `flags` held, carrying
+	/// `characters` if any were given.
 	///
 	/// `keyDown` says which half of the keystroke this is; both halves carry the
-	/// same flags -- see `CGKeystrokePresser`, which decides that and says why.
+	/// same flags and the same characters -- see `CGKeystrokePresser`, which
+	/// decides that and says why.
+	///
+	/// `characters` IS THE 13.25 PARAMETER, AND IT IS NOT AN OPTIONAL PAYLOAD --
+	/// IT IS WHAT A REAL KEYPRESS CARRIES. A CGEvent built from a keycode fills in
+	/// the UNSHIFTED character whatever flags are set on it, which an application
+	/// never notices (it matches keycode and flags) and which THIS READER acts on:
+	/// measured 2026-09-02, `control+option+shift+q` carrying `q` reached VO-Q
+	/// instead of VO-Shift-Q, moved a different setting and reported success. So
+	/// the caller says what the active layout produces on the layer being pressed,
+	/// and `nil` means "leave whatever the system filled in" -- which is the right
+	/// answer for a named key, whose character is a private-use code point this
+	/// bridge has no business inventing.
 	///
 	/// IT REPORTS NOTHING ABOUT WHAT HAPPENED, for the same reason the Unicode
 	/// shape does not: an event posted without the Accessibility grant is dropped
 	/// by the window server with no error anywhere, and an application that
 	/// ignores a chord is indistinguishable from here from one that acted on it.
 	/// Throwing is for an event that could not be BUILT or handed over at all.
-	func post(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) throws
+	func post(keyCode: UInt16, flags: CGEventFlags, characters: String?, keyDown: Bool) throws
 
 	/// Post one modifier transition: `keyCode` is the modifier key, and `flags` is
 	/// the state the keyboard is in AFTER it.

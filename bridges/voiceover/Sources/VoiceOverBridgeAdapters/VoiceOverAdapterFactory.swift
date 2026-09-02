@@ -57,6 +57,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let permissions: any PermissionBroker
 	private let poster: any EventPoster
 	private let layout: any KeyboardLayout
+	private let readerModifier: any ReaderModifierSetting
 	private let tree: any AccessibilityTree
 	private let frontmost: any FrontmostApplication
 	private let trust: any AccessibilityTrust
@@ -121,6 +122,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		permissions: any PermissionBroker,
 		poster: any EventPoster,
 		layout: any KeyboardLayout,
+		readerModifier: any ReaderModifierSetting,
 		tree: any AccessibilityTree,
 		frontmost: any FrontmostApplication,
 		trust: any AccessibilityTrust,
@@ -135,6 +137,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.permissions = permissions
 		self.poster = poster
 		self.layout = layout
+		self.readerModifier = readerModifier
 		self.tree = tree
 		self.frontmost = frontmost
 		self.trust = trust
@@ -163,6 +166,10 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// split in this file: the layout holds a cache worth keeping across
 			// sessions, and the presser holds nothing at all.
 			keyPresser: CGKeystrokePresser(layout: layout, poster: poster),
+			// SHARED AND PER-PROCESS, like the permission broker: it reads a
+			// preference FILE and holds nothing, so a second one per session would
+			// buy nothing. What it must not do is cache the answer -- see the port.
+			readerModifier: readerModifier,
 			// SHARED, LIKE THE LIFECYCLE, because it describes this PROCESS's
 			// standing with the system rather than anything about a session -- and
 			// because building one here would be a second place in the bridge that

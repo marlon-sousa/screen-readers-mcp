@@ -4,6 +4,7 @@
 //     swift scripts/voiceover_chord_press.swift report a l f 4
 //     swift scripts/voiceover_chord_press.swift press command a
 //     swift scripts/voiceover_chord_press.swift press h
+//     swift scripts/voiceover_chord_press.swift press --raw control option shift q
 //
 // ROLE: the measuring half of `scripts/voiceover_chords.sh`, which owns the
 // scratch document and the safety. It is a separate file for the reason
@@ -133,6 +134,16 @@ func postFlagsChanged(keyCode: UInt16, flags: CGEventFlags) {
 	usleep(30_000)
 }
 
+/// The character a keycode produces on THIS layout, on the layer asked for.
+///
+/// The forward question, where `reverseMap` asks the backward one. It exists for
+/// the stamping below and for nothing else.
+func character(forKeyCode keyCode: UInt16, shifted: Bool) -> String? {
+	guard let layout = layoutData() else { return nil }
+	return translate(
+		keyCode: keyCode, modifiers: shifted ? UInt32(shiftKey >> 8) : 0, layout: layout)
+}
+
 /// Press and release, holding the modifiers as REAL TRANSITIONS.
 ///
 /// FLAGS ALONE ARE NOT ENOUGH, and this file learned it the same way the bridge
@@ -141,7 +152,28 @@ func postFlagsChanged(keyCode: UInt16, flags: CGEventFlags) {
 /// makes every keystroke on the machine afterwards a chord. So the modifiers go
 /// down as `flagsChanged` events, cumulative, and come back up in reverse ending
 /// at nothing -- and the release runs even if the key event could not be made.
-func press(keyCode: UInt16, held: [String], flags: CGEventFlags) {
+///
+/// ============================================================================
+/// AND THE EVENT HAS TO CARRY THE RIGHT CHARACTER -- MEASURED 2026-09-02.
+/// ============================================================================
+///
+/// A `CGEvent` built from a keycode carries the UNSHIFTED character whatever
+/// flags are set on it and whatever Shift transitions were posted before it:
+/// keycode 12 with Control, Option and Shift held carries `q`, not `Q`. That is
+/// invisible to an application, which matches the keycode and the flags -- and it
+/// is NOT invisible to VoiceOver, which matches its own bindings on the
+/// CHARACTER. So the same chord that a person presses as VO-Shift-Q arrived as
+/// VO-Q and toggled the WRONG setting, reporting success throughout:
+///
+///     control+option+shift+q, event carrying 'q'  -> single-key Quick Nav moved
+///     control+option+shift+q, event carrying 'Q'  -> arrow-key Quick Nav moved
+///
+/// So the character the active layout produces on the requested layer is stamped
+/// onto the event with `keyboardSetUnicodeString`, which is what a real keypress
+/// carries. `--raw` skips the stamping, and exists so the measurement above stays
+/// re-runnable: it is the control that shows the stamping is what makes the
+/// difference, and nothing else should use it.
+func press(keyCode: UInt16, held: [String], flags: CGEventFlags, stamp: Bool = true) {
 	var sofar: CGEventFlags = []
 	for modifier in held {
 		sofar.insert(modifierFlags[modifier] ?? [])
@@ -154,12 +186,17 @@ func press(keyCode: UInt16, held: [String], flags: CGEventFlags) {
 			postFlagsChanged(keyCode: modifierKeyCodes[modifier] ?? 0, flags: remaining)
 		}
 	}
+	let stamped = stamp ? character(forKeyCode: keyCode, shifted: flags.contains(.maskShift)) : nil
 	for down in [true, false] {
 		guard let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: down) else {
 			FileHandle.standardError.write(Data("could not create a keyboard event\n".utf8))
 			return
 		}
 		event.flags = flags
+		if let stamped {
+			var units = Array(stamped.utf16)
+			event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
+		}
 		event.post(tap: .cghidEventTap)
 		usleep(30_000)
 	}
@@ -208,7 +245,7 @@ func pressTogether(keyCodes: [UInt16]) {
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 guard let mode = arguments.first else {
-	print("usage: report <characters...> | press <modifier...> <key> | together <key> <key...>")
+	print("usage: report <characters...> | press [--raw] <modifier...> <key> | together <key> <key...>")
 	exit(2)
 }
 arguments.removeFirst()
@@ -252,6 +289,14 @@ case "together":
 	pressTogether(keyCodes: codes)
 
 case "press":
+	// `--raw` is the CONTROL for the stamping measurement above, and nothing else
+	// should use it: it posts the event exactly as this file did before 13.25,
+	// carrying the unshifted character.
+	var stamp = true
+	if let first = arguments.first, first == "--raw" {
+		stamp = false
+		arguments.removeFirst()
+	}
 	guard let keyToken = arguments.last else {
 		print("press needs a key")
 		exit(2)
@@ -267,8 +312,12 @@ case "press":
 		held.append(modifier)
 	}
 	if let keyCode = namedKeyCodes[keyToken] {
+		// NOT STAMPED, deliberately. A named key is layout-independent and the
+		// system already fills its character (an arrow is a private-use code point
+		// this file has no business inventing); the stamping exists for the SHIFTED
+		// LAYER of a character key, which is the only place the event lies.
 		print("pressing \(arguments.joined(separator: "+")) as keycode \(keyCode) (a named key)")
-		press(keyCode: keyCode, held: held, flags: flags)
+		press(keyCode: keyCode, held: held, flags: flags, stamp: false)
 	} else {
 		guard let character = keyToken.first, keyToken.count == 1 else {
 			print("\(keyToken) is neither a single character nor a named key")
@@ -284,8 +333,9 @@ case "press":
 		}
 		print(
 			"pressing \(arguments.joined(separator: "+")) as keycode \(keyCode)"
-				+ (shifted ? " with an added Shift (it is on the shifted layer here)" : ""))
-		press(keyCode: keyCode, held: held, flags: flags)
+				+ (shifted ? " with an added Shift (it is on the shifted layer here)" : "")
+				+ (stamp ? "" : "  [--raw: the event carries the UNSHIFTED character]"))
+		press(keyCode: keyCode, held: held, flags: flags, stamp: stamp)
 	}
 	// PROVE THE KEYBOARD IS CLEAN, because the whole reason this file posts
 	// transitions is that the first version did not and left Command down.

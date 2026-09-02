@@ -280,11 +280,14 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.26**
-in lane 3, and the next free spec number is **0052**. Board number **13.25** was
-spent on 2026-09-02 by a question Marlon asked of the field report -- why a
-VoiceOver gesture is a command name where an NVDA one is `NVDA+t` -- and this line
-moved in the same commit. Board numbers **13.23** and
+The next free board number is **11.38** in the convergence series and **13.28**
+in lane 3, and the next free spec number is **0053**. Spec **0052** and board
+numbers **13.25**, **13.26** and **13.27** were spent on 2026-09-02: the first by
+a question Marlon asked of the field report -- why a VoiceOver gesture is a
+command name where an NVDA one is `NVDA+t` -- and the other two by what specifying
+its answer turned up, a handshake that need not depend on the AppleScript switch
+and a guidance table that names the release's bindings rather than the machine's.
+This line moved in the same commit. Board numbers **13.23** and
 **13.24** were spent on 2026-09-02 by two findings from 13.20's own live
 checklist -- a bridge that died of SIGPIPE rather than tearing down, and a voice
 identifier that is used without ever being resolved -- and neither took a spec
@@ -1857,8 +1860,10 @@ rule intends.
     with a warning, or must refuse, is exactly the kind of question 13.20 settled
     for capture and this has not settled for voices. Spec: none yet.
 
-13.25. **Not started** -- **A blind user sends KEYS, so the agent sends keys**
-    (lane 3). **The direction is Decided**, by Marlon on 2026-09-02, in these
+13.25. **Done (2026-09-02)** -- **A blind user sends KEYS, so the agent sends
+    keys** (lane 3). Spec:
+    [0052-the-keys-a-voiceover-user-presses.md](specs/0052-the-keys-a-voiceover-user-presses.md).
+    **The direction was Decided**, by Marlon on 2026-09-02, in these
     words: *"an agent has to do what the user does, and what the user does is
     pressing keys, like in nvda."* What is left to a spec is HOW, not WHETHER.
 
@@ -1924,9 +1929,76 @@ rule intends.
     around a dispatch channel. `screenreader://reader-guidance` becomes an account
     of what a VoiceOver user PRESSES.
 
-    **What it costs elsewhere.** `protocol.md` §5, the reader-guidance document,
-    13.7's recommendation, the persona profiles, and a refusal 13.19 wrote down.
-    Spec: none yet -- and it is the next thing this lane writes.
+    **What it cost elsewhere**, as shipped: `protocol.md` §5 gained the
+    modifier-SYMBOL rule (a reader's symbol is resolved by its bridge and is never
+    a key the caller spells out, `NVDA+f7` there and `vo+m` here); the
+    reader-guidance documents were rebuilt around keys; 13.7's recommendation was
+    demoted; 13.19's `VO-D` refusal now names the rewrite `vo+d` rather than
+    sending the agent to a different route.
+
+    **Two things came out of it that nobody was looking for.**
+
+    - **This reader's FACTORY KEY BINDINGS are readable from the machine.**
+      `SCRStringsToCommandsMap.scrconfig` (415 English names to command
+      identifiers) joins `ScreenReaderConfiguration.archived-scrconfig`'s
+      `SCRCConfigurationKeyboardKeyToCommands` (282 key specifications) on the
+      identifier: **301 name-to-keystroke rows**, printed by
+      `python3 scripts/voiceover_default_bindings.py`, which presses nothing and
+      needs no grant. That is what let the guidance be rebuilt on MEASURED keys,
+      and it retires 13.7's "this document contains no table of key combinations,
+      and one would be worse than useless" -- which rested on a binding being
+      unknowable from here, and it is not.
+    - **This reader matches its bindings on the event's CHARACTER**, not on the
+      keycode and the modifier flags, and that was a LIVE DEFECT rather than a
+      missing feature: `control+option+shift+q` reached VO-Q instead of
+      VO-Shift-Q, moved a different setting and reported success. An application
+      never notices, because it matches keycode and flags -- which is why 13.17's
+      `command+l` worked on the first try and three entries passed over it. Fixed
+      by stamping the character the active layout produces on the layer being
+      pressed.
+
+13.26. **Not started** -- **The handshake has two routes to its proof** (lane 3).
+    Raised by Marlon on 2026-09-02 while 13.25 was being specified: *do we still
+    need VoiceOver controlled by AppleScript as a gate, to begin with?*
+
+    **The evaluation is spec 0052 §8.1**, and the short answer is that it is not a
+    gate this bridge chose: `hello`'s rung 5 (`captureProof`) presses `describe
+    item in voiceover cursor` to make the reader speak, so a machine with the
+    switch off gets no session at all -- in either mode. `getFocusInfo`'s no-grant
+    route and `ReaderLiveness` need it too.
+
+    **What 13.25 changed is that there is now a second route.** `vo+f3` IS
+    `describe item in voiceover cursor` as a keystroke. So the proof could be made
+    without AppleScript, at the cost of the Accessibility grant -- which 13.20
+    deliberately never REQUESTS during a handshake (a consent dialog would hang
+    it) but does READ. So the shape is the one `getFocusInfo` already has: two
+    routes, chosen by what the machine already holds. AppleScript on, use the
+    command name; else Accessibility already granted, press `vo+f3`; else fail
+    naming BOTH fixes rather than one.
+
+    **Why it is its own entry.** It changes the handshake ladder, and its live
+    checklist needs a machine with the switch OFF -- which means turning the
+    maintainer's off and back on, where getting it wrong leaves him without a
+    working session. And the bridge cannot turn that switch on itself: no API sets
+    it, and writing VoiceOver's preferences behind the reader's back is the
+    manoeuvre that destroyed his stored voice settings once already (spec 0047
+    finding 17). Spec: none yet.
+
+13.27. **Not started** -- **The key bindings this machine actually has** (lane 3).
+    13.25's guidance names the reader's FACTORY bindings, read from the shipped
+    configuration. A person who rebound a command in VoiceOver Utility gets their
+    own key, recorded as a deviation in their own preferences, and nothing reads
+    those -- so "the key did nothing but the command name worked" is currently two
+    explanations the bridge cannot tell apart (a rebinding, or an application that
+    swallowed the keystroke), and only the second is a defect in the thing under
+    test.
+
+    Reading the deviations would make the guidance's table true of the MACHINE
+    rather than of the release, which is lane 1's standard exactly -- its tables
+    are read out of NVDA at the moment the document is asked for. It is a decoding
+    job against an `NSKeyedArchiver` archive with its own risks, and
+    `scripts/voiceover_default_bindings.py` is the instrument to grow. Spec: none
+    yet.
 
 ## Convergence (requires C and D both Done)
 

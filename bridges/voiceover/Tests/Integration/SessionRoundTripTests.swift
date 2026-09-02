@@ -34,6 +34,7 @@ struct SessionRoundTripTests {
 			permissions: FakePermissionBroker = FakePermissionBroker(),
 			poster: FakeEventPoster = FakeEventPoster(),
 			layout: FakeKeyboardLayout = FakeKeyboardLayout(),
+			readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
 			tree: FakeAccessibilityTree = FakeAccessibilityTree(),
 			frontmost: FakeFrontmostApplication = FakeFrontmostApplication(),
 			trust: FakeAccessibilityTrust = FakeAccessibilityTrust(),
@@ -52,7 +53,8 @@ struct SessionRoundTripTests {
 					?? Registry.build(
 						factory: testAdapterFactory(
 							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster,
-							layout: layout, tree: tree, frontmost: frontmost, trust: trust,
+							layout: layout, readerModifier: readerModifier, tree: tree,
+							frontmost: frontmost, trust: trust,
 							announcer: announcer, prompter: prompter
 						),
 						readerVersion: "macOS 15.0.0",
@@ -896,6 +898,78 @@ struct SessionRoundTripTests {
 		// Still alive, which is the half that matters.
 		try peer.send(id: 3, cmd: "ping")
 		#expect(try peer.reply().id == 3)
+		peer.hangUp()
+	}
+
+	@Test("`vo+m` OFF THE WIRE IS RESOLVED FROM THE MACHINE AND POSTED AS KEYS")
+	func aReaderModifierChordOffTheWireReachesTheEventPath() throws {
+		// 13.25, end to end, and it is the entry's whole claim in one exchange: a
+		// VoiceOver user presses VO-M to reach the menu bar, and what leaves this
+		// bridge is the two keys their machine says VO is -- through the window
+		// server, past the application under test, rather than dispatched inside
+		// the reader where an application that swallows the chord cannot be seen.
+		let poster = FakeEventPoster()
+		let scripts = FakeAppleScriptRunner()
+		let layout = FakeKeyboardLayout(keys: ["m": LayoutKey(keyCode: 206, shifted: false)])
+		let peer = Peer(scripts: scripts, poster: poster, layout: layout)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: ["gestures": .array([.string("vo+m")]), "graceMs": .int(0)])
+		let reply = try peer.reply()
+		#expect(reply.error == nil)
+		guard case .success(let value) = try reply.outcome() else {
+			Issue.record("pressGesture failed: \(reply)")
+			return
+		}
+		// Control and Option held as REAL transitions, the key down and up between
+		// them, and the transitions unwound to nothing -- so the keyboard is not
+		// left holding the reader's own modifier, which would make every keystroke
+		// afterwards a VoiceOver command.
+		#expect(poster.keyed.map(\.keyCode) == [206, 206])
+		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskControl) })
+		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskAlternate) })
+		#expect(poster.flagTransitions.last == [])
+		// And the event says it is `m`, which is what this reader matches on.
+		#expect(poster.keyed.map(\.characters) == ["m", "m"])
+		// Not to the reader: that is the route this entry demoted.
+		#expect(commandScripts(scripts).isEmpty)
+		#expect(poster.posted.isEmpty)
+		// What the session is told it pressed is the RESOLVED spelling, so a record
+		// of the run says which keys went out on this machine.
+		let result = try value.decoded(as: GestureResult.self)
+		#expect(result.pressed.map(\.gesture) == ["control+option+m"])
+		#expect(peer.transcript.gestures == ["control+option+m"])
+		peer.hangUp()
+	}
+
+	@Test("A CAPS LOCK MACHINE REFUSES IT OVER THE WIRE, AND PRESSES NOTHING")
+	func aCapsLockMachineRefusesTheChord() throws {
+		// The refusal that keeps the entry honest. `control+option` is not the
+		// modifier on this machine, so pressing it would send two keys that mean
+		// nothing here -- and the batch is classified before anything is
+		// dispatched, so the command name in front of it does not go out either.
+		let poster = FakeEventPoster()
+		let scripts = FakeAppleScriptRunner()
+		let peer = Peer(
+			scripts: scripts, poster: poster,
+			readerModifier: FakeReaderModifierSetting(.capsLock))
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: [
+				"gestures": .array([.string("go to dock"), .string("vo+m")]), "graceMs": .int(0),
+			])
+		let reply = try peer.reply()
+		let error = try #require(reply.error)
+		#expect(error.message.contains("CAPS LOCK"))
+		#expect(error.message.contains("command name"))
+		#expect(poster.keyed.isEmpty)
+		#expect(commandScripts(scripts).isEmpty)
 		peer.hangUp()
 	}
 }

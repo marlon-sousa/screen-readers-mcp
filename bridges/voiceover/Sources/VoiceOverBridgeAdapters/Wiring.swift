@@ -294,6 +294,18 @@ public enum Wiring {
 		VoiceOverPrefsScriptingSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
 	}
 
+	/// What the person at this machine has bound their VoiceOver modifier to.
+	///
+	/// THE SECOND READER OF THE SAME FILE (13.25), over the same seam and the same
+	/// home directory as the scripting setting above -- and through
+	/// `VoiceOverPreferencesFile`, so the two cannot come to disagree about where
+	/// VoiceOver keeps its preferences.
+	public static func readerModifierSetting(
+		reader: (any PlistReader)? = nil
+	) -> any ReaderModifierSetting {
+		VoiceOverPrefsModifierSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
+	}
+
 	/// The persisted settings. ONE PER PROCESS, because two would be two caches of
 	/// one file -- and this one deliberately caches nothing at all.
 	public static func bridgeConfig(defaults: (any Defaults)? = nil) -> any BridgeConfig {
@@ -369,6 +381,7 @@ public enum Wiring {
 		permissions: (any PermissionBroker)? = nil,
 		poster: (any EventPoster)? = nil,
 		layout: (any KeyboardLayout)? = nil,
+		readerModifier: (any ReaderModifierSetting)? = nil,
 		tree: (any AccessibilityTree)? = nil,
 		frontmost: (any FrontmostApplication)? = nil,
 		trust: (any AccessibilityTrust)? = nil,
@@ -385,6 +398,7 @@ public enum Wiring {
 				permissions: permissions ?? permissionBroker(),
 				poster: poster ?? eventPoster(),
 				layout: layout ?? keyboardLayout(),
+				readerModifier: readerModifier ?? readerModifierSetting(),
 				tree: tree ?? accessibilityTree(),
 				frontmost: frontmost ?? frontmostApplication(),
 				trust: trust ?? accessibilityTrust(),

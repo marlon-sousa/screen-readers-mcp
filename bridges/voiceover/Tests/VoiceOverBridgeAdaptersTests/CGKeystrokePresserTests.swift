@@ -135,8 +135,8 @@ struct CGKeystrokePresserTests {
 		#expect(
 			poster.sequence == [
 				.flags(0x37, .maskCommand),
-				.key(201, flags: .maskCommand, keyDown: true),
-				.key(201, flags: .maskCommand, keyDown: false),
+				.key(201, flags: .maskCommand, characters: "l", keyDown: true),
+				.key(201, flags: .maskCommand, characters: "l", keyDown: false),
 				.flags(0x37, []),
 			])
 	}
@@ -231,8 +231,8 @@ struct CGKeystrokePresserTests {
 		try presser(poster: poster).press(
 			Keystroke(modifiers: [.command], keys: [.character("f")]))
 		#expect(poster.keyed.count == 2)
-		#expect(poster.keyed[0] == .init(keyCode: 202, flags: .maskCommand, keyDown: true))
-		#expect(poster.keyed[1] == .init(keyCode: 202, flags: .maskCommand, keyDown: false))
+		#expect(poster.keyed[0] == .init(keyCode: 202, flags: .maskCommand, characters: "f", keyDown: true))
+		#expect(poster.keyed[1] == .init(keyCode: 202, flags: .maskCommand, characters: "f", keyDown: false))
 	}
 
 	// -- two keys held together, which is 13.22 ---------------------------------
@@ -249,10 +249,10 @@ struct CGKeystrokePresserTests {
 
 		#expect(
 			poster.sequence == [
-				.key(0x7B, flags: [], keyDown: true),
-				.key(0x7C, flags: [], keyDown: true),
-				.key(0x7C, flags: [], keyDown: false),
-				.key(0x7B, flags: [], keyDown: false),
+				.key(0x7B, flags: [], characters: nil, keyDown: true),
+				.key(0x7C, flags: [], characters: nil, keyDown: true),
+				.key(0x7C, flags: [], characters: nil, keyDown: false),
+				.key(0x7B, flags: [], characters: nil, keyDown: false),
 			])
 	}
 
@@ -268,10 +268,10 @@ struct CGKeystrokePresserTests {
 		#expect(
 			poster.sequence == [
 				.flags(0x37, .maskCommand),
-				.key(0x7B, flags: .maskCommand, keyDown: true),
-				.key(0x7C, flags: .maskCommand, keyDown: true),
-				.key(0x7C, flags: .maskCommand, keyDown: false),
-				.key(0x7B, flags: .maskCommand, keyDown: false),
+				.key(0x7B, flags: .maskCommand, characters: nil, keyDown: true),
+				.key(0x7C, flags: .maskCommand, characters: nil, keyDown: true),
+				.key(0x7C, flags: .maskCommand, characters: nil, keyDown: false),
+				.key(0x7B, flags: .maskCommand, characters: nil, keyDown: false),
 				.flags(0x37, []),
 			])
 	}
@@ -293,8 +293,8 @@ struct CGKeystrokePresserTests {
 		#expect(
 			poster.sequence == [
 				.flags(0x37, .maskCommand),
-				.key(0x7B, flags: .maskCommand, keyDown: true),
-				.key(0x7B, flags: .maskCommand, keyDown: false),
+				.key(0x7B, flags: .maskCommand, characters: nil, keyDown: true),
+				.key(0x7B, flags: .maskCommand, characters: nil, keyDown: false),
 				.flags(0x37, []),
 			])
 	}
@@ -374,5 +374,101 @@ struct CGKeystrokePresserTests {
 		} catch {
 			Issue.record("unexpected error: \(error)")
 		}
+	}
+
+	// -- what the event SAYS it is, which is 13.25 ------------------------------
+
+	@Test("A KEY EVENT CARRIES THE CHARACTER A REAL KEYPRESS WOULD CARRY")
+	func theEventCarriesItsCharacter() throws {
+		// Measured 2026-09-02, and it is a defect this entry fixed rather than a
+		// feature it added: a CGEvent built from a keycode carries the UNSHIFTED
+		// character whatever flags are set on it. An application never notices --
+		// it matches keycode and flags -- and VoiceOver matches on the CHARACTER,
+		// so `control+option+shift+q` reached VO-Q, moved a different setting and
+		// reported success. Spec 0052 §2.3.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
+
+		#expect(poster.keyed.map(\.characters) == ["l", "l"])
+	}
+
+	@Test("WITH SHIFT HELD IT CARRIES THE SHIFTED LAYER'S CHARACTER")
+	func shiftChangesWhatTheEventCarries() throws {
+		// The pair that found the defect: the same keycode, the same flags, and the
+		// reader reaches a different binding depending on this one field.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			// `4` and `$` share keycode 204 in the invented layout, `$` on the
+			// shifted layer -- so this is the shifted character of the key being
+			// pressed, read from the layout rather than upper-cased by hand.
+			Keystroke(modifiers: [.shift], keys: [.character("4")]))
+
+		#expect(poster.keyed.map(\.keyCode) == [204, 204])
+		#expect(poster.keyed.map(\.characters) == ["$", "$"])
+	}
+
+	@Test("a character that BRINGS its own Shift carries the shifted character too")
+	func theAddedShiftAlsoChangesTheCharacter() throws {
+		// `$` is on the shifted layer, so the presser adds a Shift the agent did
+		// not ask for -- and the character has to follow it, or the event would say
+		// `4` while Shift was held, which is a keyboard state that cannot happen.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [.command], keys: [.character("$")]))
+
+		#expect(poster.keyed.map(\.characters) == ["$", "$"])
+		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskShift) })
+	}
+
+	@Test("ONE SHIFT COVERS EVERY KEY OF A CHORD, exactly as one hand does")
+	func theShiftAppliesToEveryKey() throws {
+		// A person holding Shift holds it for both keys. So a chord where one key
+		// brought the Shift stamps every character on the shifted layer, rather
+		// than each key answering for itself.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [], keys: [.character("$"), .character("4")]))
+
+		#expect(poster.keyed.filter(\.keyDown).map(\.characters) == ["$", "$"])
+	}
+
+	@Test("A NAMED KEY IS NEVER STAMPED, because the system already fills it")
+	func namedKeysAreLeftAlone() throws {
+		// An arrow's character is a private-use code point this bridge would be
+		// inventing rather than reading, and 13.22's arrow chords work today
+		// without it. The event only lies about a character key's shifted layer.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [], keys: [.named(.leftArrow), .named(.rightArrow)]))
+
+		#expect(poster.keyed.allSatisfy { $0.characters == nil })
+	}
+
+	@Test("a layout that will not answer leaves the event as the system built it")
+	func anUnstampableKeyStillPresses() throws {
+		// Nil from the seam is "do not stamp", not a failure: a press that refused
+		// here would refuse chords that have always worked, which is a much bigger
+		// claim than the measurement supports.
+		let layout = FakeKeyboardLayout()
+		layout.unstampable = [201]
+		let poster = FakeEventPoster()
+		try presser(layout: layout, poster: poster).press(
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
+
+		#expect(poster.keyed.map(\.keyCode) == [201, 201])
+		#expect(poster.keyed.allSatisfy { $0.characters == nil })
+	}
+
+	@Test("the key-up carries the same character as the key-down")
+	func bothHalvesAgree() throws {
+		// The same argument the flags carry: an application that acts on key-up and
+		// one that acts on key-down would otherwise disagree about which key it was.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [.shift], keys: [.character("4")]))
+
+		#expect(poster.keyed.count == 2)
+		#expect(poster.keyed[0].characters == poster.keyed[1].characters)
 	}
 }

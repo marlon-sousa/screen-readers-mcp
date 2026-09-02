@@ -33,14 +33,15 @@ struct PressGestureTests {
 		keys: FakeKeyPresser = FakeKeyPresser(),
 		permissions: FakePermissionBroker = FakePermissionBroker(),
 		transcript: FakeTranscript = FakeTranscript(),
-		announcer: FakeAnnouncer = FakeAnnouncer()
+		announcer: FakeAnnouncer = FakeAnnouncer(),
+		readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting()
 	) -> SessionContext {
 		let context = SessionContext(
 			clock: FakeClock(), transcript: transcript, attended: true, close: { _ in })
 		context.mode = mode
 		context.adapters = fakeAdapterSet(
 			mode: mode, gestureSender: sender, readerLiveness: liveness, keyPresser: keys,
-			permissions: permissions, announcer: announcer)
+			readerModifier: readerModifier, permissions: permissions, announcer: announcer)
 		context.speech = SpeechBuffer(clock: FakeClock())
 		return context
 	}
@@ -464,5 +465,93 @@ struct PressGestureTests {
 		#expect(throws: CommandError.self) {
 			try handler.execute(bare, request(["go to desktop"]))
 		}
+	}
+
+	// -- `vo`, read from the machine, which is 13.25 ----------------------------
+
+	@Test("`vo+m` GOES TO THE KEY PRESSER, resolved against what the machine says")
+	func voReachesTheKeyPresser() throws {
+		let keys = FakeKeyPresser()
+		let sender = FakeGestureSender()
+		let context = context(sender: sender, keys: keys)
+		_ = try PressGestureHandler().execute(context, request(["vo+m"]))
+
+		#expect(sender.pressed.isEmpty)
+		#expect(
+			keys.pressed == [Keystroke(modifiers: [.control, .option], keys: [.character("m")])])
+	}
+
+	@Test("THE BINDING IS READ PER CALL, not once and remembered")
+	func theBindingIsReadEveryTime() throws {
+		// Spec 0052 §3.2: somebody who changes their modifier mid-session gets the
+		// right keys on the very next press, which is only true if it is asked
+		// again. Once per CALL and not once per gesture, so one batch is resolved
+		// against one answer.
+		let modifier = FakeReaderModifierSetting()
+		let context = context(readerModifier: modifier)
+		_ = try PressGestureHandler().execute(context, request(["vo+m", "vo+d"]))
+		#expect(modifier.reads == 1)
+		_ = try PressGestureHandler().execute(context, request(["vo+m"]))
+		#expect(modifier.reads == 2)
+	}
+
+	@Test("A REFUSED `vo` PRESSES NOTHING AT ALL, even from the end of a batch")
+	func aRefusedVoPressesNothing() {
+		// The batch is classified before any of it is dispatched, which is what
+		// makes the Caps Lock refusal safe rather than half-done: an agent whose
+		// third gesture is unpressable does not get the first two.
+		let keys = FakeKeyPresser()
+		let sender = FakeGestureSender()
+		let context = context(
+			sender: sender, keys: keys, readerModifier: FakeReaderModifierSetting(.capsLock))
+		#expect(throws: CommandError.self) {
+			_ = try PressGestureHandler().execute(
+				context, request(["go to dock", "command+l", "vo+m"]))
+		}
+		#expect(sender.pressed.isEmpty)
+		#expect(keys.pressed.isEmpty)
+	}
+
+	@Test("the refusal reaches the agent with the reason, not a bare failure")
+	func theRefusalCarriesItsReason() {
+		let context = context(readerModifier: FakeReaderModifierSetting(.capsLock))
+		do {
+			_ = try PressGestureHandler().execute(context, request(["vo+m"]))
+			Issue.record("expected a refusal")
+		} catch let failure as CommandError {
+			#expect(failure.description.contains("CAPS LOCK"))
+			#expect(failure.description.contains("command name"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("what the transcript and the result record is the RESOLVED spelling")
+	func theRecordSaysWhatWentOut() throws {
+		// Two machines whose `vo` differs must not produce identical records, and
+		// this is the one place an agent can see what the binding resolved to.
+		let transcript = FakeTranscript()
+		let context = context(transcript: transcript)
+		let result = try PressGestureHandler().execute(context, request(["vo+m"]))
+
+		// No `kb:` prefix, and that is the existing rule rather than a new one: a
+		// resolved `vo` chord HAS modifiers, so it spells itself the way
+		// `command+l` does and round-trips without one.
+		#expect(transcript.gestures == ["control+option+m"])
+		let pressed = try #require(result as? GestureResult).pressed
+		#expect(pressed.map(\.gesture) == ["control+option+m"])
+	}
+
+	@Test("a `vo` chord costs the Accessibility grant, like any other keystroke")
+	func voCostsTheGrant() throws {
+		// 13.8's lever as this entry leaves it: a keystroke is a system event
+		// whatever spells it, so `vo+m` asks exactly as `command+l` does -- and
+		// that is the trade spec 0052 §3.6 states rather than discovers.
+		let permissions = FakePermissionBroker(state: .notGranted)
+		let context = context(permissions: permissions)
+		#expect(throws: CommandError.self) {
+			_ = try PressGestureHandler().execute(context, request(["vo+m"]))
+		}
+		#expect(permissions.requests == [Permission.accessibility])
 	}
 }

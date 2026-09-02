@@ -84,10 +84,22 @@ public final class PressGestureHandler: CommandHandler {
 		// machine, nothing should happen to it.
 		try HumanWarning.honour(context, params.announce)
 
-		// Every id, classified before the first one goes out. See the header.
+		// WHAT `vo` MEANS ON THIS MACHINE, READ ONCE FOR THE BATCH -- 13.25. It is
+		// read here rather than cached for the session, for the reason the keyboard
+		// layout is: somebody who changes it mid-session gets the right keys on the
+		// very next press. Once per CALL and not once per gesture, so that every id
+		// in one batch is resolved against one answer -- a batch that pressed half
+		// its keys against one binding and half against another would be a race
+		// nobody could reproduce.
+		let readerModifier = adapters.readerModifier.modifier()
+
+		// Every id, classified before the first one goes out. See the header. A
+		// `vo` this machine cannot resolve is refused HERE, so nothing is pressed
+		// at all -- which is what makes the Caps Lock refusal safe rather than
+		// half-done.
 		let gestures = try params.gestures.map { gesture -> Gesture in
 			do {
-				return try CommandVocabulary.classify(gesture)
+				return try CommandVocabulary.classify(gesture, readerModifier: readerModifier)
 			} catch let refusal as GestureIdRefused {
 				throw CommandError(refusal.description)
 			}

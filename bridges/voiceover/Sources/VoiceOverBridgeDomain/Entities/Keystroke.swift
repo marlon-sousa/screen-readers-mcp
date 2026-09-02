@@ -64,7 +64,33 @@
 // arrives here it is already known to be a keystroke, so a lone key parses.
 //
 // ============================================================================
-// EVERY TOKEN THIS FILE ACCEPTS NAMES, ON NVDA, THE SAME PHYSICAL KEY.
+// AND `vo` IS A MODIFIER THAT IS NOT A KEY AT ALL -- 13.25.
+// ============================================================================
+//
+// A VoiceOver user presses VO-M to reach the menu bar. Until this entry the only
+// thing this bridge could send for that was the reader's own command name, which
+// is dispatched INSIDE the reader and never passes the application under test --
+// so an application that swallows or reinterprets VO-M looked perfectly healthy.
+// Spec 0052 §1.
+//
+// `vo` IS THE COUNTERPART OF LANE 1's `nvda`, AND THE SYMMETRY IS EXACT. NVDA's
+// ids carry `NVDA+f7` and NVDA resolves that symbol against its own configuration
+// (Insert, Extended Insert, Caps Lock); this bridge posts its own events, so it
+// resolves `vo` against VoiceOver's -- Control-Option, Caps Lock, or either, read
+// from `SCRKeysToUseForVOModifier` through the `ReaderModifierSetting` port. What
+// 13.19 refused was guessing, and guessing is still refused: `capsLock` and
+// `unknown` are NAMED FAILURES that press nothing, because `control+option` on a
+// Caps-Lock machine is two keys that mean nothing there.
+//
+// SO THE CROSS-READER RULE BELOW HAS ONE STATED EXCEPTION, and it is worth
+// reading as a rule rather than a loophole: `vo` and `nvda` are not physical
+// keys, they are each reader's SYMBOL for its own modifier, and each is resolved
+// by its own bridge. A script that runs on both readers writes `vo+m` here and
+// `NVDA+m` there and means the same act -- which is more than a shared spelling
+// could have given it, since the two readers' modifiers are different keys.
+//
+// ============================================================================
+// EVERY OTHER TOKEN THIS FILE ACCEPTS NAMES, ON NVDA, THE SAME PHYSICAL KEY.
 // ============================================================================
 //
 // Spec 0049 §2.3, and it is the rule to read before adding a spelling here. The
@@ -319,7 +345,14 @@ public struct Keystroke: Equatable, Sendable {
 	/// every token from there on has to be a key. The last token is always a key,
 	/// so `command+shift` is a keystroke missing its key rather than two
 	/// modifiers.
-	public static func parse(_ id: String) throws -> Keystroke {
+	///
+	/// `readerModifier` IS WHAT THE MACHINE SAYS `vo` MEANS -- 13.25. It is read
+	/// through `ReaderModifierSetting` by the handler and handed down here, so the
+	/// DECISION about what the symbol expands to is in this entity and the READING
+	/// is behind a port. What comes out contains only pressable modifiers: `vo` is
+	/// resolved here or the parse fails here, and the adapter that posts events can
+	/// never see the symbol.
+	public static func parse(_ id: String, readerModifier: ModifierSetting) throws -> Keystroke {
 		let lowered = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 		let tokens = lowered.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
 		guard !tokens.isEmpty, !tokens.contains(where: \.isEmpty) else {
@@ -336,8 +369,8 @@ public struct Keystroke: Equatable, Sendable {
 		// The last token is never taken as a modifier: it is the key, and
 		// `command+shift` has to fail as a keystroke with no key rather than parse
 		// as two modifiers pressing nothing.
-		while index < tokens.count - 1, let modifier = Modifier(token: tokens[index]) {
-			modifiers.insert(modifier)
+		while index < tokens.count - 1, isModifierToken(tokens[index]) {
+			modifiers.formUnion(try resolveModifier(tokens[index], in: id, readerModifier))
 			index += 1
 		}
 
@@ -346,7 +379,7 @@ public struct Keystroke: Equatable, Sendable {
 			// A modifier AFTER a key is the named failure this bridge has always
 			// given for `l+command`, and it stays one: reordering it would hide the
 			// typo in the one place that presses a key.
-			if !keys.isEmpty, Modifier(token: token) != nil {
+			if !keys.isEmpty, isModifierToken(token) {
 				throw KeystrokeMalformed(id: id, reason: reasonModifierAfterKey(token))
 			}
 			keys.append(
@@ -354,6 +387,59 @@ public struct Keystroke: Equatable, Sendable {
 		}
 
 		return Keystroke(modifiers: modifiers, keys: keys)
+	}
+
+	/// The token that means "the modifier this reader's own commands are held
+	/// with", whatever that is on this machine.
+	///
+	/// Public because the guidance document, the refusals and the tests all have
+	/// to agree about it, and a second spelling of a notation is how a notation
+	/// stops being one.
+	public static let readerModifierToken = "vo"
+
+	/// Whether a token occupies a MODIFIER position, which `vo` does even though it
+	/// is not a `Modifier` case.
+	///
+	/// It exists so that `vo` cannot be read as a key by either of the two places
+	/// that ask -- the leading run, and the modifier-after-a-key refusal. `l+vo` is
+	/// as wrong as `l+command` and says so.
+	private static func isModifierToken(_ token: String) -> Bool {
+		Modifier(token: token) != nil || token == readerModifierToken
+	}
+
+	/// One modifier token as the set of REAL modifiers it stands for.
+	///
+	/// Every ordinary modifier stands for itself. `vo` stands for whatever the
+	/// person at this machine has bound it to, and there are two answers this
+	/// bridge REFUSES rather than approximates:
+	///
+	/// * **Caps Lock alone.** `control+option` is then not the modifier here at
+	///   all, so pressing it would send two keys that mean nothing on this machine
+	///   -- with total confidence and nothing anywhere to see. Whether a
+	///   synthesized Caps Lock can act as the modifier is unmeasured (spec 0052
+	///   §7), and a wrong press must not stand in for a measurement.
+	/// * **Unknown.** The preference could not be read, or holds a value this
+	///   bridge does not know. "I could not look" is not "it is at its default",
+	///   and only one of those justifies pressing keys at somebody's reader.
+	///
+	/// Both refusals name the reader's own command name as the route that works
+	/// whatever the modifier is -- and say that `control+option+…` is NOT the
+	/// substitute, because that is exactly what an agent would reach for next.
+	private static func resolveModifier(
+		_ token: String, in id: String, _ readerModifier: ModifierSetting
+	) throws -> Set<Modifier> {
+		guard token == readerModifierToken else {
+			guard let modifier = Modifier(token: token) else { return [] }
+			return [modifier]
+		}
+		switch readerModifier {
+		case .controlOption, .controlOptionOrCapsLock:
+			return [.control, .option]
+		case .capsLock:
+			throw KeystrokeMalformed(id: id, reason: reasonModifierIsCapsLock)
+		case .unknown:
+			throw KeystrokeMalformed(id: id, reason: reasonModifierUnknown)
+		}
 	}
 
 	/// The canonical spelling: modifiers in the enumeration's order, then the keys
@@ -384,6 +470,17 @@ public struct Keystroke: Equatable, Sendable {
 	/// position, so it is told about the keys. Both refuse; they differ in what
 	/// they say to do next, which is the whole reason this entity parses at all.
 	private static func parseKey(_ token: String, in id: String, isLast: Bool) throws -> Key {
+		if token == readerModifierToken {
+			// `vo` on its own, or in the key position. It is a modifier and there is
+			// no key beside it, which is a different mistake from `command+shift` and
+			// gets its own sentence because the fix is to name the key.
+			throw KeystrokeMalformed(
+				id: id,
+				reason: "\"vo\" is the reader's own modifier and a keystroke needs a key beside it "
+					+ "-- \"vo+m\" for the menu bar, \"vo+shift+w\" to read the window. On its own it "
+					+ "presses nothing"
+			)
+		}
 		if let reason = ambiguousKeyNames[token] {
 			throw KeystrokeMalformed(id: id, reason: reason)
 		}
@@ -412,6 +509,30 @@ public struct Keystroke: Equatable, Sendable {
 	/// things on the contract's two readers, with nothing anywhere to see. A
 	/// refusal costs one round trip and names the fix; a wrong key costs whoever
 	/// finds out, whenever they do.
+	/// Why `vo` cannot be pressed on a machine bound to Caps Lock.
+	///
+	/// IT NAMES WHAT IS *NOT* THE ANSWER AS WELL AS WHAT IS, and that half is the
+	/// point: an agent told only "this bridge cannot press it" writes
+	/// `control+option+m` next, which on this machine is two keys that mean
+	/// nothing and will look like the application ignoring a chord.
+	private static let reasonModifierIsCapsLock =
+		"\"vo\" is the VoiceOver modifier, and on this machine it is bound to CAPS LOCK alone -- "
+		+ "read from the reader's own preferences, not assumed. This bridge cannot synthesize that, "
+		+ "and \"control+option\" is NOT a substitute here: those two keys are not the modifier on "
+		+ "this machine and pressing them would do something else entirely. Send the reader's own "
+		+ "command name instead (\"go to menu bar\", \"read contents of window\"), which works "
+		+ "whatever the modifier is bound to and costs no permission -- or ask the person at this "
+		+ "machine to set the modifier to Control-Option in VoiceOver Utility > Commands"
+
+	/// Why `vo` cannot be pressed when the machine would not say what it is bound
+	/// to.
+	private static let reasonModifierUnknown =
+		"\"vo\" is the VoiceOver modifier, and this bridge could not read what it is bound to on "
+		+ "this machine -- VoiceOver's preferences could not be read, or hold a value this bridge "
+		+ "does not know. It will not guess: Control-Option and Caps Lock are both possible, and "
+		+ "pressing the wrong one presses something else with total confidence. Send the reader's "
+		+ "own command name, which works whatever the modifier is bound to"
+
 	private static let ambiguousKeyNames: [String: String] = [
 		"delete":
 			"'delete' names a different key on each of this contract's readers, so this bridge will "
@@ -421,9 +542,9 @@ public struct Keystroke: Equatable, Sendable {
 			+ "backwards and costs no permission",
 		"insert":
 			"this keyboard has no Insert key. It is NVDA's own modifier and a key its users press "
-			+ "constantly; there is nothing here to press. VoiceOver's modifier is Control-Option "
-			+ "unless the person rebound it -- send the reader's command name instead, which works "
-			+ "whatever it is bound to",
+			+ "constantly; there is nothing here to press. THE COUNTERPART ON THIS READER IS "
+			+ "\"vo\" -- write \"vo+m\" where you would have written \"insert+m\", and this bridge "
+			+ "resolves it against what the person has actually bound their VoiceOver modifier to",
 	]
 
 	/// Why a modifier may not follow a key, and how to write what was probably
@@ -449,19 +570,20 @@ public struct Keystroke: Equatable, Sendable {
 	private static func reasonNoSuchModifier(_ token: String) -> String {
 		switch token {
 		case "nvda":
-			return "there is no NVDA key on this machine, and this bridge will not guess at the one "
-				+ "that stands in for it: VoiceOver's modifier is Control-Option unless the person "
-				+ "rebound it. Send the reader's own command name, which works whatever it is bound "
-				+ "to -- or, if you meant the literal keys, write them out as \"control+option+…\""
+			return "there is no NVDA key on this machine. THE COUNTERPART HERE IS \"vo\", the "
+				+ "VoiceOver modifier -- write \"vo+m\" where you would have written \"NVDA+m\", and "
+				+ "this bridge resolves it against what the person has actually bound it to, exactly "
+				+ "as NVDA resolves its own"
 		case "windows", "win":
 			return "there is no Windows key on this machine; the key in that place is \"command\""
 		default:
 			return "'\(token)' is not a modifier this bridge knows, and it names no key either. "
 				+ "It knows the modifiers "
-				+ Modifier.allCases.map(\.rawValue).joined(separator: ", ")
-				+ " (and \"alt\" for option), and they come first -- every part after them is a "
-				+ "key, so \"command+l\" and not \"l+command\" is the spelling to write. Two "
-				+ "ordinary keys held together are written the same way: \"leftArrow+rightArrow\""
+				+ (Modifier.allCases.map(\.rawValue) + [readerModifierToken]).joined(separator: ", ")
+				+ " (\"alt\" for option, and \"vo\" for the reader's own modifier), and they come "
+				+ "first -- every part after them is a key, so \"command+l\" and not \"l+command\" is "
+				+ "the spelling to write. Two ordinary keys held together are written the same way: "
+				+ "\"leftArrow+rightArrow\""
 		}
 	}
 }

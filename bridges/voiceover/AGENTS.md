@@ -370,22 +370,75 @@ which NVDA calls `delete`. What is deliberately *not* copied from lane 1 is
 normalizer, there is no such normalizer here, and `l+command` stays a named
 failure rather than being quietly reordered.
 
-**`VO-D` is still refused, and no feature retires that.** `VO` is whatever the
-person has bound their VoiceOver modifier to — Control-Option, or Caps Lock, or
-both — so pressing it would mean guessing at somebody's own configuration and
-pressing the wrong keys with total confidence. The refusal names both
-alternatives: the reader's command name, or `control+option+d` if those literal
-keys were meant.
+**`vo` IS A MODIFIER, AND THAT IS 13.25 — THE ENTRY THAT CHANGED WHAT A SESSION
+IS.** A VoiceOver user reaches the menu bar by pressing VO-M; until this entry the
+only thing this bridge could send for that was `go to menu bar`, dispatched inside
+the reader over an AppleEvent, which **never passes the application under test**.
+So an application that swallows or reinterprets the chord reported success while a
+real user was stuck — the defect class this tool exists to find, hidden by the
+route its own guidance recommended. Spec 0052.
 
-**Prefer the command name wherever one exists**, and the reason is the grant: a
-command name is an AppleEvent and costs nothing, a keystroke is a `CGEvent` and
-costs Accessibility. `return key` and `command+enter` are not interchangeable
-just because both press a key. That is also why **an UNPREFIXED lone key stays a
-command name**: the vocabulary's 30 `… key` commands cost nothing, and routing a
-bare `return` through the event path would spend the grant for a keypress that
-never needed it. `kb:enter` is how a session says it meant the key itself, and it
-pays for saying so — which is the whole shape of 13.8's lever surviving 13.19
-intact, word for word.
+`vo+m` is now an ordinary keystroke in the notation that already existed, and the
+symbol is **resolved from the machine** exactly as lane 1's `NVDA` is resolved by
+NVDA: `SCRKeysToUseForVOModifier` in VoiceOver's own preferences, read through the
+`ReaderModifierSetting` port, per call and never cached. Three things about it are
+rules rather than details:
+
+- **The two refusals stay refusals.** Caps-Lock-only and unreadable are named
+  failures that press nothing — `control+option` is not the modifier on a
+  Caps-Lock machine, and "I could not look" is not "it is at its default". What
+  13.19 refused was GUESSING, and guessing is still refused; what changed is that
+  the answer turned out to be readable.
+- **`VO-D` is still refused, for a much smaller reason.** Not because `VO` is
+  unknowable — it is not, any more — but because Apple writes `VO-Shift-M` too, so
+  accepting the hyphen means a second complete notation with its own modifier
+  order, refusals and tests. The refusal now NAMES THE REWRITE (`vo+d`).
+- **`described` reports the RESOLVED keys** (`control+option+m`). Two machines
+  whose `vo` differs must not produce identical transcripts, and it means one
+  press tells an agent what this machine is bound to.
+
+**AND THE COMMAND NAME IS DEMOTED, WHICH IS THE HALF THAT COST SOMETHING.** It is
+no longer the recommended way to stand in for a user; it is an automation
+convenience and a **diagnosis aid** — it costs no grant, it works whatever the
+person has rebound, and a key that does nothing where its command name works is
+either a rebinding or a swallowed keystroke, which is a finding. It is also the
+ONLY route for the acts that ship with no key at all: measured 2026-09-02,
+`find next button`, `find next text field`, `toggle web navigation dom or group`,
+`mute speech toggle` and `pause or resume speaking` have no factory binding.
+
+**So 13.8's lever no longer describes ordinary driving, and that was the trade.**
+The sentence *"a session that presses only the reader's command names and reads
+speech is never asked for Accessibility"* is now a statement about
+**reading-only** sessions. A faithful user-persona session presses keys and is
+asked for the grant, once. A lever bought by driving the reader in a way no user
+does is bought with the fidelity this tool sells; the assertion survives in the
+tests because it is still true of what it now describes, and no copy of the old
+sentence is left standing where it is false.
+
+**An UNPREFIXED lone key is still a command name**, unchanged: the vocabulary's 30
+`… key` commands cost nothing, and routing a bare `return` through the event path
+would spend the grant for a keypress that never needed it. `kb:enter` is how a
+session says it meant the key itself.
+
+**THE READER MATCHES ON THE CHARACTER, NOT ON THE KEYCODE AND THE FLAGS — 13.25's
+other finding, and it was a LIVE DEFECT rather than a missing feature.** Measured
+2026-09-02 (`bash scripts/voiceover_vo_modifier.sh`): a `CGEvent` built from a
+keycode carries the UNSHIFTED character whatever flags are set on it and whatever
+Shift transitions preceded it. An application never notices, because it matches
+the keycode and the flags — which is why `command+l` worked on the first try in
+13.17 and nothing caught this for three entries. VoiceOver does not:
+
+```text
+control+option+shift+q carrying 'q'  ->  VO-Q        (single-key Quick Nav)
+control+option+shift+q carrying 'Q'  ->  VO-Shift-Q  (arrow-key Quick Nav)
+```
+
+So `CGKeystrokePresser` stamps the character the ACTIVE LAYOUT produces on the
+layer being pressed, through a forward question added to the `KeyboardLayout`
+seam, and `EventPoster.post` carries it. **Named keys are never stamped** — an
+arrow's character is a private-use code point this bridge would be inventing, the
+system fills it correctly, and 13.22's arrow chords have always worked. A layout
+that will not answer means "do not stamp", not a failure.
 
 **Do NOT build a chord out of the reader's modifier commands.** The vocabulary
 carries 30 commands whose name ends in `key` — `tab key`, `return key`, the four

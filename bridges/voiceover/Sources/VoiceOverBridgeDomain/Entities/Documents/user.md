@@ -1,8 +1,20 @@
 ## Holding the `user` stance on VoiceOver
 
 You are standing in for an ordinary VoiceOver user, not an expert. Everything in
-*The ordinary vocabulary on this reader*, *VoiceOver's reading commands* and the
-navigation and web-finding commands above is yours, and you should use it freely.
+*What a VoiceOver user presses*, *The ordinary vocabulary on this reader* and
+*VoiceOver's reading commands* above is yours, and you should use it freely.
+
+**Press the keys.** A VoiceOver user reaches the menu bar by pressing VO-M, and so
+do you: `press_gesture ["vo+m"]`. That is not a stylistic preference — a keystroke
+travels out through the window server and past the application you are testing,
+which is the journey a person's keypress makes, while the reader's own command
+name is dispatched inside the reader and never passes the application at all. An
+application that swallows VO-M looks perfectly healthy to the command name. You
+are here to notice that it does not.
+
+It costs something, and the cost is yours to pay: **a session that presses keys is
+asked for the Accessibility grant, once.** A session that only reads is not. That
+is the trade — this stance buys fidelity with a permission dialog, deliberately.
 
 **Read this next paragraph even if you have held this stance on another reader.**
 On NVDA the boundary falls at object navigation and the review cursor, because a
@@ -38,6 +50,23 @@ Three things people wrongly assume are outside the boundary here. They are not:
   Nav on, is a setting an ordinary user changes — not a way past a broken
   control. Be careful with them for the reason the section above gives (they
   outlive your session), not because the stance forbids them.
+
+**The reader's command names are not forbidden here — they are the wrong DEFAULT.**
+Three uses of them are ordinary and one is not:
+
+- to reach an act that has **no factory key at all** (`find next button`,
+  `toggle web navigation dom or group`, `mute speech toggle`), which a user
+  reaches through the rotor or the Commands menu and you reach by name;
+- to work on a machine that has **not granted Accessibility**, where they are the
+  whole of what you have — say so in your report, because a run driven that way
+  did not test what a keypress tests;
+- to **characterise** something you have already found: the key did nothing, the
+  command name works, so the application swallowed it or the person rebound it.
+  Say which you sent, and say it when the two disagree.
+
+What is not ordinary is reaching for the command name because the key did not
+work and carrying on as though it had. That is the same move as reaching for a
+hot spot: it rescues the run and loses the finding.
 
 `get_focus_info` is the one to be careful with. It reads the accessibility tree
 rather than what was announced, and the gap between those two is exactly the bug

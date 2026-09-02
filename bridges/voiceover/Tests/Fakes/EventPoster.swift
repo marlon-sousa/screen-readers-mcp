@@ -36,15 +36,25 @@ public final class FakeEventPoster: EventPoster {
 		}
 	}
 
-	/// One key event: a keycode with the flags held for it.
+	/// One key event: a keycode, the flags held for it, and WHAT THE EVENT SAYS
+	/// IT IS.
+	///
+	/// `characters` is 13.25's field, and it is recorded because it is a decision
+	/// rather than a detail: a CGEvent built from a keycode carries the unshifted
+	/// character whatever flags are set, and this reader matches on the character
+	/// -- so a presser that stamps nothing sends `control+option+shift+q` to VO-Q
+	/// and reports success. A double that dropped this could not tell the two
+	/// apart.
 	public struct Keyed: Equatable {
 		public let keyCode: UInt16
 		public let flags: CGEventFlags
+		public let characters: String?
 		public let keyDown: Bool
 
-		public init(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) {
+		public init(keyCode: UInt16, flags: CGEventFlags, characters: String?, keyDown: Bool) {
 			self.keyCode = keyCode
 			self.flags = flags
+			self.characters = characters
 			self.keyDown = keyDown
 		}
 	}
@@ -52,7 +62,7 @@ public final class FakeEventPoster: EventPoster {
 	/// One event of any shape, in the order it went out.
 	public enum Event: Equatable {
 		case unicode(String, keyDown: Bool)
-		case key(UInt16, flags: CGEventFlags, keyDown: Bool)
+		case key(UInt16, flags: CGEventFlags, characters: String?, keyDown: Bool)
 		case flags(UInt16, CGEventFlags)
 	}
 
@@ -103,12 +113,14 @@ public final class FakeEventPoster: EventPoster {
 		sequence.append(.unicode(unicode, keyDown: keyDown))
 	}
 
-	public func post(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) throws {
+	public func post(
+		keyCode: UInt16, flags: CGEventFlags, characters: String?, keyDown: Bool
+	) throws {
 		if let failure { throw failure }
 		keyAttempts += 1
 		if let keyFailure, keyFailureAt == nil || keyFailureAt == keyAttempts { throw keyFailure }
-		keyed.append(Keyed(keyCode: keyCode, flags: flags, keyDown: keyDown))
-		sequence.append(.key(keyCode, flags: flags, keyDown: keyDown))
+		keyed.append(Keyed(keyCode: keyCode, flags: flags, characters: characters, keyDown: keyDown))
+		sequence.append(.key(keyCode, flags: flags, characters: characters, keyDown: keyDown))
 	}
 
 	public func postFlagsChanged(keyCode: UInt16, flags: CGEventFlags) throws {

@@ -38,6 +38,10 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// test asserts WHICH ROUTE a gesture id took, and "the chord went to the
 	/// system rather than to the reader" is invisible in the AdapterSet.
 	public let keyPresser = FakeKeyPresser()
+	/// And 13.25's one, exposed so a session test can put this machine on a
+	/// different VoiceOver modifier -- Caps Lock, or one that cannot be read --
+	/// and assert that `vo+m` is refused over a real wire with nothing pressed.
+	public let readerModifier = FakeReaderModifierSetting()
 	/// And 13.9's one. Exposed like the rest so a session-level test can assert
 	/// what a `getFocusInfo` off the wire actually read -- and, beside
 	/// `permissions` above, that answering focus asked the broker nothing.
@@ -87,6 +91,7 @@ public final class FakeAdapterFactory: AdapterFactory {
 			readerLiveness: readerLiveness,
 			textTyper: textTyper,
 			keyPresser: keyPresser,
+			readerModifier: readerModifier,
 			permissions: permissions,
 			focusInspector: focusInspector,
 			announcer: announcer,

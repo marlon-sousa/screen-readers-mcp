@@ -54,15 +54,12 @@ public final class VoiceOverPrefsScriptingSetting: ReaderScriptingSetting {
 
 	/// Where VoiceOver keeps the preference, derived from a home directory.
 	///
-	/// A GROUP CONTAINER, not `~/Library/Preferences`: VoiceOver's own settings
-	/// live in the group container it shares with its helpers, which is why a
-	/// sweep of the obvious location finds nothing (spec 0047, findings 10 and 16
-	/// are the same lesson from the other end -- the VOICE is in the system speech
-	/// domain and not here at all).
+	/// THE DERIVATION MOVED TO `VoiceOverPreferencesFile` WITH 13.25, because the
+	/// modifier setting reads the same file and two adapters each carrying their
+	/// own copy of a path is how two adapters come to disagree about where a file
+	/// is. This stays as the name this class's own callers and tests use.
 	public static func preferencesPath(home: String) -> String {
-		home
-			+ "/Library/Group Containers/group.com.apple.VoiceOver/Library/Preferences"
-			+ "/com.apple.VoiceOver4/default.plist"
+		VoiceOverPreferencesFile.current(home: home)
 	}
 
 	public func scripting() -> ScriptingSetting {

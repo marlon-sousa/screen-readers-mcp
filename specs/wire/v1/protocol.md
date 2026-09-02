@@ -338,6 +338,17 @@ means the command takes no parameters. Summary:
     `"kb:h"` is the letter key and `"h"` is a command. Which vocabularies a reader
     has, and therefore whether the prefix means anything, is that reader's
     guidance to state (`getGuidance`).
+  - A reader's **modifier SYMBOL** — `NVDA` on one reader, `vo` on another — is a
+    token the bridge RESOLVES against that machine, and never a key the caller
+    spells out. Both readers let the person choose which physical keys their
+    modifier is (Insert, Extended Insert or Caps Lock there; Control-Option, Caps
+    Lock, or either here), so `"NVDA+f7"` and `"vo+m"` name an ACT rather than a
+    keystroke, and the same id means the same act on two machines whose keys
+    differ. A bridge that cannot resolve its own symbol — the choice is
+    unreadable, or is a key it cannot synthesize — **fails by name and presses
+    nothing**, because approximating it would send the wrong keys with total
+    confidence. Which symbol a reader has, if any, is that reader's guidance to
+    state.
   - `graceMs` (default **100**, `0` to opt out) is the **grace window** of §7.3:
     after each gesture the bridge waits up to that long for the speech it
     caused, and returns as soon as any arrives.

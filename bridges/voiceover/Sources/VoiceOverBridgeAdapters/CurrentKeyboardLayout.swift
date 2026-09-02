@@ -54,6 +54,18 @@ public final class CurrentKeyboardLayout: KeyboardLayout {
 		return cachedKeys[character]
 	}
 
+	/// The forward question, asked of the layout that is active now -- 13.25.
+	///
+	/// NOT CACHED, and it needs no cache: it is one `UCKeyTranslate` call against
+	/// one keycode, where the reverse map above is 256 of them. Asking the live
+	/// layout every time is also what keeps it honest for somebody who switched
+	/// layouts mid-session, which is the rule this whole class is built on.
+	public func character(forKeyCode keyCode: UInt16, shifted: Bool) -> String? {
+		guard let layout = Self.layoutData() else { return nil }
+		return Self.translate(
+			keyCode: keyCode, modifiers: shifted ? UInt32(shiftKey >> 8) : 0, layout: layout)
+	}
+
 	// -- the system ------------------------------------------------------------
 
 	/// The active input source's id, or empty if the system will not say.

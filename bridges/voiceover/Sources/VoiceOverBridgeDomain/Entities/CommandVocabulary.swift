@@ -56,13 +56,17 @@
 // malformed keystroke and not a command name: the agent said which vocabulary it
 // meant, and the answer to a mistake is to name it rather than to guess past it.
 //
-// WHAT IS STILL REFUSED, AND BY NAME: VoiceOver's own `VO-D` notation. It is
-// neither a command the reader will dispatch nor a keystroke this bridge can
-// construct, because `VO` is whatever the user has configured their VoiceOver
-// modifier to be -- Control-Option, or Caps Lock, or both -- and this file
-// cannot know which. Guessing would press the wrong keys with total confidence,
-// which is the exact mistake this type was written to catch. The refusal says to
-// send `control+option+d` if that is what was meant.
+// WHAT IS STILL REFUSED, AND BY NAME: VoiceOver's own `VO-D` notation -- BUT NOT
+// FOR THE REASON IT USED TO BE. Until 13.25 the refusal said that `VO` is
+// whatever the person bound it to and this bridge would not guess. That is no
+// longer the situation: `vo` is a MODIFIER in the `+` notation now, resolved
+// against `SCRKeysToUseForVOModifier` through a port, so the id `vo+d` is
+// pressable and the id `VO-D` is merely written in the other separator. What is
+// refused is the SEPARATOR, for a much smaller reason -- Apple writes
+// `VO-Shift-M` as well, so accepting the hyphen means a second complete notation
+// with its own modifier order, refusals and tests, for an id whose fix is one
+// token long. The refusal now NAMES THE REWRITE (`vo+d`) rather than sending the
+// agent to a different route.
 //
 // THE DISCRIMINATOR BEHIND ALL THREE IS THE SPACE RULE, and it is the one this
 // file already lived by. A separator -- `:`, `+` or `-` -- counts as notation
@@ -158,36 +162,53 @@ public enum CommandVocabulary {
 	///
 	/// A keystroke comes back PARSED, so the id's contents are the caller's
 	/// mistake to hear about here rather than the machine's to discover later.
-	public static func classify(_ gesture: String) throws -> Gesture {
+	public static func classify(
+		_ gesture: String, readerModifier: ModifierSetting
+	) throws -> Gesture {
 		let trimmed = gesture.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else {
 			throw GestureIdRefused(
 				gesture: gesture,
 				reason: "it is empty -- this reader's gestures are English command names, "
-					+ "such as \"go to desktop\", or keystrokes, such as \"command+l\" and \"kb:h\""
+					+ "such as \"go to desktop\", or keystrokes, such as \"vo+m\", \"command+l\" "
+					+ "and \"kb:h\""
 			)
 		}
 		if let (source, rest) = sourcePrefix(of: trimmed) {
 			guard source == keyboardSource else {
 				throw GestureIdRefused(gesture: trimmed, reason: reasonNoSuchSource(source))
 			}
-			return .keystroke(try keystroke(rest, quoting: trimmed))
+			return .keystroke(try keystroke(rest, quoting: trimmed, readerModifier))
 		}
 		guard !isReaderModifierNotation(trimmed) else {
-			throw GestureIdRefused(
-				gesture: trimmed,
-				reason: "it is VoiceOver's own shorthand, and this bridge cannot press it. \"VO\" is "
-					+ "whatever the user has bound their VoiceOver modifier to -- Control-Option, or "
-					+ "Caps Lock, or both -- so pressing it would mean guessing at somebody's own "
-					+ "configuration. Send the reader's English command name (\"describe item in "
-					+ "voiceover cursor\"), which costs no permission and works whatever the modifier "
-					+ "is; or, if you meant the literal keys, write them out as \"control+option+d\""
-			)
+			throw GestureIdRefused(gesture: trimmed, reason: reasonHyphenShorthand(trimmed))
 		}
 		guard isKeystrokeNotation(trimmed) else {
 			return .readerCommand(trimmed)
 		}
-		return .keystroke(try keystroke(trimmed, quoting: trimmed))
+		return .keystroke(try keystroke(trimmed, quoting: trimmed, readerModifier))
+	}
+
+	/// Why VoiceOver's own `VO-D` shorthand is refused, and what to write instead.
+	///
+	/// THE REFUSAL SURVIVES 13.25; ITS REASON DOES NOT. It used to say that `VO` is
+	/// whatever the person bound it to and that this bridge would not guess -- true
+	/// then, and no longer the situation: the bridge now READS what it is bound to
+	/// and resolves it. What is refused now is the SEPARATOR, and for a much
+	/// smaller reason: Apple also writes `VO-Shift-M`, so accepting the hyphen
+	/// means maintaining a second complete notation -- its own modifier order, its
+	/// own refusals, its own tests -- for an id whose fix is one token long.
+	///
+	/// So the message names the rewrite rather than sending the agent to a
+	/// different route, which is the whole difference: it costs one round trip and
+	/// teaches the notation.
+	private static func reasonHyphenShorthand(_ gesture: String) -> String {
+		"it is VoiceOver's own hyphen shorthand, and this bridge writes a keystroke with \"+\" "
+			+ "instead -- one notation, the same one the other reader in this contract uses. Write "
+			+ "\"\(gesture.replacingOccurrences(of: "-", with: "+").lowercased())\". \"vo\" IS a "
+			+ "modifier here: this bridge reads what the person has bound their VoiceOver modifier "
+			+ "to and presses that. Or send the reader's English command name (\"describe item in "
+			+ "voiceover cursor\"), which costs no permission at all"
 	}
 
 	// -- the pieces --------------------------------------------------------------
@@ -196,9 +217,11 @@ public enum CommandVocabulary {
 	///
 	/// A `kb:h` that fails must say `kb:h` and not `h`, or the agent is left
 	/// looking for an id it never wrote.
-	private static func keystroke(_ id: String, quoting sent: String) throws -> Keystroke {
+	private static func keystroke(
+		_ id: String, quoting sent: String, _ readerModifier: ModifierSetting
+	) throws -> Keystroke {
 		do {
-			return try Keystroke.parse(id)
+			return try Keystroke.parse(id, readerModifier: readerModifier)
 		} catch let malformed as KeystrokeMalformed {
 			throw GestureIdRefused(gesture: sent, reason: malformed.reason)
 		}

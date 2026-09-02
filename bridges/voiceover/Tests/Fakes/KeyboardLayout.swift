@@ -50,4 +50,19 @@ public final class FakeKeyboardLayout: KeyboardLayout {
 		asked.append(character)
 		return keys[character]
 	}
+
+	/// The forward question, answered by INVERTING the same table -- so a test
+	/// cannot set up a layout where the two directions disagree, and a presser
+	/// that stamped the wrong layer is caught rather than accommodated.
+	///
+	/// `unstampable` is how a test asks for the layout that will not answer, which
+	/// the seam documents as "leave the event as the system built it" rather than
+	/// as a failure.
+	public var unstampable: Set<UInt16> = []
+
+	public func character(forKeyCode keyCode: UInt16, shifted: Bool) -> String? {
+		guard !unstampable.contains(keyCode) else { return nil }
+		let found = keys.first { _, key in key.keyCode == keyCode && key.shifted == shifted }
+		return found.map { String($0.key) }
+	}
 }
