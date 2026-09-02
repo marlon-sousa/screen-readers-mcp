@@ -74,10 +74,27 @@ struct CommandVocabularyTests {
 		// exactly this notation, and now it works.
 		#expect(
 			try CommandVocabulary.classify("command+l")
-				== .keystroke(Keystroke(modifiers: [.command], key: .character("l"))))
+				== .keystroke(Keystroke(modifiers: [.command], keys: [.character("l")])))
 		#expect(
 			try CommandVocabulary.classify("control+option+space")
-				== .keystroke(Keystroke(modifiers: [.control, .option], key: .named(.space))))
+				== .keystroke(Keystroke(modifiers: [.control, .option], keys: [.named(.space)])))
+	}
+
+	@Test("TWO ORDINARY KEYS ARE A KEYSTROKE HERE TOO, and the vocabulary needed no change")
+	func twoOrdinaryKeysClassifyAsAKeystroke() throws {
+		// 13.22 at this layer, and the claim worth recording is that this file did
+		// not change: `+` with no space is a keystroke whatever the tokens are, so
+		// the entity below was the only thing that had to learn a second key. The
+		// chord is arrow-key Quick Nav, which is the one an agent meets first.
+		#expect(
+			try CommandVocabulary.classify("leftArrow+rightArrow")
+				== .keystroke(Keystroke(modifiers: [], keys: [.named(.leftArrow), .named(.rightArrow)])))
+		#expect(
+			try CommandVocabulary.classify("kb:leftArrow+rightArrow")
+				== CommandVocabulary.classify("leftArrow+rightArrow"))
+		// And it costs the Accessibility grant exactly as a one-key chord does --
+		// a `CGEvent` is a `CGEvent` -- which is what keeps 13.8's lever intact.
+		#expect(try CommandVocabulary.classify("leftArrow+rightArrow").isKeystroke == true)
 	}
 
 	@Test("THE SPACE RULE IS WHAT DECIDES: `command key` is a command, `command+l` is not")
@@ -102,7 +119,7 @@ struct CommandVocabularyTests {
 		// reader where an unprefixed id does not mean the keyboard. This one.
 		#expect(
 			try CommandVocabulary.classify("kb:h")
-				== .keystroke(Keystroke(modifiers: [], key: .character("h"))))
+				== .keystroke(Keystroke(modifiers: [], keys: [.character("h")])))
 		#expect(try CommandVocabulary.classify("h") == .readerCommand("h"))
 	}
 
@@ -257,7 +274,13 @@ struct CommandVocabularyTests {
 		// documented form, which is the point of standardizing on it.
 		#expect(try CommandVocabulary.classify("kb:h").described == "kb:h")
 		#expect(try CommandVocabulary.classify("kb:command+l").described == "command+l")
-		for id in ["kb:h", "command+l", "kb:downArrow", "shift+command+4"] {
+		// A multi-key chord with no modifiers keeps the prefix too -- 13.22. It
+		// would round-trip without one, since the `+` classifies it; the rule stays
+		// "no modifiers, so say which vocabulary" rather than growing a clause.
+		#expect(
+			try CommandVocabulary.classify("leftArrow+rightArrow").described
+				== "kb:leftArrow+rightArrow")
+		for id in ["kb:h", "command+l", "kb:downArrow", "shift+command+4", "leftArrow+rightArrow"] {
 			let described = try CommandVocabulary.classify(id).described
 			#expect(try CommandVocabulary.classify(described).described == described)
 		}

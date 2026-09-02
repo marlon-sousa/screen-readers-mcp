@@ -24,10 +24,13 @@
 // that quietly did the wrong thing is the worst failure available on an edge
 // nobody can watch.
 //
-// NOTHING IS POSTED BEFORE THE KEYCODE IS KNOWN, which is why the whole
+// NOTHING IS POSTED BEFORE EVERY KEYCODE IS KNOWN, which is why the whole
 // keystroke is resolved before the first event. Half a chord -- a key-down with
 // no key-up, or a modifier flag on an event that never arrives -- would leave
-// whatever watches the event stream believing a key is still held.
+// whatever watches the event stream believing a key is still held. Since 13.22 a
+// keystroke may carry SEVERAL keys, so "the whole keystroke" means all of them:
+// `leftArrow+rightArrow` with one key unreachable posts nothing at all rather
+// than pressing the half it can.
 //
 // NAMED KEYS SKIP THE LAYOUT ENTIRELY, and the table below is theirs. Return is
 // in the same place on every keyboard sold, so these are constants rather than
@@ -57,11 +60,16 @@
 //
 //   1. a `flagsChanged` per modifier, in a fixed order, each carrying the
 //      CUMULATIVE state so far -- which is what such an event means
-//   2. the key down, then the key up, both carrying the full flags
+//   2. every key down IN ORDER, then every key up IN REVERSE, all carrying the
+//      full flags -- one key each way for `command+l`, two for
+//      `leftArrow+rightArrow`, which is the chord being simultaneous rather than
+//      sequential (13.22)
 //   3. a `flagsChanged` per modifier in REVERSE, each carrying the state with
 //      that modifier removed, ending at `[]`
 //
-// AND STEP 3 RUNS EVEN WHEN STEP 2 FAILED. A press that threw half-way through
+// AND STEPS 2's RELEASE AND STEP 3 RUN EVEN WHEN THE PRESS FAILED, in that
+// order, which is why there are two `defer`s and why the keys' one is registered
+// second. A press that threw half-way through
 // would otherwise leave exactly the state this section is about, so the release
 // is in a `defer` and its own failures are swallowed: there is nothing a caller
 // could usefully do with "the chord failed AND the release failed", and reporting
@@ -88,33 +96,61 @@ public final class CGKeystrokePresser: KeyPresser {
 
 	public func press(_ keystroke: Keystroke) throws {
 		// EVERYTHING IS RESOLVED BEFORE ANYTHING IS POSTED. Half a chord -- a
-		// modifier held for a key that turned out to be unreachable -- is the state
-		// this class exists to prevent.
-		let resolved = try resolve(keystroke.key)
+		// modifier held for a key that turned out to be unreachable, or the first
+		// of two keys down and the second unpressable -- is the state this class
+		// exists to prevent.
+		let resolved = try keystroke.keys.map(resolve)
 		var modifiers = keystroke.modifiers
 		// A character on the shifted layer needs the Shift the agent did not ask
 		// for: on a French layout the digits live there, so `command+4` is really
 		// Command-Shift-<that key>. The seam reports the layer; the decision to add
-		// it is this line, above it.
-		if resolved.shifted { modifiers.insert(.shift) }
+		// it is this line, above it. ANY of the keys needing it is enough, which is
+		// also what a person's hand does -- there is one Shift.
+		if resolved.contains(where: \.shifted) { modifiers.insert(.shift) }
 		let held = Keystroke.Modifier.allCases.filter(modifiers.contains)
 		let flags = Self.flags(for: modifiers)
 
-		// See the header: this runs whatever happened above it, and its own
-		// failures are swallowed rather than replacing the caller's error.
+		// TWO DEFERS, AND THEIR ORDER IS THE POINT. Swift runs them in reverse, so
+		// the keys come up first and the modifiers after them -- which is what a
+		// real keyboard does, and the opposite would release Command while `l` was
+		// still down. Both run whatever happened below, and both swallow their own
+		// failures rather than replacing the caller's error; see the header.
+		var pressed: [UInt16] = []
 		defer { release(held) }
+		defer { releaseKeys(pressed, flags: flags) }
 		do {
 			try hold(held)
-			// DOWN THEN UP, BOTH CARRYING THE FLAGS, exactly as
+			// DOWN IN ORDER, UP IN REVERSE, ALL CARRYING THE FLAGS, exactly as
 			// `AccessibilityTextTyper` sends both halves of a typed chunk: an
 			// application that acts on key-down and one that acts on key-up would
 			// otherwise disagree about whether the chord happened, and a key-down
 			// with no key-up leaves a key held as far as anything watching is
-			// concerned.
-			try poster.post(keyCode: resolved.keyCode, flags: flags, keyDown: true)
-			try poster.post(keyCode: resolved.keyCode, flags: flags, keyDown: false)
+			// concerned. The keys are HELD across each other and not pressed one
+			// after another, because simultaneity is what the reader detects --
+			// measured 2026-09-01: the two arrows sent sequentially move nothing,
+			// and sent together they toggle arrow-key Quick Nav. No delay between
+			// the events is needed.
+			for key in resolved {
+				try poster.post(keyCode: key.keyCode, flags: flags, keyDown: true)
+				pressed.append(key.keyCode)
+			}
 		} catch let failure as EventPostingFailure {
 			throw KeyPressFailure(failure.description)
+		}
+	}
+
+	/// Release the keys that actually went down, in reverse, so a press that
+	/// failed partway leaves nothing held.
+	///
+	/// IT CANNOT THROW, for the reason `release` cannot: a key-up that failed
+	/// would be reported in place of the failure that matters, and what there must
+	/// not be is a `press` that returns with a key down. It releases exactly what
+	/// was pressed rather than everything that was asked for -- a key-down that
+	/// never went out needs no key-up, and posting one would tell whatever is
+	/// watching about a keystroke that never happened.
+	private func releaseKeys(_ pressed: [UInt16], flags: CGEventFlags) {
+		for keyCode in pressed.reversed() {
+			try? poster.post(keyCode: keyCode, flags: flags, keyDown: false)
 		}
 	}
 

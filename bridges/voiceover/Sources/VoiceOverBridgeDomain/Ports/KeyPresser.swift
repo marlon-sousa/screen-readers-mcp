@@ -1,5 +1,6 @@
-// ROLE: port -- press one keystroke at the SYSTEM, and say what went wrong in a
-// vocabulary the controller can act on.
+// ROLE: port -- press one keystroke at the SYSTEM -- which since 13.22 may hold
+// SEVERAL ordinary keys down at once -- and say what went wrong in a vocabulary
+// the controller can act on.
 //
 // IMPLEMENTED BY: CGKeystrokePresser (adapters), over the KeyboardLayout and
 // EventPoster seams; FakeKeyPresser (Tests/Fakes).
@@ -29,6 +30,11 @@
 // that is enforced: it takes the `Keystroke` entity and gets back either a press
 // or a named failure. What a `CGEvent` is, which bit means Command, and how a
 // character is looked up in the active layout are all below this line.
+//
+// THE SIGNATURE DID NOT CHANGE FOR 13.22, and that is the entity earning its
+// keep: `leftArrow+rightArrow` is still ONE keystroke, so it is still one call.
+// What the adapter must do with it did change -- every key down in order, every
+// key up in reverse, in a `defer` -- and that is stated on `press` below.
 
 /// A keystroke that could not be pressed.
 ///
@@ -51,6 +57,13 @@ public struct KeyPressFailure: Error, Equatable, CustomStringConvertible {
 
 public protocol KeyPresser: AnyObject {
 	/// Press and release `keystroke`, with its modifiers held for both halves.
+	///
+	/// ITS KEYS GO DOWN IN THE ORDER GIVEN AND COME UP IN REVERSE, so that a
+	/// chord the reader detects by simultaneity -- Left and Right together, which
+	/// is arrow-key Quick Nav -- is really simultaneous, and so that a press that
+	/// fails partway cannot leave an ordinary key held down. A stuck letter is
+	/// quieter than a stuck Command and just as bad: every keystroke afterwards
+	/// repeats it.
 	///
 	/// IT CANNOT REPORT THAT ANYTHING HAPPENED, and an implementation must not
 	/// pretend otherwise: an event posted by a process without the Accessibility

@@ -281,14 +281,13 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.38** in the convergence series and **13.25**
-in lane 3, and the next free spec number is **0051**. **Lane 3 has a deliberate
-gap at 13.22**: that number is claimed by an entry on a branch stacked on top of
-this one, so the two entries below take 13.23 and 13.24 rather than colliding with
-it at merge time. Board numbers **13.23** and **13.24** were spent on 2026-09-02
-by two findings from 13.20's own live checklist -- a bridge that died of SIGPIPE
-rather than tearing down, and a voice identifier that is used without ever being
-resolved -- and neither took a spec number of its own, the 13.11 precedent. Board
-number **13.21** was
+in lane 3, and the next free spec number is **0052**. Board numbers **13.23** and
+**13.24** were spent on 2026-09-02 by two findings from 13.20's own live
+checklist -- a bridge that died of SIGPIPE rather than tearing down, and a voice
+identifier that is used without ever being resolved -- and neither took a spec
+number of its own, the 13.11 precedent. Spec **0051** and board number **13.22**
+were spent on 2026-09-01 by an agent that could not press two ordinary keys
+together, and this line moved in the same commit. Board number **13.21** was
 spent on 2026-09-01 by a defect found while using the bridge -- a lifted silence
 cap that never re-armed -- and took **no spec number of its own**: its spec is
 [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8, which is the 13.11
@@ -1700,6 +1699,82 @@ rule intends.
 
     Spec: [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8 -- no spec
     number of its own, the 13.11 precedent. Done (PR #95, 2026-09-01).
+
+13.22. **Done** -- **Two keys held together** (lane 3). Found by an agent driving the bridge
+    and relayed by Marlon on 2026-09-01: *"it could not activate quick nav
+    because the command would be left and right arrows pressed together, and it
+    can't press keys together. This needs to be generalized, if possible. On mac
+    this is common."*
+
+    **The gap.** `Keystroke` was modifiers plus exactly ONE key, so
+    `kb:leftArrow+rightArrow` failed with *"'leftarrow' is not a modifier this
+    bridge knows"* -- true, unhelpful, and pointing at the wrong thing. Arrow-key
+    Quick Nav is that chord, and it is how an ordinary VoiceOver user turns on the
+    mode they then navigate with all day.
+
+    **The reported blocker was not one, and that half is already fixed.** All
+    three Quick Nav toggles exist as COMMAND NAMES -- measured out of
+    `SCRStringsToCommandsMap.scrconfig` -- and the guidance document already named
+    them twice. The agent reached for the chord from general Mac knowledge
+    instead. That is the THIRD time this lane has paid for that shape (spec 0048
+    §1.1, spec 0049 §1.1), so the documents were fixed first, in PR #95: use the
+    command name rather than the chord, the limit is named in general, and an
+    agent that meets an act with no command name is told to REPORT it rather than
+    reach for `type_text`, which sends characters and not keys.
+
+    **The measurement is done** (2026-09-01, macOS 15.0), because the one thing
+    that could not be reasoned out was whether VoiceOver accepts SYNTHESIZED
+    simultaneity -- spec 0048 is the reason for asking rather than assuming.
+    Control, probe, control: the two arrows pressed SEQUENTIALLY do not move
+    arrow-key Quick Nav; pressed TOGETHER they do; pressed together again it comes
+    back. State read from `SCRCInvertedTCommanderCaptureEnabled`, a key FOUND by
+    the state-comparison technique in `docs/how-we-found-the-voice-store.md`
+    rather than recalled. **No inter-event delay is needed.**
+
+    **And the chord is NOT a clean toggle of one setting**, which cost a
+    correction to the instrument and is the useful part of the entry: from
+    `arrow=0 single=1`, one chord gave `arrow=1 single=1` and the next gave
+    `arrow=0 single=0` -- so it takes SINGLE-KEY Quick Nav down with it, and the
+    first version of the probe reported "restored" while having quietly turned off
+    a setting the maintainer uses daily. It now watches and restores both, through
+    the COMMAND NAMES rather than by pressing the chord again. That sharpens the
+    recommendation rather than weakening it: each command name moves exactly one
+    setting and says which way it went; the chord moves two and names neither.
+    (**Amended on the live run, 2026-09-02:** the chord is not silent -- it
+    announces a generic "Quick Nav on"/"off" -- but it does not say which of the
+    two settings moved, and it moved both.)
+
+    **What it must not do, and did not:** displace the command name as the
+    recommended route
+    (it costs no grant and announces its result), or spend 13.8's lever -- a chord
+    is a `CGEvent` like any other keystroke, so `request` still has two callers.
+    The sharpest rule is spec 0048's generalised: the keys are released in a
+    `defer`, in reverse, so a post that fails partway cannot leave an arrow key
+    held down.
+
+    **What shipped**, and the shape is the one a notation entry should have --
+    no new files, no new ports, no new capability: `Keystroke.key` became
+    `Keystroke.keys`, parsed by one rule (leading modifiers are modifiers, the
+    first token that is not one begins the keys, everything after it must be a
+    key); `CGKeystrokePresser` presses them down in order and releases them in
+    reverse from a SECOND `defer`, registered after the modifiers' one so Swift
+    runs it first -- the keys come up while the modifiers are still held, which is
+    what a real keyboard does. A press that fails partway releases exactly the
+    keys that went down; one unreachable key in a chord posts nothing at all.
+    `CommandVocabulary` needed no change, which is the reviewable claim rather
+    than an absence.
+
+    **Two amendments rode in the PR**, both in the spec: a token that names no key
+    is diagnosed by POSITION -- not-last is reported as a misspelled modifier
+    (`cmd+l`), last as a key -- because rule 3 moved which token fails; and
+    `FakeEventPoster` gained a `keyFailureAt`, without which "it released what it
+    pressed" cannot be asserted, since the existing `keyFailure` fails the release
+    too.
+
+    Spec: [spec 0051](specs/0051-two-keys-held-together.md) -- **Agreed
+    2026-09-02.** Instrument: `scripts/voiceover_two_key_chord.sh`, which carries
+    the measurement. **Stacked on PR #95** and opened once that merged, per one
+    open PR per lane. Done (PR #96, 2026-09-02).
 
 13.23. **Done** -- **The bridge died of SIGPIPE instead of tearing down** (lane
     3). Found on 2026-09-02 by 13.20's own live checklist, item 5, and fixed in

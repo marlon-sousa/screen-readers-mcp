@@ -19,7 +19,7 @@ struct KeystrokeTests {
 		// The one this whole board entry exists for: opening a location in Safari.
 		let keystroke = try Keystroke.parse("command+l")
 		#expect(keystroke.modifiers == [.command])
-		#expect(keystroke.key == .character("l"))
+		#expect(keystroke.keys == [.character("l")])
 	}
 
 	@Test("several modifiers, in any order among themselves")
@@ -30,14 +30,14 @@ struct KeystrokeTests {
 		let reversed = try Keystroke.parse("command+shift+4")
 		#expect(written == reversed)
 		#expect(written.modifiers == [.command, .shift])
-		#expect(written.key == .character("4"))
+		#expect(written.keys == [.character("4")])
 	}
 
 	@Test("all five modifiers are known, including fn")
 	func everyModifier() throws {
 		let keystroke = try Keystroke.parse("fn+control+option+shift+command+t")
 		#expect(keystroke.modifiers == [.fn, .control, .option, .shift, .command])
-		#expect(keystroke.key == .character("t"))
+		#expect(keystroke.keys == [.character("t")])
 	}
 
 	@Test("case is not significant")
@@ -60,12 +60,12 @@ struct KeystrokeTests {
 	func namedKeys() throws {
 		// The distinction the adapter depends on: Return is in the same place on
 		// every keyboard sold, and `l` is not.
-		#expect(try Keystroke.parse("command+enter").key == .named(.enter))
-		#expect(try Keystroke.parse("control+escape").key == .named(.escape))
-		#expect(try Keystroke.parse("option+forwarddelete").key == .named(.forwardDelete))
-		#expect(try Keystroke.parse("command+leftarrow").key == .named(.leftArrow))
-		#expect(try Keystroke.parse("command+pagedown").key == .named(.pageDown))
-		#expect(try Keystroke.parse("command+space").key == .named(.space))
+		#expect(try Keystroke.parse("command+enter").keys == [.named(.enter)])
+		#expect(try Keystroke.parse("control+escape").keys == [.named(.escape)])
+		#expect(try Keystroke.parse("option+forwarddelete").keys == [.named(.forwardDelete)])
+		#expect(try Keystroke.parse("command+leftarrow").keys == [.named(.leftArrow)])
+		#expect(try Keystroke.parse("command+pagedown").keys == [.named(.pageDown)])
+		#expect(try Keystroke.parse("command+space").keys == [.named(.space)])
 	}
 
 	// -- a key with no modifiers, which is 13.19 --------------------------------
@@ -78,15 +78,99 @@ struct KeystrokeTests {
 		// this -- so by the time an id reaches here, a single token is a key.
 		let quickNav = try Keystroke.parse("h")
 		#expect(quickNav.modifiers.isEmpty)
-		#expect(quickNav.key == .character("h"))
-		#expect(try Keystroke.parse("enter") == Keystroke(modifiers: [], key: .named(.enter)))
-		#expect(try Keystroke.parse("F5") == Keystroke(modifiers: [], key: .named(.function(5))))
+		#expect(quickNav.keys == [.character("h")])
+		#expect(try Keystroke.parse("enter") == Keystroke(modifiers: [], keys: [.named(.enter)]))
+		#expect(try Keystroke.parse("F5") == Keystroke(modifiers: [], keys: [.named(.function(5))]))
+	}
+
+	// -- two ordinary keys held together, which is 13.22 ------------------------
+
+	@Test("TWO ORDINARY KEYS HELD TOGETHER, which is how Quick Nav is toggled")
+	func twoKeysTogether() throws {
+		// The entry's whole point. Until it, this id failed with "'leftarrow' is
+		// not a modifier this bridge knows" -- true, unhelpful, and pointing at the
+		// wrong thing, while the chord it refused is how an ordinary VoiceOver user
+		// turns on the navigation mode they then use all day.
+		let quickNav = try Keystroke.parse("leftarrow+rightarrow")
+		#expect(quickNav.modifiers.isEmpty)
+		#expect(quickNav.keys == [.named(.leftArrow), .named(.rightArrow)])
+	}
+
+	@Test("THE ORDER OF THE KEYS IS KEPT, because it is what down-and-up-in-reverse means")
+	func theOrderOfTheKeysIsKept() throws {
+		// The modifiers are a set and the keys are a list, and this is the
+		// difference: the adapter presses these in this order and releases them in
+		// reverse, so a keystroke that reordered them would be a transcript line
+		// nobody could replay.
+		#expect(try Keystroke.parse("rightarrow+leftarrow").keys == [.named(.rightArrow), .named(.leftArrow)])
+		#expect(try Keystroke.parse("leftarrow+rightarrow") != Keystroke.parse("rightarrow+leftarrow"))
+	}
+
+	@Test("modifiers still come first, and they hold across ALL the keys")
+	func modifiersHoldAcrossEveryKey() throws {
+		// The reason for one notation rather than a second separator: a chord that
+		// is both -- modifiers held over two ordinary keys -- has to be spellable,
+		// and `+` already means "these together".
+		let keystroke = try Keystroke.parse("command+leftarrow+rightarrow")
+		#expect(keystroke.modifiers == [.command])
+		#expect(keystroke.keys == [.named(.leftArrow), .named(.rightArrow)])
+	}
+
+	@Test("three keys are no different from two -- there is no cap")
+	func threeKeys() throws {
+		// An arbitrary limit of two would be a number nobody could defend, and the
+		// code is identical for three. What bounds it is that every token has to be
+		// a key this bridge names.
+		#expect(try Keystroke.parse("a+b+c").keys == [.character("a"), .character("b"), .character("c")])
+	}
+
+	@Test("a multi-key chord round-trips through `described`, keys in order")
+	func aMultiKeyChordRoundTrips() throws {
+		#expect(try Keystroke.parse("leftArrow+rightArrow").described == "leftArrow+rightArrow")
+		#expect(
+			try Keystroke.parse("command+left+right").described == "command+leftArrow+rightArrow")
+		for id in ["leftArrow+rightArrow", "command+left+right", "shift+a+b"] {
+			let keystroke = try Keystroke.parse(id)
+			#expect(try Keystroke.parse(keystroke.described) == keystroke)
+		}
+	}
+
+	@Test("A MODIFIER AFTER A KEY IS STILL A NAMED FAILURE, and now says both fixes")
+	func aModifierAfterAKeyIsRefused() {
+		// The rule 13.22 had to be careful not to lose: the first token that is not
+		// a modifier begins the keys, so `command` here is a modifier in the key
+		// position rather than a key. It is refused rather than hoisted, because
+		// the one place not to hide a typo is the one that presses a key.
+		do {
+			_ = try Keystroke.parse("leftarrow+command+rightarrow")
+			Issue.record("expected a modifier after a key to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("is a modifier"))
+			#expect(malformed.reason.contains("leftArrow+rightArrow"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
+	}
+
+	@Test("a key in a multi-key chord that names nothing is refused, and nothing is guessed")
+	func anUnknownKeyInAChordIsRefused() {
+		// The message for a non-last token is the modifier one, because that is
+		// overwhelmingly the mistake -- `cmd+l`. It still names the alternative, so
+		// an agent writing a chord is not left thinking two keys are impossible.
+		do {
+			_ = try Keystroke.parse("leftarow+rightarrow")
+			Issue.record("expected 'leftarow+rightarrow' to be refused")
+		} catch let malformed as KeystrokeMalformed {
+			#expect(malformed.reason.contains("leftArrow+rightArrow"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	@Test("f1 through f20, and nothing above f20")
 	func functionKeys() throws {
-		#expect(try Keystroke.parse("command+f1").key == .named(.function(1)))
-		#expect(try Keystroke.parse("control+f20").key == .named(.function(20)))
+		#expect(try Keystroke.parse("command+f1").keys == [.named(.function(1))])
+		#expect(try Keystroke.parse("control+f20").keys == [.named(.function(20))])
 		// f21 is not a key macOS names, so it is a character token of three
 		// characters -- which is a named failure rather than a silent f2.
 		#expect(throws: KeystrokeMalformed.self) { try Keystroke.parse("command+f21") }
@@ -101,12 +185,12 @@ struct KeystrokeTests {
 		// costs a line each and saves a round trip that would fail for no good
 		// reason. What is NOT accepted is a name that means a DIFFERENT key on the
 		// other reader; those are refused below.
-		#expect(try Keystroke.parse("command+return").key == .named(.enter))
-		#expect(try Keystroke.parse("command+esc").key == .named(.escape))
-		#expect(try Keystroke.parse("command+left").key == .named(.leftArrow))
-		#expect(try Keystroke.parse("command+down").key == .named(.downArrow))
-		#expect(try Keystroke.parse("command+up").key == .named(.upArrow))
-		#expect(try Keystroke.parse("command+right").key == .named(.rightArrow))
+		#expect(try Keystroke.parse("command+return").keys == [.named(.enter)])
+		#expect(try Keystroke.parse("command+esc").keys == [.named(.escape)])
+		#expect(try Keystroke.parse("command+left").keys == [.named(.leftArrow)])
+		#expect(try Keystroke.parse("command+down").keys == [.named(.downArrow)])
+		#expect(try Keystroke.parse("command+up").keys == [.named(.upArrow)])
+		#expect(try Keystroke.parse("command+right").keys == [.named(.rightArrow)])
 		// `alt` is `option`: one physical key, two labels, and Apple prints both.
 		#expect(try Keystroke.parse("alt+t") == Keystroke.parse("option+t"))
 	}

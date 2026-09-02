@@ -44,7 +44,7 @@ struct CGKeystrokePresserTests {
 		let layout = FakeKeyboardLayout()
 		let poster = FakeEventPoster()
 		try presser(layout: layout, poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("l")))
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
 
 		#expect(layout.asked == ["l"])
 		// 201 is invented. A presser holding the ANSI constant for `l` would post
@@ -59,7 +59,7 @@ struct CGKeystrokePresserTests {
 		let layout = FakeKeyboardLayout(keys: ["l": LayoutKey(keyCode: 250, shifted: false)])
 		let poster = FakeEventPoster()
 		try presser(layout: layout, poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("l")))
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
 		#expect(poster.keyed.map(\.keyCode) == [250, 250])
 	}
 
@@ -71,7 +71,7 @@ struct CGKeystrokePresserTests {
 		let layout = FakeKeyboardLayout()
 		let poster = FakeEventPoster()
 		try presser(layout: layout, poster: poster).press(
-			Keystroke(modifiers: [], key: .named(.enter)))
+			Keystroke(modifiers: [], keys: [.named(.enter)]))
 
 		#expect(layout.asked.isEmpty)
 		#expect(poster.keyed.map(\.keyCode) == [0x24, 0x24])
@@ -130,7 +130,7 @@ struct CGKeystrokePresserTests {
 		// chord and never put the modifier back.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("l")))
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
 
 		#expect(
 			poster.sequence == [
@@ -148,7 +148,7 @@ struct CGKeystrokePresserTests {
 		// which is the assertion that says the machine was given back.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command, .shift], key: .character("4")))
+			Keystroke(modifiers: [.command, .shift], keys: [.character("4")]))
 
 		#expect(
 			poster.flagTransitions == [
@@ -163,7 +163,7 @@ struct CGKeystrokePresserTests {
 	@Test("a keystroke with NO modifiers posts no transitions at all")
 	func noModifiersNoTransitions() throws {
 		let poster = FakeEventPoster()
-		try presser(poster: poster).press(Keystroke(modifiers: [], key: .named(.enter)))
+		try presser(poster: poster).press(Keystroke(modifiers: [], keys: [.named(.enter)]))
 		#expect(poster.flagTransitions.isEmpty)
 		#expect(poster.keyed.count == 2)
 	}
@@ -178,7 +178,7 @@ struct CGKeystrokePresserTests {
 		poster.keyFailure = EventPostingFailure("the system would not create a keyboard event")
 		#expect(throws: KeyPressFailure.self) {
 			try presser(poster: poster).press(
-				Keystroke(modifiers: [.command], key: .character("l")))
+				Keystroke(modifiers: [.command], keys: [.character("l")]))
 		}
 		#expect(poster.flagTransitions == [.maskCommand, []])
 	}
@@ -191,7 +191,7 @@ struct CGKeystrokePresserTests {
 		let poster = FakeEventPoster()
 		#expect(throws: KeyPressFailure.self) {
 			try presser(poster: poster).press(
-				Keystroke(modifiers: [.command], key: .character("z")))
+				Keystroke(modifiers: [.command], keys: [.character("z")]))
 		}
 		#expect(poster.sequence.isEmpty)
 	}
@@ -200,7 +200,7 @@ struct CGKeystrokePresserTests {
 	func flagsCombine() throws {
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command, .shift], key: .character("4")))
+			Keystroke(modifiers: [.command, .shift], keys: [.character("4")]))
 		#expect(poster.keyed.allSatisfy { $0.flags == [.maskCommand, .maskShift] })
 	}
 
@@ -212,7 +212,7 @@ struct CGKeystrokePresserTests {
 		// have made a chord somebody presses daily a named failure instead.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("$")))
+			Keystroke(modifiers: [.command], keys: [.character("$")]))
 		#expect(poster.keyed.map(\.keyCode) == [204, 204])
 		#expect(poster.keyed.allSatisfy { $0.flags == [.maskCommand, .maskShift] })
 		// And the added Shift is a real key that is really released, not a flag
@@ -229,10 +229,98 @@ struct CGKeystrokePresserTests {
 		// no key-up leaves a key held as far as anything watching is concerned.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("f")))
+			Keystroke(modifiers: [.command], keys: [.character("f")]))
 		#expect(poster.keyed.count == 2)
 		#expect(poster.keyed[0] == .init(keyCode: 202, flags: .maskCommand, keyDown: true))
 		#expect(poster.keyed[1] == .init(keyCode: 202, flags: .maskCommand, keyDown: false))
+	}
+
+	// -- two keys held together, which is 13.22 ---------------------------------
+
+	@Test("TWO KEYS GO DOWN IN ORDER AND COME UP IN REVERSE")
+	func twoKeysDownInOrderUpInReverse() throws {
+		// The sequence the reader's chord detection needs: both keys are DOWN at
+		// the same moment, which is what makes it a chord rather than two presses.
+		// Measured on 2026-09-01 -- the two arrows sent sequentially move arrow-key
+		// Quick Nav not at all, and sent this way they toggle it.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [], keys: [.named(.leftArrow), .named(.rightArrow)]))
+
+		#expect(
+			poster.sequence == [
+				.key(0x7B, flags: [], keyDown: true),
+				.key(0x7C, flags: [], keyDown: true),
+				.key(0x7C, flags: [], keyDown: false),
+				.key(0x7B, flags: [], keyDown: false),
+			])
+	}
+
+	@Test("the modifiers stay held ACROSS both keys, and come up after them")
+	func modifiersOutliveTheKeys() throws {
+		// The two `defer`s in the order they are registered: the keys come up
+		// first and the modifiers after them, which is what a real keyboard does.
+		// Releasing Command while a key was still down would be a different chord.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [.command], keys: [.named(.leftArrow), .named(.rightArrow)]))
+
+		#expect(
+			poster.sequence == [
+				.flags(0x37, .maskCommand),
+				.key(0x7B, flags: .maskCommand, keyDown: true),
+				.key(0x7C, flags: .maskCommand, keyDown: true),
+				.key(0x7C, flags: .maskCommand, keyDown: false),
+				.key(0x7B, flags: .maskCommand, keyDown: false),
+				.flags(0x37, []),
+			])
+	}
+
+	@Test("A CHORD THAT FAILS PARTWAY RELEASES EXACTLY THE KEYS IT PRESSED")
+	func aPartialChordReleasesWhatWentDown() {
+		// The generalisation of the bug that left Command held on the maintainer's
+		// machine: a stuck ordinary key is quieter and just as bad, because every
+		// keystroke afterwards repeats it. The first arrow goes down, the second
+		// cannot, and the first must come back up -- while the second, which never
+		// went down, must NOT get a key-up nothing asked for.
+		let poster = FakeEventPoster()
+		poster.keyFailure = EventPostingFailure("the system would not create a keyboard event")
+		poster.keyFailureAt = 2
+		#expect(throws: KeyPressFailure.self) {
+			try presser(poster: poster).press(
+				Keystroke(modifiers: [.command], keys: [.named(.leftArrow), .named(.rightArrow)]))
+		}
+		#expect(
+			poster.sequence == [
+				.flags(0x37, .maskCommand),
+				.key(0x7B, flags: .maskCommand, keyDown: true),
+				.key(0x7B, flags: .maskCommand, keyDown: false),
+				.flags(0x37, []),
+			])
+	}
+
+	@Test("ONE UNREACHABLE KEY IN A CHORD POSTS NOTHING AT ALL")
+	func anUnreachableKeyInAChordPostsNothing() {
+		// Everything is resolved before anything is posted, and 13.22 widened
+		// "everything" from one key to all of them: pressing the half that works
+		// would be a chord nobody asked for, on an edge nobody can watch.
+		let poster = FakeEventPoster()
+		#expect(throws: KeyPressFailure.self) {
+			try presser(poster: poster).press(
+				Keystroke(modifiers: [], keys: [.character("l"), .character("z")]))
+		}
+		#expect(poster.sequence.isEmpty)
+	}
+
+	@Test("a shifted layer under EITHER key adds the one Shift")
+	func aShiftedLayerAnywhereAddsShift() throws {
+		// There is one Shift on a keyboard and one hand holds it, so any key that
+		// needs it puts it on the whole chord -- which is also what a person does.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(
+			Keystroke(modifiers: [], keys: [.character("l"), .character("$")]))
+		#expect(poster.keyed.allSatisfy { $0.flags == .maskShift })
+		#expect(poster.flagTransitions == [.maskShift, []])
 	}
 
 	@Test("it posts KEY events and never the Unicode shape")
@@ -242,7 +330,7 @@ struct CGKeystrokePresserTests {
 		// into the document instead of opening a location.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], key: .character("l")))
+			Keystroke(modifiers: [.command], keys: [.character("l")]))
 		#expect(poster.posted.isEmpty)
 	}
 
@@ -256,7 +344,7 @@ struct CGKeystrokePresserTests {
 		let poster = FakeEventPoster()
 		do {
 			try presser(poster: poster).press(
-				Keystroke(modifiers: [.command], key: .character("z")))
+				Keystroke(modifiers: [.command], keys: [.character("z")]))
 			Issue.record("expected an unreachable character to fail")
 		} catch let failure as KeyPressFailure {
 			#expect(failure.description.contains("no key that produces"))
@@ -279,7 +367,7 @@ struct CGKeystrokePresserTests {
 		poster.failure = EventPostingFailure("the system would not create a keyboard event")
 		do {
 			try presser(poster: poster).press(
-				Keystroke(modifiers: [.command], key: .character("l")))
+				Keystroke(modifiers: [.command], keys: [.character("l")]))
 			Issue.record("expected the posting failure to surface")
 		} catch let failure as KeyPressFailure {
 			#expect(failure.description.contains("would not create"))

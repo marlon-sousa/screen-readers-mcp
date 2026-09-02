@@ -593,6 +593,63 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
+	@Test("TWO KEYS HELD TOGETHER OFF THE WIRE REACH THE EVENT PATH AS ONE CHORD")
+	func aTwoKeyChordOffTheWireReachesTheEventPath() throws {
+		// 13.22, end to end. The id that failed before it -- "'leftarrow' is not a
+		// modifier this bridge knows" -- is arrow-key Quick Nav, the chord an
+		// ordinary VoiceOver user presses to turn on the mode they navigate with
+		// all day. What the units cannot show is that it survives the wire, the
+		// Registry, the real handler and the real factory as ONE gesture rather
+		// than two.
+		let poster = FakeEventPoster()
+		let scripts = FakeAppleScriptRunner()
+		let peer = Peer(scripts: scripts, poster: poster)
+		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
+		_ = try peer.reply()
+
+		try peer.send(
+			id: 2, cmd: "pressGesture",
+			params: [
+				"gestures": .array([.string("kb:leftArrow+rightArrow")]), "graceMs": .int(0),
+			])
+		let reply = try peer.reply()
+		#expect(reply.error == nil)
+		guard case .success(let value) = try reply.outcome() else {
+			Issue.record("pressGesture failed: \(reply)")
+			return
+		}
+		// BOTH DOWN, THEN BOTH UP IN REVERSE -- the two arrows are held at the same
+		// moment, which is the difference the reader detects and the whole reason
+		// this notation exists. Sequential presses move nothing (measured).
+		#expect(poster.keyed.map(\.keyCode) == [0x7B, 0x7C, 0x7C, 0x7B])
+		#expect(poster.keyed.map(\.keyDown) == [true, true, false, false])
+		// Named keys, so the layout was never asked; no modifiers, so nothing was
+		// held and nothing can be left held.
+		#expect(poster.flagTransitions.isEmpty)
+		// Not to the reader, and not as typed text.
+		#expect(commandScripts(scripts).isEmpty)
+		#expect(poster.posted.isEmpty)
+		// ONE press is reported, not two, and it is replayable.
+		let result = try value.decoded(as: GestureResult.self)
+		#expect(result.pressed.map(\.gesture) == ["kb:leftArrow+rightArrow"])
+		#expect(peer.transcript.gestures == ["kb:leftArrow+rightArrow"])
+
+		// AND THE SAME TWO KEYS AS A BATCH ARE TWO GESTURES, which is the
+		// contract's own distinction: four more events, each key down and up on its
+		// own, and nothing simultaneous about them.
+		try peer.send(
+			id: 3, cmd: "pressGesture",
+			params: [
+				"gestures": .array([.string("kb:leftArrow"), .string("kb:rightArrow")]),
+				"graceMs": .int(0),
+			])
+		_ = try peer.reply()
+		#expect(poster.keyed.map(\.keyCode) == [0x7B, 0x7C, 0x7C, 0x7B, 0x7B, 0x7B, 0x7C, 0x7C])
+		#expect(
+			poster.keyed.map(\.keyDown) == [true, true, false, false, true, false, true, false])
+		peer.hangUp()
+	}
+
 	@Test("a getFocusInfo off the wire reads the TREE when the grant is held")
 	func focusReachesTheAccessibilityTree() throws {
 		// THE TEST THE UNITS CANNOT WRITE, a third time. Every unit above runs

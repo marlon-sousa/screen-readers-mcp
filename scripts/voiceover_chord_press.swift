@@ -165,11 +165,50 @@ func press(keyCode: UInt16, held: [String], flags: CGEventFlags) {
 	}
 }
 
-// -- the two modes ------------------------------------------------------------
+/// Press several ORDINARY keys at the same time: every key down in order, then
+/// every key up in reverse -- which is what a real keyboard produces when
+/// somebody holds two keys at once.
+///
+/// SEPARATE FROM `press` BECAUSE THE SHAPE IS DIFFERENT, not because the code
+/// is. `press` holds MODIFIERS, whose transitions are `flagsChanged` events and
+/// whose whole subtlety is the flags (spec 0048 §2.5). There are no flags here:
+/// Left Arrow and Right Arrow are ordinary keys, and "together" is expressed
+/// entirely by the ORDER of the downs and ups.
+///
+/// MEASURED 2026-09-01, and this function is the instrument that measured it:
+/// VoiceOver's arrow-key Quick Nav toggle -- which a person presses as Left and
+/// Right together -- flips for this sequence and does NOT flip for the same two
+/// keys pressed one after the other. So the reader really is detecting
+/// simultaneity, and a synthesized chord satisfies it.
+///
+/// NO DELAY IS NEEDED BETWEEN THE EVENTS, also measured: posting the four events
+/// back to back toggles it exactly as a 15 ms spacing does. The `usleep` below is
+/// therefore for the HUMAN watching a probe run, not for the reader.
+func pressTogether(keyCodes: [UInt16]) {
+	for code in keyCodes {
+		guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true) else {
+			return
+		}
+		event.post(tap: .cghidEventTap)
+		usleep(15_000)
+	}
+	// RELEASED IN REVERSE, like a hand coming off the keyboard. It is also the
+	// safe order: the last key down is the first released, so nothing is left
+	// held if a post fails partway.
+	for code in keyCodes.reversed() {
+		guard let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false) else {
+			return
+		}
+		event.post(tap: .cghidEventTap)
+		usleep(15_000)
+	}
+}
+
+// -- the three modes ----------------------------------------------------------
 
 var arguments = Array(CommandLine.arguments.dropFirst())
 guard let mode = arguments.first else {
-	print("usage: report <characters...> | press <modifier...> <key>")
+	print("usage: report <characters...> | press <modifier...> <key> | together <key> <key...>")
 	exit(2)
 }
 arguments.removeFirst()
@@ -193,6 +232,24 @@ case "report":
 			print("  \(label)NO KEY ON THIS LAYOUT")
 		}
 	}
+
+case "together":
+	// Ordinary keys only: a modifier here would be a `press`, and mixing the two
+	// notations in one probe would make a failure ambiguous between them.
+	guard arguments.count >= 2 else {
+		print("together needs at least two named keys")
+		exit(2)
+	}
+	var codes: [UInt16] = []
+	for token in arguments {
+		guard let code = namedKeyCodes[token.lowercased()] else {
+			print("'\(token)' is not a named key this probe knows: \(namedKeyCodes.keys.sorted())")
+			exit(2)
+		}
+		codes.append(code)
+	}
+	print("pressing \(arguments.joined(separator: "+")) TOGETHER as keycodes \(codes)")
+	pressTogether(keyCodes: codes)
 
 case "press":
 	guard let keyToken = arguments.last else {
