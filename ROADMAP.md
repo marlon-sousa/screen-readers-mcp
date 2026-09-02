@@ -280,8 +280,15 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.22**
-in lane 3, and the next free spec number is **0051**. Board number **13.21** was
+The next free board number is **11.38** in the convergence series and **13.25**
+in lane 3, and the next free spec number is **0051**. **Lane 3 has a deliberate
+gap at 13.22**: that number is claimed by an entry on a branch stacked on top of
+this one, so the two entries below take 13.23 and 13.24 rather than colliding with
+it at merge time. Board numbers **13.23** and **13.24** were spent on 2026-09-02
+by two findings from 13.20's own live checklist -- a bridge that died of SIGPIPE
+rather than tearing down, and a voice identifier that is used without ever being
+resolved -- and neither took a spec number of its own, the 13.11 precedent. Board
+number **13.21** was
 spent on 2026-09-01 by a defect found while using the bridge -- a lifted silence
 cap that never re-armed -- and took **no spec number of its own**: its spec is
 [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8, which is the 13.11
@@ -1693,6 +1700,84 @@ rule intends.
 
     Spec: [spec 0050](specs/0050-the-handshake-climbs-the-ladder.md) §8 -- no spec
     number of its own, the 13.11 precedent. Done (PR #95, 2026-09-01).
+
+13.23. **Done** -- **The bridge died of SIGPIPE instead of tearing down** (lane
+    3). Found on 2026-09-02 by 13.20's own live checklist, item 5, and fixed in
+    13.20's PR because that is where it was found. **Not a regression from
+    13.20**: the defect is as old as `SocketTransport`. What 13.20 added was a
+    handshake long enough to be abandoned mid-flight, which is what made a
+    latent crash reachable.
+
+    **What happened.** `connect_reader` with VoiceOver not running overran the
+    server's 15 s hello budget. The server hung up. The bridge's next `send` went
+    to a closed peer, and on Darwin that raises SIGPIPE, whose default
+    disposition **terminates the process** -- so the write did not fail, the
+    bridge ceased to exist. Observed twice, exit 141 both times.
+
+    **Why it mattered more than a crash.** Nothing in `Session.endSession` ran.
+    The endpoint file was left behind, so every later dial answered `connection
+    refused`. And rung 4 had already pointed the reader at the capture voice, so
+    that selection was left dangling with no session alive: the next VoiceOver
+    restart found the voice unpublished, fell back to the system default **and
+    persisted it**, destroying the stored record of the maintainer's own voice.
+    The identifier had to be recovered from a log line in a session transcript.
+    **The damage outlived the process** -- and had that session been `silent`
+    rather than `live`, the suppression would have outlived it too, which is hard
+    invariant 3 exactly.
+
+    **The fix.** `SO_NOSIGPIPE` on the accepted descriptor, beside the
+    `SO_RCVTIMEO` that was already there. `send` now returns `EPIPE`, the
+    existing `SocketError.latest("send")` reports it as an ordinary channel
+    failure, the session ends by its normal path and both teardown steps run.
+    Chosen over `signal(SIGPIPE, SIG_IGN)` at the entry point because this bridge
+    has **two** entry points -- `BridgeListener` and the shipped `.app` -- so a
+    fix at either is a fix at only one; the option travels with the descriptor
+    that has the problem, and both binders build their transport from it.
+
+    **It has a test, and that is a deliberate exception** to "leaf adapters get no
+    test file". The rule's reason is that a leaf makes no decisions, and it is
+    right about `send()` -- but the assertion here is not what the call returns,
+    it is that **the process is still running afterwards**, which nothing above
+    this layer can make: a fake transport cannot raise SIGPIPE, and a process
+    killed by a signal reports no failure anywhere. The control was run: with the
+    option disabled the suite dies mid-test with no per-test result, killed by
+    signal 13. `SocketTransportTests.swift` says all of this in its header,
+    including that unusual failure mode.
+
+    **What is NOT claimed.** The fix is proven by that test and its control, not
+    by a live reproduction: the overrun stopped reproducing once the machine was
+    warm, and three later attempts -- including one from a freshly wiped bundle
+    with the reader stopped -- all completed in about 5 s. So the 15 s budget is
+    **not** simply too small for a cold reader, and this entry does not say it is.
+    What the two observed overruns had in common has not been isolated. Spec: none
+    -- the 13.11 precedent. Done (PR #95, 2026-09-02).
+
+13.24. **Not started** -- **A voice identifier is used without ever being
+    resolved** (lane 3). Raised by Marlon on 2026-09-02 while 13.23 was being
+    diagnosed, and kept separate from it on purpose: 13.23 is a bridge that dies,
+    this is a bridge that quietly uses a voice that is not there.
+
+    **The gap.** Nothing checks that a voice identifier still resolves before it
+    is used, in either of the two places one is used. At teardown the bridge
+    writes back whatever identifier it recorded at the handshake; if the user
+    removed that voice mid-session, it writes a dead identifier and the reader
+    falls back to the default with nothing anywhere saying so. In `live` mode the
+    capture voice re-synthesizes with that same recorded identifier, and
+    `AVSpeechSynthesizer` falls back silently on one it does not know -- so a
+    session could change the person's voice for its whole duration and report
+    success throughout.
+
+    **Why it is worth an entry.** This is the shape 13.20 exists to kill: a real
+    failure that renders as *"it just sounds different"* rather than as a named
+    error. It is also the shape hardest to catch from inside, because every call
+    involved succeeds.
+
+    **What it needs.** Resolve the identifier before using it, and when it does
+    not resolve, fail by name and say what to do -- System Settings >
+    Accessibility > Spoken Content > System Voice > Manage Voices. It needs a
+    spec conversation first: whether a session may proceed on the default voice
+    with a warning, or must refuse, is exactly the kind of question 13.20 settled
+    for capture and this has not settled for voices. Spec: none yet.
 
 ## Convergence (requires C and D both Done)
 

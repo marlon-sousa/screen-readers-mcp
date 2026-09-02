@@ -223,6 +223,19 @@ Three consequences bind anyone editing this:
   not parse, a question that cannot be answered: the answer is "speak", on both
   sides of the file.
 
+**13.23 is the entry that found out what "skips the teardown" actually costs**,
+and it is worth reading before you rely on the lease as a complete answer. The
+lease covers the SPEECH: a bridge that dies un-mutes the machine by doing
+nothing. It does **not** cover the VOICE SELECTION, which has no expiry. A bridge
+killed after rung 4 leaves the capture voice selected with no session alive; the
+next reader restart finds it unpublished, falls back to the system default **and
+persists the fallback**, so the record of the user's own voice is gone. Measured
+2026-09-02, and recovering it needed an identifier that by then existed only in a
+session transcript. So: **the lease is why a crash cannot leave somebody mute, and
+it is not why a crash cannot leave somebody worse off.** The specific crash was a
+`send` to a hung-up peer raising SIGPIPE, fixed with `SO_NOSIGPIPE` in
+`SocketTransport` — see that file's header, which carries the whole measurement.
+
 ## The silence cap LIFTS and then RE-ARMS, and the second half was missing
 
 `protocol.md` §6.1 rule 4: *"A lifted session may go quiet again, on a fresh
