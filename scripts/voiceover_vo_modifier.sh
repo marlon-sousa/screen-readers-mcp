@@ -69,8 +69,12 @@
 #
 # IT IS SAFE IN THE SPECIFIC SENSE THE OTHER PROBES ARE: it starts nothing,
 # restarts nothing, and the only settings it touches are the two it is measuring,
-# which it puts back through the reader's OWN COMMAND NAMES on every exit path --
-# never by pressing the chord again, which is the thing under test.
+# which it puts back on every exit path -- preferring the reader's own COMMAND
+# NAMES, because those are not the thing under test, and falling back to the
+# chord with a READ-BACK when that channel is switched off. See `set_toggle`: the
+# fallback exists because on 2026-09-02 the command names silently did nothing on
+# a machine whose owner had turned AppleScript control off, and this script then
+# reported a clean run over two settings it had left moved.
 #
 # ONE THING TO CHECK BEFORE RUNNING IT: the letter `q` is pressed on its own, so
 # whatever holds keyboard focus receives it. Do not run this with a text field
@@ -98,12 +102,42 @@ read_key() {
 read_single() { read_key "$PREFS" "$SINGLE"; }
 read_arrow() { read_key "$PREFS" "$ARROW"; }
 
-# Set one toggle by its own COMMAND NAME, which moves exactly that setting --
-# unlike the chord, which is what this script exists to characterise.
+# Flip one toggle, PREFERRING the reader's own command name, falling back to the
+# chord, and VERIFYING BY READ-BACK either way.
+#
+#     set_toggle <command name> <preference key> <chord argument...>
+#
+# THE COMMAND NAME IS THE FIRST CHOICE because it moves exactly that setting and
+# is not the thing under test. That is 13.22's lesson: a probe that restores with
+# the very instrument it is measuring can leave a setting moved and report
+# success.
+#
+# IT IS NOT ALWAYS AVAILABLE, and that is 13.26's, measured here on 2026-09-02.
+# With "Allow VoiceOver to be controlled with AppleScript" switched OFF -- which
+# a careful user does, because it lets any process on the machine drive their
+# screen reader -- `perform command` fails with -1708 and this function used to
+# swallow it, restore nothing, and hand the person their Quick Nav settings
+# moved. So the chord is the fallback, and the read-back is what makes that
+# honest: the objection to restoring with the instrument under test was that it
+# was UNVERIFIED, never that it was a chord.
 set_toggle() {
-	osascript -e "tell application \"VoiceOver\" to tell commander to perform command \"$1\"" \
+	local command="$1" key="$2"
+	shift 2
+	local before after
+	before="$(read_key "$PREFS" "$key")"
+	osascript -e "tell application \"VoiceOver\" to tell commander to perform command \"$command\"" \
 		>/dev/null 2>&1
 	sleep "$SETTLE"
+	after="$(read_key "$PREFS" "$key")"
+	if [[ "$after" != "$before" ]]; then
+		return 0
+	fi
+	# Say it out loud. A silent fallback is how the failure above stayed invisible.
+	say "  the command name did not move it" "falling back to the chord: $*"
+	swift "$PRESS" press "$@" >/dev/null 2>&1
+	sleep "$SETTLE"
+	after="$(read_key "$PREFS" "$key")"
+	[[ "$after" != "$before" ]]
 }
 
 if ! pgrep -x VoiceOver >/dev/null; then
@@ -140,6 +174,12 @@ case "$RECORDED" in
 	*) say "  so VO resolves to" "UNKNOWN VALUE '$RECORDED' -- stopping"; exit 1 ;;
 esac
 say "  frontmost application" "$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true' 2>/dev/null || echo '<could not ask>')"
+# Which restore route this run will get. Printed rather than discovered halfway.
+case "$(read_key "$PREFS" "SCREnableAppleScript")" in
+	0) say "  AppleScript control" "OFF -- restores fall back to the chord, verified by read-back" ;;
+	1) say "  AppleScript control" "on -- restores go through the reader's own command names" ;;
+	*) say "  AppleScript control" "not recorded -- the default is off on recent systems" ;;
+esac
 echo
 
 # -- the state this measurement reads ------------------------------------------
@@ -169,12 +209,12 @@ restore() {
 	arrow="$(read_arrow)"
 	if [[ "$single" != "$START_SINGLE" ]]; then
 		say "restoring" "single-key Quick Nav back to $START_SINGLE"
-		set_toggle "toggle single-key quick nav on or off"
+		set_toggle "toggle single-key quick nav on or off" "$SINGLE" control option q
 		single="$(read_single)"
 	fi
 	if [[ "$arrow" != "$START_ARROW" ]]; then
 		say "restoring" "arrow-key Quick Nav back to $START_ARROW"
-		set_toggle "toggle arrow-key quick nav on or off"
+		set_toggle "toggle arrow-key quick nav on or off" "$ARROW" control option shift q
 		arrow="$(read_arrow)"
 	fi
 	if [[ "$single" != "$START_SINGLE" || "$arrow" != "$START_ARROW" ]]; then
@@ -265,7 +305,7 @@ if [[ "$RAW_SINGLE" == "$START_SINGLE" ]]; then
 fi
 say "  as measured" "it moved VO-Q's setting: the Shift never arrived"
 # Put VO-Q's setting back before the real probe, so the two are not entangled.
-set_toggle "toggle single-key quick nav on or off"
+set_toggle "toggle single-key quick nav on or off" "$SINGLE" control option q
 echo
 
 say "PROBE: the same chord, stamped" "the event carrying 'Q'"
