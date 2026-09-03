@@ -14,6 +14,13 @@
 // them normal -- and an agent that cannot tell them apart concludes the reader
 // is silent and reports a bug that does not exist.
 //
+// FOUR CASES SINCE 13.31, WHERE THERE WERE FIVE. `scriptingChannelDead` -- "the
+// reader answers its own name but not its own state" -- was spec 0041's sharpest
+// finding about the AppleScript channel, and it named a condition this bridge can
+// no longer be in: the command-name route is deleted and no AppleEvent is sent
+// anywhere (spec 0055). A named condition nothing can reach is worse than no
+// condition at all, because an agent will try to interpret it.
+//
 // USED BY: ProviderState, which says which of these are live for a given state;
 // the Hello handler, which refuses a silent session naming one; the two waiting
 // speech handlers, which name one instead of answering "not found"; and the
@@ -58,24 +65,19 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 	/// (spec 0047, finding 18).
 	case providerNotRunning
 
-	/// VoiceOver is not running, or is not answering at all -- which is a
-	/// different thing from the case below it, and the two have different
-	/// recoveries.
+	/// VoiceOver is not running, or is not answering at all.
+	///
+	/// IT USED TO BE HALF OF A PAIR: `scriptingChannelDead` sat below it and meant
+	/// "there, but not answering about itself", and keeping the two apart was the
+	/// point of both. 13.31 deleted that one with the channel it described, so this
+	/// is now the only question worth asking about the reader's existence -- and it
+	/// is answered from the running-application list, at no permission cost.
 	///
 	/// NAMED AT 13.20, which is the entry that first needs a reader before it can
 	/// do anything else. The bridge ACTIVATES the reader itself and asks again
 	/// before reporting this, so by the time an agent reads it the easy half has
 	/// already been tried.
 	case readerNotRunning
-
-	/// VoiceOver answers its own name and nothing else: the scripting object
-	/// model died without the reader dying (spec 0041, the input half).
-	///
-	/// NAMED HERE AND DETECTED BY 13.7, which is the entry that first speaks to
-	/// the reader over that channel. It is written down now because this file is
-	/// the vocabulary, and a condition that exists in a spec and in no type is
-	/// one that gets rediscovered as an empty read-back.
-	case scriptingChannelDead
 
 	/// What has gone wrong, in one sentence, for a reader of the transcript.
 	public var summary: String {
@@ -89,8 +91,6 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 			return "the capture voice's speech provider is not registered, not enabled, or has died"
 		case .readerNotRunning:
 			return "VoiceOver is not running, or is not answering at all"
-		case .scriptingChannelDead:
-			return "VoiceOver answers its own name but not its own state"
 		}
 	}
 
@@ -113,10 +113,6 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 				+ "pluginkit -a on the .appex); if this is still the answer, either those could not run "
 				+ "-- the failure says so by name -- or the reader has not restarted since, and a "
 				+ "restart is the only thing that re-binds the voice: \(readerRestartCommand)"
-		case .scriptingChannelDead:
-			return
-				"restart the reader -- \(readerRestartCommand) -- because nothing short of a reader "
-				+ "restart recovers the scripting channel"
 		case .readerNotRunning:
 			return
 				"start VoiceOver: `open -a VoiceOver`, or Command-F5. The bridge tries this itself at "

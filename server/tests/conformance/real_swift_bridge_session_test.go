@@ -49,11 +49,20 @@ const (
 	swiftReaderName    = "voiceover"
 	swiftReaderVersion = "macOS 0.0.0-conformance"
 	swiftBridgeVersion = "0.0.0-conformance"
-	// A COMMAND NAME, not a keystroke, and that is the sharpest single difference
-	// between this reader and the other one. It is also why the shared `gestures`
-	// capability can carry two completely different notations: the wire never
-	// looks inside the string.
-	swiftScriptedCommand = "describe item in voiceover cursor"
+	// A KEYSTROKE, and `vo+m` rather than `control+option+m`, which is the sharpest
+	// thing this tier can show about the id: the wire never looks inside the
+	// string, and `vo` means whatever the machine on the far side has its VoiceOver
+	// modifier bound to. It was a COMMAND NAME until board entry 13.31 -- the two
+	// readers' notations differed completely, and this constant was where that was
+	// visible -- and the two have converged now that a VoiceOver session presses
+	// what a VoiceOver user presses. What the tier still proves is unchanged: an
+	// opaque id crosses two languages untouched.
+	swiftScriptedCommand = "vo+m"
+	// WHAT COMES BACK, which is not what went out and is the point. The bridge
+	// reports what it UNDERSTOOD -- `vo` resolved against the modifier that
+	// machine has bound -- so a record of a run says which keys really went to the
+	// window server. The server passes both directions through untouched.
+	swiftResolvedCommand = "control+option+m"
 	swiftFirstLine       = "conformance harness, text area"
 	swiftSecondLine      = "one of two"
 	// What `hello` names as the voice a session is hearing or silencing. On NVDA
@@ -257,14 +266,20 @@ func exerciseSwiftSpeech(t *testing.T, harness *testsupport.MCPHarness, bridge *
 	}
 	result.Decode(t, &pressed)
 
-	if len(pressed.Pressed) != 1 || pressed.Pressed[0].Gesture != swiftScriptedCommand {
-		t.Fatalf("pressed = %+v, want the one command echoed back verbatim", pressed.Pressed)
+	if len(pressed.Pressed) != 1 {
+		t.Fatalf("pressed = %+v, want exactly one press", pressed.Pressed)
 	}
-	// A COMMAND NAME WITH SPACES SURVIVED THE CROSSING UNCHANGED. It is the kind
-	// of value a binding can quietly normalise, and no other reader in this repo
-	// would notice.
-	if pressed.Pressed[0].Gesture != swiftScriptedCommand {
-		t.Errorf("gesture = %q, want it passed through untouched", pressed.Pressed[0].Gesture)
+	// THE ID WENT OUT OPAQUE AND CAME BACK RESOLVED, which is the sharpest thing
+	// this tier can show about `gesture`. The server never looks inside the string:
+	// it carried `vo+m` down and `control+option+m` back, and both are the bridge's
+	// business. It asserted the two were EQUAL until board entry 13.31 -- the id
+	// was then a command name with spaces, the kind of value a binding can quietly
+	// normalise -- and what replaced that is a stronger claim, because a server
+	// that normalised either direction would now fail here rather than agree with
+	// itself.
+	if pressed.Pressed[0].Gesture != swiftResolvedCommand {
+		t.Errorf("gesture = %q, want the bridge's resolved spelling %q",
+			pressed.Pressed[0].Gesture, swiftResolvedCommand)
 	}
 
 	if len(pressed.Speech) != 2 {

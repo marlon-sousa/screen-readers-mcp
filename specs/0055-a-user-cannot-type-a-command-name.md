@@ -1,6 +1,6 @@
 # 0055 — A user cannot type a command name, so neither may we
 
-**Status:** Draft — awaiting approval in conversation
+**Status:** Decided (2026-09-03)
 **Board entry:** 13.31 (lane 3)
 **Supersedes in part:** [0052](0052-the-keys-a-voiceover-user-presses.md) §3, [0053](0053-the-bridge-prepares-the-reader.md) §1 and §3.1
 
@@ -147,6 +147,35 @@ for any session, the branch is unreachable. The `AccessibilityTrust` seam is
 **kept**: a grant revoked mid-session must produce a failure naming the grant, not
 a silent empty answer. So the read stays, the second route does not.
 
+**Three more things fell out that this spec did not list, and each is the same
+rule — a named thing nothing can reach is worse than no name at all.** They are
+amendments to §6, made while implementing and recorded here rather than in a
+commit message:
+
+- **`ReaderCondition.scriptingChannelDead`** — "the reader answers its own name but
+  not its own state" — was spec 0041's sharpest finding about the AppleScript
+  channel and named a condition this bridge can no longer be in. Deleted, leaving
+  four cases. `readerNotRunning` was half of a pair with it and is now the only
+  question worth asking about the reader's existence.
+- **`PermissionState.cannotTell`** existed because the automation grant was read by
+  USING a channel, and a channel can fail for reasons that are not permissions.
+  The one permission left is answered by an API about this process, which always
+  answers, so a state nothing can return is deleted rather than left as a case
+  every caller handles and no test reaches.
+- **`TCCPermissionBrokerTests.swift`** is deleted, and that is a statement rather
+  than a gap. 13.11 moved a DECISION up into that adapter — which error numbers
+  mean the grant is missing — precisely so it could be tested; with the channel
+  gone the class is two API calls and a `switch` over one case, which is a leaf,
+  and the repo's rule is that a leaf has no test file. The adapter's header says so
+  where somebody would otherwise add one back.
+
+**A fourth is visible from the other side of the wire**, and it is an improvement
+rather than a loss: `server/tests/conformance/real_swift_bridge_session_test.go`
+used to assert that the gesture id came back EQUAL to what went out, because it was
+a command name with spaces. It now sends `vo+m` and expects `control+option+m` — the
+id crosses opaquely in one direction and comes back RESOLVED in the other, and a
+server that normalised either would fail rather than agree with itself.
+
 **`ProcessRunner` / `SubprocessRunner` stay.** `VoiceOverLiveness.activate` and
 `VoiceOverRestart` run `open` and `killall` through them, and neither is
 AppleScript.
@@ -211,7 +240,14 @@ Nothing. This entry adds no file, which is most of the argument for it.
 - **13.30**, whether the character stamp is needed at all. Untouched.
 - **Whether `announce` should mention the Commands menu.** No.
 
-## 8. Live checklist
+## 8. What the implementation confirmed
+
+`uv run poe dev` is green, including `poe conformance` driving the real Go binary
+against the real Swift bridge. 877 Swift tests pass. The deletion came to **-7
+source files, -7 test files, and no file added**, which is §6's claim measured
+rather than asserted.
+
+## 9. Live checklist
 
 Run on a machine with *"Allow VoiceOver to be controlled with AppleScript"*
 **OFF**, which is now the only state this bridge is written for.

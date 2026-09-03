@@ -21,19 +21,20 @@ You may step outside the vocabulary in exactly one circumstance: to
 in the tree and simply cannot be reached by cursor navigation — and never to get
 past one. When you do, say so, naming the command you used and what it showed.
 
-**You press keys, and only keys** — the same as the `user` stance, for the same
-reason: a person cannot dispatch one of the reader's commands by name, so a
-stand-in for a person cannot either, and on a machine with VoiceOver's AppleScript
-switch off that channel does not exist at all. An act with no bound key is reached
-the way a person reaches it: the Commands menu, `vo+h` twice, type, Enter.
+**You press keys, and only keys** — the same as the `user` stance, and now the
+same as every stance: a person cannot dispatch one of the reader's commands by
+name, so a stand-in for a person cannot either, and this bridge no longer offers
+that channel to anybody. An act with no bound key is reached the way a person
+reaches it: the Commands menu, `vo+h` twice, type, Enter.
 
 **So when a key does nothing, that IS your finding** — stated as what you pressed
 and what you heard, not resolved by reaching for another channel. Two things could
 explain it: the application swallowed or reinterpreted the keystroke, which is a
 defect in the thing you are testing, or the person at this machine has rebound
-that command. Say that both are possible; an `expert` session, or a question to
-the human, settles which. What you must not do is substitute a route no user has
-and report the act as reachable.
+that command. Say that both are possible; the Commands menu (`vo+h` twice) lists
+what this machine actually has, and a question to the human settles it. What you
+must not do is report the act as unreachable without saying which of the two you
+ruled out.
 
 Three things specific to this reader that will otherwise cost you a wrong
 finding:
@@ -49,8 +50,7 @@ finding:
   accessibility tree of its own — that is the bridge observing its own doing, and
   reporting it as an application defect would be wrong.
 - **Ask where you are twice when it matters.** `get_focus_info` answers about the
-  keyboard cursor; `describe item in voiceover cursor` answers about the
-  VoiceOver one. A finding that says "focus was on X" without saying which cursor
+  keyboard cursor; `vo+f3` answers about the VoiceOver one. A finding that says "focus was on X" without saying which cursor
   it meant is ambiguous on this platform in a way it is not on Windows.
 
 And one about the session itself: if commands begin failing together, establish

@@ -72,15 +72,18 @@ struct GuidanceDocumentsTests {
 		// worth serving.
 		let text = try GuidanceDocuments.read(GuidanceDocuments.common)
 
-		// 13.7: a gesture here is a command name, not a keystroke.
-		#expect(text.contains("describe item in voiceover cursor"))
-		#expect(text.contains("Command does not exist (6)"))
+		// 13.31: a gesture here is a KEYSTROKE and the reader's own command names are
+		// not sent at all, so the document has to teach the route a person takes for
+		// an act that has no key. It said the opposite from 13.7 to 13.31 -- and the
+		// assertion is kept in that shape rather than deleted, because an agent
+		// carrying older guidance is exactly who this paragraph is for.
+		#expect(text.contains("Commands menu"))
+		#expect(text.contains("vo+h"))
+		#expect(!text.contains("press_gesture { gestures: [\"describe item"))
 
-		// 13.8: `press_gesture` reaches commands and single keys, and NOT chords,
-		// because the modifier commands do not compose -- and a chord needs
-		// `type_text`'s route and its grant.
+		// 13.8: the reader's modifier commands do not compose, which is why a chord
+		// is ONE gesture id rather than a sequence.
 		#expect(text.contains("do not compose"))
-		#expect(text.contains("tab key"))
 
 		// 13.9: the VoiceOver cursor's answer is LOCALIZED and not comparable
 		// across machines, while the tree's AXRole is.
@@ -101,18 +104,18 @@ struct GuidanceDocumentsTests {
 		#expect(text.contains("shifted character"))
 	}
 
-	@Test("THE `user` STANCE PRESSES KEYS AND HAS NO DISPATCH CHANNEL")
+	@Test("THE `user` STANCE PRESSES KEYS, AND NOBODY HAS A DISPATCH CHANNEL")
 	func theUserStancePressesKeys() throws {
-		// 13.25's demotion, taken to its conclusion by Marlon on 2026-09-02: "can a
-		// user send commands directly? No? Then so cannot the agent." A person
-		// presses keys; to reach a command with no key they open the Commands menu.
-		// A stance document that offered the AppleScript dispatch channel would be
-		// offering a route no user has -- and on a machine with the switch off, one
-		// that does not exist at all.
+		// 13.25's demotion, taken to its conclusion by Marlon on 2026-09-03: "if a
+		// user cannot type a command, why should we have to?" A person presses keys;
+		// to reach an act with no key they open the Commands menu. This stance was
+		// the first to be told it had no dispatch channel, and 13.31 removed the
+		// channel from the bridge, so what this document says now is that nobody has
+		// it -- which is a stronger sentence and the same reasoning.
 		let text = try GuidanceDocuments.guidance(for: "user").text
 		#expect(text.contains("Press the keys"))
 		#expect(text.contains("vo+m"))
-		#expect(text.contains("are not yours") || text.contains("ARE NOT YOURS"))
+		#expect(text.contains("NOBODY'S NOW"))
 		// The route a person takes to an unbound command, which is still keys.
 		#expect(text.contains("vo+h"))
 		// And the cost, stated rather than hidden: this stance pays a permission
@@ -128,20 +131,24 @@ struct GuidanceDocumentsTests {
 		let text = try GuidanceDocuments.guidance(for: "validator").text
 		#expect(text.contains("only keys"))
 		#expect(text.contains("rebound"))
-		#expect(text.contains("no user has"))
+		#expect(text.contains("cannot dispatch one of the reader's commands by"))
 	}
 
-	@Test("the `expert` stance keeps the comparison, and is told it may be missing")
-	func theExpertKeepsTheDispatchChannel() throws {
-		// The instrument the other two may not use, with the reason: this stance
-		// stands in for nobody. And it may simply not be available, because the
-		// switch it needs is one a careful user leaves off.
+	@Test("the `expert` stance is told the dispatch channel is GONE, and where it went")
+	func theExpertIsToldTheChannelIsGone() throws {
+		// THE INSTRUMENT THIS STANCE HAD AND NO LONGER HAS. It was the only stance
+		// allowed to dispatch the reader's command names, because it stands in for
+		// nobody; 13.31 deleted the route for everybody, and the document has to say
+		// so rather than leave an expert reaching for it. It also has to say what an
+		// expert does instead, which is drive `osascript` itself -- not being blocked
+		// is different from being served.
 		let text = try GuidanceDocuments.guidance(for: "expert").text
-		#expect(text.contains("driven two ways"))
+		#expect(text.contains("That channel is gone"))
+		#expect(text.contains("osascript"))
 		// Asserted on a phrase that is not broken across a line, because these
-		// documents are wrapped prose and a assertion on a two-word span is an
+		// documents are wrapped prose and an assertion on a two-word span is an
 		// assertion on where the wrap happens to fall.
-		#expect(text.contains("a careful user leaves it off"))
+		#expect(text.contains("you are not blocked"))
 	}
 
 	@Test("no document promises a capability this bridge does not serve")

@@ -1,15 +1,24 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/VoiceOverFocusInspector.swift.
 //
-// BOTH ROUTES ARE EXERCISED WITH NO READER PRESENT, and that is what the three
-// seams are for. The route choice, the attribute query, the mapping into a
-// snapshot and every "this is empty, not broken" rule are decisions in this
-// adapter, so each is an ordinary unit test rather than something only the
-// maintainer's machine could show -- which matters more here than usual, because
-// the answers a live machine gives depend on which window is in front.
+// THE WHOLE ROUTE IS EXERCISED WITH NO READER PRESENT, and that is what the seams
+// are for. The attribute query, the mapping into a snapshot and every "this is
+// empty, not broken" rule are decisions in this adapter, so each is an ordinary
+// unit test rather than something only the maintainer's machine could show --
+// which matters more here than usual, because the answers a live machine gives
+// depend on which window is in front.
+//
+// IT EXERCISED TWO ROUTES UNTIL 13.31, and the tests for the second one were
+// deleted with it rather than left asserting a branch nothing can enter: without
+// the Accessibility grant, `name` came from VoiceOver's own cursor over an
+// AppleEvent. A session cannot exist without that grant now, because pressing keys
+// is the only way this bridge drives the reader (spec 0055). What replaced those
+// tests is one about the grant being REVOKED, which is the state that can still
+// happen and the one an empty snapshot would misreport.
 //
 // NOTHING HERE COMPARES A STRING THE READER RENDERED. `AXRole` is a framework
-// constant and the states come from booleans; `missing value` is AppleScript's
-// own token. That is the lane's no-reader-strings rule in its focus instance.
+// constant and the states come from booleans. That is the lane's no-reader-strings
+// rule in its focus instance -- and it is why the deleted route is no loss to an
+// assertion: the cursor answered `área de rolagem` on the maintainer's machine.
 
 import Fakes
 import Testing
@@ -21,11 +30,10 @@ import VoiceOverBridgeDomain
 struct VoiceOverFocusInspectorTests {
 	private func inspector(
 		tree: FakeAccessibilityTree = FakeAccessibilityTree(),
-		scripts: FakeAppleScriptRunner = FakeAppleScriptRunner(),
 		frontmost: FakeFrontmostApplication = FakeFrontmostApplication(),
-		trust: FakeAccessibilityTrust = FakeAccessibilityTrust()
+		trust: FakeAccessibilityTrust = FakeAccessibilityTrust(trusted: true)
 	) -> VoiceOverFocusInspector {
-		VoiceOverFocusInspector(tree: tree, scripts: scripts, frontmost: frontmost, trust: trust)
+		VoiceOverFocusInspector(tree: tree, frontmost: frontmost, trust: trust)
 	}
 
 	private let button: [String: AccessibilityValue] = [
@@ -38,41 +46,32 @@ struct VoiceOverFocusInspectorTests {
 
 	// -- which route answers ----------------------------------------------------
 
-	@Test("WITH THE GRANT it reads the accessibility tree, addressed to the frontmost pid")
-	func theTreeRouteIsChosenWhenTrusted() throws {
+	@Test("it reads the accessibility tree, addressed to the frontmost pid")
+	func theTreeRouteAnswers() throws {
 		let tree = FakeAccessibilityTree(element: button)
-		let scripts = FakeAppleScriptRunner()
-		let snapshot = try inspector(
-			tree: tree, scripts: scripts, trust: FakeAccessibilityTrust(trusted: true)
-		).focusInfo()
+		let snapshot = try inspector(tree: tree).focusInfo()
 
 		#expect(snapshot.name == "Save")
 		#expect(snapshot.role == "AXButton")
 		// The pid the frontmost application answered with -- which is why that seam
-		// is asked on both routes and not only on this one.
+		// is a collaborator and not a convenience: there is no system-wide element
+		// that works (see AXAccessibilityTree's header).
 		#expect(tree.queries.map(\.pid) == [4242])
-		// AND NOTHING WENT TO THE READER. The two routes are alternatives, not a
-		// belt and braces: a cursor read here would cost a subprocess per command
-		// for an answer nothing uses.
-		#expect(scripts.scripts.isEmpty)
 	}
 
-	@Test("WITHOUT THE GRANT it asks the VoiceOver cursor, and the script text is the contract")
-	func theCursorRouteIsChosenWhenUntrusted() throws {
+	@Test("A REVOKED GRANT IS A NAMED FAILURE, never an empty snapshot")
+	func aRevokedGrantIsNamed() {
+		// THE STATE THAT REPLACED THE CURSOR ROUTE. Every session holds this grant
+		// at the handshake, so seeing it absent here means a human revoked it while
+		// the session ran. Answering "nothing is focused" would send an agent
+		// looking for a defect in the application under test, which is the class of
+		// wrong answer `ReaderCondition`'s header exists to forbid.
 		let tree = FakeAccessibilityTree(element: button)
-		let scripts = FakeAppleScriptRunner()
-		scripts.defaultAnswer = "Ok button"
-		let snapshot = try inspector(tree: tree, scripts: scripts).focusInfo()
-
-		#expect(snapshot.name == "Ok button")
-		#expect(
-			scripts.scripts == [
-				"tell application \"VoiceOver\" to return text under cursor of vo cursor"
-			])
-		// THE VO CURSOR, NOT THE KEYBOARD CURSOR -- the dictionary exposes both and
-		// they are two views that only usually agree (spec 0046). Asserted as text
-		// because the script IS the decision this adapter makes.
-		#expect(scripts.scripts[0].contains("vo cursor"))
+		#expect(throws: FocusError.self) {
+			try inspector(tree: tree, trust: FakeAccessibilityTrust(trusted: false)).focusInfo()
+		}
+		// AND IT ASKED THE TREE NOTHING. There is no half-answer to assemble from a
+		// grant that is gone.
 		#expect(tree.queries.isEmpty)
 	}
 
@@ -84,22 +83,19 @@ struct VoiceOverFocusInspectorTests {
 		let trust = FakeAccessibilityTrust(trusted: true)
 		_ = try inspector(tree: FakeAccessibilityTree(element: button), trust: trust).focusInfo()
 		#expect(trust.reads == 1)
+		// It is a seam with ONE method, so there is nothing here that could ask.
 	}
 
-	@Test("NO ROUTE FALLS BACK TO THE OTHER: a trusted read with nothing focused answers empty")
+	@Test("A READ WITH NOTHING FOCUSED ANSWERS EMPTY, and reaches for nothing else")
 	func thereIsNoFallbackBetweenRoutes() throws {
-		let scripts = FakeAppleScriptRunner()
-		scripts.defaultAnswer = "something the cursor would have said"
-		let snapshot = try inspector(
-			tree: FakeAccessibilityTree(element: nil),
-			scripts: scripts,
-			trust: FakeAccessibilityTrust(trusted: true)
-		).focusInfo()
-
+		// THE RULE OUTLIVED THE SECOND ROUTE ON PURPOSE. It used to say: a tree read
+		// that finds nothing must not quietly ask the VoiceOver cursor, because the
+		// two are different views and an answer that silently came from the other is
+		// one an agent cannot interpret. There is one view now, so the rule is
+		// trivially kept -- and it is written down here so that a future second route
+		// does not arrive as a silent fallback.
+		let snapshot = try inspector(tree: FakeAccessibilityTree(element: nil)).focusInfo()
 		#expect(snapshot.name.isEmpty)
-		// The grant picks the route and the route answers. An answer that silently
-		// came from the other view is one an agent cannot interpret.
-		#expect(scripts.scripts.isEmpty)
 	}
 
 	// -- what the tree route asks for, and what it makes of the answer -----------
@@ -183,19 +179,6 @@ struct VoiceOverFocusInspectorTests {
 		#expect(snapshot.appModule == "com.apple.TextEdit")
 	}
 
-	@Test("`missing value` from the cursor is EMPTY, not an error")
-	func missingValueIsEmpty() throws {
-		// The same confound from the other end, and the reason this is a mapping
-		// rather than a `throw`: a cursor sitting on a process with nothing to read
-		// answers AppleScript's own null token, and it looks exactly like a dead
-		// reader.
-		let scripts = FakeAppleScriptRunner()
-		scripts.defaultAnswer = "missing value"
-		let snapshot = try inspector(scripts: scripts).focusInfo()
-		#expect(snapshot.name.isEmpty)
-		#expect(snapshot.appModule == "com.apple.TextEdit")
-	}
-
 	@Test("a tree that refuses outright is a FocusError carrying the AX number")
 	func aRefusedTreeIsAnError() {
 		let tree = FakeAccessibilityTree(element: button)
@@ -205,43 +188,11 @@ struct VoiceOverFocusInspectorTests {
 		}
 	}
 
-	@Test("the AppleEvents failures are named, with the recovery each one needs")
-	func theCursorFailuresAreExplained() {
-		// THE NUMBERS ARE `VoiceOverGestureSender`'S, reused rather than copied:
-		// they cost live measurements to learn, and two adapters with their own
-		// copies is one drift away from two answers about one machine.
-		let notAuthorized = VoiceOverFocusInspector.explain(
-			AppleScriptError(number: -1743, message: "nao autorizado"))
-		#expect(notAuthorized.contains("Automation"))
-		// The message is carried for a human and never matched on -- it arrives in
-		// the machine's own language.
-		#expect(notAuthorized.contains("nao autorizado"))
-
-		#expect(
-			VoiceOverFocusInspector.explain(AppleScriptError(number: -600, message: "nao esta rodando"))
-				.contains("Command-F5"))
-		#expect(
-			VoiceOverFocusInspector.explain(AppleScriptError(number: -1728, message: "sem objeto"))
-				.contains(ReaderCondition.scriptingChannelDead.rawValue))
-	}
-
-	@Test("a cursor read that fails is an error frame, not an empty focus")
-	func aFailedCursorReadThrows() {
-		let scripts = FakeAppleScriptRunner()
-		scripts.failNext(number: -600, message: "not running")
-		#expect(throws: FocusError.self) { try inspector(scripts: scripts).focusInfo() }
-	}
-
 	@Test("with nothing in front, it answers empty rather than addressing pid 0")
 	func nothingInFront() throws {
 		let tree = FakeAccessibilityTree(element: button)
-		let scripts = FakeAppleScriptRunner()
-		scripts.defaultAnswer = "missing value"
 		let snapshot = try inspector(
-			tree: tree,
-			scripts: scripts,
-			frontmost: FakeFrontmostApplication(application: nil),
-			trust: FakeAccessibilityTrust(trusted: true)
+			tree: tree, frontmost: FakeFrontmostApplication(application: nil)
 		).focusInfo()
 
 		#expect(snapshot.appModule == nil)

@@ -2179,7 +2179,7 @@ rule intends.
     delete. That is a live measurement against the reader and it is **13.30**.
     Spec 0054.
 
-13.31. **Not started** -- **A user cannot type a command name, so neither may we**
+13.31. **Done (2026-09-03)** -- **A user cannot type a command name, so neither may we**
     (lane 3). Marlon, 2026-09-03, on reading an inventory of where this bridge
     still uses AppleScript: *"if a user cannot type a command, why should we have
     to?"* No VoiceOver user has the command-name channel -- a person presses VO-M,

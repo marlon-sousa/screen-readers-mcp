@@ -143,7 +143,7 @@ eager, in this order, each failing by name with what the AGENT must do:
 
 | # | Rung | What it does | Costs |
 |---|---|---|---|
-| 1 | `permissions` | READS both grants and the AppleScript switch, and requires **one workable ROUTE** rather than every permission (13.26) | two file reads and one subprocess |
+| 1 | `permissions` | READS the Accessibility grant and the VoiceOver modifier, and requires both to be usable — one route since 13.31, where 13.26 accepted either of two | one API call and one file read |
 | 2 | `readerRunning` | asks the running-application list; if absent, `open -a VoiceOver` and asks again | **no permission at all** since 13.26 |
 | 3 | `registration` | `lsregister -f` then `pluginkit -a` from `notRegistered`, then `updateSpeechVoices()` polled until the voice is PUBLISHED, then a reader **restart** (13.26) | nothing on a healthy machine; one restart after a rebuild |
 | 4 | `voiceSelection` | records the user's voice, writes ours, confirms | unchanged from 13.6 |
@@ -172,15 +172,16 @@ loudly. "A live session may become healthy while it runs" was a reasonable thing
 to say about a state nobody was repairing and is an unreasonable one about a
 state the handshake has just tried to repair and failed.
 
-**THE HANDSHAKE READS GRANTS AND NEVER REQUESTS ONE.** `PermissionBroker.request`
-still has exactly TWO callers, both command handlers about to post a system
-event, both through `AccessibilityGrant` — so 13.8's lever survives 13.20 word
-for word, and no sweep was needed. A handshake that raised a consent dialog would
-be a handshake that hangs, on a machine where nobody may be looking at the
-screen. **What it cost** is stated rather than hidden: a machine that has never
-granted Accessibility can no longer open a session at all, which is the property
-`scripts/voiceover_channels.sh` was written to exercise. That script still runs —
-it drives the reader directly and opens no session.
+**THE HANDSHAKE READS THE GRANT AND NEVER REQUESTS IT.** `PermissionBroker.request`
+still has exactly TWO callers, both command handlers about to post a system event,
+both through `AccessibilityGrant`. A handshake that raised a consent dialog would
+be a handshake that hangs, on a machine where nobody may be looking at the screen.
+**What it cost** is stated rather than hidden: a machine that has never granted
+Accessibility cannot open a session at all — and since 13.31 there is no
+alternative route, so neither can a machine whose VoiceOver modifier is Caps Lock
+alone (board entry 13.28). `scripts/voiceover_channels.sh` was written to exercise
+the ungranted machine and still runs: it drives the reader directly and opens no
+session.
 
 **SESSION STATE IS RESTORED AT TEARDOWN; MACHINE STATE IS NOT.** The voice
 SELECTION is session state and goes back on every teardown path (hard invariant
@@ -245,14 +246,16 @@ machine, until **Command-F5** fixed what `open -a` had not. So `VoiceOverRestart
 polls between the two halves, and a sentence written for a HUMAN says Command-F5.
 
 **THE PROOF'S UTTERANCE IS REAL SPEECH AND IT STAYS IN THE BUFFER.** Index 1 of
-every session holds what the reader said when it was asked to describe its
-cursor; a session's own speech starts at 2. Hiding it would mean the buffer is
-not the record of what the reader said that it claims to be — and the tests say
-so out loud rather than reading from a fresh mark, because "everything this
-session captured" is what several of them are about. The probe is
-`describe item in voiceover cursor` because the guidance already calls it the
-safe one: it describes and MOVES NOTHING. It is pressed **after** suppression is
-in force, so in a silent session it is inaudible.
+every session holds what the reader said when the probe was pressed; a session's
+own speech starts at 2. Hiding it would mean the buffer is not the record of what
+the reader said that it claims to be — and the tests say so out loud rather than
+reading from a fresh mark, because "everything this session captured" is what
+several of them are about. The probe is **`vo+f7`**, the time and date: it always
+speaks and MOVES NOTHING, which is what a probe needs and what
+`describe item in voiceover cursor` (the probe until 13.26) only half had — its
+answer depended on where the cursor was standing. It is pressed **after**
+suppression is in force, so in a silent session it is inaudible, and it is
+PRESSED rather than dispatched since 13.31, on every machine.
 
 ## Silence is a LEASE, and nothing may come to depend on a teardown path
 
@@ -359,24 +362,49 @@ theirs back on every teardown path. Three things must survive any edit here:
   itself as the pass-through voice, which is infinite recursion. That is Rule 0's
   first caveat and it is asserted in three places.
 
-## A gesture on this reader is a COMMAND NAME **or a keystroke**, and the id decides
+## A gesture on this reader is a KEYSTROKE, and nothing else — 13.31
 
-Three rules. The second is the finding that unblocked board entry 13.7; the
-third is 13.17, which is where this section stopped being one rule; and 13.19 put
-a **source prefix** in front of all of it.
+It was a command name OR a keystroke from 13.17 to 13.31, and the id decided.
+**Read this section for what the notation is now and why the other half went; the
+history is kept because every document written about this bridge before 13.31 says
+the opposite.**
 
-**A command name is an English phrase**, from VoiceOver's own
-`SCRStringsToCommandsMap` vocabulary — 415 entries on macOS 15.0, phrases like
-`go to desktop` and `mute sound toggle`. There is no table of them in this
-repo and there must not be one: the reader does its own dispatch and answers an
-unknown name with `Command does not exist (6)`, which is a better check than any
-copy that goes stale every release. **A keystroke is `+`-joined, modifiers first
-and the key last** — `command+l`, `control+option+space` — and
-`CommandVocabulary` tells the two apart by **the space rule**: a separator counts
-as keystroke notation only in an id with no spaces at all. Every real command
-name that carries one carries spaces too (`toggle single-key quick nav on or
-off`), and no command in the 415 is a bare `+`-joined token. The same rule
-decides the hyphen case, which is why the rule is one rule and not two.
+**No VoiceOver user can dispatch a command by name.** A person presses VO-M; to
+reach an act with no key they open the Commands menu (`vo+h` twice), type the name
+and press Enter — keystrokes and typed text, both of which this bridge has had
+since 13.8. So the command-name route stood in for nobody, and 13.25 had already
+measured what it cost: a command dispatched INSIDE the reader never passes the
+application under test, so an application that swallows or reinterprets a chord
+reported success while a real user was stuck. It was also bought with somebody's
+*"Allow VoiceOver to be controlled with AppleScript"* switch, which lets **any**
+process on the machine drive their screen reader. Marlon, 2026-09-03: *"if a user
+cannot type a command, why should we have to?"* Spec 0055.
+
+**NO APPLEEVENT LEAVES THIS BRIDGE.** There is no `AppleScriptRunner`, no
+`osascript`, no Automation permission and no reading of that switch. If you are
+about to add one, you are re-opening a door this entry closed on purpose.
+
+**What a phrase gets is a REFUSAL THAT TEACHES**, and it is the one message in the
+vocabulary written for an agent's memory rather than for a typo: it names the key
+(`vo+m`) and the Commands-menu route, because an agent told "unknown gesture" would
+conclude the act is unreachable when it is a keystroke away.
+`CommandVocabulary.reasonNotAKeystroke` is that sentence and
+`PressGestureTests`/`CommandVocabularyTests` assert it.
+
+**A keystroke is `+`-joined, modifiers first and the keys last** — `command+l`,
+`control+option+space` — and **the space rule** is still the discriminator: a
+separator counts as notation only in an id with no spaces at all. It used to
+separate two acceptances; it now separates an acceptance from a refusal, which is a
+smaller job for the same rule. The hyphen case (`VO-D`) is decided the same way and
+is still refused, for a reason no feature retires: Apple writes `VO-Shift-M` too, so
+accepting the hyphen means a second complete notation with its own modifier order,
+refusals and tests. The refusal NAMES THE REWRITE (`vo+d`).
+
+**The 415-entry command vocabulary is still not in this repo, and must not be.**
+`SCRStringsToCommandsMap` is the reader's own; what the guidance names is the act's
+NAME — what you type into the Commands menu — beside the key that performs it, read
+out of the reader's shipped configuration by
+`python3 scripts/voiceover_default_bindings.py` rather than remembered.
 
 **AND THE KEY IS NOW KEYS — 13.22.** A keystroke is zero or more modifiers and
 **one or more** keys: the first token that is not a modifier begins the key list,
@@ -393,27 +421,37 @@ accepts SYNTHESIZED simultaneity at all was measured rather than assumed**
 (2026-09-01, control-probe-control, `bash scripts/voiceover_two_key_chord.sh`):
 the two arrows sent sequentially move nothing, sent together they toggle
 arrow-key Quick Nav, and **no inter-event delay is needed**. What the same
-measurement found is the reason the command name stays the recommended route —
+measurement found was, at the time, a reason to prefer the command name —
 **the chord moves TWO settings**, taking single-key Quick Nav down with
-arrow-key Quick Nav, and NAMES neither, while each command name moves one and
-says which way it went. The chord is not silent -- measured 2026-09-02 on this
+arrow-key Quick Nav, and NAMES neither, where each of the reader's own commands
+moves one and says which way it went. That route is gone (13.31); what survives is
+the warning, and the answer is to read the speech and to reach a single setting
+through the Commands menu. The chord is not silent -- measured 2026-09-02 on this
 entry's live run, it announces a generic "Quick Nav on"/"off" -- but that
 announcement does not say which of the two settings moved, so it tells you less
 than it appears to. Spec 0051.
 
 **`kb:` OUTRANKS ALL OF THAT, and it is what makes a lone key expressible.** A
-source prefix — everything up to and including the first `:`, lane 1's own rule
-in `bare_key_name` — says the id is a keystroke whatever shape it has, so `kb:h`
-is the letter key and `h` is a command name. It exists because 13.17's `+` rule
-left an ordinary user's commonest act unreachable: with single-key Quick Nav on
-you press `h` to move by heading, and there was no notation for it (spec 0049).
-Three consequences worth knowing before you touch this: `kb(laptop):` and any
-other source are **refused by name**, because a wrong source must not fall
-through to being read as a phrase; the prefix is **not second-guessed**, so
-`kb:go to desktop` is a malformed keystroke and not a command name; and
-`Gesture.described` **emits the prefix only where dropping it would change the
-meaning** — `kb:h` keeps it, `command+l` does not — so a transcript line is
-always replayable and still spells a chord the way lane 1 documents it.
+source prefix — everything up to and including the first `:`, lane 1's own rule in
+`bare_key_name` — says the id is a keystroke whatever shape it has, so `kb:h` is
+the letter key. It exists because 13.17's `+` rule left an ordinary user's
+commonest act unreachable: with single-key Quick Nav on you press `h` to move by
+heading, and there was no notation for it (spec 0049).
+
+**A BARE `h` IS STILL NOT ONE, AND 13.31 KEPT THAT DELIBERATELY.** It was refused
+then because a lone token was a command name; it is refused now because
+`CommandVocabulary.identifier(for:)` SPELLS a modifier-less keystroke `kb:h`, and a
+notation that accepts a form it never emits is one an agent has to learn twice.
+Lane 1 spells it the same way. The refusal names the prefixed form, so it costs one
+round trip and teaches.
+
+Three consequences worth knowing before you touch this: `kb(laptop):` and any other
+source are **refused by name**, because a wrong source must not fall through to
+being read as a phrase; the prefix is **not second-guessed**, so `kb:go to desktop`
+is a malformed keystroke and not something to route around; and the prefix is
+**emitted only where dropping it would change the meaning** — `kb:h` keeps it,
+`command+l` does not — so a transcript line is always replayable and still spells a
+chord the way lane 1 documents it.
 
 **EVERY KEY NAME THIS BRIDGE ACCEPTS NAMES THE SAME PHYSICAL KEY ON NVDA**, and
 that is a rule to keep rather than a coincidence to erode. The names in
@@ -458,28 +496,33 @@ rules rather than details:
   whose `vo` differs must not produce identical transcripts, and it means one
   press tells an agent what this machine is bound to.
 
-**AND THE COMMAND NAME IS DEMOTED, WHICH IS THE HALF THAT COST SOMETHING.** It is
-no longer the recommended way to stand in for a user; it is an automation
-convenience and a **diagnosis aid** — it costs no grant, it works whatever the
-person has rebound, and a key that does nothing where its command name works is
-either a rebinding or a swallowed keystroke, which is a finding. It is also the
-ONLY route for the acts that ship with no key at all: measured 2026-09-02,
-`find next button`, `find next text field`, `toggle web navigation dom or group`,
-`mute speech toggle` and `pause or resume speaking` have no factory binding.
+**AND THE COMMAND NAME WAS DEMOTED HERE AND DELETED AT 13.31.** This entry left it
+as an automation convenience and a diagnosis aid; spec 0055 removed it, because a
+convenience no user has, bought with somebody's AppleScript switch, is not worth
+its price. What the demotion's reasoning left behind is the substitute: the acts
+with no factory key — measured 2026-09-02, `find next button`, `find next text
+field`, `toggle web navigation dom or group`, `mute speech toggle` and `pause or
+resume speaking` — are reached the way a person reaches them, through the **Commands
+menu** (`vo+h` twice, type, Enter), which is `pressGesture` plus `typeText`. The
+diagnosis aid has no substitute and is a stated loss.
 
 **So 13.8's lever no longer describes ordinary driving, and that was the trade.**
 The sentence *"a session that presses only the reader's command names and reads
-speech is never asked for Accessibility"* is now a statement about
-**reading-only** sessions. A faithful user-persona session presses keys and is
+speech is never asked for Accessibility"* became a statement about **reading-only**
+sessions here, and 13.31 retired it entirely — it now describes a session that
+presses nothing, and a claim that has quietly become vacuous is worse than one
+never made. What survives, and is still checked, is that **nothing but a command
+about to post an event ever asks**: not startup, not the handshake, not a probe,
+not a test. A faithful user-persona session presses keys and is
 asked for the grant, once. A lever bought by driving the reader in a way no user
 does is bought with the fidelity this tool sells; the assertion survives in the
 tests because it is still true of what it now describes, and no copy of the old
 sentence is left standing where it is false.
 
-**An UNPREFIXED lone key is still a command name**, unchanged: the vocabulary's 30
-`… key` commands cost nothing, and routing a bare `return` through the event path
-would spend the grant for a keypress that never needed it. `kb:enter` is how a
-session says it meant the key itself.
+**An UNPREFIXED lone key is still refused**, and the REASON changed at 13.31: it
+was a command name (the vocabulary's 30 `… key` commands cost no grant), and it is
+now simply not the spelling this bridge emits. `kb:enter` is how a session says it
+meant the key itself, then and now.
 
 **THE READER MATCHES ON THE CHARACTER, NOT ON THE KEYCODE AND THE FLAGS — 13.25's
 other finding, and it was a LIVE DEFECT rather than a missing feature.** Measured
@@ -555,10 +598,11 @@ Three things follow for this repository:
   an utterance ARRIVED -- the time, the battery and the wifi status all satisfy
   it equally. A rung that expected a time would fail on a healthy machine
   whenever the ring happened to be elsewhere.
-- **It is the one place a command NAME is more precise than a key**, rather than
-  merely cheaper: a name selects exactly one command and has no ring. 13.25
-  demoted the command name as the way to stand in for a user; this is a real
-  reason to reach for one when a check depends on which command ran.
+- **A ring has no cheap escape any more.** A command NAME selected exactly one
+  command and had no ring, which was the one place a name was more PRECISE than a
+  key rather than merely cheaper -- and 13.31 deleted that route. What is left is
+  what a person does: press a different command to reset the ring, then press the
+  key, and read the speech to confirm which meaning answered.
 
 ## Pressing a chord: the layout is the hard part, and there is no table
 
@@ -630,71 +674,75 @@ closes without saving. It needs the Accessibility grant, which is why it is a
 separate script from `voiceover_modifiers.sh` — the same split as
 `voiceover_keyboard.sh`, for the same reason.
 
-**`perform command` is addressed to the `commander object`, never to
-`application "VoiceOver"`.** `VoiceOver.sdef` in this directory is the authority:
-the `application` class responds to `output`, `open`, `close menu` and `quit`,
-and not to `perform command`; the commander does, reached through the
-application's read-only `commander` property. Sending a command to an object that
-does not handle it fails **before any name lookup**, which is why spec 0047
-measured error 4 for a valid name and a bogus one alike and recorded the channel
-as dead. It was not: spec 0041 and spec 0047 disagreed because their scripts
-differed. Addressed correctly, a valid name succeeds and a bogus one returns 6.
+**`perform command` WAS addressed to the `commander object`, and the finding is
+kept because it is the reason two specs disagreed.** `VoiceOver.sdef` in this
+directory is the authority: the `application` class responds to `output`, `open`,
+`close menu` and `quit`, and **not** to `perform command`; the commander does,
+reached through the application's read-only `commander` property. Sending a command
+to an object that does not handle it fails **before any name lookup**, which is why
+spec 0047 measured error 4 for a valid name and a bogus one alike and recorded the
+channel as dead. It was not: specs 0041 and 0047 disagreed because their scripts
+differed, not because the machine changed between them.
 
-A "simplification" back to the application target compiles, reads better, and
-restores a state in which every gesture fails identically with nothing saying
-why — so `VoiceOverGestureSenderTests` asserts the target as a **negative** as
-well as a positive.
+**Nothing in this bridge sends it any more (13.31), and this paragraph is history
+rather than instruction.** It stays for two reasons: the sdef is still the
+authority if anybody ever investigates that channel from outside this bridge, and
+"two measurements disagreed because the scripts differed" is a lesson worth keeping
+in front of whoever writes the next one.
 
-## Typing is the OTHER half of input, and it costs the grant
+## Typing is the OTHER half of input, and BOTH halves cost the grant
 
-Two commands, three ports, two capabilities, and the separation is the lane's one
-design lever rather than tidiness. A **command name** through `pressGesture` is
-an AppleEvent to the reader; `typeText` and a **keystroke** through
+Two commands, two capabilities, and **one permission** since 13.31. `typeText` and
 `pressGesture` both synthesize system input events and need **Accessibility**
 (`kTCCServiceAccessibility`). Windows has no equivalent gate, so lane 1 has no
 analogue and there is nothing to copy here.
 
-**The line falls between NOTATIONS, not between commands, and 13.17 is where it
-moved.** Until then it fell between the two commands, and the sentence below said
-"only presses commands". It now says "presses only the reader's COMMAND NAMES",
-which is the property that was ever worth having — and the narrowing is written
-into every place that states it rather than left for somebody to discover.
-
-**THE TWO GRANTS ARE READ BY DIFFERENT MEANS, AND 13.11 HAD TO FIX THAT.**
-Accessibility is a fact about THIS PROCESS, which posts its own `CGEvent`s, so
-`AXIsProcessTrusted` answers about the thing that acts. Automation is a fact
-about a CHANNEL: this bridge never sends an AppleEvent itself — every one leaves
-an `osascript` subprocess, and macOS attributes a subprocess's events to whatever
-process it holds RESPONSIBLE for it. So an API that answers about the calling
-binary answers about a process that sends nothing.
-
-Measured 2026-08-30, seconds apart, on the maintainer's machine:
-`AEDeterminePermissionToAutomateTarget` returned **-1744** from an unsigned
-launcher — reported as `notGranted` — while that same process's `osascript` had
-just driven the reader through a whole MCP session. The grant was held all along,
-by the responsible process: VS Code was launched over SSH, Claude Code from VS
-Code, and the bridge from Claude Code, so TCC consulted
-`/usr/libexec/sshd-keygen-wrapper`. `TCCPermissionBroker` now asks the channel
-and reads the NUMBER — `-1743` is the missing grant, a reply is the grant, and
-anything else is `cannotTell` rather than a guess, because "the reader is not
-running" is not evidence about a permission.
-
-**THE ACCESSIBILITY GRANT IS REQUESTED FROM TWO PLACES, BOTH COMMAND HANDLERS,
-BOTH THROUGH `AccessibilityGrant`:** `TypeTextHandler` on a `typeText` (13.8),
-and `PressGestureHandler` on a batch containing a **keystroke** (13.17). Not at
-construction, not in `Wiring`, not in `VoiceOverAdapterFactory`, not in
-`scripts/doctor.py`, not in a probe, and **not in a test**. That is what makes
+**THE LEVER THIS SECTION WAS BUILT AROUND IS SPENT, AND THE RECEIPT IS IN
+`AccessibilityGrant`'s HEADER.** The two halves of input used to cost DIFFERENT
+permissions: a command name through `pressGesture` was an AppleEvent to the reader
+and cost nothing, so
 
 > a session that presses only the reader's COMMAND NAMES and reads speech never
 > triggers an Accessibility request
 
+was a checkable statement about this bridge. 13.17 narrowed it by one word, 13.25
+spent it deliberately — a lever bought by driving the reader in a way no user does
+is bought with the fidelity this tool sells — and 13.31 removed the route it named,
+so the sentence would now describe a session that presses nothing at all. It is
+struck rather than narrowed a third time.
+
+**THE TWO GRANTS WERE READ BY DIFFERENT MEANS, AND THAT IS WORTH KNOWING EVEN
+THOUGH ONE IS GONE.** Accessibility is a fact about THIS PROCESS, which posts its
+own `CGEvent`s, so `AXIsProcessTrusted` answers about the thing that acts.
+Automation was a fact about a CHANNEL: every AppleEvent left an `osascript`
+subprocess, and macOS attributes a subprocess's events to whatever process it holds
+RESPONSIBLE for it — so an API that answers about the calling binary answers about
+a process that sends nothing. Measured 2026-08-30, seconds apart, on the
+maintainer's machine: `AEDeterminePermissionToAutomateTarget` returned **-1744**
+from an unsigned launcher — reported as `notGranted` — while that same process's
+`osascript` had just driven the reader through a whole MCP session, because TCC
+consulted `/usr/libexec/sshd-keygen-wrapper` over SSH. 13.11 fixed it by asking the
+channel; 13.31 deleted the channel, the permission and `PermissionState.cannotTell`
+with it. **If a second permission ever arrives, that asymmetry is the trap to look
+for first.**
+
+**THE ACCESSIBILITY GRANT IS REQUESTED FROM TWO PLACES, BOTH COMMAND HANDLERS,
+BOTH THROUGH `AccessibilityGrant`:** `TypeTextHandler` on a `typeText` (13.8), and
+`PressGestureHandler` on a batch that contains anything at all. Not at
+construction, not in `Wiring`, not in `VoiceOverAdapterFactory`, **not in the
+HANDSHAKE** — which reads the grant at rung 1 and requests nothing — not in
+`scripts/doctor.py`, not in a probe, and **not in a test**. That is what makes
+
+> connecting to this reader never raises a consent dialog, and nothing but a
+> command about to post an event ever asks for one
+
 a *checkable statement about this bridge* rather than an intention, and the check
 is a round trip in `Tests/Integration/SessionRoundTripTests.swift` that drives a
-handshake, a command-name gesture, a speech read, an `announce` and an `askUser`
-past a counting broker, asserts it was asked nothing at all, and only then sends
-the two commands that may ask. `Wiring` **constructs** `TCCPermissionBroker` at
-startup and never calls it: constructing asks nobody anything, and only `request`
-raises a dialog.
+handshake, a speech read, a `getFocusInfo`, an `announce` and an `askUser` past a
+counting broker, asserts it was asked nothing at all, and only then sends the
+commands that may ask. `Wiring` **constructs** `TCCPermissionBroker` at startup and
+never calls it: constructing asks nobody anything, and only `request` raises a
+dialog.
 
 **The shared check is a file because the second caller arrived**, which is the
 rule `HumanWarning` and `Observation` were both created by. Two hand-written
@@ -787,33 +835,45 @@ suppression that is not in force.
 the text where `typed` records a length, and the asymmetry is deliberate: an
 announcement is written to be heard out loud in a room, and a password is not.
 
-## Focus has TWO ROUTES, and the grant picks one without ever being asked for
+## Focus has ONE route, and it reads the grant without ever asking for it
 
 `getFocusInfo` answers from the **accessibility tree** of the frontmost
-application when this process holds the Accessibility grant, and from
-**VoiceOver's own cursor** over AppleEvents when it does not. Five rules bind
-anyone editing this, and the first is the one that keeps the section above true.
+application. Four rules bind anyone editing this, and the first is the one that
+keeps the section above true.
+
+**IT HAD A SECOND ROUTE UNTIL 13.31**, and it is worth a sentence because the
+deletion was a consequence rather than a decision: without the Accessibility grant,
+`name` came from **VoiceOver's own cursor** over an AppleEvent and the rest stayed
+empty. Since 13.31 pressing keys is the only way this bridge drives the reader, so
+rung 1 refuses a machine that will not grant Accessibility, so no session can enter
+that branch. A branch no session can reach is deleted rather than kept as
+reassurance. The MEASUREMENTS from it are kept below, because they are about the
+reader rather than about the route.
 
 **The grant is READ, never requested, and the reading happens at the adapter
 layer.** `VoiceOverFocusInspector` holds `AccessibilityTrust` — a seam with one
-method, `isTrusted()`, answered by the same `TCCPermissionBroker` that answers
-the domain's `PermissionBroker` — and not the domain port itself. That is
-deliberate rather than incidental: focus is the one command that WANTS 13.8's
-grant and does not move the machine to earn it, so the guarantee is made
-structural, by handing it an object that cannot request anything. `Tests/Integration/SessionRoundTripTests.swift` drives
-`getFocusInfo` down both routes past a counting broker and asserts it was asked
-nothing at all. If you ever hand the inspector the broker, you have spent the
-lever. The alternative that was declined — `focusInfo(accessibilityGranted:)`,
-with the controller passing the answer down — is recorded in spec 0046's 13.9
-section with its why.
+method, `isTrusted()`, answered by the same `TCCPermissionBroker` that answers the
+domain's `PermissionBroker` — and not the domain port itself. That is deliberate
+rather than incidental: the guarantee is made structural, by handing focus an
+object that cannot request anything.
+`Tests/Integration/SessionRoundTripTests.swift` drives `getFocusInfo` past a
+counting broker and asserts it was asked nothing at all. If you ever hand the
+inspector the broker, you have spent it. The alternative that was declined —
+`focusInfo(accessibilityGranted:)`, with the controller passing the answer down —
+is recorded in spec 0046's 13.9 section with its why.
 
-**Nothing merely empty is a fault.** Nothing focused, no title, `missing value`,
-no bundle identifier: each is an ANSWER. Spec 0047's finding 5 is the argument —
-with VoiceOver frontmost every read comes back empty because it publishes no
-accessibility tree of its own, and a bridge that reported a named reader fault
-for that would be diagnosing its own doing. What throws is a channel that refused
-the question: the AppleEvents grant missing, the reader not running, the
-accessibility API refusing outright.
+**A REVOKED GRANT IS A NAMED FAILURE, and that is what replaced the fallback.**
+Every session holds Accessibility at the handshake, so an untrusted read here means
+a human revoked it mid-session. Answering an empty snapshot would say "nothing is
+focused", which an agent would act on by going to look for a defect in the
+application under test — so it throws, naming the permission and its recovery.
+
+**Nothing merely empty is a fault.** Nothing focused, no title, no bundle
+identifier: each is an ANSWER. Spec 0047's finding 5 is the argument — with
+VoiceOver frontmost every read comes back empty because it publishes no
+accessibility tree of its own, and a bridge that reported a named reader fault for
+that would be diagnosing its own doing. What throws is a channel that refused the
+question: the grant revoked, or the accessibility API refusing outright.
 
 **`AXUIElementCreateSystemWide()` fails with `-25204 kAXErrorCannotComplete`,
 and no permission fixes it.** It is not `kAXErrorAPIDisabled` (-25211), so
@@ -826,18 +886,20 @@ the measurement where whoever tries the system-wide element will read it, and
 expected to fail** — re-measured 2026-08-30, still `-25204`.
 
 **The two cursors separate on ONE keystroke, and the tree tracks the KEYBOARD
-one.** Measured 2026-08-30, macOS 15.0, and re-runnable as `bash
+one.** (The measurement below was taken when both were readable from here; only
+the tree is now, and the split is still real — it is what a session sees versus
+what the person hears.) Measured 2026-08-30, macOS 15.0, and re-runnable as `bash
 scripts/voiceover_cursors.sh`: with a TextEdit document focused, one press of the
 reader's own `stop interacting with item` moved the `vo cursor` to the scroll
 area while the `keyboard cursor` and the accessibility tree both stayed on the
 focused text. So `getFocusInfo` answering the keyboard view is a real choice with
 a real consequence — an agent that navigates with VoiceOver commands and then
 asks where it is gets the element it left, and the one it is on comes from
-`pressGesture ["describe item in voiceover cursor"]` plus a speech read. **The
-same run found that the VO cursor's answer is LOCALIZED** — `área de rolagem`,
-where the tree says `AXTextArea` on every machine — so the fallback route's
-`name` is not comparable across machines. That is not a reason to withhold it; it
-is a reason no check may compare it. **And one negative worth keeping**: `move
+`pressGesture ["vo+f3"]` plus a speech read. **The same run found that the VO
+cursor's answer is LOCALIZED** — `área de rolagem`, where the tree says
+`AXTextArea` on every machine — which is why nothing may compare it, and which
+turned out to be one more reason the deleted fallback was worth less than it
+looked. **And one negative worth keeping**: `move
 right` inside a text area shows none of this, because it moves the cursor within
 the element while `text under cursor` reports the whole element, so the run looks
 like agreement when nothing was tested.
@@ -1018,10 +1080,12 @@ Four rules bind anyone editing it.
   vocabulary.
 - **It names a curated subset of the toggles and NO table of the vocabulary.**
   The 414 command names stay out of this repo for the reason the gesture section
-  below gives; what the document adds is which toggles matter, that each
-  announces its own result — which is how an agent reads state on a reader that
-  cannot be asked — and that the reader is the authority on the rest. The names
-  in it were read out of `SCRStringsToCommandsMap.scrconfig`, not recalled.
+  gives; what the document adds is which toggles matter, that each announces its
+  own result — which is how an agent reads state on a reader that cannot be asked —
+  and that the reader is the authority on the rest. The names in it were read out
+  of `SCRStringsToCommandsMap.scrconfig`, not recalled, and since 13.31 they are
+  presented as the act's NAME — what you type into the Commands menu — rather than
+  as an id a session can send.
 
 **The handshake carries it too.** `hello` sends the same document (protocol.md
 §3) so a session gets it without a second round trip, and a server that receives
@@ -1089,9 +1153,10 @@ reads the same persisted settings the dialog will edit: it starts from
 `UserDefaultsBridgeConfig` and lets this run's flags override them without
 writing anything. It also plays the audible cues as well as printing them, and
 prints what the machine can do before anything is pressed — the capture voice's
-state, whether AppleScript control of VoiceOver is on, and which permissions are
-held. **None of that asks a human for anything**: `status` shows no dialog, and
-the scripting setting is two file reads.
+state and whether the Accessibility grant is held. **Neither asks a human for
+anything**: `status` shows no dialog. It printed two more rows until 13.31 — the
+Automation grant and VoiceOver's AppleScript switch — and both went with the
+channel that needed them.
 
 ## Tests
 

@@ -11,9 +11,9 @@ paragraph saying which side of the boundary you stand on.
 Read the stance you were given by `connect_reader`, and the profiles in
 `screenreader://guidance`, and apply it here yourself. Whatever it says, drive by
 pressing the keys a VoiceOver user presses — `vo+m`, `vo+rightArrow`, `vo+space` —
-rather than by dispatching the reader's own command names, for the reason the
-first section of this document gives: a keystroke passes the application under
-test and a command name does not. If the stance you hold is
+which is the only route this bridge has, for the reason the first section of this
+document gives: a keystroke passes the application under test and the reader's own
+command names do not. If the stance you hold is
 a restricted one, the two things to treat as unavailable on this reader are the
 **mouse commands** — `move mouse pointer to voiceover cursor`, `describe item in
 mouse pointer`, and clicking — and the **hot spots**. Note that this is a

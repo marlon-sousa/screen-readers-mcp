@@ -95,11 +95,15 @@ struct VoiceOverPrefsModifierSettingTests {
 		#expect(setting(reader).modifier() == .capsLock)
 	}
 
-	@Test("it reads the same file the scripting setting does")
+	@Test("it reads the file `VoiceOverPreferencesFile` names, and does not carry its own copy")
 	func oneIdeaOfWhereTheFileIs() {
 		// Two adapters each carrying their own copy of a path is how two adapters
 		// come to disagree about where a file is, which is why
-		// `VoiceOverPreferencesFile` exists at all.
-		#expect(VoiceOverPrefsScriptingSetting.preferencesPath(home: home) == current)
+		// `VoiceOverPreferencesFile` exists at all. It HAD two readers until 13.31
+		// -- the scripting setting was the other, and this assertion compared them
+		// directly. One reader is not a reason to inline the derivation: the next
+		// entry that reads one of VoiceOver's own preferences is the reason the
+		// file exists.
+		#expect(VoiceOverPreferencesFile.current(home: home) == current)
 	}
 }

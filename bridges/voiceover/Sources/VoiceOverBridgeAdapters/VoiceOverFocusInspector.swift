@@ -1,6 +1,6 @@
-// ROLE: adapter -- IMPLEMENTS the FocusInspector domain port, over three adapter
-// seams: AccessibilityTree, AppleScriptRunner and FrontmostApplication, plus
-// AccessibilityTrust to choose between the first two.
+// ROLE: adapter -- IMPLEMENTS the FocusInspector domain port, over two adapter
+// seams: AccessibilityTree and FrontmostApplication, plus AccessibilityTrust to
+// say whether the first can be asked at all.
 //
 // BUILT BY: VoiceOverAdapterFactory. USED BY: the GetFocusInfo handler, through
 // the port.
@@ -12,22 +12,26 @@
 // attribute values and another reads NSWorkspace; neither decides anything.
 //
 // ============================================================================
-// TWO ROUTES, CHOSEN BY A PERMISSION THIS BRIDGE NEVER ASKS FOR.
+// ONE ROUTE SINCE 13.31. IT HAD A SECOND, AND THE SECOND STOPPED BEING REACHABLE.
 // ============================================================================
 //
-// With the Accessibility grant held: `name`, `role`, `states` and `value` come
-// from the accessibility tree of the frontmost application. Without it: `name`
-// comes from VoiceOver's own cursor over AppleEvents, and the rest is empty.
-// `appModule` is answered from NSWorkspace on both, because it costs nothing on
-// either.
+// `name`, `role`, `states` and `value` come from the accessibility tree of the
+// frontmost application; `appModule` comes from NSWorkspace, which costs nothing.
 //
-// THE GRANT IS READ, NEVER REQUESTED. `AccessibilityTrust.isTrusted()` shows no
-// dialog and adds this process to no list; every call to
-// `PermissionBroker.request` in this repository is in a command handler that is
-// about to post a system event -- a `typeText`, or a keystroke `pressGesture` --
-// and 13.8's lever is that reading focus never joins them. So focus is RICHER on a
-// machine where typing has already been granted and works everywhere else --
-// which is the honest shape for a capability that cannot pay for itself.
+// THE FALLBACK THAT WENT: without the Accessibility grant, `name` used to come
+// from VoiceOver's own cursor over an AppleEvent and the rest stayed empty. It was
+// there for a session that had no Accessibility grant -- and since 13.31 there is
+// no such session, because pressing keys is the only way this bridge drives the
+// reader and rung 1 refuses a machine that will not allow it (spec 0055). A branch
+// no session can enter is deleted rather than kept as reassurance.
+//
+// THE GRANT IS STILL READ HERE, AND NEVER REQUESTED. That is not vestigial: a
+// human can revoke Accessibility while a session is open, and what must happen
+// then is a failure that NAMES THE GRANT rather than an empty snapshot that reads
+// as "nothing is focused". `AccessibilityTrust.isTrusted()` shows no dialog and
+// adds this process to no list, which is exactly why focus reads the seam and not
+// the domain port -- a port could go on to ask a human, and reading where you are
+// must never raise a consent dialog.
 //
 // AND THE TWO VIEWS REALLY DO SEPARATE -- MEASURED 2026-08-30, macOS 15.0
 // (24A335), rather than assumed. With a TextEdit document focused, one press of
@@ -53,11 +57,13 @@
 // not a reason to withhold the fallback: a name a human can read is worth more
 // than nothing when the grant is absent. It IS a reason no check may compare it.
 //
-// THERE IS NO FALLBACK BETWEEN THE ROUTES, deliberately. A tree route that finds
-// nothing focused answers EMPTY rather than quietly asking the cursor: the two
-// are different views (spec 0046, "The two cursors, settled"), and an answer
-// that silently came from the other one is an answer an agent cannot interpret.
-// The grant picks the route; the route answers.
+// THERE WAS NO FALLBACK BETWEEN THE ROUTES EVEN WHEN THERE WERE TWO, and the
+// reason is why the measurement above is kept: a tree route that found nothing
+// focused answered EMPTY rather than quietly asking the cursor, because the two
+// are different views and an answer that silently came from the other one is an
+// answer an agent cannot interpret. With one route left the rule is trivially
+// satisfied, and it is written down so that a future second route does not arrive
+// as a silent fallback.
 //
 // ============================================================================
 // AN EMPTY ANSWER IS NOT A FAULT, AND ON THIS READER THAT IS A RULE.
@@ -69,16 +75,17 @@
 // from an application that has wedged (measured 2026-08-30: an unresponsive
 // Finder, with VoiceOver entirely healthy and saying so out loud). NOTHING HERE
 // MAY REPORT A READER FAULT FOR AN EMPTY READ. What throws is a channel that
-// refused the question: the AppleEvents grant missing, the reader not running,
-// the accessibility API refusing outright.
+// refused the question: the Accessibility grant revoked, or the accessibility API
+// refusing outright.
 //
 // AND NO STRING THE READER RENDERS IS EVER COMPARED. `AXRole` is a framework
 // constant -- `AXButton` on every machine -- while `AXRoleDescription` is the
 // localized rendering of it and would make `role` mean something different on
 // the maintainer's Portuguese machine than on an English one. The states below
-// are derived from BOOLEAN attributes for the same reason. `missing value` is
-// the one literal matched here and it is AppleScript's own token, not the
-// reader's text.
+// are derived from BOOLEAN attributes for the same reason. Since 13.31 there is no
+// literal matched here at all: the one that used to be, `missing value`, belonged
+// to the deleted cursor route and was AppleScript's own null token rather than any
+// text the reader wrote.
 
 import VoiceOverBridgeDomain
 
@@ -107,51 +114,40 @@ public final class VoiceOverFocusInspector: FocusInspector {
 		("AXEnabled", false, "disabled"),
 	]
 
-	/// The cursor route's one script. Static and pure, so the text that would
-	/// reach `osascript` is asserted by a unit test -- the same guarantee
-	/// `VoiceOverGestureSender.script(for:)` gives the gesture edge.
-	///
-	/// THE VO CURSOR, NOT THE KEYBOARD CURSOR. VoiceOver's dictionary exposes
-	/// both, each with its own `text under cursor`, and they are two views that
-	/// only usually agree. `getFocusInfo` means the keyboard/accessibility view
-	/// (spec 0046, "The two cursors, settled"), and the VO cursor is what remains
-	/// readable when the accessibility route is shut -- so this is the fallback,
-	/// stated as one. An agent that wants what the USER HEARS asks for
-	/// `pressGesture ["describe item in voiceover cursor"]` and reads the speech.
-	static let cursorScript =
-		"tell application \"VoiceOver\" to return text under cursor of vo cursor"
-
-	/// AppleScript's own token for "there is nothing there". NOT a reader string:
-	/// it is the language's null literal as `osascript` prints it, which is why
-	/// matching it is allowed where matching a rendered name would not be.
-	static let missingValue = "missing value"
-
 	private let tree: any AccessibilityTree
-	private let scripts: any AppleScriptRunner
 	private let frontmost: any FrontmostApplication
 	private let trust: any AccessibilityTrust
 
 	public init(
 		tree: any AccessibilityTree,
-		scripts: any AppleScriptRunner,
 		frontmost: any FrontmostApplication,
 		trust: any AccessibilityTrust
 	) {
 		self.tree = tree
-		self.scripts = scripts
 		self.frontmost = frontmost
 		self.trust = trust
 	}
 
 	public func focusInfo() throws -> FocusSnapshot {
-		// ASKED FIRST AND ON BOTH ROUTES, because it costs no permission and it is
-		// the only field either route can always fill in.
+		// ASKED FIRST, because it costs no permission and it is the one field this
+		// answer can carry even when there is nothing focused at all.
 		let application = frontmost.frontmostApplication()
 		let appModule = application?.bundleIdentifier
 
-		guard trust.isTrusted(), let application else {
-			return try cursorSnapshot(appModule: appModule)
+		// THE GRANT IS THE ONLY THING THAT CAN TAKE THIS ROUTE AWAY, and it is a
+		// FAILURE rather than an empty answer -- see the header. A session cannot
+		// begin without it, so seeing it here means a human revoked it mid-session,
+		// and an agent told "nothing is focused" would go looking for a defect in the
+		// application instead of asking for its grant back.
+		guard trust.isTrusted() else {
+			throw FocusError(
+				"the focus cannot be read: \(Permission.accessibility.described) Every session of "
+				+ "this bridge holds that grant at the handshake, so it has been revoked since this "
+				+ "one began.")
 		}
+		// NOTHING FRONTMOST IS AN ANSWER, not a fault: it is what a machine between
+		// applications looks like, and the empty snapshot says so honestly.
+		guard let application else { return FocusSnapshot(appModule: appModule) }
 		return try treeSnapshot(application, appModule: appModule)
 	}
 
@@ -223,54 +219,6 @@ public final class VoiceOverFocusInspector: FocusInspector {
 				? String(Int64(number)) : String(number)
 		case .opaque, nil:
 			return nil
-		}
-	}
-
-	// -- the VoiceOver cursor route ---------------------------------------------
-
-	private func cursorSnapshot(appModule: String?) throws -> FocusSnapshot {
-		let text: String
-		do {
-			text = try scripts.run(Self.cursorScript)
-		} catch let failure as AppleScriptError {
-			throw FocusError(Self.explain(failure))
-		} catch {
-			throw FocusError("could not run the script: \(error)")
-		}
-		// `missing value` IS EMPTY, NOT AN ERROR -- spec 0047's finding 5, which is
-		// the whole reason this line is a mapping rather than a `throw`.
-		let name = text == Self.missingValue ? "" : text
-		// `role`, `states` and `value` stay empty: the cursor answers with a
-		// rendering, not with structure, and inventing a role from it would be a
-		// guess an agent could not tell from a reading.
-		return FocusSnapshot(name: name, appModule: appModule)
-	}
-
-	/// What an AppleScript failure means to an agent asking where it is.
-	///
-	/// IT REUSES THE NUMBERS `VoiceOverGestureSender` DECLARES rather than
-	/// copying them: they cost live measurements to learn, and two adapters with
-	/// their own copies is one drift away from two bridges disagreeing about the
-	/// same machine. The messages are local because the recoveries are -- nothing
-	/// was pressed here, so there is nothing to say about a command.
-	static func explain(_ failure: AppleScriptError) -> String {
-		switch failure.number {
-		case VoiceOverGestureSender.notAuthorized:
-			return
-				"this bridge is not allowed to send AppleEvents to VoiceOver (\(failure.number)): "
-				+ "\(failure.message). Recovery: allow it under System Settings > Privacy & Security "
-				+ "> Automation, and check that AppleScript control of VoiceOver is enabled in "
-				+ "VoiceOver Utility > General. Granting Accessibility instead would let this bridge "
-				+ "read the focus from the accessibility tree, which is the richer answer"
-		case VoiceOverGestureSender.applicationIsNotRunning:
-			return
-				"VoiceOver is not running (\(failure.number)): \(failure.message). "
-				+ "Recovery: start it with Command-F5"
-		case let number where VoiceOverGestureSender.objectModelDead.contains(number):
-			return "the focus could not be read from the VoiceOver cursor. "
-				+ ReaderCondition.scriptingChannelDead.described
-		default:
-			return "the focus could not be read from the VoiceOver cursor: \(failure.description)"
 		}
 	}
 }

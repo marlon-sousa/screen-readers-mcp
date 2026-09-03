@@ -116,7 +116,7 @@ public struct ReaderEdgeSetup {
 	/// none of it.
 	static let pollInterval: Double = 0.25
 
-	/// The command the capture proof performs, whichever route it takes.
+	/// The command the capture proof performs.
 	///
 	/// IT MOVES NOTHING AND IT ALWAYS SPEAKS, which are the two properties a probe
 	/// needs and which the previous one only half had. `describe item in voiceover
@@ -130,10 +130,13 @@ public struct ReaderEdgeSetup {
 	/// speak and which MOVES the VoiceOver cursor: a connect that quietly walked
 	/// somebody's cursor to the dock would be a small invisible edit to where they
 	/// were standing, every time.
-	public static let captureProbeCommand = "speak the time and date"
-
-	/// The same command as a KEYSTROKE, for a machine with no AppleScript control
-	/// -- 13.26.
+	///
+	/// IT IS PRESSED, AND SINCE 13.31 THAT IS THE ONLY WAY IT IS SENT. The rung
+	/// briefly chose between this key and the same act dispatched by name, taking
+	/// the name where the machine offered it because a probe is not a user act and
+	/// the name sends no event into whatever window the person is sitting in. That
+	/// route no longer exists -- see spec 0055 -- so the choice went with it, and
+	/// the probe is now the one thing this bridge does everywhere: a keystroke.
 	///
 	/// Read off the reader's own factory configuration
 	/// (`scripts/voiceover_default_bindings.py`), not recalled, and measured to
@@ -163,137 +166,95 @@ public struct ReaderEdgeSetup {
 	/// and the agent must read ONE vocabulary of failure rather than two --
 	/// exactly what the Hello handler already does for `AdapterFactoryError`.
 	public func establish() throws {
-		let routes = try confirmPermissions()
+		let modifier = try confirmPermissions()
 		try confirmReaderIsRunning()
 		try registerProvider()
 		try selectCaptureVoice()
 		try openSilenceChannel()
-		try proveCapture(over: routes)
-	}
-
-	/// Which ways this machine offers of making the reader do something -- 13.26.
-	///
-	/// COMPUTED ONCE, AT RUNG 1, AND CARRIED. Rung 5 chooses its probe route from
-	/// this rather than asking the machine again, so one handshake cannot read a
-	/// permission twice and get two answers -- and so a test can assert that each
-	/// grant is read exactly once, which is how "nothing here requests anything"
-	/// stays checkable.
-	struct Routes {
-		/// Accessibility is granted AND `vo` resolves on this machine, so the
-		/// reader's own commands can be PRESSED. Spec 0052's route.
-		///
-		/// THE SECOND HALF IS NOT PEDANTRY, AND IT WAS MEASURED. On a machine whose
-		/// VoiceOver modifier is bound to Caps Lock alone, a synthesized Caps Lock
-		/// is invisible to the reader: measured 2026-09-02 on the maintainer's
-		/// machine, with him listening -- `caps+d` sent as a real flag transition,
-		/// held 150 ms, produced no "dock" and typed a `d` into the text editor that
-		/// had focus. So Accessibility alone does not mean the reader can be driven;
-		/// it means keys can be pressed AT something, which is a different claim.
-		let keys: Bool
-		/// The AppleEvents grant AND VoiceOver's own AppleScript switch, so the
-		/// reader's own command names can be dispatched.
-		let commandNames: Bool
-		/// What the person has bound `vo` to, read once at rung 1 and carried, so
-		/// rung 1 and the probe cannot read the machine twice and get two answers.
-		let modifier: ModifierSetting
+		try proveCapture(pressing: modifier)
 	}
 
 	// -- rung 1: permissions ---------------------------------------------------
 
-	/// READ what this machine allows, and require ONE WORKABLE ROUTE to the reader
-	/// -- not every permission. Nothing is requested, and nothing here can request
-	/// anything.
+	/// READ what this machine allows, and require the ONE route this bridge has.
+	/// Nothing is requested, and nothing here can request anything.
 	///
 	/// ============================================================================
-	/// IT USED TO DEMAND BOTH GRANTS, AND 13.26 IS WHY THAT WAS WRONG.
+	/// IT ASKED TWO QUESTIONS UNTIL 13.31, AND NOW IT ASKS ONE.
 	/// ============================================================================
 	///
-	/// The old rule looped over `Permission.allCases` and refused a session unless
-	/// every one was granted, on the reasoning that "a permission a session cannot
-	/// work without" is what the enum holds. That reasoning was sound and the
-	/// premise had stopped being true: since 13.25 this reader can be driven
-	/// entirely by KEYSTROKES, which need Accessibility and no AppleEvents at all.
+	/// 13.26 widened this rung from "every permission" to "either of two routes",
+	/// because a machine could be driven by keystrokes OR by the reader's own
+	/// command names, and demanding both refused sessions that only needed one.
+	/// 13.31 deleted the command-name route outright -- no VoiceOver user can type
+	/// a command name, and the route was bought by asking a blind person to leave
+	/// "Allow VoiceOver to be controlled with AppleScript" on, which lets ANY
+	/// process drive their screen reader (spec 0055). So the question is now the
+	/// narrow one:
 	///
-	/// And the requirement behind 13.26 is not convenience. "Allow VoiceOver to be
-	/// controlled with AppleScript" lets ANY process drive the screen reader a blind
-	/// person depends on; a bridge that makes them leave it on in order to be tested
-	/// is asking them to hold a door open for everyone. So the question this rung
-	/// asks is the honest one: IS THERE A WAY TO DRIVE THIS READER AT ALL?
+	///   Accessibility granted, AND a `vo` this bridge can press.
 	///
-	///   * Accessibility granted        -> keys. The route 13.25 recommends.
-	///   * Automation granted AND the
-	///     AppleScript switch on        -> the reader's own command names.
+	/// THE SECOND HALF IS NOT PEDANTRY, AND IT WAS MEASURED. On a machine whose
+	/// VoiceOver modifier is bound to Caps Lock alone, a synthesized Caps Lock is
+	/// invisible to the reader: measured 2026-09-02 on the maintainer's machine,
+	/// with him listening -- `caps+d` sent as a real flag transition, held 150 ms,
+	/// produced no "dock" and typed a `d` into the text editor that had focus. So
+	/// Accessibility alone does not mean the reader can be driven; it means keys can
+	/// be pressed AT something, which is a different claim.
 	///
-	/// Neither, and the session is refused HERE, before anything is touched, naming
-	/// BOTH fixes -- because an agent told about only one of them will send a human
-	/// to grant the wrong thing.
+	/// THAT MACHINE NOW GETS NO SESSION AT ALL, and it is the one thing 13.31 makes
+	/// strictly worse for somebody: until this entry a Caps-Lock machine with the
+	/// AppleScript switch on could still be driven by name. It is board entry 13.28,
+	/// it is open, and the refusal below names what a human can change.
 	///
-	/// A `cannotTell` on the automation grant is NOT a route. It is read through a
-	/// channel that may itself be off, which is exactly the state this entry
-	/// expects to be ordinary now, and a route this bridge is unsure of is not one
-	/// it may build a handshake on.
-	private func confirmPermissions() throws -> Routes {
+	/// PRESSABLE NOW, AND 13.26 TRIED TO WIDEN THIS AND HAD TO PUT IT BACK. That
+	/// entry briefly asked only that the modifier be READABLE, on the reasoning that
+	/// a Caps-Lock machine could be repaired: write Control-Option, restart, write
+	/// the person's own choice straight back. THE LIVE RUN KILLED IT -- writing that
+	/// key under a running reader makes VoiceOver put a modal question on screen
+	/// asking the person whether they wanted Control-Option, which blocks the reader
+	/// from quitting and changes a setting nobody chose (measured 2026-09-02).
+	///
+	/// The returned modifier is CARRIED to rung 5 rather than re-read there, so one
+	/// handshake cannot read the machine twice and get two answers -- and so a test
+	/// can assert that each grant is read exactly once, which is how "nothing here
+	/// requests anything" stays checkable.
+	private func confirmPermissions() throws -> ModifierSetting {
 		let accessibility = adapters.permissions.status(of: .accessibility)
-		let automation = adapters.permissions.status(of: .automationVoiceOver)
-		let scripting = adapters.readerScripting.scripting()
-		// `vo` has to RESOLVE for the key route to reach the reader -- see `Routes`.
-		//
-		// PRESSABLE NOW, and 13.26 tried to widen this and had to put it back. The
-		// entry briefly asked only that the modifier be READABLE, on the reasoning
-		// that a Caps-Lock machine could be repaired: write Control-Option, restart,
-		// write the person's own choice straight back. THE LIVE RUN KILLED IT --
-		// writing that key under a running reader makes VoiceOver put a modal
-		// question on screen asking the person whether they wanted Control-Option,
-		// which blocks the reader from quitting and changes a setting nobody chose
-		// (measured 2026-09-02). So the question is the narrow one again: can this
-		// bridge press `vo` as the machine stands?
 		let modifier = adapters.readerModifier.modifier()
-		let modifierPressable = modifier == .controlOption || modifier == .controlOptionOrCapsLock
-		let routes = Routes(
-			keys: accessibility == .granted && modifierPressable,
-			commandNames: automation == .granted && scripting == .enabled,
-			modifier: modifier)
+		let pressable = modifier == .controlOption || modifier == .controlOptionOrCapsLock
 		context.transcript.note(
-			"setup: routes -- keys \(routes.keys ? "yes" : "no"), "
-				+ "command names \(routes.commandNames ? "yes" : "no"), "
-				+ "vo is \(modifier.rawValue)")
-		guard !routes.keys, !routes.commandNames else { return routes }
-		throw CommandError(
-			SetupRung.permissions.failed(
-				"this bridge has no way to drive VoiceOver on this machine, and it needs only ONE of "
-					+ "the two. Pressing the reader's own commands as KEYS needs the Accessibility "
-					+ "grant, which is \(described(accessibility)), AND a VoiceOver modifier this "
-					+ "bridge can synthesize -- it is set to \(modifier.rawValue) here, and a "
-					+ "synthesized Caps Lock is invisible to the reader (measured 2026-09-02). Sending "
-					+ "the reader's own COMMAND NAMES needs the AppleEvents grant, which is "
-					+ "\(described(automation)), together with VoiceOver's own AppleScript switch, "
-					+ "which is \(scripting.rawValue).",
-				agentMustDo:
-					"ask the human at this machine for EITHER: Accessibility, under System Settings > "
-					+ "Privacy & Security > Accessibility -- which is the route to prefer, since it is "
-					+ "what a person's own keystrokes use and it leaves VoiceOver closed to every other "
-					+ "process on the machine, and with the VoiceOver modifier set to Control-Option "
-					+ "under VoiceOver Utility > Commands -- OR VoiceOver Utility > General > \"Allow "
-					+ "VoiceOver to be controlled with AppleScript\" together with the Automation "
-					+ "grant. Then "
-					+ "connect again. This bridge does not raise a consent dialog itself: a handshake "
-					+ "that waited for a modal nobody may be looking at is a handshake that hangs."
-			))
+			"setup: accessibility \(described(accessibility)), vo is \(modifier.rawValue)")
+		guard accessibility == .granted, pressable else {
+			throw CommandError(
+				SetupRung.permissions.failed(
+					"this bridge drives VoiceOver by pressing the keys a person presses, and it cannot "
+						+ "do that here. The Accessibility grant is \(described(accessibility)), and the "
+						+ "VoiceOver modifier is set to \(modifier.rawValue) -- a synthesized Caps Lock "
+						+ "is invisible to the reader (measured 2026-09-02), so `vo` has to be "
+						+ "Control-Option for this bridge to press it.",
+					agentMustDo:
+						"ask the human at this machine for the Accessibility grant, under System "
+						+ "Settings > Privacy & Security > Accessibility, and for the VoiceOver modifier "
+						+ "to include Control-Option, under VoiceOver Utility > Commands. Then connect "
+						+ "again. This bridge does not raise a consent dialog itself: a handshake that "
+						+ "waited for a modal nobody may be looking at is a handshake that hangs."
+				))
+		}
+		return modifier
 	}
 
-	/// One permission state, in words, keeping `cannotTell` distinguishable.
+	/// One permission state, in words.
 	///
-	/// A READ THAT DID NOT COME BACK IS NOT A "NO", and it must not read as one:
-	/// the automation grant is answered through a channel that may itself be off,
-	/// which is the ordinary state this entry expects now. An agent told "the grant
-	/// is missing" would send a human to a settings pane that may already be right.
+	/// IT HAD A THIRD ANSWER UNTIL 13.31 and does not need one now: `cannotTell`
+	/// existed because the automation grant was read through a channel that could
+	/// itself be off, and a read that did not come back is not a "no". There is one
+	/// permission left, `AXIsProcessTrusted` always answers it, and a state nothing
+	/// can return is worse than no state at all.
 	private func described(_ state: PermissionState) -> String {
 		switch state {
 		case .granted: return "granted"
 		case .notGranted: return "not granted"
-		case .cannotTell:
-			return "one this bridge could not determine -- the channel that answers it did not "
-				+ "reply, which is not itself a permission failure"
 		}
 	}
 
@@ -529,9 +490,9 @@ public struct ReaderEdgeSetup {
 	/// utterance arriving, and this is the first thing in the bridge that
 	/// supplies that evidence rather than inferring around it. The promotion goes
 	/// through the entity's own pure rule so there is one definition of it.
-	private func proveCapture(over routes: Routes) throws {
+	private func proveCapture(pressing modifier: ModifierSetting) throws {
 		let bookmark = speech.nextIndex()
-		try speakTheProbe(over: routes)
+		try speakTheProbe(pressing: modifier)
 		let heard = !speech.collectSince(bookmark, grace: Self.captureProofSeconds).entries.isEmpty
 		let reached = adapters.providerLifecycle.state().observing(captured: heard)
 		guard reached == .capturing else {
@@ -551,62 +512,36 @@ public struct ReaderEdgeSetup {
 		context.transcript.note("setup: capturing -- the reader's speech reaches this bridge")
 	}
 
-	/// Make the reader speak, by whichever route this machine offers -- 13.26.
+	/// Make the reader speak, by pressing the key bound to it.
 	///
-	/// ============================================================================
-	/// THE COMMAND NAME IS TRIED FIRST, AND THAT IS THE OPPOSITE OF 13.25's RULE.
-	/// ============================================================================
-	///
-	/// Spec 0052 made the KEYSTROKE the route for driving, because a keystroke
-	/// passes the application under test and a command name does not -- which is
-	/// the whole fidelity argument. None of that applies here: a probe is not a
-	/// user act, it is testing nothing in front of the person, and the cheapest,
-	/// least invasive route wins. A command name costs no grant and sends no key
-	/// event into whatever window the person is sitting in.
-	///
-	/// So: the command name where the machine offers it, the key where it does not,
-	/// and a named failure where it offers neither -- which rung 1 has already
-	/// refused, so reaching the third case here means the machine changed under us
-	/// mid-handshake.
+	/// ONE ROUTE SINCE 13.31. This rung used to choose: the same act dispatched by
+	/// NAME where the machine offered that channel, the key where it did not, on the
+	/// reasoning that a probe is not a user act -- it is testing nothing in front of
+	/// the person -- so the cheapest, least invasive route won, and a command name
+	/// sends no key event into whatever window somebody is sitting in. The reasoning
+	/// was sound and the channel is gone (spec 0055), so the probe is now what
+	/// everything else in this bridge is: a keystroke.
 	///
 	/// THE KEY ROUTE NEEDS `vo` RESOLVED, and on a Caps-Lock machine it cannot be
-	/// (spec 0052 §3.3). That failure is reported as itself rather than as "nothing
-	/// was captured": a bridge that could not press the probe never learned
-	/// anything about capture.
-	private func speakTheProbe(over routes: Routes) throws {
-		if routes.commandNames {
-			do {
-				try adapters.gestureSender.press(Self.captureProbeCommand)
-				context.transcript.note("setup: probe sent as a command name")
-				return
-			} catch {
-				throw CommandError(
-					SetupRung.captureProof.failed(
-						"the reader would not take '\(Self.captureProbeCommand)', which this bridge sends "
-							+ "to prove it can hear the reader at all: \(describe(error))",
-						agentMustDo:
-							"tell the human at this machine what that says, and connect again. If VoiceOver "
-							+ "has only just started, giving it a moment and reconnecting is often enough."
-					))
-			}
-		}
+	/// (spec 0052 §3.3). Rung 1 has already refused that machine, so a refusal here
+	/// means the modifier changed under us mid-handshake -- reported as itself
+	/// rather than as "nothing was captured", because a bridge that could not press
+	/// the probe never learned anything about capture.
+	private func speakTheProbe(pressing modifier: ModifierSetting) throws {
 		do {
-			let gesture = try CommandVocabulary.classify(
-				Self.captureProbeKeystroke, readerModifier: adapters.readerModifier.modifier())
-			guard case .keystroke(let keystroke) = gesture else {
-				throw CommandError("the capture probe keystroke is not a keystroke")
-			}
+			let keystroke = try CommandVocabulary.classify(
+				Self.captureProbeKeystroke, readerModifier: modifier)
 			try adapters.keyPresser.press(keystroke)
-			context.transcript.note("setup: probe pressed as a key -- \(gesture.described)")
+			context.transcript.note(
+				"setup: probe pressed -- \(CommandVocabulary.identifier(for: keystroke))")
 		} catch let refusal as GestureIdRefused {
 			throw CommandError(
 				SetupRung.captureProof.failed(
-					"this machine offers no AppleScript control of VoiceOver, so the probe has to be "
-						+ "PRESSED -- and it cannot be: \(refusal.reason)",
+					"the probe this bridge presses to prove it can hear the reader cannot be pressed "
+						+ "on this machine: \(refusal.reason)",
 					agentMustDo:
-						"tell the human at this machine that either VoiceOver's modifier has to be "
-						+ "Control-Option (VoiceOver Utility > Commands) or AppleScript control has to "
-						+ "be switched on (VoiceOver Utility > General), and connect again."
+						"tell the human at this machine that VoiceOver's modifier has to include "
+						+ "Control-Option (VoiceOver Utility > Commands), and connect again."
 				))
 		} catch let failure as KeyPressFailure {
 			throw CommandError(
@@ -635,13 +570,12 @@ public struct ReaderEdgeSetup {
 
 	/// A port's error in the words it chose for itself.
 	///
-	/// `ProviderError` and `GestureError` both carry a sentence written for this
-	/// audience; anything else is described rather than guessed at, because a
-	/// failure nobody anticipated is still worth reporting as itself.
+	/// `ProviderError` carries a sentence written for this audience; anything else
+	/// is described rather than guessed at, because a failure nobody anticipated is
+	/// still worth reporting as itself.
 	private func describe(_ error: any Error) -> String {
 		switch error {
 		case let failure as ProviderError: return failure.description
-		case let failure as GestureError: return failure.description
 		default: return String(describing: error)
 		}
 	}

@@ -124,7 +124,7 @@ struct TypeTextTests {
 		#expect(typer.typed == ["hello"])
 	}
 
-	@Test("a request that is not granted says NOT YET, names the recovery, and offers gestures")
+	@Test("a request that is not granted says NOT YET and names the recovery")
 	func aRefusedRequestSaysWhatToDo() throws {
 		// macOS raises a dialog that sends the human to System Settings, and they
 		// act on it long after the call returned -- so reporting a REFUSAL would
@@ -139,8 +139,10 @@ struct TypeTextTests {
 			// The SSH wrinkle, because an agent driving this machine remotely will
 			// otherwise be looking for an entry named after the app.
 			#expect(error.description.contains("sshd-keygen-wrapper"))
-			// And the half of input that still works without any grant at all.
-			#expect(error.description.contains("pressGesture"))
+			// AND IT OFFERS NO ALTERNATIVE, which is 13.31's doing. It used to point at
+			// `pressGesture`'s command names, which needed no grant; there is no such
+			// route now, and offering one would send an agent to an id that is refused.
+			#expect(!error.description.contains("pressGesture"))
 			#expect(error.description.contains("nothing was typed"))
 		}
 	}

@@ -144,7 +144,25 @@ driving the reader in a way no user does is bought with the fidelity this tool
 sells, and the trade was made deliberately rather than discovered. The command name
 is demoted to an automation convenience and a **diagnosis aid** (a key that does
 nothing where its name works is a rebinding or a swallowed keystroke — a finding),
-and it is the only route for the acts that ship with no key at all. Two things fell
+and it is the only route for the acts that ship with no key at all. **13.31 deleted
+it, and that demotion is the reason** — Marlon, 2026-09-03: *"if a user cannot type
+a command, why should we have to?"* A person reaches an act with no key through the
+Commands menu (`vo+h` twice, type, Enter), which is keystrokes and typed text, so
+the bridge can too; a route no human has is a route that cannot find the defects a
+human hits, and it was bought by asking a blind person to leave *"Allow VoiceOver
+to be controlled with AppleScript"* on, which lets ANY process drive their screen
+reader. **NO APPLEEVENT LEAVES THIS BRIDGE NOW.** Four of the five callers deleted
+with no capability loss at all (the capture probe already had `vo+f7`; the
+Automation grant was read only because the channel needed it; focus's cursor route
+served a session that can no longer exist; liveness had not used its script since
+13.26), and the cascade is the interesting half: `Permission.automationVoiceOver`,
+`PermissionState.cannotTell`, `ReaderScriptingSetting`, the whole `Precondition`
+entity and `ReaderCondition.scriptingChannelDead` all delete, rung 1 asks ONE
+question, and `CommandVocabulary` returns a `Keystroke` or refuses. The entry adds
+no file. Its one open cost is the **Commands menu's localization** — the deleted
+names were English and machine-independent, the menu is not — handed to 13.27; and
+a machine whose `vo` is Caps Lock alone now gets no session at all, which is 13.28.
+Spec 0055. Two things fell
 out of it that nobody was looking for: the reader's **factory key bindings are
 readable** — `SCRStringsToCommandsMap.scrconfig` joined to
 `ScreenReaderConfiguration.archived-scrconfig`, 301 name↔keystroke rows, which is

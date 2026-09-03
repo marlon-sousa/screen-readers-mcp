@@ -77,13 +77,14 @@ struct ReaderConditionTests {
 		#expect(readerRestartCommand.contains("open -a VoiceOver"))
 	}
 
-	@Test("a reader that is not running is its OWN condition, separate from a dead object model")
+	@Test("a reader that is not running is its own named condition")
 	func theReaderNotRunningIsNamed() {
-		// 13.20 needs the distinction: `scriptingChannelDead` is the reader
-		// answering its name and nothing else, and this is the reader not answering
-		// at all. Different diagnoses, different recoveries -- which is the whole
-		// argument for this file being an enum rather than a string in a handler.
-		#expect(ReaderCondition.readerNotRunning != ReaderCondition.scriptingChannelDead)
+		// IT WAS HALF OF A PAIR UNTIL 13.31: `scriptingChannelDead` was the reader
+		// answering its name and nothing else, and this was the reader not answering
+		// at all -- different diagnoses, different recoveries, which was the whole
+		// argument for this file being an enum. The other half went with the
+		// AppleScript channel it described, and this one is now the only question
+		// worth asking about the reader's existence.
 		#expect(ReaderCondition.readerNotRunning.recovery.contains("open -a VoiceOver"))
 		// It does NOT tell a human to restart: the bridge starts the reader itself,
 		// and a restart takes it away from somebody who may be using it.
@@ -96,13 +97,5 @@ struct ReaderConditionTests {
 		#expect(described.contains("captureVoiceNotSelected"))
 		#expect(described.contains(ReaderCondition.captureVoiceNotSelected.summary))
 		#expect(described.contains(ReaderCondition.captureVoiceNotSelected.recovery))
-	}
-
-	@Test("the scripting-channel condition exists, and 13.7 is what detects it")
-	func theScriptingConditionIsNamed() {
-		// Written down before anything reports it, deliberately: this file is the
-		// vocabulary, and a condition that lives in a spec and in no type is one
-		// that gets rediscovered as an empty read-back.
-		#expect(ReaderCondition.scriptingChannelDead.recovery.contains(readerRestartCommand))
 	}
 }

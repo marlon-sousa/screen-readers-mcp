@@ -2,59 +2,68 @@
 // report what the reader said.
 //
 // BUILT BY: Registry. DRIVES: the CommandVocabulary entity (what may be sent at
-// all, and WHICH ROUTE it takes), the GestureSender port (a command name), the
-// KeyPresser port (a keystroke), the PermissionBroker port (the grant a
-// keystroke costs), the session's SpeechBuffer (the grace window), and -- only
-// on a failure -- the ReaderLiveness and ReaderScriptingSetting ports, which
-// together separate THREE conditions that fail with identical error numbers
-// (13.26; see `explain`, which carries the measurement).
+// all), the KeyPresser port (the keystroke), the PermissionBroker port (the grant
+// a keystroke costs), the session's SpeechBuffer (the grace window), and -- only
+// on a failure -- the ReaderLiveness port, which names the condition a press
+// cannot report for itself.
 //
 // ============================================================================
-// ONE COMMAND, TWO ROUTES, AND THE AGENT DOES NOT HAVE TO CHOOSE.
+// ONE COMMAND, ONE ROUTE -- 13.31. IT HAD TWO UNTIL THIS ENTRY.
 // ============================================================================
 //
-// A gesture id here is either one of VoiceOver's own English command names or a
-// keystroke, and this handler decides which by asking `CommandVocabulary`:
+// A gesture id is a keystroke, and nothing else:
 //
-//   press_gesture { gestures: ["describe item in voiceover cursor"] }  -> reader
-//   press_gesture { gestures: ["command+l"] }                          -> system
+//   press_gesture { gestures: ["vo+m"] }        -> the menu bar, the way a person
+//   press_gesture { gestures: ["command+l"] }      reaches either of them
 //
-// protocol.md §5 calls a gesture id "the reader's own user-facing command
-// notation", and on NVDA that notation IS keystrokes -- so taking both here is
-// consistent with the contract rather than a stretch, and a new wire command was
-// declined for exactly that reason (spec 0048 §2.1). The agent picks an id by
-// what it wants to HAPPEN; which of this bridge's two routes carries it is the
-// bridge's business, which is the whole point of an opaque gesture id.
+// The second route was VoiceOver's own English command names, dispatched inside
+// the reader over an AppleEvent. It is deleted, and the argument is one sentence:
+// NO VOICEOVER USER CAN TYPE A COMMAND NAME. A person presses the key; for an act
+// with no key they open the Commands menu, type the name and press Enter, which is
+// this command plus `typeText`. A route no human has is a route that cannot find
+// the defects a human hits -- 13.25 measured exactly that, a dispatch reporting
+// success on chords a real user was stuck on -- and it was bought by asking a
+// blind person to leave "Allow VoiceOver to be controlled with AppleScript" on,
+// which lets any process on the machine drive their screen reader. Spec 0055.
 //
-// THE KEYSTROKE HALF COSTS THE ACCESSIBILITY GRANT, and it is asked for ONCE,
-// BEFORE THE FIRST GESTURE OF A BATCH THAT CONTAINS ONE. Not per keystroke, and
-// not lazily inside the loop: a batch is checked before any of it moves the
-// machine (see below), and a grant that failed in position three would leave the
-// reader somewhere neither side asked for. `AccessibilityGrant` carries the rest
-// of that argument, and is shared with `typeText` so the two commands cannot
-// come to differ about when somebody's machine raises a consent dialog.
+// WHAT THAT COSTS AN AGENT IS ONE REFUSAL IT MUST NOT MISREAD, which is why
+// `CommandVocabulary.reasonNotAKeystroke` teaches the Commands-menu route rather
+// than saying "unknown gesture". An agent carrying guidance from any earlier build
+// will send a phrase here.
 //
-// `mutatesReader = true`, AND THIS IS THE FIRST HANDLER IN THE BRIDGE THAT SETS
-// IT. Pressing a command moves the user's machine, so an observe-only session
-// (spec 0017) refuses it. The flag defaults to `false` and the failure mode of
-// forgetting is "allowed", which is why the registry's enumeration test asserts
-// the set of mutating handlers rather than trusting each one.
+// EVERY GESTURE NOW COSTS THE ACCESSIBILITY GRANT, and it is asked for ONCE,
+// BEFORE THE FIRST OF A BATCH. Not per keystroke, and not lazily inside the loop:
+// a batch is checked before any of it moves the machine (see below), and a grant
+// that failed in position three would leave the reader somewhere neither side
+// asked for. `AccessibilityGrant` carries the rest of that argument, and is shared
+// with `typeText` so the two commands cannot come to differ about when somebody's
+// machine raises a consent dialog.
 //
-// THE WHOLE BATCH IS CHECKED BEFORE ANY OF IT IS DISPATCHED, and that ordering
-// is deliberate for a mutating command: an id the vocabulary refuses is the
-// agent's own mistake, costs nothing to catch, and catching it in position three
-// after two commands have already moved the machine would leave the reader
-// somewhere neither side asked for. What CANNOT be checked up front is whether
-// the reader knows a name -- only the reader knows that -- so an unknown command
-// aborts the remainder mid-batch, exactly as lane 1 does, and the transcript
-// carries the record of what did go out.
+// 13.8'S LEVER IS GONE, AND 13.25 SPENT IT DELIBERATELY. The sentence used to be
+// "a session that presses only the reader's command names and reads speech is
+// never asked for Accessibility". It described a reading-only session by then, and
+// it now describes nothing: a faithful user-persona session presses keys, and keys
+// cost the grant. A lever bought by driving the reader in a way no user does is
+// bought with the fidelity this tool sells.
+//
+// `mutatesReader = true`. Pressing a key moves the user's machine, so an
+// observe-only session (spec 0017) refuses it. The flag defaults to `false` and
+// the failure mode of forgetting is "allowed", which is why the registry's
+// enumeration test asserts the set of mutating handlers rather than trusting each
+// one.
+//
+// THE WHOLE BATCH IS CHECKED BEFORE ANY OF IT IS DISPATCHED, and that ordering is
+// deliberate for a mutating command: an id the vocabulary refuses is the agent's
+// own mistake, costs nothing to catch, and catching it in position three after two
+// keys have already moved the machine would leave the reader somewhere neither
+// side asked for.
 //
 // THE GRACE WINDOW IS PER GESTURE, AND THE BOOKMARK IS TAKEN BEFORE DISPATCH.
 // The span reported for each press is where the ring stood either side of THAT
-// command going out, which is what makes an empty span mean "this command said
-// nothing" rather than "we looked too late". Attribution is by dispatch-time
-// coordinate and not by causation (protocol.md §5): speech caused by command n
-// can land after command n+1 went out, and is then credited to n+1.
+// key going out, which is what makes an empty span mean "this key said nothing"
+// rather than "we looked too late". Attribution is by dispatch-time coordinate
+// and not by causation (protocol.md §5): speech caused by gesture n can land after
+// gesture n+1 went out, and is then credited to n+1.
 //
 // AND THE RESULT NEVER CLAIMS TO BE COMPLETE. protocol.md §7.3 in one sentence:
 // a result says what had arrived by a stated instant, and where to resume; it
@@ -99,7 +108,7 @@ public final class PressGestureHandler: CommandHandler {
 		// `vo` this machine cannot resolve is refused HERE, so nothing is pressed
 		// at all -- which is what makes the Caps Lock refusal safe rather than
 		// half-done.
-		let gestures = try params.gestures.map { gesture -> Gesture in
+		let gestures = try params.gestures.map { gesture -> Keystroke in
 			do {
 				return try CommandVocabulary.classify(gesture, readerModifier: readerModifier)
 			} catch let refusal as GestureIdRefused {
@@ -107,13 +116,13 @@ public final class PressGestureHandler: CommandHandler {
 			}
 		}
 
-		// ONCE, FOR THE WHOLE BATCH, AND ONLY IF IT CONTAINS A KEYSTROKE. A batch
-		// of command names goes past here without the broker being asked anything
-		// at all, which is 13.8's lever as 13.17 narrowed it -- and asking here
-		// rather than inside the loop is the same argument as the vocabulary check
-		// above: nothing should move the machine before everything that can be
-		// settled up front has been.
-		if gestures.contains(where: \.isKeystroke) {
+		// ONCE, FOR THE WHOLE BATCH. Every gesture is a keystroke now (13.31), so
+		// the only question left is whether there is one at all -- an empty batch
+		// asks for nothing, which keeps `press_gesture []` a no-op rather than a
+		// consent dialog. Asking here rather than inside the loop is the same
+		// argument as the vocabulary check above: nothing should move the machine
+		// before everything that can be settled up front has been.
+		if !gestures.isEmpty {
 			try AccessibilityGrant.ensure(adapters.permissions, orElse: "nothing was pressed")
 		}
 
@@ -124,11 +133,10 @@ public final class PressGestureHandler: CommandHandler {
 			// went out. See the header on why that is not the same as reading
 			// afterwards and subtracting.
 			let pressFrom = buffer.nextIndex()
-			// WHAT THE BRIDGE UNDERSTOOD, NOT WHAT IT WAS HANDED. A command name is
-			// the trimmed id; a keystroke is its canonical spelling, so `Command+L`
-			// is recorded and reported as `command+l` and a reader of either can see
-			// which keys went out.
-			let identifier = gesture.described
+			// WHAT THE BRIDGE UNDERSTOOD, NOT WHAT IT WAS HANDED: the keystroke's
+			// canonical spelling, so `Command+L` is recorded and reported as
+			// `command+l` and a reader of either can see which keys went out.
+			let identifier = CommandVocabulary.identifier(for: gesture)
 			context.transcript.gesture(identifier)
 			try dispatch(gesture, identifier, adapters)
 			_ = buffer.collectSince(pressFrom, grace: grace)
@@ -163,106 +171,51 @@ public final class PressGestureHandler: CommandHandler {
 		return adapters
 	}
 
-	/// Send one gesture down whichever of the two routes it belongs to.
+	/// Press one gesture, and name what went wrong if it would not go.
 	///
-	/// THE ONLY PLACE THE ROUTING HAPPENS, and the two failures stay in their own
-	/// vocabularies until here: an unknown command name is the reader's answer and
-	/// may mean the scripting channel died, while an unpressable keystroke is this
-	/// machine's keyboard layout answering and means nothing of the kind.
-	private func dispatch(_ gesture: Gesture, _ identifier: String, _ adapters: AdapterSet) throws {
-		switch gesture {
-		case .readerCommand(let command):
-			do {
-				try adapters.gestureSender.press(command)
-			} catch let failure as GestureError {
-				throw CommandError(explain(failure, command, adapters))
-			}
-		case .keystroke(let keystroke):
-			do {
-				try adapters.keyPresser.press(keystroke)
-			} catch let failure as KeyPressFailure {
-				throw CommandError("'\(identifier)' could not be pressed: \(failure.description)")
-			}
+	/// ============================================================================
+	/// TWO CONDITIONS, WHERE THERE WERE THREE -- AND THE THIRD DELETED WITH ITS
+	/// CHANNEL.
+	/// ============================================================================
+	///
+	/// Until 13.31 a failure here could also mean "VoiceOver answers its own name
+	/// but not its own state" -- the scripting object model dead while the process
+	/// ran, which spec 0041 measured and required be reported as a named condition.
+	/// There is no scripting object model in this bridge any more, so that condition
+	/// is gone from the vocabulary rather than left as a case nothing can reach.
+	///
+	/// WHAT IS LEFT IS THE READ THAT A PRESS CANNOT MAKE FOR ITSELF. A `CGEvent`
+	/// that posts successfully tells us nothing about whether anything was there to
+	/// receive it, so the ONE thing worth adding to a failure is whether the reader
+	/// exists at all -- a running-application lookup, at no permission cost (13.26),
+	/// on the failure path only.
+	///
+	/// A PRESS THAT SUCCEEDS AND IS HEARD BY NOBODY IS NOT AN ERROR HERE, and that
+	/// is deliberate: the speech span is empty, the result says so, and protocol.md
+	/// §7.3 is explicit that a result reports what arrived rather than claiming
+	/// completeness. Guessing a fault from silence is what an agent must not do and
+	/// what this handler must not model for it.
+	private func dispatch(
+		_ keystroke: Keystroke, _ identifier: String, _ adapters: AdapterSet
+	) throws {
+		do {
+			try adapters.keyPresser.press(keystroke)
+		} catch let failure as KeyPressFailure {
+			throw CommandError(explain(failure, identifier, adapters))
 		}
 	}
 
-	/// Turn a dispatch failure into something an agent can act on.
-	///
-	/// THE ONE PLACE THE PORTS ARE COMBINED, and the reason `ReaderLiveness` is a
-	/// port of its own rather than a boolean the sender returns: "the reader is
-	/// there but its object model is not" is a claim about TWO channels, and only
-	/// a caller holding both can make it. Spec 0041 measured exactly that state --
-	/// the object model dead while the process ran -- and required that a bridge
-	/// report it as a distinct, named condition rather than as an empty result.
-	///
-	/// ============================================================================
-	/// THREE CONDITIONS, NOT TWO -- AND THE MIDDLE ONE WAS A SHIPPED DEFECT.
-	/// ============================================================================
-	///
-	/// Until 13.26 this method asked one question, and on the machine 13.26 exists
-	/// to support it gave a true sentence with a useless recovery. MEASURED LIVE,
-	/// 2026-09-02, with "Allow VoiceOver to be controlled with AppleScript" OFF:
-	///
-	///     press_gesture ["go to menu bar"]
-	///       -> "scriptingChannelDead: VoiceOver answers its own name but not its
-	///           own state. Recovery: restart the reader ..."
-	///
-	/// Every clause of that is true. No restart brings back a switch the person
-	/// deliberately turned off, so the recovery sent a human -- a blind human, at
-	/// their own machine -- to take their screen reader away for nothing.
-	///
-	/// The cause is that the switch REMOVES THE SCRIPTING OBJECT MODEL and leaves
-	/// the application answering its own properties, so it fails with **exactly**
-	/// the numbers a wedged reader fails with: `-1728` to `return commander` and
-	/// `-1708` to `perform command`, which is the pair `VoiceOverGestureSender`
-	/// maps to `scriptingChannelDead`. The two states are NOT distinguishable by
-	/// error number, ever. What separates them is the PREFERENCE, which this
-	/// bridge already reads and until now never consulted here. Spec 0053 §2.1.
-	///
-	/// So: the reader is gone; or the route is switched off on this machine and
-	/// the agent should PRESS THE KEY; or the route is on and the object model is
-	/// genuinely dead, which is the one case a restart repairs.
-	///
-	/// BOTH READS ARE CHEAP AND BOTH HAPPEN ONLY ON A FAILURE. Liveness is now a
-	/// running-application lookup rather than an AppleEvent (13.26), and the
-	/// scripting setting is two file reads; asking either before every gesture
-	/// would still be paying for an answer that is almost always the dull one.
+	/// Turn a press failure into something an agent can act on.
 	private func explain(
-		_ failure: GestureError, _ command: String, _ adapters: AdapterSet
+		_ failure: KeyPressFailure, _ identifier: String, _ adapters: AdapterSet
 	) -> String {
-		guard case .scriptingChannelDead = failure else {
-			return failure.description
-		}
 		guard adapters.readerLiveness.readerIsRunning() else {
-			// NOTHING IS THERE TO ANSWER, and that is the distinction the port
-			// exists for: the reader is gone or wedged rather than half-alive, and
-			// the recovery is a different one.
 			return
-				"'\(command)' could not be dispatched, and VoiceOver is not running at all. "
-				+ "Recovery: ask the human at this machine to start VoiceOver -- Command-F5 is "
-				+ "what a person presses -- and try again."
+				"'\(identifier)' could not be pressed: \(failure.description). VoiceOver is also not "
+				+ "running at all, which is very probably the whole story. Recovery: ask the human at "
+				+ "this machine to start VoiceOver -- Command-F5 is what a person presses -- and try "
+				+ "again."
 		}
-		let scripting = adapters.readerScripting.scripting()
-		guard scripting == .enabled else {
-			// THE MIDDLE CONDITION. Not a fault, not a wedge: a deliberate setting,
-			// and the agent has another route to the same act.
-			return
-				"'\(command)' is a COMMAND NAME, and this machine does not offer that route: "
-				+ "VoiceOver Utility > General > \"Allow VoiceOver to be controlled with "
-				+ "AppleScript\" is \(scripting == .disabled ? "switched off" : "not readable from here"). "
-				+ "VoiceOver itself is running and healthy -- nothing needs restarting. WHAT YOU MUST "
-				+ "DO: press the KEY for this act instead, which is what a person at this machine "
-				+ "does and needs no AppleScript at all (`screenreader://reader-guidance` names the "
-				+ "keys). An act with no key of its own is reached through the Commands menu -- "
-				+ "`vo+h` twice, type its name, Enter. If you are the `expert` stance and you "
-				+ "genuinely need the command-name route as an instrument, ask the human for it with "
-				+ "`ask_user` -- that switch is theirs to give, and it lives in VoiceOver Utility > "
-				+ "General. It takes effect at once, with no reader restart (measured 2026-09-02), but "
-				+ "you must RECONNECT: this bridge decides which routes it has at the handshake and "
-				+ "carries that answer for the whole session."
-		}
-		// THE ROUTE IS ON AND STILL FAILED. This is the one spec 0041 measured, and
-		// the one a restart actually repairs.
-		return "'\(command)' could not be dispatched. \(ReaderCondition.scriptingChannelDead.described)"
+		return "'\(identifier)' could not be pressed: \(failure.description)"
 	}
 }

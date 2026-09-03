@@ -82,16 +82,4 @@ struct VoiceOverLivenessTests {
 		liveness(tools: tools).activate()
 		#expect(tools.invocations.count == 1)
 	}
-
-	@Test("the name script is KEPT, for the one caller that is asking about AppleEvents")
-	func theNameScriptSurvivesForTheBroker() {
-		// It stopped being this class's probe and did not stop existing:
-		// `TCCPermissionBroker` sends it to learn whether the AUTOMATION GRANT is in
-		// force, because on this bridge that grant is a fact about the CHANNEL
-		// rather than about the calling binary. Asserted here so that a tidy-up
-		// which deletes an unused constant has to read this sentence first.
-		#expect(
-			VoiceOverLiveness.readerNameScript
-				== "tell application \"VoiceOver\" to return name")
-	}
 }

@@ -147,15 +147,6 @@ public enum Wiring {
 		)
 	}
 
-	/// How this bridge runs an AppleScript: `/usr/bin/osascript`, through the
-	/// process seam that 13.6 already built.
-	///
-	/// ONE PER PROCESS, like the lifecycle and for a simpler reason: it holds no
-	/// state whatsoever, so a second one would differ from the first in nothing.
-	public static func appleScriptRunner(runner: (any ProcessRunner)? = nil) -> any AppleScriptRunner {
-		OSAScriptRunner(runner: runner ?? SubprocessRunner())
-	}
-
 	/// What this process is allowed to do to the machine, and the one object that
 	/// can ask for more.
 	///
@@ -165,22 +156,19 @@ public enum Wiring {
 	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the lane's whole
 	/// design. Wiring builds the broker at startup and never calls `request`; the
 	/// only calls to it in this repository are in TWO COMMAND HANDLERS -- the first
-	/// `typeText` of a session (13.8), and the first KEYSTROKE `pressGesture` of
-	/// one (13.17), both through `AccessibilityGrant`. That is what makes "a
-	/// session that presses only the reader's COMMAND NAMES and reads speech never
-	/// triggers an Accessibility request" a checkable statement rather than an
-	/// intention -- so nothing here, in the factory, in the doctor or in a probe
-	/// may ask it anything. Reading `status` is a different question and the
-	/// launcher does print it, because reading shows no dialog.
+	/// `typeText` of a session (13.8) and the first `pressGesture` of one -- both
+	/// through `AccessibilityGrant`. That is what makes "connecting to this reader
+	/// never raises a consent dialog" a checkable statement rather than an
+	/// intention: nothing here, in the factory, in the HANDSHAKE, in the doctor or
+	/// in a probe may ask it anything. Reading `status` is a different question,
+	/// and rung 1 and the launcher both do it, because reading shows no dialog.
 	///
-	/// IT IS HANDED THE APPLESCRIPT RUNNER SINCE 13.11, because one of the two
-	/// permissions is a fact about the CHANNEL rather than about this process and
-	/// is read by using it. That is the same runner the gesture sender and the
-	/// liveness probe go through, on purpose: a permission read down a different
-	/// route than the events would be answering about a route nobody uses.
-	public static func permissionBroker(scripts: (any AppleScriptRunner)? = nil) -> any PermissionBroker
-	{
-		TCCPermissionBroker(scripts: scripts ?? appleScriptRunner())
+	/// IT HELD THE APPLESCRIPT RUNNER FROM 13.11 TO 13.31, because one of the two
+	/// permissions was a fact about the CHANNEL rather than about this process and
+	/// could only be read by using it. There is one permission now and it is
+	/// answered by `AXIsProcessTrusted`, so the broker takes nothing at all.
+	public static func permissionBroker() -> any PermissionBroker {
+		TCCPermissionBroker()
 	}
 
 	/// How a synthesized keystroke leaves this process: one Core Graphics event
@@ -239,13 +227,11 @@ public enum Wiring {
 	/// `isTrusted` shows no dialog, and every call to `request` in this repository
 	/// is in a command handler that is about to move the machine.
 	///
-	/// THE RUNNER IT IS GIVEN IS NEVER USED ON THIS PATH: `isTrusted` reads
-	/// `AXIsProcessTrusted` and talks to no channel at all. It is a constructor
-	/// argument rather than an optional collaborator because one class answers
-	/// both interfaces, and a second initialiser that left it nil would be a way
-	/// for a future edit to reach the automation path with nothing behind it.
+	/// ONE CLASS ANSWERS BOTH INTERFACES, and since 13.31 it needs nothing to do
+	/// it: `isTrusted` reads `AXIsProcessTrusted`, which is the whole of what this
+	/// broker does now that the automation permission and its channel are gone.
 	public static func accessibilityTrust() -> any AccessibilityTrust {
-		TCCPermissionBroker(scripts: appleScriptRunner())
+		TCCPermissionBroker()
 	}
 
 	/// How this bridge speaks to the human at the reader.
@@ -285,13 +271,6 @@ public enum Wiring {
 	/// two prompters would each hold half the tickets.
 	public static func userPrompter(window: (any PromptWindow)? = nil) -> any UserPrompter {
 		AppKitUserPrompter(window: window ?? AppKitPromptWindow())
-	}
-
-	/// Whether AppleScript control of VoiceOver is switched on. ONE PER PROCESS
-	/// and stateless: every call re-reads the two files, so a human who fixes the
-	/// setting and presses Refresh sees it change.
-	public static func readerScripting(reader: (any PlistReader)? = nil) -> any ReaderScriptingSetting {
-		VoiceOverPrefsScriptingSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
 	}
 
 	/// What the person at this machine has bound their VoiceOver modifier to.
@@ -407,13 +386,11 @@ public enum Wiring {
 		logDirectory: String? = nil,
 		clock: any Clock = RealClock(),
 		lifecycle: (any ProviderLifecycle)? = nil,
-		scripts: (any AppleScriptRunner)? = nil,
 		tools: (any ProcessRunner)? = nil,
 		permissions: (any PermissionBroker)? = nil,
 		poster: (any EventPoster)? = nil,
 		layout: (any KeyboardLayout)? = nil,
 		readerModifier: (any ReaderModifierSetting)? = nil,
-		readerScripting: (any ReaderScriptingSetting)? = nil,
 		readerRestart: (any ReaderRestart)? = nil,
 		changeJournal: (any ChangeJournal)? = nil,
 		applications: (any RunningApplications)? = nil,
@@ -428,14 +405,12 @@ public enum Wiring {
 				capturePath: capturePath(),
 				markerPath: markerPath(),
 				lifecycle: lifecycle ?? providerLifecycle(clock: clock),
-				scripts: scripts ?? appleScriptRunner(),
 				tools: tools ?? SubprocessRunner(),
 				permissions: permissions ?? permissionBroker(),
 				poster: poster ?? eventPoster(),
 				applications: applications ?? WorkspaceRunningApplications(),
 				layout: layout ?? keyboardLayout(),
 				readerModifier: readerModifier ?? readerModifierSetting(),
-				readerScripting: readerScripting ?? self.readerScripting(),
 				readerRestart: readerRestart ?? self.readerRestart(clock: clock),
 				changeJournal: changeJournal ?? self.changeJournal(),
 				tree: tree ?? accessibilityTree(),
