@@ -81,6 +81,46 @@
 // modifier that stays down would make every subsequent keystroke on the machine a
 // chord". `scripts/voiceover_chords.sh` now proves the keyboard is clean after
 // the chord, the same way.
+//
+// ============================================================================
+// THE CHARACTER STAMP IS FOR THE READER AND FOR NOBODY ELSE -- 13.29.
+// ============================================================================
+//
+// 13.25 stamped every character key's event with the character the active layout
+// produces, so that this reader -- which matches its bindings on the event's
+// CHARACTER -- would see `vo+shift+q` as VO-Shift-Q rather than VO-Q. It works,
+// and it silently took every application chord away with it. `command+k`,
+// `command+/`, `command+a`, `command+c`, `command+m` and `command+shift+a` all
+// went out, were reported pressed, and did NOTHING, for a week, in the one
+// direction this tool exists to exercise: what a person actually presses.
+//
+// MEASURED 2026-09-03, eight legs against TextEdit, control-probe-control, with
+// the bridge's exact event sequence and the stamp as the only variable:
+//
+// | Chord | Stamped | Not stamped |
+// |---|---|---|
+// | `command+a`, `command+c` | clipboard unchanged | document text copied |
+// | `command+shift+c` (Colors panel) | no window opened | window opened |
+//
+// Both were run in each order, and a System Events control passed before and
+// after. TWO THINGS THAT LOOK LIKE DETAILS AND ARE NOT:
+//
+//  1. IT IS THE CALL AND NOT THE CHARACTER. `command+c` was stamped with `"c"` --
+//     byte for byte what the system had already put on the event -- and still
+//     died. So there is no "stamp only when it changes something" fix: setting
+//     the payload AT ALL is what stops it. (Inference, not measurement, for the
+//     why: one CGEvent carries one Unicode string, and overriding it collapses
+//     the `characters` / `charactersIgnoringModifiers` pair that AppKit's
+//     key-equivalent matching reads.)
+//  2. A SHIFT IS NOT AN ESCAPE. `command+shift+c` fails stamped exactly as
+//     `command+c` does, which kills the other obvious narrowing. 13.25's live
+//     checklist recorded that very chord OPENING the Colors panel; it does not
+//     reproduce on the code that shipped, and that item is what let this through.
+//
+// So the split follows the two routes the bridge already reasons in, and
+// `Keystroke.holdsReaderModifier` is where it is decided: a chord holding the
+// reader's own modifier is aimed at the reader and is stamped; everything else
+// is aimed at an application and is left exactly as the window server built it.
 
 import CoreGraphics
 import VoiceOverBridgeDomain
@@ -118,9 +158,16 @@ public final class CGKeystrokePresser: KeyPresser {
 		// added because a key sits on the shifted layer -- so a chord that acquires
 		// a Shift for one of its keys stamps every character on the shifted layer,
 		// which is what one hand on one Shift key produces.
-		let stamped = zip(keystroke.keys, resolved).map {
-			stamp($0, resolved: $1, shifted: modifiers.contains(.shift))
-		}
+		// AND IT IS STAMPED ONLY ON A CHORD AIMED AT THE READER -- 13.29, and this
+		// guard is the entry's whole fix. See the header: stamping ANYTHING, even
+		// the character the event already carried, stops the chord reaching an
+		// application at all.
+		let stamped: [String?] =
+			keystroke.holdsReaderModifier
+			? zip(keystroke.keys, resolved).map {
+				stamp($0, resolved: $1, shifted: modifiers.contains(.shift))
+			}
+			: Array(repeating: nil, count: resolved.count)
 
 		// TWO DEFERS, AND THEIR ORDER IS THE POINT. Swift runs them in reverse, so
 		// the keys come up first and the modifiers after them -- which is what a

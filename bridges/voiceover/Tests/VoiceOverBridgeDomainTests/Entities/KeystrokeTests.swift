@@ -379,7 +379,54 @@ struct KeystrokeTests {
 		// The whole entry in one assertion: a VoiceOver user presses VO-M, and what
 		// goes out is whatever their VO is bound to.
 		let pressed = try Keystroke.parse("vo+m", readerModifier: .controlOption)
-		#expect(pressed == Keystroke(modifiers: [.control, .option], keys: [.character("m")]))
+		#expect(
+			pressed
+				== Keystroke(
+					modifiers: [.control, .option], keys: [.character("m")],
+					holdsReaderModifier: true))
+	}
+
+	// -- which chords are aimed at the reader, which is 13.29 -------------------
+
+	@Test("AN ORDINARY CHORD IS NOT THE READER's, whatever modifiers it holds")
+	func applicationChordsAreNotTheReaders() throws {
+		// What the adapter reads to decide whether the event may be stamped, and
+		// stamping one of these is what took every application chord away for a
+		// week. `control` alone and `option` alone are in the list on purpose: the
+		// reader holds BOTH, so half of it is not it.
+		for id in ["command+k", "command+shift+a", "control+a", "option+b", "kb:h", "shift+tab"] {
+			let bare = id.hasPrefix("kb:") ? String(id.dropFirst(3)) : id
+			#expect(
+				try Keystroke.parse(bare, readerModifier: .controlOption).holdsReaderModifier
+					== false, "\(id) is not aimed at the reader")
+		}
+	}
+
+	@Test("A CHORD HOLDING THE READER's OWN MODIFIER IS, however it was spelled")
+	func readerChordsAreTheReaders() throws {
+		// `vo+m` and a literal `control+option+m` are the same keystroke and the
+		// same fact -- an agent that spelled the modifier out gets the reader's
+		// treatment exactly as one that wrote `vo`. And a chord that holds the
+		// reader's modifier AND more is still the reader's: `vo+command+h` is one
+		// of its own commands.
+		for id in ["vo+m", "control+option+m", "vo+shift+q", "vo+command+h", "control+option+space"] {
+			#expect(
+				try Keystroke.parse(id, readerModifier: .controlOption).holdsReaderModifier == true,
+				"\(id) is aimed at the reader")
+		}
+	}
+
+	@Test("ON A MACHINE THAT DOES NOT SAY, NOTHING IS THE READER's")
+	func anUnreadableModifierClaimsNothing() throws {
+		// `control+option` is not the reader's modifier where the person bound it to
+		// Caps Lock, so a chord holding it is aimed at whatever has focus -- and
+		// where the preference could not be read at all, this bridge does not guess,
+		// which is 13.19's rule applied to a second question.
+		for setting in [ModifierSetting.capsLock, .unknown] {
+			#expect(
+				try Keystroke.parse("control+option+m", readerModifier: setting)
+					.holdsReaderModifier == false)
+		}
 	}
 
 	@Test("`either` resolves the same way, because those keys ARE the modifier there")
@@ -388,7 +435,9 @@ struct KeystrokeTests {
 		// to refuse and nothing to warn about.
 		#expect(
 			try Keystroke.parse("vo+m", readerModifier: .controlOptionOrCapsLock)
-				== Keystroke(modifiers: [.control, .option], keys: [.character("m")]))
+				== Keystroke(
+					modifiers: [.control, .option], keys: [.character("m")],
+					holdsReaderModifier: true))
 	}
 
 	@Test("A CAPS LOCK MACHINE IS A NAMED FAILURE, and the message says what is NOT the answer")

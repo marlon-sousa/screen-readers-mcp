@@ -77,7 +77,10 @@ struct CommandVocabularyTests {
 				== .keystroke(Keystroke(modifiers: [.command], keys: [.character("l")])))
 		#expect(
 			try CommandVocabulary.classify("control+option+space", readerModifier: .controlOption)
-				== .keystroke(Keystroke(modifiers: [.control, .option], keys: [.named(.space)])))
+				== .keystroke(
+					Keystroke(
+						modifiers: [.control, .option], keys: [.named(.space)],
+						holdsReaderModifier: true)))
 	}
 
 	@Test("TWO ORDINARY KEYS ARE A KEYSTROKE HERE TOO, and the vocabulary needed no change")
@@ -316,7 +319,10 @@ struct CommandVocabularyTests {
 		// rules that were already here classify it.
 		#expect(
 			try CommandVocabulary.classify("vo+m", readerModifier: .controlOption)
-				== .keystroke(Keystroke(modifiers: [.control, .option], keys: [.character("m")])))
+				== .keystroke(
+					Keystroke(
+						modifiers: [.control, .option], keys: [.character("m")],
+						holdsReaderModifier: true)))
 	}
 
 	@Test("the `kb:` prefix is accepted on one too, and changes nothing")

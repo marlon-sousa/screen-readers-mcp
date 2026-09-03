@@ -323,9 +323,29 @@ public struct Keystroke: Equatable, Sendable {
 	/// pressed -- so it is documented here rather than made unconstructible.
 	public let keys: [Key]
 
-	public init(modifiers: Set<Modifier>, keys: [Key]) {
+	/// Whether this chord is aimed at THE READER rather than at an application --
+	/// 13.29, and it exists because the answer decides what the event may say it
+	/// is.
+	///
+	/// It is true when the modifiers held include every modifier this machine's
+	/// reader uses for its own commands, so `vo+m` and a literal
+	/// `control+option+m` are the same fact and get the same treatment. It is
+	/// false for `command+k`, `control+a`, `option+b` and every other ordinary
+	/// chord, and false whenever the reader's modifier is Caps Lock or could not
+	/// be read -- `control+option` is not the reader's modifier on such a machine,
+	/// so a chord holding it is aimed at whatever has focus.
+	///
+	/// WHY A KEYSTROKE CARRIES THIS AT ALL, rather than the adapter asking: the
+	/// setting is read once per `pressGesture`, and `parse` is the one place that
+	/// already holds it. Handing it down as a property keeps the adapter free of a
+	/// second seam and keeps the decision in the pure domain, where it can be
+	/// tested without posting an event.
+	public let holdsReaderModifier: Bool
+
+	public init(modifiers: Set<Modifier>, keys: [Key], holdsReaderModifier: Bool = false) {
 		self.modifiers = modifiers
 		self.keys = keys
+		self.holdsReaderModifier = holdsReaderModifier
 	}
 
 	/// Parse `command+l` or `h`, or say by name why it is not a keystroke.
@@ -386,7 +406,30 @@ public struct Keystroke: Equatable, Sendable {
 				try parseKey(token, in: id, isLast: index + offset == tokens.count - 1))
 		}
 
-		return Keystroke(modifiers: modifiers, keys: keys)
+		return Keystroke(
+			modifiers: modifiers,
+			keys: keys,
+			holdsReaderModifier: holdsReaderModifier(modifiers, readerModifier))
+	}
+
+	/// The modifiers this machine's reader holds its own commands with, or nil
+	/// when the machine does not say.
+	///
+	/// The single place that mapping lives, so `vo` and `holdsReaderModifier`
+	/// cannot drift apart into two answers about the same preference.
+	public static func readerModifierKeys(_ setting: ModifierSetting) -> Set<Modifier>? {
+		switch setting {
+		case .controlOption, .controlOptionOrCapsLock: return [.control, .option]
+		case .capsLock, .unknown: return nil
+		}
+	}
+
+	/// Whether a modifier set holds every modifier the reader claims.
+	private static func holdsReaderModifier(
+		_ modifiers: Set<Modifier>, _ setting: ModifierSetting
+	) -> Bool {
+		guard let readers = readerModifierKeys(setting), !readers.isEmpty else { return false }
+		return readers.isSubset(of: modifiers)
 	}
 
 	/// The token that means "the modifier this reader's own commands are held
@@ -432,12 +475,11 @@ public struct Keystroke: Equatable, Sendable {
 			guard let modifier = Modifier(token: token) else { return [] }
 			return [modifier]
 		}
+		if let readers = readerModifierKeys(readerModifier) { return readers }
 		switch readerModifier {
-		case .controlOption, .controlOptionOrCapsLock:
-			return [.control, .option]
 		case .capsLock:
 			throw KeystrokeMalformed(id: id, reason: reasonModifierIsCapsLock)
-		case .unknown:
+		default:
 			throw KeystrokeMalformed(id: id, reason: reasonModifierUnknown)
 		}
 	}
