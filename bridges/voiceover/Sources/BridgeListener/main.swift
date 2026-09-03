@@ -24,20 +24,25 @@
 // command line while a machine that has been configured stays configured.
 //
 // AND IT SAYS WHAT THE MACHINE CAN DO BEFORE ANYTHING IS PRESSED. The capture
-// voice's state, whether AppleScript control of VoiceOver is on, and which
-// permissions are held: three answers that decide whether a run is going to work,
-// printed at startup rather than discovered as a failure ten commands in. None of
-// them asks a human for anything -- `status` shows no dialog, and the scripting
-// setting is two file reads.
+// voice's state and the one permission this bridge needs: two answers that decide
+// whether a run is going to work, printed at startup rather than discovered as a
+// failure ten commands in. NEITHER ASKS A HUMAN FOR ANYTHING -- `status` shows no
+// dialog, which is what makes them safe to print on a machine nobody is sitting
+// at.
 //
-// THE PERMISSION ROWS COST A SUBPROCESS SINCE 13.11, because the automation one
-// is a fact about the channel rather than about this binary and is read by using
-// it. Paid once, at startup, on a report that is worth being right.
+// IT PRINTED TWO MORE ROWS UNTIL 13.31, AND THIS HEADER WENT ON ADVERTISING THEM.
+// One was VoiceOver's own "Allow VoiceOver to be controlled with AppleScript"
+// switch; the other was the Automation grant, which 13.11 taught this launcher to
+// read by USING the channel rather than by asking about this binary -- which is
+// why the header said the permission rows cost a subprocess. Both went with the
+// AppleScript channel (spec 0055), the code block below has said so since, and the
+// header had not. It says so now.
 //
 // Usage:
 //   BridgeListener [--tcp [port]] [--endpoint <name-or-path>] [--unattended]
 //                  [--print-cues]
 
+import AppKit
 import Foundation
 import VoiceOverBridgeAdapters
 import VoiceOverBridgeDomain
@@ -60,6 +65,48 @@ import VoiceOverBridgeDomain
 // So the buffering is fixed here, where it belongs, rather than worked around
 // where it bites.
 setbuf(stdout, nil)
+
+// ============================================================================
+// THIS LAUNCHER IS AN NSApplication, AND UNTIL 13.33 IT WAS NOT -- WHICH KILLED
+// EVERY SESSION THAT ASKED A HUMAN A QUESTION.
+// ============================================================================
+//
+// It used to end with `dispatchMain()`, which parks the main thread BY EXITING
+// IT. AppKit needs a real main run loop, so the first `askUser` -- whose window
+// `AppKitPromptWindow` schedules with `DispatchQueue.main.async` -- was scheduled
+// onto a run loop that was not there. The process died with SIGILL (exit 132),
+// preceded by *"Attempting to add timer to main runloop, but the main thread has
+// exited"*.
+//
+// WHAT IT COST IS MORE THAN A CRASH, and it is why board entry 13.33 is bundled
+// with 13.24 and 13.32 rather than filed on its own: a session that dies here
+// dies WITHOUT TEARING DOWN, so the capture voice is left selected on somebody's
+// machine. That is 13.23's hazard reached by a dev tool, and it is how 13.32's
+// finding was produced in the first place.
+//
+// IT WAS PRE-EXISTING AND NOT CAUSED BY 13.31, which was checked rather than
+// assumed: `main` was built in a git worktree as a control on 2026-09-03 and
+// crashes identically. What hid it for this long is that `askUser` is reached
+// only by `poe live`, whose script asks its question LAST and prints its closing
+// summary before the process dies.
+//
+// AND IT DOES NOT PRE-EMPT 13.14. That entry gives the SHIPPED BUNDLE a control
+// dialog wired through `Wiring.controlSurface`; this file is a dev launcher
+// `build.sh` deliberately does not copy into the bundle. Borrowing AppKit's run
+// loop is not designing a UI, and the alternative -- making `UserPrompter`
+// unreachable from here and refusing by name -- would make half of 13.10's human
+// channel unexercisable against a real reader until 13.14 lands, for the
+// privilege of making a working feature not work.
+//
+// `.accessory`: no Dock icon and no menu bar, which is what a launcher wants.
+// `NSApp.activate(ignoringOtherApps:)` in `AppKitPromptWindow`'s panel still
+// brings the question to the front from an accessory app.
+//
+// CREATED HERE, ON THE MAIN THREAD, BEFORE ANYTHING CAN SCHEDULE ONTO IT.
+// `NSApplication.shared` is main-thread-only, and the session runs on a
+// background thread from the moment the server starts.
+let application = NSApplication.shared
+application.setActivationPolicy(.accessory)
 
 /// The launcher's settings: whatever is stored, with this run's flags on top.
 ///
@@ -246,4 +293,8 @@ for permission in Permission.allCases {
 		print("permission \(permission.rawValue): NOT GRANTED -- \(permission.recovery)")
 	}
 }
-dispatchMain()
+// AND THIS IS WHERE `dispatchMain()` USED TO BE. Both park the main thread
+// forever; only one of them leaves a RUN LOOP on it, which is what every window
+// this bridge opens is scheduled against. See the block at the top of this file
+// for what the difference cost.
+application.run()

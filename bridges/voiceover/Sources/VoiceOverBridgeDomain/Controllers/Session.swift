@@ -423,6 +423,37 @@ public final class Session {
 			// so a try/catch here would be catching nothing.
 			adapters.silenceControl.release()
 			if let previous = context.previousVoice {
+				// 13.24: A VOICE THIS MACHINE NO LONGER PUBLISHES IS STILL WRITTEN, and
+				// that is the decision rather than an omission. Writing it is what takes
+				// the reader OFF the capture voice; refusing would leave our own voice
+				// selected with no session alive, which is 13.23's hazard -- the next
+				// reader restart finds it unpublished, falls back to the system default
+				// AND PERSISTS THE FALLBACK, so the record of the person's own voice is
+				// destroyed by the cleanup rather than by the crash.
+				//
+				// WHAT CHANGES IS THAT IT SAYS SO. The write succeeds and the read-back
+				// confirms it either way -- VoiceOver only falls back at SPEECH time --
+				// so without this note a degraded restore and a clean one are the same
+				// two lines in the transcript. Asked here rather than read from a flag
+				// the handshake set, so a voice removed mid-session is caught too.
+				//
+				// THE JOURNAL LINE IS DELIBERATELY IDENTICAL. `FileChangeJournal`'s
+				// contract is that a restore is the SAME line with `restored` true, which
+				// is what lets `scripts/voiceover_restore.py` pair them -- and a degraded
+				// restore is still a restore: the change is closed and the capture voice
+				// is off. The detail belongs in the transcript, which is where it is.
+				//
+				// AND IT DOES NOT ANNOUNCE. The announcement is the handshake's, which is
+				// what Marlon asked for; teardown is the moment somebody is getting their
+				// reader back and a spoken paragraph into that is noise. The gap is
+				// stated in spec 0056 §2.5 rather than hidden: a voice removed
+				// mid-session is noted here and spoken to nobody.
+				if !adapters.providerLifecycle.systemPublishesVoice(previous) {
+					transcript.note(
+						"restoring the user's own voice: this machine no longer publishes '\(previous)', so "
+							+ "the reader will fall back to its default voice. "
+							+ ReaderCondition.usersVoiceNotAvailable.described)
+				}
 				guarded("restoring the user's own voice") {
 					try adapters.providerLifecycle.restoreVoice(previous)
 					adapters.changeJournal.restored(ReaderEdgeSetup.voiceChange(was: previous))

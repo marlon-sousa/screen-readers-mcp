@@ -91,6 +91,41 @@ struct ReaderConditionTests {
 		#expect(!ReaderCondition.readerNotRunning.recovery.contains("killall"))
 	}
 
+	@Test("THE USER'S OWN VOICE NAMES THE SETTINGS PATH IN FULL, because it is read ALOUD")
+	func theUsersVoiceRecoveryIsSpeakable() {
+		// 13.24. This is the one recovery in the file the bridge SPEAKS -- Marlon,
+		// 2026-09-03: *"that handshake announcement must let the user know and give
+		// them instructions to install the voice."* A half-named path is a path
+		// somebody hunts for, and they cannot see the screen while they hunt.
+		let recovery = ReaderCondition.usersVoiceNotAvailable.recovery
+		#expect(recovery.contains("System Settings"))
+		#expect(recovery.contains("Spoken Content"))
+		#expect(recovery.contains("Manage Voices"))
+		// AND IT PROMISES NOTHING IT CANNOT BACK UP. The list this condition is
+		// derived from publishes voices that are advertised and not installed
+		// (13.15), so "install it" is the action and "the reader will sound right
+		// again" is not a claim this bridge may make.
+		#expect(!recovery.contains("will sound"))
+		// It also says the session is carrying on, because it is: this condition is
+		// not a refusal, and a sentence that read like one would send somebody to fix
+		// something before reconnecting when nothing is waiting on them.
+		#expect(recovery.contains("running normally"))
+	}
+
+	@Test("it is the one condition NO ProviderState reports, and that is on purpose")
+	func theUsersVoiceIsNotAProviderState() {
+		// Every other case describes where OUR capture voice has got to, so
+		// `ProviderState` owns which are live. This one is about the PERSON'S voice,
+		// which no state of ours has an opinion about -- it is read directly by
+		// `ReaderEdgeSetup` and `Session`. A future entry that folds it into a state
+		// mapping would make a handshake report the user's voice as a fault of the
+		// capture pipeline.
+		for state in ProviderState.allCases {
+			#expect(!state.conditions.contains(.usersVoiceNotAvailable))
+			#expect(!state.unheardConditions.contains(.usersVoiceNotAvailable))
+		}
+	}
+
 	@Test("the described form carries the name, the summary and the recovery together")
 	func describedCarriesEverything() {
 		let described = ReaderCondition.captureVoiceNotSelected.described

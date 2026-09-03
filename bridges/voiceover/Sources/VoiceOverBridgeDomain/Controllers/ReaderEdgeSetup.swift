@@ -401,10 +401,48 @@ public struct ReaderEdgeSetup {
 	/// when it is NOT ours, because a previous session that died without
 	/// restoring leaves our own voice looking like the user's, and restoring that
 	/// would hand the extension itself as its own pass-through voice.
+	///
+	/// ============================================================================
+	/// AND SINCE 13.24 IT RESOLVES WHAT IT RECORDS -- WITHOUT REFUSING ANYTHING.
+	/// ============================================================================
+	///
+	/// Nothing checked that the identifier in the preference names a voice this
+	/// machine still has. It is used TWICE afterwards -- written back at teardown,
+	/// and handed to the extension as the pass-through voice -- and a dead one fails
+	/// INVISIBLY in both places: the write succeeds, the read-back confirms it, and
+	/// VoiceOver falls back to its default at speech time. So a session could change
+	/// somebody's voice for its whole duration and report success throughout.
+	///
+	/// ONE CHECK COVERS BOTH USES, because both consume this same field. The
+	/// extension end is already correct -- `VoiceChoice` rule 0 degrades rather than
+	/// assumes, and `CaptureController` records what was asked for and whether its
+	/// catalogue had it as two separate facts -- so the marker keeps carrying the
+	/// identifier unchanged. What was missing is the sentence ABOVE the extension
+	/// that nobody was saying.
+	///
+	/// IT RECORDS THE IDENTIFIER ANYWAY, AND THAT IS THE DECISION RATHER THAN A
+	/// LEFTOVER. Writing it at teardown is what takes the reader OFF the capture
+	/// voice, and leaving our voice selected is 13.23's hazard -- the next reader
+	/// restart finds it unpublished, falls back to the default AND PERSISTS THE
+	/// FALLBACK, destroying the record of the person's own voice. A cleanup that
+	/// refused to write would cause the disaster it was cleaning up after.
+	///
+	/// THE PERSON IS TOLD, OUT LOUD, AND THAT IS MARLON'S OWN WORDING (2026-09-03):
+	/// *"I would like to have a default voice, but that handshake announcement must
+	/// let the user know and give them instructions to install the voice."* It goes
+	/// through `warn`, which speaks with the bridge's own synthesizer and is
+	/// therefore audible even in a silent session.
+	///
+	/// THE AGENT IS NOT TOLD, and that is a stated limit rather than an oversight:
+	/// `HelloResult` has no notes field, and adding one is a protocol change across
+	/// three bindings for a message whose only actionable audience is the person at
+	/// the machine -- who has just been told directly, and more effectively than an
+	/// agent could relay it. Spec 0056 §4.
 	private func selectCaptureVoice() throws {
 		let previous = adapters.providerLifecycle.selectedVoice()
 		if let previous, !previous.isCaptureVoice {
 			context.previousVoice = previous.identifier
+			warnIfVoiceIsGone(previous.identifier)
 		}
 		guard previous?.isCaptureVoice != true else { return }
 		do {
@@ -430,14 +468,38 @@ public struct ReaderEdgeSetup {
 		}
 	}
 
+	/// Tell the person their own voice is gone, if it is -- 13.24.
+	///
+	/// SEPARATE FROM THE RUNG'S OWN WORK because it is not a rung: nothing here can
+	/// fail, nothing here can stop the climb, and `selectCaptureVoice` goes on to do
+	/// exactly what it did before. See that method's header for why this is a notice
+	/// rather than a refusal.
+	///
+	/// THE SENTENCE IS `ReaderCondition`'s, NOT THIS FILE'S, so the words a person
+	/// hears and the words a transcript records are one string that cannot drift.
+	/// `described` is not used: its `rawValue:` prefix is written for an agent
+	/// reading a failure, and this is read aloud in a room.
+	private func warnIfVoiceIsGone(_ identifier: String) {
+		guard !adapters.providerLifecycle.systemPublishesVoice(identifier) else { return }
+		let condition = ReaderCondition.usersVoiceNotAvailable
+		context.transcript.note(
+			"setup: \(condition.rawValue) -- this machine does not publish '\(identifier)'")
+		warn(
+			"The screen reader bridge has a note about your voice. \(condition.summary). "
+				+ "The voice was \(identifier). To put it back: \(condition.recovery).")
+	}
+
 	/// Say something to the human, and never let it stop anything.
 	///
 	/// GUARDED FOR THE REASON EVERY CUE IN THIS BRIDGE IS: a courtesy is never worth
-	/// a session, and the announcer reaches an audio device that may be gone. Its
-	/// one caller is the restart, which spec 0053 §3.2 requires to be ANNOUNCED --
-	/// through the bridge's own synthesizer, which is audible even in a silent
-	/// session because it goes around the reader entirely, so nobody is dropped into
-	/// silence unwarned.
+	/// a session, and the announcer reaches an audio device that may be gone.
+	///
+	/// TWO CALLERS SINCE 13.24, and both say something a person can only learn from
+	/// this channel -- the bridge's own synthesizer, audible even in a silent session
+	/// because it goes around the reader entirely. The restart, which spec 0053 §3.2
+	/// requires to be ANNOUNCED so nobody is dropped into silence unwarned; and the
+	/// note that their own voice is no longer on this machine, which Marlon asked for
+	/// in those terms on 2026-09-03.
 	private func warn(_ text: String) {
 		do {
 			try adapters.announcer.announce(text)
