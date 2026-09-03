@@ -28,9 +28,15 @@ struct ReaderEdgeSetupTests {
 		liveness: FakeReaderLiveness = FakeReaderLiveness(),
 		lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
 		gestures: FakeGestureSender = FakeGestureSender(),
+		scripting: FakeReaderScriptingSetting = FakeReaderScriptingSetting(),
+		modifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
+		keys: FakeKeyPresser = FakeKeyPresser(),
 		silence: FakeSilenceControl = FakeSilenceControl(),
 		speechSource: FakeSpeechSource = FakeSpeechSource(),
 		transcript: FakeTranscript = FakeTranscript(),
+		restart: FakeReaderRestart = FakeReaderRestart(),
+		journal: FakeChangeJournal = FakeChangeJournal(),
+		announcer: FakeAnnouncer = FakeAnnouncer(),
 		captureProbeSpeaks: Bool = true
 	) -> (setup: ReaderEdgeSetup, context: SessionContext, speech: SpeechBuffer) {
 		let adapters = fakeAdapterSet(
@@ -40,7 +46,13 @@ struct ReaderEdgeSetupTests {
 			providerLifecycle: lifecycle,
 			gestureSender: gestures,
 			readerLiveness: liveness,
+			keyPresser: keys,
+			readerModifier: modifier,
+			readerScripting: scripting,
+			readerRestart: restart,
+			changeJournal: journal,
 			permissions: permissions,
+			announcer: announcer,
 			captureProbeSpeaks: captureProbeSpeaks
 		)
 		let clock = FakeClock()
@@ -63,6 +75,87 @@ struct ReaderEdgeSetupTests {
 			Issue.record("unexpected error: \(error)")
 			return nil
 		}
+	}
+
+	// ==========================================================================
+	// 13.26: REGISTERING PUBLISHES, WHICH IS THE RUNG 13.20 COULD NOT CLIMB.
+	// ==========================================================================
+
+	@Test("REGISTERING RESTARTS THE READER, because nothing else publishes the voice")
+	func registeringPublishesByRestarting() throws {
+		// macOS offers a newly registered voice only after VoiceOver restarts. 13.20
+		// could only NAME that restart and ask a human to run it; spec 0053 §3.2 lets
+		// the handshake take it. In practice the trigger is `poe build`, which begins
+		// `rm -rf build` and makes the system forget the extension.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .notRegistered
+		lifecycle.stateAfterRegistering = .registered
+		let restart = FakeReaderRestart()
+		let announcer = FakeAnnouncer()
+		let machine = machine(lifecycle: lifecycle, restart: restart, announcer: announcer)
+		try machine.setup.establish()
+		#expect(lifecycle.registerCalls == 1)
+		#expect(restart.restarts == 1)
+		// ANNOUNCED FIRST, like every restart this bridge takes.
+		#expect(announcer.spoken.first?.contains("restarting VoiceOver") == true)
+	}
+
+	@Test("a machine that never needed registering is never restarted")
+	func anAlreadyPublishedVoiceCostsNoRestart() throws {
+		// THE CONTROL, and it is the one that matters: the blind person who has not
+		// rebuilt anything must pay no restart at all. Only the developer who just
+		// ran `poe build` does.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .published
+		let restart = FakeReaderRestart()
+		let machine = machine(lifecycle: lifecycle, restart: restart)
+		try machine.setup.establish()
+		#expect(lifecycle.registerCalls == 0)
+		#expect(restart.restarts == 0)
+	}
+
+	@Test("a restart that FAILS here is written down, and a LATER rung refuses by name")
+	func afailedPublishingRestartIsNotFatalHere() {
+		// The difference from the modifier rung. There, the restart is the only thing
+		// that puts the reader on keys this bridge can press, so failing it fails the
+		// rung. Here this rung cannot tell whether the failure mattered -- so it says
+		// so and climbs on, and the rung that CAN tell refuses by name with a recovery
+		// that fits. This test is the record that the session is still refused: not
+		// failing here must never mean establishing a session that cannot capture,
+		// which is the whole of 13.20.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .notRegistered
+		lifecycle.stateAfterRegistering = .registered
+		let restart = FakeReaderRestart()
+		restart.failure = ReaderRestartError("it would not stop", readerStillRunning: true)
+		let transcript = FakeTranscript()
+		let machine = machine(lifecycle: lifecycle, transcript: transcript, restart: restart)
+		let message = failure { try machine.setup.establish() }
+		#expect(
+			transcript.notes.contains { $0.contains("could not be restarted to publish") })
+		// THE SESSION STILL STANDS, because the restart was not what decided anything
+		// here: the voice was published before it, so the reader has it.
+		#expect(message == nil)
+	}
+
+	// -- what the journal records ----------------------------------------------
+
+	@Test("the voice change is journalled, because it is the one a crash leaves dangerous")
+	func theVoiceChangeIsRecorded() throws {
+		// 13.23: a session that dies leaves the capture voice selected, and the next
+		// reader restart finds it unpublished, falls back AND PERSISTS THE FALLBACK.
+		// The 2026-09-02 field report is that failure with a human recovering it by
+		// hand, and the hand recovery cost them their pitch, rate and volume.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.selected = "com.apple.voice.premium.pt-BR.Luciana"
+		let journal = FakeChangeJournal()
+		let machine = machine(lifecycle: lifecycle, journal: journal)
+		try machine.setup.establish()
+		// OPEN, because the handshake does not put the voice back -- teardown does.
+		#expect(journal.openKinds == [.voice])
+		let entry = try #require(journal.entries.first)
+		#expect(entry.change.was == "com.apple.voice.premium.pt-BR.Luciana")
+		#expect(entry.change.store.contains("com.apple.SpeakSelection"))
 	}
 
 	// -- the healthy climb -----------------------------------------------------
@@ -101,7 +194,7 @@ struct ReaderEdgeSetupTests {
 
 	@Test("a reader already answering is not started")
 	func theReaderIsNotStartedWhenItIsAlreadyThere() throws {
-		let liveness = FakeReaderLiveness(answersItsOwnName: true)
+		let liveness = FakeReaderLiveness(isRunning: true)
 		let (setup, _, _) = machine(liveness: liveness)
 		try setup.establish()
 		#expect(liveness.activations == 0)
@@ -128,40 +221,98 @@ struct ReaderEdgeSetupTests {
 		#expect(lifecycle.registerCalls == 0)
 	}
 
-	@Test("the refusal tells the AGENT what to do, which is to ask a human and connect again")
+	@Test("the refusal tells the AGENT what to do, and names BOTH ways out")
 	func theRefusalIsAddressedToTheAgent() {
-		// The audience is not the person at the machine -- nobody may be there.
-		// `Permission.recovery` is what a human acts on and it is carried INSIDE an
-		// instruction the agent can actually carry out.
-		let (setup, _, _) = machine(permissions: FakePermissionBroker(state: .notGranted))
+		// The audience is not the person at the machine -- nobody may be there. And
+		// since 13.26 there are TWO grants that would each be enough on their own,
+		// so a refusal naming one of them would send a human to grant the wrong
+		// thing.
+		let (setup, _, _) = machine(
+			permissions: FakePermissionBroker(state: .notGranted),
+			scripting: FakeReaderScriptingSetting(setting: .disabled))
 		let message = failure { try setup.establish() }
-		#expect(message?.contains("ask the human at this machine to grant it") == true)
+		#expect(message?.contains("ask the human at this machine") == true)
 		#expect(message?.contains("connect again") == true)
-		#expect(message?.contains(Permission.accessibility.recovery) == true)
+		#expect(message?.contains("Accessibility") == true)
+		#expect(message?.contains("AppleScript") == true)
+		// And it says which route to prefer, and why -- the reason is the person's
+		// own security rather than this bridge's convenience.
+		#expect(message?.contains("closed to every other") == true)
 	}
 
-	@Test("`cannotTell` stops it too, and says which read was inconclusive")
+	@Test("`cannotTell` is not read as a NO, and says which read was inconclusive")
 	func anUnreadableGrantStopsIt() {
 		// Reporting it as `notGranted` would send a human to System Settings to fix
-		// a grant they already hold, which is the false negative 13.11 removed.
-		let (setup, _, _) = machine(permissions: FakePermissionBroker(state: .cannotTell))
+		// a grant they already hold, which is the false negative 13.11 removed --
+		// and it matters more now, since the channel that answers the automation
+		// grant is exactly the one 13.26 expects to be switched off.
+		let (setup, _, _) = machine(
+			permissions: FakePermissionBroker(state: .cannotTell),
+			scripting: FakeReaderScriptingSetting(setting: .disabled))
 		let message = failure { try setup.establish() }
 		#expect(message?.contains("could not determine") == true)
 	}
 
-	@Test("BOTH grants are read, so a permission added later is one a session cannot skip")
-	func everyPermissionIsRead() throws {
+	// -- rung 1 as a ROUTE check, which is 13.26 --------------------------------
+
+	@Test("ACCESSIBILITY ALONE IS ENOUGH: no AppleScript, no Automation, and a session")
+	func keysAloneEstablish() throws {
+		// The entry's whole point. "Allow VoiceOver to be controlled with
+		// AppleScript" lets any process drive a blind person's screen reader, so a
+		// bridge that required it to be on would be asking them to hold a door open
+		// for everyone. A machine with Accessibility and nothing else can be driven
+		// by keys, which is what a person uses.
+		let permissions = FakePermissionBroker(state: .granted)
+		permissions.states[.automationVoiceOver] = .notGranted
+		let (setup, _, _) = machine(
+			permissions: permissions,
+			scripting: FakeReaderScriptingSetting(setting: .disabled))
+		try setup.establish()
+		#expect(permissions.requests.isEmpty)
+	}
+
+	@Test("THE COMMAND-NAME ROUTE ALONE IS ENOUGH TOO, which is the old machine")
+	func commandNamesAloneEstablish() throws {
+		// A machine that has never granted Accessibility, with the switch on: it
+		// cannot press a key and it can dispatch the reader's own commands, and
+		// that is a session. Nothing about this entry takes that away.
+		let permissions = FakePermissionBroker(state: .granted)
+		permissions.states[.accessibility] = .notGranted
+		let (setup, _, _) = machine(permissions: permissions)
+		try setup.establish()
+		#expect(permissions.requests.isEmpty)
+	}
+
+	@Test("the AppleScript SWITCH being off removes that route even with the grant")
+	func theSwitchIsPartOfTheRoute() {
+		// The grant and the switch are two different things and both are needed for
+		// the command-name route: `kTCCServiceAppleEvents` says this process may
+		// send events to VoiceOver, and the switch says VoiceOver will act on them.
+		let permissions = FakePermissionBroker(state: .granted)
+		permissions.states[.accessibility] = .notGranted
+		let (setup, _, _) = machine(
+			permissions: permissions,
+			scripting: FakeReaderScriptingSetting(setting: .disabled))
+		#expect(failure { try setup.establish() } != nil)
+	}
+
+	@Test("each grant is read ONCE, and neither is ever requested")
+	func eachGrantIsReadOnce() throws {
+		// The routes are computed at rung 1 and carried to rung 5 rather than being
+		// asked for again, so a handshake cannot read a permission twice and get two
+		// answers -- and so "nothing here requests anything" stays checkable.
 		let permissions = FakePermissionBroker()
 		let (setup, _, _) = machine(permissions: permissions)
 		try setup.establish()
 		#expect(permissions.statusReads == Permission.allCases)
+		#expect(permissions.requests.isEmpty)
 	}
 
 	// -- rung 2: a reader to talk to -------------------------------------------
 
 	@Test("A READER THAT IS NOT ANSWERING IS STARTED, and then asked again")
 	func theReaderIsStarted() throws {
-		let liveness = FakeReaderLiveness(answersItsOwnName: false)
+		let liveness = FakeReaderLiveness(isRunning: false)
 		let transcript = FakeTranscript()
 		let (setup, _, _) = machine(liveness: liveness, transcript: transcript)
 		try setup.establish()
@@ -174,7 +325,7 @@ struct ReaderEdgeSetupTests {
 		// STARTING is all this rung may do. A restart takes the reader away from
 		// somebody who may be using it, and the failure names it for a human
 		// instead of taking it.
-		let liveness = FakeReaderLiveness(answersItsOwnName: false)
+		let liveness = FakeReaderLiveness(isRunning: false)
 		liveness.activationSucceeds = false
 		let (setup, _, _) = machine(liveness: liveness)
 		let message = failure { try setup.establish() }
@@ -270,7 +421,7 @@ struct ReaderEdgeSetupTests {
 		let gestures = FakeGestureSender()
 		let (setup, _, speech) = machine(gestures: gestures)
 		try setup.establish()
-		#expect(gestures.pressed == ["describe item in voiceover cursor"])
+		#expect(gestures.pressed == ["speak the time and date"])
 		// The utterance the probe caused landed at 1, after the sentinel -- so it
 		// was bookmarked before the press and not counted from stale speech.
 		#expect(speech.entry(at: 1).text == captureProbeUtterance)
@@ -342,6 +493,10 @@ struct ReaderEdgeSetupTests {
 		let silence = FakeSilenceControl()
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		for mode in [CaptureMode.silent, .live] {
 			let (setup, _, _) = machine(mode: mode, lifecycle: lifecycle, silence: silence)
 			_ = failure { try setup.establish() }

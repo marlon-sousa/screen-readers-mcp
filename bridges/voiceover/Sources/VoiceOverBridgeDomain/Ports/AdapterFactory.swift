@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// TWELVE FIELDS AT 13.17, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// SIXTEEN FIELDS AT 13.26, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -29,7 +29,9 @@ import ScreenReaderWire
 /// | `focusInspector` | 13.9, focus |
 /// | `announcer`, `userPrompter` | 13.10, the human channel |
 /// | `keyPresser` | 13.17, chords |
-/// | `readerModifier` | 13.25, `vo` -- here |
+/// | `readerModifier` | 13.25, `vo` |
+/// | `readerScripting` | 13.26, AppleScript as a capability |
+/// | `readerRestart`, `changeJournal` | 13.26, preparing the reader and putting it back -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -110,6 +112,49 @@ public struct AdapterSet {
 	/// READ PER CALL, NEVER CACHED. See the port.
 	public let readerModifier: any ReaderModifierSetting
 
+	/// Whether AppleScript control of VoiceOver is switched on on this machine --
+	/// 13.26.
+	///
+	/// IT IS IN THE SET BECAUSE IT IS PART OF A DIAGNOSIS, not because a command
+	/// needs it. Until this entry the switch was read only by the launcher's
+	/// startup report; now `ReaderEdgeSetup` asks it to decide whether the
+	/// command-name route is available at all, and `PressGestureHandler` asks it
+	/// when a command name has already failed -- which is the difference between
+	/// telling an agent "the reader is not responding" and telling it "that route
+	/// is switched off on this machine, press the key instead".
+	///
+	/// PROCESS-SCOPED, like the permission broker: it describes the machine rather
+	/// than anything about a session, and it is read fresh each time because a
+	/// human can change it in VoiceOver Utility while a session is open.
+	public let readerScripting: any ReaderScriptingSetting
+
+	/// How the reader is taken away and brought back -- 13.26, and the port that
+	/// reverses 13.20's rule that no handshake may do this.
+	///
+	/// USED BY EXACTLY ONE THING: the registration rung, because macOS publishes a
+	/// newly registered capture voice only after VoiceOver restarts. Never by a
+	/// command handler, and never speculatively -- see the port for the bounds,
+	/// which are the point of it.
+	///
+	/// IT NEARLY HAD A SECOND CALLER. 13.26 also borrowed the VoiceOver modifier on
+	/// a Caps-Lock machine, which needed two restarts per session; the live run
+	/// found that writing that preference under a running reader makes VoiceOver
+	/// put a modal question on screen, and the whole borrow came out. See
+	/// `ReaderModifierSetting`.
+	public let readerRestart: any ReaderRestart
+
+	/// The record of what this session changed on somebody's machine, and of what
+	/// it put back -- 13.26.
+	///
+	/// IT IS IN THE SET BECAUSE EVERYTHING THAT WRITES TO IT IS A READER-EDGE
+	/// CHANGE. It is not a session fact like the transcript: it outlives the
+	/// session, it is one file for the whole machine, and its whole audience is
+	/// somebody arriving after a session that is no longer running. See the port.
+	///
+	/// PROCESS-SCOPED, like the announcer: it describes a way out of this process
+	/// rather than anything about a session.
+	public let changeJournal: any ChangeJournal
+
 	/// What the system lets this process do, and the one place it may ask for
 	/// more. HELD BY THE SET AND COMBINED BY THE CONTROLLER, which is a layout
 	/// amendment to spec 0046's 13.8 table with its why: the spec has the TYPER
@@ -170,6 +215,9 @@ public struct AdapterSet {
 		textTyper: any TextTyper,
 		keyPresser: any KeyPresser,
 		readerModifier: any ReaderModifierSetting,
+		readerScripting: any ReaderScriptingSetting,
+		readerRestart: any ReaderRestart,
+		changeJournal: any ChangeJournal,
 		permissions: any PermissionBroker,
 		focusInspector: any FocusInspector,
 		announcer: any Announcer,
@@ -184,6 +232,9 @@ public struct AdapterSet {
 		self.textTyper = textTyper
 		self.keyPresser = keyPresser
 		self.readerModifier = readerModifier
+		self.readerScripting = readerScripting
+		self.readerRestart = readerRestart
+		self.changeJournal = changeJournal
 		self.permissions = permissions
 		self.focusInspector = focusInspector
 		self.announcer = announcer

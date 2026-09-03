@@ -19,6 +19,16 @@
 // `nil` FROM `read` MEANS "COULD NOT BE READ", and the distinction is the whole
 // reason the port above has three answers: a plist that is absent, unreadable or
 // not a dictionary is not a machine where the setting is off.
+//
+// IT IS READ-ONLY, AND 13.26 IS WHY THAT IS WORTH SAYING OUT LOUD. That entry
+// added a write side to it -- a `format` question here and a `PlistWriter` seam
+// beside it -- so that the handshake could borrow the VoiceOver modifier on a
+// machine bound to Caps Lock. THE LIVE RUN KILLED THAT DESIGN: writing the
+// modifier under a running reader makes VoiceOver put a modal question on screen
+// asking the person whether they wanted Control-Option, which blocks the reader
+// from quitting and changes a setting nobody chose. Measured 2026-09-02 on the
+// maintainer's machine, and the whole write side came back out. Nothing in this
+// bridge writes VoiceOver's own preferences, and that is a property to keep.
 
 public protocol PlistReader: AnyObject {
 	/// The whole plist at `path`, or nil when it cannot be read as one.

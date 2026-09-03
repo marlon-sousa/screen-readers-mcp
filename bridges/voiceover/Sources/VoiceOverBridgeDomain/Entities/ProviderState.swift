@@ -114,14 +114,42 @@ public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable
 		([diagnosis] + conditions.map(\.described)).joined(separator: " ")
 	}
 
-	/// Promote `selected` to `capturing` on the one piece of evidence that counts.
+	/// AN UTTERANCE THAT ARRIVED IS `capturing`, WHATEVER THE INFERENCE SAID.
 	///
-	/// Pure, so the rule lives here rather than in whichever caller happens to
-	/// hold a buffer. Nothing below `selected` is promoted: utterances cannot have
-	/// arrived through a voice the reader is not using, so evidence that says
-	/// otherwise is stale rather than authoritative.
+	/// Pure, so the rule lives here rather than in whichever caller happens to hold
+	/// a buffer.
+	///
+	/// ============================================================================
+	/// IT USED TO REQUIRE `>= .selected` FIRST, AND THAT WAS EVIDENCE GATED BY
+	/// INFERENCE -- 13.26.
+	/// ============================================================================
+	///
+	/// The old rule read: "utterances cannot have arrived through a voice the
+	/// reader is not using, so evidence that says otherwise is stale rather than
+	/// authoritative." The reasoning is sound and the premise is not: the states
+	/// BELOW `capturing` are things this bridge INFERS by asking the system and the
+	/// reader, and one of those questions -- whether VoiceOver offers our voice --
+	/// is asked over AppleScript. On a machine where the person has switched
+	/// AppleScript control off, which is the state 13.26 exists to support, that
+	/// question cannot be answered at all, so the inferred state sits low while the
+	/// machine is perfectly healthy.
+	///
+	/// THIS CHANGE FIXED NOTHING THAT WAS BROKEN ON THE DAY IT WAS MADE, and the
+	/// record says so rather than claiming a scalp: the failure being chased at the
+	/// time turned out to be a conformance harness keyed on a stale literal. What
+	/// stands on its own is the ARGUMENT -- with AppleScript off, `conditions` and
+	/// the state beneath `capturing` really are unanswerable, and a rule that gates
+	/// evidence on them really would refuse a healthy machine. It is a hazard
+	/// closed before it was met, and it is written down as that.
+	///
+	/// So the rule is 13.20's own principle applied to itself: rungs 3 and 4 are
+	/// inference, rung 5 is EVIDENCE, and evidence wins. An utterance arriving
+	/// proves everything beneath it -- the provider ran, the voice was selected,
+	/// the reader spoke through it -- because there is no other way it could have
+	/// got here. What the inference is still good for is saying WHY, when nothing
+	/// arrives; `unheardConditions` is where that lives, and it is untouched.
 	public func observing(captured: Bool) -> ProviderState {
-		guard captured, self >= .selected else { return self }
+		guard captured else { return self }
 		return .capturing
 	}
 }

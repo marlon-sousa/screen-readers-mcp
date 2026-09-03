@@ -214,14 +214,26 @@ so the voice appears a little after the command returns, not immediately.
 `./build/probe list` says whether it is published; `./build/probe refresh` asks
 the system to look again now.
 
-Then **restart VoiceOver**:
+Then **restart VoiceOver**. The way that works, and the one to tell anybody who
+depends on the reader, is the gesture: **press Command-F5 twice** — once to stop
+it, once to start it again.
+
+From a terminal it is three steps, and joining them with `&&` is the mistake:
 
 ```sh
-killall VoiceOver && open -a VoiceOver
+killall VoiceOver
+while pgrep -x VoiceOver >/dev/null; do sleep 0.2; done
+open -a VoiceOver
 ```
 
-Always both: `killall` on its own does **not** bring the reader back, which on a
-machine somebody depends on is the worst thing this document could get wrong.
+`killall` on its own does **not** bring the reader back — which on a machine
+somebody depends on is the worst thing this document could get wrong — and
+`killall VoiceOver && open -a VoiceOver`, which this file printed until 13.26,
+**races**: `killall` returns when the signal is sent rather than when the process
+is gone, so `open` fires into a reader macOS still believes is running and does
+nothing at all. That cost the 2026-09-02 field run about twenty minutes. The
+bridge's own restarts do not use any of this: `VoiceOverRestart` quits, polls
+until the process is gone, and only then starts it.
 Selecting **Capture Spike** in VoiceOver Utility → Speech is no longer necessary
 — the bridge writes that preference itself at every handshake and puts your own
 voice back at teardown.

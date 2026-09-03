@@ -29,8 +29,25 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 	/// cannot climb sets `.registered` and gets exactly that failure.
 	public var stateAfterRegistering: ProviderState = .published
 
+	/// What `publish` promotes the machine to. `published` is the honest default
+	/// for a machine whose system re-reads its voices when asked.
+	///
+	/// SETTING IT TO `.registered` IS HOW A TEST SAYS "THIS MACHINE WILL NOT
+	/// PUBLISH" -- the dead end 13.20 could only name and 13.26 now tries to climb.
+	/// It was `stateAfterRegistering` that expressed that until this entry, because
+	/// registering and publishing were one step; they are two now, and a machine
+	/// that registers fine and never publishes is exactly the state 13.26's first
+	/// live connect hit.
+	public var stateAfterPublishing: ProviderState = .published
+
+	/// When set, `publish` throws it and the machine state is left alone -- the
+	/// state 13.26's first live run actually hit: registered, and the system never
+	/// offering the voice.
+	public var publicationRefusal: ProviderError?
+
 	public private(set) var selectCalls = 0
 	public private(set) var registerCalls = 0
+	public private(set) var publishCalls = 0
 	public private(set) var restored: [String] = []
 
 	public init(
@@ -41,6 +58,23 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 		self.selected = selected
 		self.captureVoiceIdentifier = captureVoiceIdentifier
 		self.machineState = machineState
+	}
+
+	/// COUNTED, AND IT PROMOTES. Publishing is a SEPARATE ACT from registering --
+	/// a registered provider's voices do not appear until something asks the system
+	/// to re-read them -- and 13.26's first live connect is why anybody knows that:
+	/// the handshake registered, restarted the reader to publish the voice, and the
+	/// voice had never been published at all. A fake that folded the two together
+	/// could not tell the fixed order from the broken one.
+	public func publish() throws {
+		publishCalls += 1
+		if let publicationRefusal { throw publicationRefusal }
+		if machineState < stateAfterPublishing { machineState = stateAfterPublishing }
+		guard machineState >= .published else {
+			throw ProviderError(
+				"the capture voice's extension is registered and the system still does not offer its "
+					+ "voice. " + ReaderCondition.providerNotRunning.described)
+		}
 	}
 
 	public func state() -> ProviderState {

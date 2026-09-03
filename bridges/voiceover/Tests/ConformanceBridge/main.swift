@@ -61,11 +61,30 @@ let bridgeVersion = "0.0.0-conformance"
 /// It is what lets the driver prove a whole "press, then read what it said" round
 /// trip across the language boundary -- indices, ranges and all -- with no reader
 /// on the machine.
+/// TWO ENTRIES, AND THEY ARE THERE FOR DIFFERENT REASONS.
+///
+/// The second is the CROSS-LANGUAGE AGREEMENT: the Go driver presses that exact
+/// string and expects those exact lines, and the two sides spell it out
+/// separately because neither can import the other's constant. It stays a
+/// literal on purpose.
+///
+/// The first is the HANDSHAKE'S OWN PROBE, keyed on the constant and never on a
+/// literal -- a rule this file learned by breaking. It used to have only the
+/// second entry, which happened to be the probe as well; board entry 13.26
+/// changed the probe, this fake silently stopped answering it, and the handshake
+/// failed with `captureProof` naming the capture voice and the provider -- a
+/// diagnosis about a MACHINE, produced by a harness in which no part of the
+/// machine is involved. It cost a real reader two restarts and a preference write
+/// before anybody looked here. Keeping them separate also keeps the round trip
+/// honest: the speech the test asserts on is caused by the test's OWN press.
 let scriptedSpeech: [String: [String]] = [
+	ReaderEdgeSetup.captureProbeCommand: [
+		"conformance harness, the reader speaks"
+	],
 	"describe item in voiceover cursor": [
 		"conformance harness, text area",
 		"one of two",
-	]
+	],
 ]
 
 /// One line of JSON on stdout, then silence.

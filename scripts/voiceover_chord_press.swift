@@ -118,11 +118,24 @@ let modifierKeyCodes: [String: UInt16] = [
 /// Spelled as NVDA spells them, because the bridge is (spec 0049 §2.3): every
 /// name here means the same physical key on the contract's other reader, and
 /// `backspace` rather than `delete` is the one that makes that true.
-let namedKeyCodes: [String: UInt16] = [
+var namedKeyCodes: [String: UInt16] = [
 	"space": 0x31, "enter": 0x24, "tab": 0x30, "escape": 0x35,
 	"backspace": 0x33, "forwarddelete": 0x75,
 	"leftarrow": 0x7B, "rightarrow": 0x7C, "downarrow": 0x7D, "uparrow": 0x7E,
+	"home": 0x73, "end": 0x77, "pageup": 0x74, "pagedown": 0x79,
 ]
+
+// f1 to f20, in the order macOS assigns them -- not consecutive, which is why
+// this is a literal list and why it is COPIED FROM `CGKeystrokePresser` rather
+// than worked out again. They are here because board entry 13.26's capture probe
+// is `vo+f3`, and a probe this file cannot press is one nobody can measure.
+let functionKeyCodes: [UInt16] = [
+	0x7A, 0x78, 0x63, 0x76, 0x60, 0x61, 0x62, 0x64, 0x65, 0x6D,
+	0x67, 0x6F, 0x69, 0x6B, 0x71, 0x6A, 0x40, 0x4F, 0x50, 0x5A,
+]
+for (index, code) in functionKeyCodes.enumerated() {
+	namedKeyCodes["f\(index + 1)"] = code
+}
 
 func postFlagsChanged(keyCode: UInt16, flags: CGEventFlags) {
 	guard let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false) else {

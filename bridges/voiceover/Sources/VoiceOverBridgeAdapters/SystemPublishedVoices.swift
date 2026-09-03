@@ -19,4 +19,10 @@ public final class SystemPublishedVoices: PublishedVoices {
 	public func identifiers() -> [String] {
 		AVSpeechSynthesisVoice.speechVoices().map(\.identifier)
 	}
+
+	/// One class method, and the voice list does not happen without it. See the
+	/// seam, which carries the measurement that cost 13.26 its first live connect.
+	public func refresh() {
+		AVSpeechSynthesisProviderVoice.updateSpeechVoices()
+	}
 }

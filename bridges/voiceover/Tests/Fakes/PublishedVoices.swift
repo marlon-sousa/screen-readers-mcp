@@ -25,4 +25,20 @@ public final class FakePublishedVoices: PublishedVoices {
 		enumerations += 1
 		return voices
 	}
+
+	/// COUNTED, and it is the point: the lifecycle must ask the system to re-read
+	/// on EVERY poll rather than once before the loop, because the call is a
+	/// request served on the system's own schedule and one that lands mid-read
+	/// changed nothing. A fake that only answered could not tell a wait that
+	/// converges from one that merely elapses. 13.26.
+	public private(set) var refreshes = 0
+
+	/// What the system finds when it re-reads. Set it to model a machine where the
+	/// voice appears a few polls later -- which is what a real one does.
+	public var onRefresh: (() -> Void)?
+
+	public func refresh() {
+		refreshes += 1
+		onRefresh?()
+	}
 }

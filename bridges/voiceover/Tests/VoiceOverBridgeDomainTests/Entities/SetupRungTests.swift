@@ -43,8 +43,13 @@ struct SetupRungTests {
 	func theOrderIsTheClimb() {
 		// Load-bearing to read it that way: permissions before anything is
 		// touched, a reader before anything is asked of one, registration before
-		// selection, and the proof last because it is the only rung that is
-		// EVIDENCE rather than inference.
+		// selection, and the proof last because it is the only rung that is EVIDENCE
+		// rather than inference.
+		//
+		// 13.26 BRIEFLY ADDED A SIXTH between `voiceSelection` and `captureProof` --
+		// a rung that borrowed the VoiceOver modifier on a Caps-Lock machine -- and a
+		// live run removed it: writing that preference under a running reader makes
+		// VoiceOver put a modal question on screen.
 		#expect(
 			SetupRung.allCases == [
 				.permissions, .readerRunning, .registration, .voiceSelection, .captureProof,

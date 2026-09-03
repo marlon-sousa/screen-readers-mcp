@@ -12,6 +12,7 @@
 // unreadable, and not-a-dictionary are one answer here, and the adapter above
 // turns that answer into `unknown` rather than into `disabled`.
 
+
 import Foundation
 
 public final class FilePlistReader: PlistReader {

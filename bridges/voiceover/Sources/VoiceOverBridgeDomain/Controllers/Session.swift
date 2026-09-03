@@ -406,6 +406,17 @@ public final class Session {
 		// voice -- degraded, and safe. The reverse order would leave a window where
 		// the reader is back on the user's own voice while a marker still says
 		// silence, which is nothing at all.
+		//
+		// 13.26 BRIEFLY ADDED A THIRD STEP HERE and a live run took it out again: a
+		// session that had BORROWED the VoiceOver modifier restarted the reader to
+		// give it back. Writing that preference under a running reader makes
+		// VoiceOver put a modal question on screen, which blocks the very quit this
+		// teardown depends on -- measured 2026-09-02. What survives is the ordering
+		// argument, worth keeping because the next attempt will meet it: a restart
+		// RE-READS the voice selection, so anything that restarts the reader at
+		// teardown must run AFTER the voice has been put back, or the reader comes up
+		// unable to publish the capture voice, falls back to the system default and
+		// PERSISTS the fallback -- 13.23's hazard, reached by the cleanup.
 		if let adapters = context.adapters {
 			// NO GUARD, AND THE TYPE IS WHY: `release` does not throw -- it is a
 			// best-effort delete over a mechanism whose guarantee is the expiry --
@@ -414,6 +425,7 @@ public final class Session {
 			if let previous = context.previousVoice {
 				guarded("restoring the user's own voice") {
 					try adapters.providerLifecycle.restoreVoice(previous)
+					adapters.changeJournal.restored(ReaderEdgeSetup.voiceChange(was: previous))
 				}
 			}
 		}

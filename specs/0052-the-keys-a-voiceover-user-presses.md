@@ -281,6 +281,36 @@ is not scoped to the new modifier and must not be.
 
 ### 3.5 The command name is demoted, not removed
 
+**Amended 2026-09-02, and the amendment is sharper than what it replaces.** This
+section first said the command name stays available to every stance as a
+convenience and a diagnosis aid. Marlon put the question that settles it:
+
+> can a user send commands directly? No? Then so cannot the agent.
+
+He is right, and the exception I was defending does not survive it. **A person
+cannot dispatch one of the reader's commands by name** — that channel is
+AppleScript, which no user has and which a careful user switches OFF, because it
+lets any process on the machine drive their screen reader. What a person does with
+an act that has no bound key is open the **Commands menu** (`vo+h` pressed twice,
+read out of the factory bindings), type the name and press Enter. That is keys.
+
+So the split is by STANCE rather than by convenience:
+
+- **`user` and `validator` press keys, always**, and reach an unbound command
+  through the Commands menu the way a person does. A key that does nothing is a
+  FINDING — the application swallowed it, or the person rebound it — and not
+  something to resolve by switching to a route no user has.
+- **`expert` keeps the dispatch channel**, precisely because it stands in for
+  nobody: bypassing the input path is what makes the comparison diagnostic.
+
+The four reasons this section originally gave for keeping the command name in
+every stance's hands are answered rather than ignored: acts with no key have the
+Commands menu; the ring is something a user lives with; a session that cannot
+press cannot drive as a user drives and should say so; and diagnosis is `expert`
+work.
+
+
+
 It stops being the recommended way to stand in for a user, and becomes what it
 is:
 

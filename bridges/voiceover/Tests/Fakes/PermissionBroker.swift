@@ -30,13 +30,20 @@ public final class FakePermissionBroker: PermissionBroker {
 	/// which tests want that.
 	public var onRequest: (() -> Void)?
 
+	/// PER-PERMISSION OVERRIDES, WHICH 13.26 MADE NECESSARY. Until then every
+	/// caller wanted the same answer for both grants, so one `state` was honest.
+	/// Now a machine with Accessibility and NO AppleEvents -- which is the machine
+	/// this bridge is being taught to work on, and the one a careful VoiceOver user
+	/// should be able to have -- is a case a test has to be able to build.
+	public var states: [Permission: PermissionState] = [:]
+
 	public init(state: PermissionState = .granted) {
 		self.state = state
 	}
 
 	public func status(of permission: Permission) -> PermissionState {
 		statusReads.append(permission)
-		return state
+		return states[permission] ?? state
 	}
 
 	public func request(_ permission: Permission) -> PermissionState {

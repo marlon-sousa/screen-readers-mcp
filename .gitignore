@@ -234,6 +234,13 @@ bridges/nvda/addon/globalPlugins/nvdaMcpBridge/protocol.py
 # The addon is scons-built; no uv project lock belongs here
 bridges/nvda/uv.lock
 
+# Same class, other lane: bridges/voiceover/pyproject.toml carries NO PYTHON at
+# all -- it is the declaration file scripts/bridges.py reads (spec 0046 names
+# that a wart and declines the cheap fix), and the bundle is built by build.sh
+# from swiftc output. A uv lock for a project with no dependencies is a file that
+# can only ever go stale.
+bridges/voiceover/uv.lock
+
 # Contributor-local MCP client registration for driving the dev server (see
 # CONTRIBUTING.md, "Driving it as Claude Code itself"). Kept out of the repo so
 # it never clobbers a contributor's own .mcp.json.

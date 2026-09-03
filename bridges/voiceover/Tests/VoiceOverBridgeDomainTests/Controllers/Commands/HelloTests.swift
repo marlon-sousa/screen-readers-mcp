@@ -297,13 +297,22 @@ struct HelloTests {
 		// voice. So registering succeeds and the selection still cannot be made.
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let factory = FakeAdapterFactory(providerLifecycle: lifecycle)
 		do {
 			_ = try makeHandler(factory: factory).execute(
 				makeContext(), request(["mode": .string("silent"), "protocolVersion": .int(1)]))
 			Issue.record("expected the silent handshake to be refused")
 		} catch let error as CommandError {
-			#expect(error.description.contains(SetupRung.voiceSelection.rawValue))
+		// THE RUNG MOVED AT 13.26, AND THE NEW ONE IS THE BETTER ANSWER. This machine
+		// used to be refused at `voiceSelection` -- "cannot select a voice that is not
+		// published" -- which is a true sentence about a symptom. Publishing is its own
+		// act now, so it is refused at `registration`, naming the thing that actually
+		// did not happen: the system was asked to offer the voice and never did.
+			#expect(error.description.contains(SetupRung.registration.rawValue))
 			#expect(error.description.contains(ReaderCondition.providerNotRunning.rawValue))
 			// Nothing was suppressed on the way out: a refused promise leaves the
 			// machine exactly as it was.
@@ -348,6 +357,10 @@ struct HelloTests {
 		let transcript = FakeTranscript()
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let factory = FakeAdapterFactory(providerLifecycle: lifecycle)
 		do {
 			_ = try makeHandler(factory: factory).execute(

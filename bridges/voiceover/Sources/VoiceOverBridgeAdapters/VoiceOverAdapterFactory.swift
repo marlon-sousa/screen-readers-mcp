@@ -56,8 +56,12 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let tools: any ProcessRunner
 	private let permissions: any PermissionBroker
 	private let poster: any EventPoster
+	private let applications: any RunningApplications
 	private let layout: any KeyboardLayout
 	private let readerModifier: any ReaderModifierSetting
+	private let readerScripting: any ReaderScriptingSetting
+	private let readerRestart: any ReaderRestart
+	private let changeJournal: any ChangeJournal
 	private let tree: any AccessibilityTree
 	private let frontmost: any FrontmostApplication
 	private let trust: any AccessibilityTrust
@@ -121,8 +125,12 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		tools: any ProcessRunner,
 		permissions: any PermissionBroker,
 		poster: any EventPoster,
+		applications: any RunningApplications,
 		layout: any KeyboardLayout,
 		readerModifier: any ReaderModifierSetting,
+		readerScripting: any ReaderScriptingSetting,
+		readerRestart: any ReaderRestart,
+		changeJournal: any ChangeJournal,
 		tree: any AccessibilityTree,
 		frontmost: any FrontmostApplication,
 		trust: any AccessibilityTrust,
@@ -136,8 +144,12 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.tools = tools
 		self.permissions = permissions
 		self.poster = poster
+		self.applications = applications
 		self.layout = layout
 		self.readerModifier = readerModifier
+		self.readerScripting = readerScripting
+		self.readerRestart = readerRestart
+		self.changeJournal = changeJournal
 		self.tree = tree
 		self.frontmost = frontmost
 		self.trust = trust
@@ -159,7 +171,7 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// with nothing: each is a thin wrapper over the one script runner, and
 			// the runner is what actually holds nothing.
 			gestureSender: VoiceOverGestureSender(runner: scripts),
-			readerLiveness: VoiceOverLiveness(runner: scripts, tools: tools),
+			readerLiveness: VoiceOverLiveness(applications: applications, tools: tools),
 			textTyper: AccessibilityTextTyper(poster: poster),
 			// STATELESS TOO, and built per session over the two shared seams beneath
 			// it. THE LAYOUT IS SHARED AND THE PRESSER IS NOT, which is the ordinary
@@ -170,6 +182,14 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// preference FILE and holds nothing, so a second one per session would
 			// buy nothing. What it must not do is cache the answer -- see the port.
 			readerModifier: readerModifier,
+			// SHARED AND PER-PROCESS, like the modifier setting beside it: both read
+			// the same preference file and hold nothing.
+			readerScripting: readerScripting,
+			// SHARED, and it is the one collaborator here that can take somebody's
+			// screen reader away. Built once, in Wiring, so there is exactly one
+			// object in the process that can do it and it is visible in the graph.
+			readerRestart: readerRestart,
+			changeJournal: changeJournal,
 			// SHARED, LIKE THE LIFECYCLE, because it describes this PROCESS's
 			// standing with the system rather than anything about a session -- and
 			// because building one here would be a second place in the bridge that

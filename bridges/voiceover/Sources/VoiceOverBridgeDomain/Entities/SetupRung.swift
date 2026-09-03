@@ -26,6 +26,21 @@
 // read it that way: permissions before anything is touched, a reader before
 // anything is asked of one, registration before selection, and the proof last,
 // because it is the only rung that is EVIDENCE rather than inference.
+//
+// AND SINCE 13.26 THE RUNGS ARE THINGS MADE TRUE RATHER THAN CHECKS THAT MAY
+// FAIL. 13.20 turned reporting into climbing; spec 0053 §3.1 turns climbing into
+// PREPARING -- the reader is started, the extension registered, the voice
+// selected, and only then is capture proved. What teardown reverses is the
+// SESSION state and only that: the voice. The registration stays, which is
+// 13.20's rule unchanged.
+//
+// A SIXTH RUNG EXISTED FOR AN AFTERNOON AND WAS REMOVED BY A LIVE RUN. 13.26 also
+// BORROWED the VoiceOver modifier on a machine bound to Caps Lock, so that such a
+// machine could be driven by keys at all. Writing that preference under a running
+// reader turns out to make VoiceOver put a modal question on screen -- which
+// blocks the reader from quitting and changes a setting nobody chose. Measured
+// 2026-09-02 on the maintainer's machine. It is its own board entry now, to be
+// specified around a launch argument rather than a write.
 
 public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 	/// This process is allowed to drive the machine at all. READ, never asked
@@ -33,8 +48,10 @@ public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 	/// handshake that raised a consent dialog would be a handshake that hangs.
 	case permissions
 
-	/// VoiceOver is running and answers its own name. The bridge may ACTIVATE it
-	/// to get there; it may never restart it.
+	/// VoiceOver's process is running. The bridge ACTIVATES it to get there --
+	/// and, since 13.26, may RESTART it later for a named reason (spec 0053 §3.2),
+	/// which reverses a rule 13.20 marked Decided. Not here, though: this rung only
+	/// ever starts.
 	case readerRunning
 
 	/// The capture voice's extension is registered with the system. MACHINE

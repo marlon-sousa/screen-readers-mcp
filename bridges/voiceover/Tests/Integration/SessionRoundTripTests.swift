@@ -96,9 +96,13 @@ struct SessionRoundTripTests {
 	/// instead of quietly consuming a command's script in its place.
 	private func commandScripts(_ scripts: FakeAppleScriptRunner) -> [String] {
 		var remaining = scripts.scripts
+		// SINCE 13.26 THE LIVENESS SCRIPT IS NOT ONE OF THESE. The handshake asks
+		// the running-application list whether the reader is there, which costs no
+		// permission and sends no AppleEvent -- so the only script a healthy
+		// handshake sends is the capture probe, and that only on a machine that
+		// offers the command-name route at all.
 		for expected in [
-			VoiceOverLiveness.readerNameScript,
-			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand),
+			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand)
 		] {
 			guard let index = remaining.firstIndex(of: expected) else {
 				Issue.record("the handshake no longer sends: \(expected)")
@@ -236,6 +240,10 @@ struct SessionRoundTripTests {
 		// what an agent gets.
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(
 			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
@@ -263,13 +271,22 @@ struct SessionRoundTripTests {
 		// and a live session announces the `speech` capability just as loudly.
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		guard case .failure(let error) = try peer.reply().outcome() else {
 			Issue.record("expected a live session to be refused on an unusable reader edge")
 			return
 		}
-		#expect(error.message.contains(SetupRung.voiceSelection.rawValue))
+		// THE RUNG MOVED AT 13.26, AND THE NEW ONE IS THE BETTER ANSWER. This machine
+		// used to be refused at `voiceSelection` -- "cannot select a voice that is not
+		// published" -- which is a true sentence about a symptom. Publishing is its own
+		// act now, so it is refused at `registration`, naming the thing that actually
+		// did not happen: the system was asked to offer the voice and never did.
+		#expect(error.message.contains(SetupRung.registration.rawValue))
 		#expect(error.message.contains(ReaderCondition.providerNotRunning.rawValue))
 		// And it tried: the bridge registered the extension before it gave up, which
 		// is the half of the recovery a human no longer has to perform.

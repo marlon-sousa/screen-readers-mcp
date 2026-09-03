@@ -101,29 +101,47 @@ struct GuidanceDocumentsTests {
 		#expect(text.contains("shifted character"))
 	}
 
-	@Test("the `user` stance is told to PRESS, and what the command name is for")
+	@Test("THE `user` STANCE PRESSES KEYS AND HAS NO DISPATCH CHANNEL")
 	func theUserStancePressesKeys() throws {
-		// 13.25's demotion, in the one document that decides how a stand-in drives.
-		// A stance that still recommended the reader's own dispatch channel would
-		// be a stand-in for nobody: the whole claim of this tool is that an agent
-		// does what the user does.
+		// 13.25's demotion, taken to its conclusion by Marlon on 2026-09-02: "can a
+		// user send commands directly? No? Then so cannot the agent." A person
+		// presses keys; to reach a command with no key they open the Commands menu.
+		// A stance document that offered the AppleScript dispatch channel would be
+		// offering a route no user has -- and on a machine with the switch off, one
+		// that does not exist at all.
 		let text = try GuidanceDocuments.guidance(for: "user").text
 		#expect(text.contains("Press the keys"))
 		#expect(text.contains("vo+m"))
-		#expect(text.contains("wrong DEFAULT"))
+		#expect(text.contains("are not yours") || text.contains("ARE NOT YOURS"))
+		// The route a person takes to an unbound command, which is still keys.
+		#expect(text.contains("vo+h"))
 		// And the cost, stated rather than hidden: this stance pays a permission
 		// dialog for fidelity.
 		#expect(text.contains("Accessibility grant"))
 	}
 
-	@Test("the `validator` stance is given the two-route comparison as a finding")
-	func theValidatorComparesTheTwoRoutes() throws {
-		// What this entry makes possible and no other stance document says: a key
-		// that does nothing where its command name works is either a swallowed
-		// keystroke -- a defect in the thing under test -- or a rebinding.
+	@Test("the `validator` stance presses keys too, and REPORTS what it cannot do")
+	func theValidatorPressesKeys() throws {
+		// It drives as the `user` stance drives, so it has no dispatch channel
+		// either -- and a key that does nothing is therefore a FINDING with two
+		// possible causes rather than something to resolve by switching routes.
 		let text = try GuidanceDocuments.guidance(for: "validator").text
-		#expect(text.contains("driven two ways"))
+		#expect(text.contains("only keys"))
 		#expect(text.contains("rebound"))
+		#expect(text.contains("no user has"))
+	}
+
+	@Test("the `expert` stance keeps the comparison, and is told it may be missing")
+	func theExpertKeepsTheDispatchChannel() throws {
+		// The instrument the other two may not use, with the reason: this stance
+		// stands in for nobody. And it may simply not be available, because the
+		// switch it needs is one a careful user leaves off.
+		let text = try GuidanceDocuments.guidance(for: "expert").text
+		#expect(text.contains("driven two ways"))
+		// Asserted on a phrase that is not broken across a line, because these
+		// documents are wrapped prose and a assertion on a two-word span is an
+		// assertion on where the wrap happens to fall.
+		#expect(text.contains("a careful user leaves it off"))
 	}
 
 	@Test("no document promises a capability this bridge does not serve")

@@ -42,6 +42,16 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// different VoiceOver modifier -- Caps Lock, or one that cannot be read --
 	/// and assert that `vo+m` is refused over a real wire with nothing pressed.
 	public let readerModifier = FakeReaderModifierSetting()
+	/// And 13.26's, exposed so a session test can put this machine on one with no
+	/// AppleScript control at all and assert that a session is still established.
+	public let readerScripting = FakeReaderScriptingSetting()
+	/// The one collaborator that takes somebody's screen reader away. Exposed
+	/// because the assertion worth making about it is usually that it was NOT
+	/// called: an ordinary handshake restarts nothing.
+	public let readerRestart = FakeReaderRestart()
+	/// What this session changed and put back. Exposed so a session test can
+	/// assert the thing the journal exists for -- that nothing is left OPEN.
+	public let changeJournal = FakeChangeJournal()
 	/// And 13.9's one. Exposed like the rest so a session-level test can assert
 	/// what a `getFocusInfo` off the wire actually read -- and, beside
 	/// `permissions` above, that answering focus asked the broker nothing.
@@ -76,6 +86,7 @@ public final class FakeAdapterFactory: AdapterFactory {
 		self.providerLifecycle = providerLifecycle
 		if captureProbeSpeaks {
 			answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
+			answerTheCaptureProbe(pressing: keyPresser, speaking: speechSource)
 		}
 	}
 
@@ -92,6 +103,9 @@ public final class FakeAdapterFactory: AdapterFactory {
 			textTyper: textTyper,
 			keyPresser: keyPresser,
 			readerModifier: readerModifier,
+			readerScripting: readerScripting,
+			readerRestart: readerRestart,
+			changeJournal: changeJournal,
 			permissions: permissions,
 			focusInspector: focusInspector,
 			announcer: announcer,
