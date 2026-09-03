@@ -280,8 +280,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.28**
-in lane 3, and the next free spec number is **0054**. Spec **0053** was spent on
+The next free board number is **11.38** in the convergence series and **13.29**
+in lane 3, and the next free spec number is **0054**. Board number **13.28** was
+spent on 2026-09-02 by 13.26's own live run, which removed a feature that entry had
+already implemented -- writing the VoiceOver modifier raises a modal dialog on a
+running reader -- and this line moved in the same commit. Spec **0053** was spent on
 2026-09-02 by 13.26, which grew from one question about the AppleScript switch
 into the frame for the whole handshake; this line moved in the same commit. Spec
 **0052** and board
@@ -2052,12 +2055,30 @@ rule intends.
     sets that switch, so the affordance is `ask_user` plus a failure sentence that
     names the pane at the moment an agent discovers it wants the route.
 
-    **What it cost elsewhere.** Teardown's order was amended while implementing:
-    the voice goes back BEFORE the closing restart, because a restart re-reads the
-    voice selection and restoring the modifier first would restart VoiceOver while
-    it was still on the capture voice -- 13.23's hazard exactly, where the reader
-    falls back to the system default and PERSISTS the fallback. The spec was
-    amended rather than the code bent to it.
+    **AND IT LOST A FEATURE TO ITS OWN LIVE RUN, which is the part worth reading.**
+    The entry also BORROWED the VoiceOver modifier on a machine bound to Caps Lock
+    -- write Control-Option, restart, write the person's own value straight back --
+    so that such a machine could be driven by keys at all. It was implemented,
+    unit-tested, run live on 2026-09-02, and removed the same evening.
+
+    **VoiceOver watches that key.** Changing it under a running reader puts a modal
+    question on screen asking the person whether they want to use Control-Option
+    instead. Spec 0053 §2.5 had measured that the write does not take EFFECT
+    without a restart and that was read as "the running reader ignores it"; it does
+    not. Three consequences, none of them a patch: the dialog **blocks the reader
+    from quitting**, so teardown's own restart could not run and reported *"still
+    running 10 seconds later"*; it **changed a stored setting nobody chose**
+    (`SCRVOModifierControlOption` came back as `ControlOptionOrCapsLock`, restored
+    by hand and verified against a snapshot); and it hid a third defect -- writing
+    the person's value straight back means every later read returns THEIR modifier,
+    so the probe and every `vo+...` in the session are refused and the borrow
+    accomplishes nothing even when it works.
+
+    **It was diagnosable only because a human said what was on his screen.** Nothing
+    at the bridge's layer can see a modal window, and three plausible hypotheses for
+    the failed quit -- an auto-relaunch, a stale `NSRunningApplication` list, a race
+    with the launch -- were all wrong. Same lesson as the wedged Finder: when reads
+    go quiet, ask what is in front of the person. **13.28 owns the retry.**
 
     **What it does NOT do**, so the entry is not credited with more than it earns:
     it adds no `restore_reader_settings` wire command. The
@@ -2082,6 +2103,33 @@ rule intends.
     job against an `NSKeyedArchiver` archive with its own risks, and
     `scripts/voiceover_default_bindings.py` is the instrument to grow. Spec: none
     yet.
+
+13.28. **Not started** -- **The modifier without writing a preference** (lane 3).
+    13.26 needed the VoiceOver modifier to be one this bridge can press, borrowed
+    Control-Option on a Caps-Lock machine by writing the reader's own preference,
+    and had the whole design removed by its live run: **VoiceOver watches that key
+    and puts a modal question on screen when it changes under a running reader**,
+    which blocks the reader from quitting and changes a setting nobody chose
+    (2026-09-02; spec 0053 §3.3 keeps the record).
+
+    So the machine that still gets no session is the one whose `vo` is Caps Lock
+    alone AND whose AppleScript switch is off. Spec 0052 §3.3's refusal stands and
+    rung 1 names it.
+
+    **The lead is Marlon's own, from the same evening**: *"I wonder if voiceover
+    executable takes cli parameters."* It does not have flags of its own -- the
+    binary is a 16 KB launcher stub -- but it is a Cocoa app, so `NSUserDefaults`'
+    **NSArgumentDomain** may apply, and that domain outranks the persisted file:
+    `open -a VoiceOver --args -SCRKeysToUseForVOModifier SCRVOModifierControlOption`
+    would set the modifier for ONE LAUNCH with nothing written, nothing to restore,
+    and nothing for the reader to notice.
+
+    **Unverified, and the first deliverable is the measurement**, not the code: does
+    VoiceOver read that key through a domain the argument domain reaches, or through
+    `CFPreferences` against its group container, which it would not? A versioned
+    instrument answers it. If the answer is no, the honest outcome is that this
+    entry closes as "not possible without HID-level remapping", which 13.26 already
+    declined to do to somebody's keyboard. Spec: none yet.
 
 ## Convergence (requires C and D both Done)
 

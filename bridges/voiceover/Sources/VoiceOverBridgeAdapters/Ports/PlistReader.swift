@@ -20,17 +20,15 @@
 // reason the port above has three answers: a plist that is absent, unreadable or
 // not a dictionary is not a machine where the setting is off.
 //
-// AND A THIRD METHOD ARRIVED WITH 13.26, FOR A DIFFERENT REASON THAN THE FIRST
-// TWO. `VoiceOverPrefsModifierStore` reads this file in order to WRITE one key of
-// it back (through the separate `PlistWriter` seam), and a file rewritten in a
-// format it was not already in is a file macOS still reads while every instrument
-// in this repository suddenly disagrees with it. VoiceOver's own preferences are
-// BINARY on the maintainer's machine. So the format is asked for explicitly and
-// carried to the write, rather than the leaf quietly deciding -- which is the
-// layering rule: the decision belongs above the seam, and "preserve what was
-// there" is a decision.
-
-import Foundation
+// IT IS READ-ONLY, AND 13.26 IS WHY THAT IS WORTH SAYING OUT LOUD. That entry
+// added a write side to it -- a `format` question here and a `PlistWriter` seam
+// beside it -- so that the handshake could borrow the VoiceOver modifier on a
+// machine bound to Caps Lock. THE LIVE RUN KILLED THAT DESIGN: writing the
+// modifier under a running reader makes VoiceOver put a modal question on screen
+// asking the person whether they wanted Control-Option, which blocks the reader
+// from quitting and changes a setting nobody chose. Measured 2026-09-02 on the
+// maintainer's machine, and the whole write side came back out. Nothing in this
+// bridge writes VoiceOver's own preferences, and that is a property to keep.
 
 public protocol PlistReader: AnyObject {
 	/// The whole plist at `path`, or nil when it cannot be read as one.
@@ -39,8 +37,4 @@ public protocol PlistReader: AnyObject {
 	/// Whether something exists at `path`. For a marker file, existence IS the
 	/// value.
 	func exists(at path: String) -> Bool
-
-	/// Which on-disk format the plist at `path` is in, or nil when it cannot be
-	/// read as one. See the header.
-	func format(at path: String) -> PropertyListSerialization.PropertyListFormat?
 }

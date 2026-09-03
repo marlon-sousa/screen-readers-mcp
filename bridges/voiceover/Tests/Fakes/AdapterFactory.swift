@@ -45,10 +45,6 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// And 13.26's, exposed so a session test can put this machine on one with no
 	/// AppleScript control at all and assert that a session is still established.
 	public let readerScripting = FakeReaderScriptingSetting()
-	/// The WRITE side of the modifier, exposed so a session test can drive a
-	/// Caps-Lock machine through the replacement and assert the ORDER of the
-	/// writes -- ours, then theirs, before the handshake returns.
-	public let readerModifierStore = FakeReaderModifierStore()
 	/// The one collaborator that takes somebody's screen reader away. Exposed
 	/// because the assertion worth making about it is usually that it was NOT
 	/// called: an ordinary handshake restarts nothing.
@@ -108,7 +104,6 @@ public final class FakeAdapterFactory: AdapterFactory {
 			keyPresser: keyPresser,
 			readerModifier: readerModifier,
 			readerScripting: readerScripting,
-			readerModifierStore: readerModifierStore,
 			readerRestart: readerRestart,
 			changeJournal: changeJournal,
 			permissions: permissions,

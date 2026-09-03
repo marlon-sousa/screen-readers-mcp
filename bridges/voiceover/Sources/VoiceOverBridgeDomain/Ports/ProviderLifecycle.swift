@@ -113,6 +113,25 @@ public protocol ProviderLifecycle: AnyObject {
 	/// so the evidence of the write is gone before anyone looks (spec 0047,
 	/// finding 17). An implementation that wrote and returned would report success
 	/// for the one failure mode this route actually has.
+	/// Make the system OFFER the registered voice, and do not return until it does
+	/// -- 13.26.
+	///
+	/// SEPARATE FROM `register()` BECAUSE THEY ARE SEPARATE ACTS, and 13.26's first
+	/// live connect is why anybody knows that. Registering tells the system the
+	/// extension EXISTS; a registered provider's voices do not appear until
+	/// something asks the system to re-read them, and nothing was asking. The
+	/// handshake registered, restarted VoiceOver to publish the voice, and the
+	/// voice had never been published -- so the reader came back up without it and
+	/// the climb failed one rung later. Measured 2026-09-02.
+	///
+	/// CALLED ONLY AFTER `register()`, AND BEFORE ANY READER RESTART. Restarting
+	/// the reader before the voice exists hands it a list that still does not
+	/// contain the voice, which is somebody's screen reader taken away for nothing.
+	///
+	/// IT POLLS, because the system re-reads on its own schedule rather than on
+	/// the call -- `register()`'s existing shape, for the same reason.
+	func publish() throws
+
 	func selectCaptureVoice() throws
 
 	/// Put back what the user had. Called on every teardown path.

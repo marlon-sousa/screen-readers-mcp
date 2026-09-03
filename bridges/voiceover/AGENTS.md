@@ -138,19 +138,31 @@ so the system forgets the extension every time this bridge is rebuilt.
 **13.26 CHANGED WHAT A RUNG IS**, and it is the entry to read before touching any
 of this. 13.20 turned reporting into climbing; spec 0053 §3.1 turns climbing into
 **preparing** — these are things made true, not checks that may fail, and two of
-them now WRITE to somebody's machine. `ReaderEdgeSetup` runs **six** rungs, all
+them now WRITE to somebody's machine. `ReaderEdgeSetup` runs five rungs, all
 eager, in this order, each failing by name with what the AGENT must do:
 
 | # | Rung | What it does | Costs |
 |---|---|---|---|
 | 1 | `permissions` | READS both grants and the AppleScript switch, and requires **one workable ROUTE** rather than every permission (13.26) | two file reads and one subprocess |
 | 2 | `readerRunning` | asks the running-application list; if absent, `open -a VoiceOver` and asks again | **no permission at all** since 13.26 |
-| 3 | `registration` | `lsregister -f` then `pluginkit -a`, **only** from `notRegistered`, confirmed by polling | nothing on a healthy machine |
+| 3 | `registration` | `lsregister -f` then `pluginkit -a` from `notRegistered`, then `updateSpeechVoices()` polled until the voice is PUBLISHED, then a reader **restart** (13.26) | nothing on a healthy machine; one restart after a rebuild |
 | 4 | `voiceSelection` | records the user's voice, writes ours, confirms | unchanged from 13.6 |
-| 5 | `readerModifier` | where `vo` is Caps Lock: announce, write ours, **restart**, write theirs straight back (13.26) | nothing on an ordinary machine; **two reader restarts** on a Caps-Lock one |
-| 6 | `captureProof` | `speak the time and date` by name, or `vo+f7` as a key, and requires the utterance to arrive | one command and one poll interval |
+| 5 | `captureProof` | `speak the time and date` by name, or `vo+f7` as a key, and requires the utterance to arrive | one command and one poll interval |
 
 Six rules bind anyone editing this.
+
+**A SIXTH RUNG EXISTED FOR AN AFTERNOON, AND A LIVE RUN DELETED IT.** 13.26 also
+BORROWED the VoiceOver modifier on a machine bound to Caps Lock — write
+Control-Option, restart, write the person's own value straight back — so that such
+a machine could be driven by keys at all. **VoiceOver watches that key**: changing
+it under a running reader puts a modal question on screen asking the person whether
+they want Control-Option, which blocks the reader from quitting (so teardown's own
+restart could not run) and changed a setting nobody chose. Measured 2026-09-02 with
+the maintainer at the keyboard, and diagnosable ONLY because he said what was on
+his screen — nothing at this layer can see a modal window, and three plausible
+hypotheses for the failed quit were all wrong. **The retry is board entry 13.28,
+around a launch argument rather than a write.** Nothing in this bridge writes
+VoiceOver's own preferences, and `PlistReader`'s header says so.
 
 **IT IS FATAL IN BOTH MODES, AND THAT IS NOT 13.6's ASYMMETRY REVERSED.** 13.6's
 rule is about a promise concerning a human's EARS, which only `silent` makes, and
@@ -172,22 +184,19 @@ it drives the reader directly and opens no session.
 
 **SESSION STATE IS RESTORED AT TEARDOWN; MACHINE STATE IS NOT.** The voice
 SELECTION is session state and goes back on every teardown path (hard invariant
-3, unchanged), and since 13.26 so is the borrowed MODIFIER. The REGISTRATION is
-machine state and stays. There is deliberately no `unregister()` and nothing at
+3, unchanged) — and it is the ONLY thing this bridge changes about somebody's
+machine. The REGISTRATION is machine state and stays. There is deliberately no `unregister()` and nothing at
 teardown may be paired with `register()`, however much the symmetry appeals:
 undoing it recreates the exact bug 13.20 fixes, and the accept loop is serial
 today but will not always be — one client's disconnect must never deregister the
 voice under another.
 
-**THE VOICE GOES BACK BEFORE THE MODIFIER, AND GETTING THAT BACKWARDS COSTS A
-VOICE.** Spec 0053 §3.1 said "the modifier, the voice" until it was implemented,
-in the order the climb takes them. Restoring the modifier means **restarting the
-reader**, and a restart re-reads the voice selection — so the reader would come
-up unable to publish the capture voice, fall back to the system default **and
-persist the fallback**, which is 13.23's hazard exactly and destroys the record of
-the person's own voice. Voice first, restart after it. The spec was amended rather
-than the code bent to it, and `SessionTests` asserts the order rather than the
-calls.
+**ANYTHING THAT RESTARTS THE READER AT TEARDOWN MUST RUN AFTER THE VOICE IS BACK.**
+Nothing does today — the modifier borrow that would have is gone — but the argument
+is kept because the next attempt will meet it: a restart RE-READS the voice
+selection, so restarting first leaves the reader unable to publish the capture
+voice, falling back to the system default **and persisting the fallback**, which is
+13.23's hazard reached by the cleanup itself.
 
 **AND EVERYTHING A SESSION CHANGES IS JOURNALLED** —
 `~/Library/Logs/screen-readers-mcp/reader-changes.jsonl`, one line per change and
@@ -206,9 +215,20 @@ reversed it on 2026-09-02: *"restarting vo is not a problem for capturing as a
 bridge handshake, if needed."* Spec 0053 §3.2. **The bounds are the point, and
 they bind the caller rather than the port:**
 
-- **Only for a named reason** — a capture voice registered but not published, or
-  a modifier that had to be replaced. Never speculatively, and never as a way
-  past a failure the bridge cannot explain.
+- **Only for a named reason** — exactly one as shipped: a capture voice the
+  system has just been told about. Never speculatively, and never as a way past
+  a failure the bridge cannot explain.
+
+**AND REGISTERING IS NOT PUBLISHING, which the first live connect found the hard
+way.** A registered provider's voices do not appear because it registered:
+something must call `AVSpeechSynthesisProviderVoice.updateSpeechVoices()`.
+`CaptureProbe` has done that since 13.4 — its own comment calls it *"the step the
+voice list will not happen without"* — and the handshake never did. So 13.26's
+first connect registered the extension, restarted VoiceOver to publish the voice,
+and the voice **had never been published**: the reader came back up with a list
+that still did not contain it. The order is now register → refresh → poll until it
+is really there → **then** restart. A restart taken before the voice exists is
+somebody's screen reader spent for nothing.
 - **Announced first**, through the bridge's own synthesizer, which is audible
   even when the reader is silenced. `ReaderRestart` makes no sound; the
   controller does, because only the controller knows why.

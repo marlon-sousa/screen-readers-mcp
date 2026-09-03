@@ -60,7 +60,6 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 	private let layout: any KeyboardLayout
 	private let readerModifier: any ReaderModifierSetting
 	private let readerScripting: any ReaderScriptingSetting
-	private let readerModifierStore: any ReaderModifierStore
 	private let readerRestart: any ReaderRestart
 	private let changeJournal: any ChangeJournal
 	private let tree: any AccessibilityTree
@@ -130,7 +129,6 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		layout: any KeyboardLayout,
 		readerModifier: any ReaderModifierSetting,
 		readerScripting: any ReaderScriptingSetting,
-		readerModifierStore: any ReaderModifierStore,
 		readerRestart: any ReaderRestart,
 		changeJournal: any ChangeJournal,
 		tree: any AccessibilityTree,
@@ -150,7 +148,6 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 		self.layout = layout
 		self.readerModifier = readerModifier
 		self.readerScripting = readerScripting
-		self.readerModifierStore = readerModifierStore
 		self.readerRestart = readerRestart
 		self.changeJournal = changeJournal
 		self.tree = tree
@@ -188,10 +185,6 @@ public final class VoiceOverAdapterFactory: AdapterFactory {
 			// SHARED AND PER-PROCESS, like the modifier setting beside it: both read
 			// the same preference file and hold nothing.
 			readerScripting: readerScripting,
-			// SHARED AND PER-PROCESS TOO. The STORE writes one key of a file on disk
-			// and the JOURNAL appends to another; neither holds session state, and a
-			// second copy of either would be a second thing writing the same file.
-			readerModifierStore: readerModifierStore,
 			// SHARED, and it is the one collaborator here that can take somebody's
 			// screen reader away. Built once, in Wiring, so there is exactly one
 			// object in the process that can do it and it is visible in the graph.

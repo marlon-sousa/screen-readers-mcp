@@ -34,7 +34,6 @@ struct ReaderEdgeSetupTests {
 		silence: FakeSilenceControl = FakeSilenceControl(),
 		speechSource: FakeSpeechSource = FakeSpeechSource(),
 		transcript: FakeTranscript = FakeTranscript(),
-		modifierStore: FakeReaderModifierStore = FakeReaderModifierStore(),
 		restart: FakeReaderRestart = FakeReaderRestart(),
 		journal: FakeChangeJournal = FakeChangeJournal(),
 		announcer: FakeAnnouncer = FakeAnnouncer(),
@@ -50,7 +49,6 @@ struct ReaderEdgeSetupTests {
 			keyPresser: keys,
 			readerModifier: modifier,
 			readerScripting: scripting,
-			readerModifierStore: modifierStore,
 			readerRestart: restart,
 			changeJournal: journal,
 			permissions: permissions,
@@ -80,170 +78,64 @@ struct ReaderEdgeSetupTests {
 	}
 
 	// ==========================================================================
-	// 13.26: THE MODIFIER RUNG, WHICH IS THE ONE THAT WRITES TO SOMEBODY'S
-	// PREFERENCES AND RESTARTS THEIR SCREEN READER.
+	// 13.26: REGISTERING PUBLISHES, WHICH IS THE RUNG 13.20 COULD NOT CLIMB.
 	// ==========================================================================
-	//
-	// Spec 0053 §3.3 is a SEQUENCE, and the sequence is the safety: write ours,
-	// restart, write theirs straight back -- so the FILE never holds our value for
-	// longer than a moment and a crash costs "the reader is on Control-Option until
-	// it next restarts" rather than a wrong preference surviving reboots. What
-	// these tests assert is therefore the ORDER, not the calls.
 
-	@Test("an ordinary machine's modifier is NOT touched and the reader is NOT restarted")
-	func anOrdinaryMachineIsLeftAlone() throws {
-		// The control, and the most important test in this section: every
-		// replacement costs two reader restarts, which on an attended machine is two
-		// interruptions of somebody who is using their computer.
-		let store = FakeReaderModifierStore()
+	@Test("REGISTERING RESTARTS THE READER, because nothing else publishes the voice")
+	func registeringPublishesByRestarting() throws {
+		// macOS offers a newly registered voice only after VoiceOver restarts. 13.20
+		// could only NAME that restart and ask a human to run it; spec 0053 §3.2 lets
+		// the handshake take it. In practice the trigger is `poe build`, which begins
+		// `rm -rf build` and makes the system forget the extension.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .notRegistered
+		lifecycle.stateAfterRegistering = .registered
 		let restart = FakeReaderRestart()
-		let journal = FakeChangeJournal()
 		let announcer = FakeAnnouncer()
-		let machine = machine(
-			modifier: FakeReaderModifierSetting(.controlOption),
-			modifierStore: store, restart: restart, journal: journal, announcer: announcer)
+		let machine = machine(lifecycle: lifecycle, restart: restart, announcer: announcer)
 		try machine.setup.establish()
-		#expect(store.stored.isEmpty)
+		#expect(lifecycle.registerCalls == 1)
+		#expect(restart.restarts == 1)
+		// ANNOUNCED FIRST, like every restart this bridge takes.
+		#expect(announcer.spoken.first?.contains("restarting VoiceOver") == true)
+	}
+
+	@Test("a machine that never needed registering is never restarted")
+	func anAlreadyPublishedVoiceCostsNoRestart() throws {
+		// THE CONTROL, and it is the one that matters: the blind person who has not
+		// rebuilt anything must pay no restart at all. Only the developer who just
+		// ran `poe build` does.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .published
+		let restart = FakeReaderRestart()
+		let machine = machine(lifecycle: lifecycle, restart: restart)
+		try machine.setup.establish()
+		#expect(lifecycle.registerCalls == 0)
 		#expect(restart.restarts == 0)
-		#expect(announcer.spoken.isEmpty)
-		#expect(!journal.openKinds.contains(.modifier))
-		#expect(!journal.openKinds.contains(.runningModifier))
 	}
 
-	@Test("a Caps-Lock machine: ours is written, the reader restarts, THEIRS goes straight back")
-	func aCapsLockMachineBorrowsTheModifier() throws {
-		let modifier = FakeReaderModifierSetting(.capsLock)
-		let store = FakeReaderModifierStore()
+	@Test("a restart that FAILS here is written down, and a LATER rung refuses by name")
+	func afailedPublishingRestartIsNotFatalHere() {
+		// The difference from the modifier rung. There, the restart is the only thing
+		// that puts the reader on keys this bridge can press, so failing it fails the
+		// rung. Here this rung cannot tell whether the failure mattered -- so it says
+		// so and climbs on, and the rung that CAN tell refuses by name with a recovery
+		// that fits. This test is the record that the session is still refused: not
+		// failing here must never mean establishing a session that cannot capture,
+		// which is the whole of 13.20.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.machineState = .notRegistered
+		lifecycle.stateAfterRegistering = .registered
 		let restart = FakeReaderRestart()
-		// The reader re-reads the file at startup, which is the machine behaviour the
-		// whole sequence works around -- so the fake moves the read side on restart.
-		restart.onRestart = { modifier.setting = .controlOption }
-		let machine = machine(
-			// No AppleScript at all: this is the machine 13.26 exists for, and the
-			// key route is the only one there is.
-			scripting: FakeReaderScriptingSetting(setting: .disabled),
-			modifier: modifier, modifierStore: store, restart: restart)
-		try machine.setup.establish()
-
-		// THE ORDER IS THE ASSERTION. Ours, then theirs -- and `restarts == 1`
-		// between them is what `stored` alone could not show, so the restart count
-		// is checked as well.
-		#expect(store.stored == [.controlOption, .capsLock])
-		#expect(restart.restarts == 1)
-		// AND TEARDOWN IS OWED ONE, which is what `replacedModifier` records.
-		#expect(machine.context.replacedModifier == .capsLock)
-	}
-
-	@Test("the human is WARNED before their screen reader is taken away")
-	func theHumanIsWarnedFirst() throws {
-		// Spec 0053 §3.2: announced first, through the bridge's own synthesizer,
-		// which is audible even in a silent session because it goes around the reader
-		// entirely. Nobody is dropped into silence unwarned.
-		let announcer = FakeAnnouncer()
-		let restart = FakeReaderRestart()
-		let modifier = FakeReaderModifierSetting(.capsLock)
-		restart.onRestart = { modifier.setting = .controlOption }
-		let machine = machine(
-			mode: .silent, modifier: modifier, restart: restart, announcer: announcer)
-		try machine.setup.establish()
-		let warning = try #require(announcer.spoken.first)
-		#expect(warning.contains("restarting VoiceOver"))
-		#expect(warning.contains("Caps Lock"))
-		#expect(restart.restarts == 1)
-	}
-
-	@Test("the file gets THEIR value back even when the restart THREW")
-	func theirValueGoesBackEvenOnFailure() {
-		// The `defer`, as a test, and it is the sharpest rule in §3.3: a wrong stored
-		// preference survives reboots and has no self-correction at all, so it must
-		// not be left behind by any path -- including the one that is already
-		// failing.
-		let store = FakeReaderModifierStore()
-		let restart = FakeReaderRestart()
-		restart.failure = ReaderRestartError("it would not come back", readerStillRunning: false)
-		let machine = machine(
-			modifier: FakeReaderModifierSetting(.capsLock), modifierStore: store, restart: restart)
+		restart.failure = ReaderRestartError("it would not stop", readerStillRunning: true)
+		let transcript = FakeTranscript()
+		let machine = machine(lifecycle: lifecycle, transcript: transcript, restart: restart)
 		let message = failure { try machine.setup.establish() }
-		#expect(message?.contains("'readerModifier'") == true)
-		#expect(store.stored == [.controlOption, .capsLock])
-		// AND TEARDOWN IS OWED NOTHING: the replacement never took, so restarting
-		// again at teardown would take a screen reader away for no reason.
-		#expect(machine.context.replacedModifier == nil)
-	}
-
-	@Test("a reader that did not come back is reported DIFFERENTLY from one that would not quit")
-	func theTwoRestartFailuresAreDifferentSentences() {
-		// "I could not stop VoiceOver" leaves somebody with a working screen reader.
-		// "I stopped VoiceOver and it did not come back" does not, and those two must
-		// never be interchangeable.
-		let gone = FakeReaderRestart()
-		gone.failure = ReaderRestartError("it did not come back", readerStillRunning: false)
-		let goneMessage = failure {
-			try machine(modifier: FakeReaderModifierSetting(.capsLock), restart: gone)
-				.setup.establish()
-		}
-		#expect(goneMessage?.contains("VoiceOver is NOT RUNNING") == true)
-
-		let alive = FakeReaderRestart()
-		alive.failure = ReaderRestartError("it would not stop", readerStillRunning: true)
-		let aliveMessage = failure {
-			try machine(modifier: FakeReaderModifierSetting(.capsLock), restart: alive)
-				.setup.establish()
-		}
-		#expect(aliveMessage?.contains("still running") == true)
-		#expect(aliveMessage?.contains("NOT RUNNING") == false)
-	}
-
-	@Test("a modifier that cannot be WRITTEN fails the rung and restarts nothing")
-	func anUnwritableModifierRestartsNothing() {
-		let store = FakeReaderModifierStore()
-		store.failure = ReaderModifierStoreError("the file is read-only")
-		let restart = FakeReaderRestart()
-		let message = failure {
-			try machine(
-				modifier: FakeReaderModifierSetting(.capsLock), modifierStore: store, restart: restart
-			).setup.establish()
-		}
-		#expect(message?.contains("'readerModifier'") == true)
-		#expect(message?.contains("the file is read-only") == true)
-		// NOTHING WAS CHANGED AND NOTHING WAS RESTARTED, and the message says so --
-		// which is what lets a human act without wondering what state they are in.
-		#expect(message?.contains("Nothing was changed and nothing was restarted") == true)
-		#expect(restart.restarts == 0)
-	}
-
-	@Test("a Caps-Lock machine with NO Accessibility grant is not restarted for nothing")
-	func noGrantMeansNoReplacement() throws {
-		// The second half of §3.3's condition. Two reader restarts buy a key route,
-		// and on a machine that can never post a key event they buy nothing -- so
-		// they are not spent.
-		let permissions = FakePermissionBroker()
-		permissions.states[.accessibility] = .notGranted
-		let restart = FakeReaderRestart()
-		let store = FakeReaderModifierStore()
-		let machine = machine(
-			permissions: permissions, modifier: FakeReaderModifierSetting(.capsLock),
-			modifierStore: store, restart: restart)
-		// It still establishes: the command-name route is available on this machine.
-		try machine.setup.establish()
-		#expect(restart.restarts == 0)
-		#expect(store.stored.isEmpty)
-	}
-
-	@Test("an UNREADABLE modifier is never written over, because it could not be put back")
-	func anUnreadableModifierIsNotReplaced() {
-		// The sharp case. A modifier this bridge could not READ is one it could not
-		// PUT BACK, so writing over it would destroy a setting nobody recorded --
-		// and with no command-name route either, the session is refused at rung 1.
-		let store = FakeReaderModifierStore()
-		let message = failure {
-			try machine(
-				scripting: FakeReaderScriptingSetting(setting: .disabled),
-				modifier: FakeReaderModifierSetting(.unknown), modifierStore: store
-			).setup.establish()
-		}
-		#expect(message?.contains("'permissions'") == true)
-		#expect(store.stored.isEmpty)
+		#expect(
+			transcript.notes.contains { $0.contains("could not be restarted to publish") })
+		// THE SESSION STILL STANDS, because the restart was not what decided anything
+		// here: the voice was published before it, so the reader has it.
+		#expect(message == nil)
 	}
 
 	// -- what the journal records ----------------------------------------------
@@ -264,52 +156,6 @@ struct ReaderEdgeSetupTests {
 		let entry = try #require(journal.entries.first)
 		#expect(entry.change.was == "com.apple.voice.premium.pt-BR.Luciana")
 		#expect(entry.change.store.contains("com.apple.SpeakSelection"))
-	}
-
-	@Test("a Caps-Lock machine leaves the FILE closed and the RUNNING reader open")
-	func theModifierJournalSaysWhatIsActuallyWrong() throws {
-		// The distinction the `runningModifier` kind exists for. The preference file
-		// was put back within the handshake, so a repair tool must not write to it;
-		// what is ours is the running reader, and the only repair for that is a
-		// restart -- which the person's own next restart supplies for free.
-		let modifier = FakeReaderModifierSetting(.capsLock)
-		let restart = FakeReaderRestart()
-		restart.onRestart = { modifier.setting = .controlOption }
-		let journal = FakeChangeJournal()
-		let machine = machine(modifier: modifier, restart: restart, journal: journal)
-		try machine.setup.establish()
-		#expect(!journal.openKinds.contains(.modifier))
-		#expect(journal.openKinds.contains(.runningModifier))
-	}
-
-	@Test("a modifier file that could NOT be put back is left OPEN, and said out loud")
-	func afailedRestoreIsLeftOpen() throws {
-		// The single worst outcome this rung has: a wrong modifier stored in
-		// somebody's preferences, surviving reboots. It must be findable afterwards,
-		// which means the journal entry stays OPEN and the transcript says so in as
-		// many words -- and the handshake still succeeds, because the session works
-		// and refusing it would help nobody.
-		let modifier = FakeReaderModifierSetting(.capsLock)
-		let restart = FakeReaderRestart()
-		restart.onRestart = { modifier.setting = .controlOption }
-		// Ours goes in; putting theirs back is what fails.
-		let store = FakeReaderModifierStore()
-		store.onStore = { setting in
-			if setting == .controlOption {
-				store.failure = ReaderModifierStoreError("the file went read-only")
-			}
-		}
-		let transcript = FakeTranscript()
-		let journal = FakeChangeJournal()
-		let machine = machine(
-			modifier: modifier, transcript: transcript, modifierStore: store,
-			restart: restart, journal: journal)
-		try machine.setup.establish()
-		#expect(journal.openKinds.contains(.modifier))
-		#expect(
-			transcript.notes.contains {
-				$0.contains("THE VOICEOVER MODIFIER PREFERENCE COULD NOT BE PUT BACK")
-			})
 	}
 
 	// -- the healthy climb -----------------------------------------------------
@@ -647,6 +493,10 @@ struct ReaderEdgeSetupTests {
 		let silence = FakeSilenceControl()
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		for mode in [CaptureMode.silent, .live] {
 			let (setup, _, _) = machine(mode: mode, lifecycle: lifecycle, silence: silence)
 			_ = failure { try setup.establish() }

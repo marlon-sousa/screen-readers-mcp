@@ -74,6 +74,21 @@ public final class PluginKitProviderLifecycle: ProviderLifecycle {
 	/// failure. Wide, because a false negative here is the expensive direction.
 	static let registrationConfirmationSeconds: Double = 5.0
 
+	/// How long the system is given to PUBLISH a newly registered voice.
+	///
+	/// FAR WIDER THAN THE REGISTRATION WINDOW, and deliberately so. `pluginkit`
+	/// hands its work to `pkd` and the listing catches up in well under a second;
+	/// publishing is a different mechanism on a different schedule -- this bridge's
+	/// own README has said "roughly every 30 seconds" since 13.4, and
+	/// `CaptureProbe refresh` waits 3 seconds and often has to be run twice. A
+	/// window that was too tight here would fail a handshake on a machine that was
+	/// about to work, which is exactly the failure 13.20 exists to remove.
+	///
+	/// IT IS PAID ONLY AFTER A REGISTRATION, which in practice means only by
+	/// whoever has just run `poe build`. An ordinary handshake never enters this
+	/// path at all.
+	static let publicationSeconds: Double = 45.0
+
 	/// How often it re-asks inside that window.
 	static let registrationPollInterval: Double = 0.25
 
@@ -153,6 +168,33 @@ public final class PluginKitProviderLifecycle: ProviderLifecycle {
 				throw ProviderError(
 					"the capture voice's extension was registered and pluginkit still does not list it "
 						+ "after \(Int(Self.registrationConfirmationSeconds)) seconds. "
+						+ ReaderCondition.providerNotRunning.described)
+			}
+			clock.sleep(Self.registrationPollInterval)
+		}
+	}
+
+	/// Ask the system to re-read provider voices, and wait until ours is there.
+	///
+	/// THE STEP THE VOICE LIST WILL NOT HAPPEN WITHOUT. `CaptureProbe` has called
+	/// this since 13.4 and the handshake did not, which cost 13.26's first live
+	/// connect: registered, restarted, and the voice had never been published.
+	///
+	/// REFRESHED ON EVERY POLL, not once before the loop. The call is a REQUEST to
+	/// re-read on the system's own schedule, and one that lands while the system is
+	/// mid-read is one that changed nothing -- so asking again each time is what
+	/// makes the wait converge rather than merely elapse. It is cheap, and
+	/// `CaptureProbe`'s having to be run twice by hand is the same observation from
+	/// the other end.
+	public func publish() throws {
+		let deadline = clock.monotonic() + Self.publicationSeconds
+		while true {
+			published.refresh()
+			if publishedCaptureVoice() != nil { return }
+			guard clock.monotonic() < deadline else {
+				throw ProviderError(
+					"the capture voice's extension is registered and the system still does not offer its "
+						+ "voice after \(Int(Self.publicationSeconds)) seconds. "
 						+ ReaderCondition.providerNotRunning.described)
 			}
 			clock.sleep(Self.registrationPollInterval)

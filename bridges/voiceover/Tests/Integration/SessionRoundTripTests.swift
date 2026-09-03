@@ -240,6 +240,10 @@ struct SessionRoundTripTests {
 		// what an agent gets.
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(
 			id: 1, cmd: "hello", params: ["mode": .string("silent"), "protocolVersion": .int(1)])
@@ -267,13 +271,22 @@ struct SessionRoundTripTests {
 		// and a live session announces the `speech` capability just as loudly.
 		let lifecycle = FakeProviderLifecycle(machineState: .notRegistered)
 		lifecycle.stateAfterRegistering = .registered
+		// AND IT WILL NOT PUBLISH EITHER, which is what makes this the dead end. Until
+		// 13.26 those were one step; publishing is its own act now, and a machine that
+		// registers and never publishes is the state the first live connect hit.
+		lifecycle.stateAfterPublishing = .registered
 		let peer = Peer(lifecycle: lifecycle)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		guard case .failure(let error) = try peer.reply().outcome() else {
 			Issue.record("expected a live session to be refused on an unusable reader edge")
 			return
 		}
-		#expect(error.message.contains(SetupRung.voiceSelection.rawValue))
+		// THE RUNG MOVED AT 13.26, AND THE NEW ONE IS THE BETTER ANSWER. This machine
+		// used to be refused at `voiceSelection` -- "cannot select a voice that is not
+		// published" -- which is a true sentence about a symptom. Publishing is its own
+		// act now, so it is refused at `registration`, naming the thing that actually
+		// did not happen: the system was asked to offer the voice and never did.
+		#expect(error.message.contains(SetupRung.registration.rawValue))
 		#expect(error.message.contains(ReaderCondition.providerNotRunning.rawValue))
 		// And it tried: the bridge registered the extension before it gave up, which
 		// is the half of the recovery a human no longer has to perform.

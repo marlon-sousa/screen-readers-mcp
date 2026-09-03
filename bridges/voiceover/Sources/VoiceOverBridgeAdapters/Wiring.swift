@@ -306,23 +306,6 @@ public enum Wiring {
 		VoiceOverPrefsModifierSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
 	}
 
-	/// How the VoiceOver modifier is SET -- the WRITE side of the setting above,
-	/// and the only thing in this process that may edit VoiceOver's preferences.
-	///
-	/// A SEPARATE OBJECT FROM THE READER, over a separate seam, because that is
-	/// what makes `VoiceOverPrefsModifierSetting`'s "IT NEVER WRITES" a property of
-	/// the object graph rather than a promise in a comment. Same home directory and
-	/// same `VoiceOverPreferencesFile` derivation, so the reader and the writer
-	/// cannot come to disagree about which file they mean.
-	public static func readerModifierStore(
-		reader: (any PlistReader)? = nil, writer: (any PlistWriter)? = nil
-	) -> any ReaderModifierStore {
-		VoiceOverPrefsModifierStore(
-			reader: reader ?? FilePlistReader(),
-			writer: writer ?? FilePlistWriter(),
-			home: NSHomeDirectory())
-	}
-
 	/// How the reader is taken away and brought back. ONE PER PROCESS, and it is
 	/// the one collaborator in this graph that can leave a blind person with no
 	/// screen reader -- so it is built in exactly one place and is visible here.
@@ -431,7 +414,6 @@ public enum Wiring {
 		layout: (any KeyboardLayout)? = nil,
 		readerModifier: (any ReaderModifierSetting)? = nil,
 		readerScripting: (any ReaderScriptingSetting)? = nil,
-		readerModifierStore: (any ReaderModifierStore)? = nil,
 		readerRestart: (any ReaderRestart)? = nil,
 		changeJournal: (any ChangeJournal)? = nil,
 		applications: (any RunningApplications)? = nil,
@@ -454,7 +436,6 @@ public enum Wiring {
 				layout: layout ?? keyboardLayout(),
 				readerModifier: readerModifier ?? readerModifierSetting(),
 				readerScripting: readerScripting ?? self.readerScripting(),
-				readerModifierStore: readerModifierStore ?? self.readerModifierStore(),
 				readerRestart: readerRestart ?? self.readerRestart(clock: clock),
 				changeJournal: changeJournal ?? self.changeJournal(),
 				tree: tree ?? accessibilityTree(),

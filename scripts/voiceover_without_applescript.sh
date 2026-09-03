@@ -19,8 +19,8 @@
 #
 # THE FOUR QUESTIONS, and the fourth is about code this repository already ships:
 #
-#   1. Does the KEYSTROKE probe still make the reader speak? `vo+f3` is
-#      `describe item in voiceover cursor` -- the same act rung 5 of the handshake
+#   1. Does the KEYSTROKE probe still make the reader speak? `vo+f7` is
+#      `speak the time and date` -- the same act rung 5 of the handshake
 #      performs, as a key. (Measured 2026-09-02 with the switch ON: it does, and
 #      the function-key synthesis is unaffected by the fn-key setting.)
 #   2. What does `perform command` DO with the switch off -- which error number?
@@ -51,7 +51,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PRESS="$HERE/voiceover_chord_press.swift"
 PREFS="$HOME/Library/Group Containers/group.com.apple.VoiceOver/Library/Preferences/com.apple.VoiceOver4/default.plist"
 MARKER="/private/var/db/Accessibility/.VoiceOverAppleScriptEnabled"
-PROBE="describe item in voiceover cursor"
+PROBE="speak the time and date"
 
 say() { printf '%-46s %s\n' "$1" "$2"; }
 
@@ -96,7 +96,7 @@ echo
 # it does not: with the switch off there is no way to read what the reader said
 # from a shell at all, which is itself the finding -- it is what the CAPTURE
 # VOICE exists for, and what the bridge's rung 5 measures. Here, a human hears it.
-echo "The keystroke probe: vo+f3, which is \"$PROBE\""
+echo "The keystroke probe: vo+f7, which is \"$PROBE\""
 BEFORE="$(osascript -e 'tell application "VoiceOver" to return content of last phrase' 2>/dev/null)"
 say "  what the reader last said" "${BEFORE:-<could not read it — the switch is off>}"
 swift "$PRESS" press control option f3 >/dev/null 2>&1

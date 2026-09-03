@@ -46,11 +46,9 @@
 // exactly what a crashed session left behind. Everything else in the file is
 // history, and history is cheap.
 //
-// **NOT EVERY CHANGE IS REPAIRABLE BY EDITING SOMETHING**, and `ReaderChange`
-// says which are. The modifier PREFERENCE is put back within the handshake
-// itself (spec 0053 §3.3); what is ours until teardown is the RUNNING reader's
-// in-memory modifier, and the only repair for that is a restart. A tool that
-// "fixed" it by writing the file would break the one thing §3.3 got right.
+// **THE KINDS GROW ONE AT A TIME**, exactly as `Transcript`'s verbs do: a kind
+// this build cannot emit would be a repair tool looking for something that never
+// happens. 13.26 briefly carried three and shipped one -- see `Kind`.
 //
 // **NOTHING IN THIS BRIDGE READS IT.** The reader is
 // `scripts/voiceover_restore.py`, and that asymmetry is deliberate: this file's
@@ -76,19 +74,15 @@ public struct ReaderChange: Equatable, Sendable {
 		/// destroyed by the recovery rather than by the crash (13.23).
 		case voice
 
-		/// The VoiceOver modifier, in VoiceOver's own preference file. Normally
-		/// opened and closed WITHIN the handshake -- see the port's header.
-		case modifier
-
-		/// The modifier the RUNNING reader is using, which is ours from the
-		/// handshake's restart until teardown's. NOT REPAIRABLE BY EDITING
-		/// ANYTHING: the file already holds the person's own value, and the only
-		/// way back is a reader restart, which their own next restart supplies for
-		/// free.
-		case runningModifier
-
-		/// Whether a repair tool may put this back by writing a setting.
-		public var repairableByWriting: Bool { self != .runningModifier }
+		/// ONE KIND TODAY, AND THAT IS AN HONEST STATE RATHER THAN A STUB. 13.26
+		/// added two more -- the VoiceOver modifier, and the modifier the RUNNING
+		/// reader was using -- for a handshake that BORROWED Control-Option on a
+		/// Caps-Lock machine. The live run found that writing that preference under a
+		/// running reader makes VoiceOver put a modal question on screen, which
+		/// blocks the reader from quitting and changes a setting nobody chose; the
+		/// borrow came out and the kinds went with it. A kind nothing can emit would
+		/// be a repair tool looking for something that never happens, which is the
+		/// same rule `Transcript`'s vocabulary follows.
 	}
 
 	public let kind: Kind

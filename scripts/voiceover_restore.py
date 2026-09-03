@@ -39,17 +39,6 @@
 # what CAN be restored by writing a setting, and refuses to touch anything else.
 #
 # ============================================================================
-# THE `runningModifier` KIND IS DELIBERATELY NOT REPAIRED HERE.
-# ============================================================================
-#
-# Spec 0053 §3.3: where the bridge borrows the VoiceOver modifier, it writes the
-# person's own choice back into the preference FILE within the handshake, so the
-# file is already right. What is ours is the RUNNING reader, which reads that key
-# only at startup -- so the repair is a reader restart, which their own next
-# restart supplies for free. A tool that "fixed" this by writing the file would
-# break the one thing that design got right, so this script reports it and stops.
-#
-# ============================================================================
 # A LIVE SESSION'S CHANGE IS NOT AN ABANDONED ONE.
 # ============================================================================
 #
@@ -78,9 +67,17 @@ VOICE_DOMAIN = "com.apple.SpeakSelection"
 VOICE_KEY = "VoiceOverDefaultVoiceSelections"
 VOICE_ENTRY_TYPE = "Speech.VoiceSelection"
 
-#: What this script will put back by writing a setting. `runningModifier` is
-#: absent on purpose -- see the header.
-REPAIRABLE = {"voice", "modifier"}
+#: What this script will put back by writing a setting.
+#:
+#: ONE KIND TODAY. 13.26 briefly journalled the VoiceOver modifier too, for a
+#: handshake that borrowed Control-Option on a Caps-Lock machine; the live run
+#: found that writing that preference under a running reader makes VoiceOver put a
+#: modal question on screen, and the borrow came out. If a modifier kind returns it
+#: returns with a design that does not write the person's preferences at all.
+#:
+#: AN UNKNOWN KIND IS STILL REPORTED, just not applied -- see `main`. A journal
+#: written by a newer build than this script must not be silently ignored.
+REPAIRABLE = {"voice"}
 
 
 def read_journal(path: Path) -> list[dict[str, object]]:
@@ -203,19 +200,7 @@ def describe(change: dict[str, object], live: bool) -> str:
 		f"    they had: {change.get('was')}",
 		f"    it is now: {change.get('now')}",
 	]
-	if kind == "runningModifier":
-		lines.append(
-			"    HOW TO PUT IT BACK: restart VoiceOver. The preference file already holds\n"
-			"    their own choice -- VoiceOver reads that key only at startup, so the running\n"
-			"    reader is the only thing still on ours. Command-F5 twice, or quit VoiceOver,\n"
-			"    WAIT for it to be gone, and `open -a VoiceOver`. Do NOT edit the file."
-		)
-	elif kind == "modifier":
-		lines.append(
-			"    HOW TO PUT IT BACK: this script can, with --apply. It means a session could\n"
-			"    not restore the preference itself, which survives reboots."
-		)
-	elif kind == "voice":
+	if kind == "voice":
 		lines.append("    HOW TO PUT IT BACK: this script can, with --apply.")
 	return "\n".join(lines)
 
@@ -266,9 +251,7 @@ def main(argv: list[str]) -> int:
 				"  to put back. Choose a voice by hand in VoiceOver Utility.\n"
 			)
 			continue
-		if change.get("change") == "voice":
-			acted = restore_voice(was) or acted
-		else:
+		if True:
 			# The modifier preference. Rare -- it means a session could not put it
 			# back itself -- and it is VoiceOver's own group container, which
 			# `defaults` cannot reach (measured 2026-09-02), so the honest answer is

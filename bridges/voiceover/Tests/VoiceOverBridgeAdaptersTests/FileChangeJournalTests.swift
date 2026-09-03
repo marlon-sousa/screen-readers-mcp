@@ -102,13 +102,15 @@ struct FileChangeJournalTests {
 		#expect(path.hasPrefix(FileTranscript.defaultLogDirectory(home: "/Users/someone")))
 	}
 
-	@Test("the running modifier is the one kind a tool must not try to WRITE back")
-	func theRunningModifierIsNotRepairableByWriting() {
-		// The preference FILE holds the person's own value the whole time (spec 0053
-		// §3.3); what is ours is the running reader. A tool that "fixed" that by
-		// writing the file would break the one thing §3.3 got right.
-		#expect(!ReaderChange.Kind.runningModifier.repairableByWriting)
-		#expect(ReaderChange.Kind.voice.repairableByWriting)
-		#expect(ReaderChange.Kind.modifier.repairableByWriting)
+	@Test("the kinds are exactly what this build can emit")
+	func theKindsAreWhatCanBeEmitted() {
+		// A kind nothing can emit would be a repair tool looking for something that
+		// never happens -- `Transcript`'s rule about its verbs, applied here. 13.26
+		// briefly carried three: it also journalled the VoiceOver modifier and the
+		// modifier the RUNNING reader was using, for a handshake that borrowed
+		// Control-Option on a Caps-Lock machine. A live run found that writing that
+		// preference under a running reader makes VoiceOver put a modal question on
+		// screen, the borrow came out, and the kinds went with it.
+		#expect(ReaderChange.Kind.allCases == [.voice])
 	}
 }

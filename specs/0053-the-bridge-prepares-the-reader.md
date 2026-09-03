@@ -134,7 +134,13 @@ time would fail on a healthy machine whenever the ring stood elsewhere.
 
 ### 2.5 The modifier can be replaced — but the reader reads it only at STARTUP
 
-The measurement that decides §3.3, and it went both ways:
+**READ §3.3 BEFORE ACTING ON ANY OF THIS.** Everything below is accurate and it is
+not the whole story: the live run found that VoiceOver ALSO puts a modal question
+on screen when that key changes under a running reader, which is what took the
+whole replacement design out of this entry. "The reader reads it only at startup"
+was true and was read as "the running reader ignores a write". It does not.
+
+The measurement that decided §3.3, and it went both ways:
 
 | step | result |
 |---|---|
@@ -156,24 +162,21 @@ Rungs stop being a ladder of *checks that may fail* and become a sequence of
 1. **the reader is running** — start it if it is not;
 2. **the capture voice is registered and published**;
 3. **the reader speaks with the capture voice**;
-4. **the VoiceOver modifier is one this bridge can press**;
-5. **capture is proved** — make the reader speak and require the utterance to
+4. **capture is proved** — make the reader speak and require the utterance to
    arrive.
 
-Teardown reverses **the session state and only that**: the voice, then the
-modifier. The registration is machine state and stays, which is 13.20's rule
-unchanged.
+Teardown reverses **the session state and only that**: the voice. The
+registration is machine state and stays, which is 13.20's rule unchanged.
 
-**AMENDED WHILE IMPLEMENTING, and the order is the amendment.** This section
-first said "the modifier, the voice", in the order the handshake had taken them.
-Putting the modifier back means **restarting the reader** (§3.3), and a restart
-re-reads the voice selection — so restoring the modifier first would restart
-VoiceOver while it was still pointed at the capture voice. That is precisely
-13.23's hazard: the reader comes up, finds a voice it cannot publish, falls back
-to the system default **and persists the fallback**, and the record of the
-person's own voice is gone. Restoring the voice first and restarting after it
-leaves the reader coming up on their own voice *and* their own modifier, and
-costs nothing. Symmetry with the climb is not worth a person's voice settings.
+**Step 4 was removed by the live run** — see §3.3. It read "the VoiceOver modifier
+is one this bridge can press", and it is not a rung any more.
+
+**One ordering argument survives it, and is kept because the next attempt will
+meet it.** Anything that restarts the reader at teardown must run **after** the
+voice has been put back, because a restart re-reads the voice selection: restart
+first and the reader comes up unable to publish the capture voice, falls back to
+the system default **and persists the fallback**, which is 13.23's hazard reached
+by the cleanup itself.
 
 ### 3.2 The handshake MAY restart the reader — reversing 13.20
 
@@ -194,43 +197,66 @@ The bounds, which are the point of writing it down:
 - **It unblocks the one rung 13.20 could not climb**: a newly registered capture
   voice is published only after a restart, and that failure becomes a step.
 
-### 3.3 The modifier is replaced like the voice — and the FILE always holds the person's own choice
+### 3.3 The modifier is NOT replaced — the live run killed this, and it is 13.28
 
-Where `vo` is bound to Caps Lock, the bridge replaces it with Control-Option for
-the session. What makes this safe is the order, and it is the sharpest decision in
-the spec:
+**This section proposed borrowing the VoiceOver modifier**, on a machine where
+`vo` is bound to Caps Lock alone and this bridge therefore cannot press it: read
+the person's setting, write Control-Option, restart, write their own value
+straight back into the file, and restart once more at teardown. The file would
+never hold our value for more than a moment, so a crash would cost only "the
+reader is on Control-Option until it next restarts".
 
-1. read the person's setting;
-2. write ours; **restart** — the running reader is now on ours;
-3. **immediately write the person's setting back into the file**;
-4. at teardown, restart so the reader is on their own modifier again.
+**IT WAS IMPLEMENTED, RUN LIVE ON 2026-09-02, AND REMOVED THE SAME EVENING.** The
+sequence itself worked exactly as written — announced, wrote, restarted, wrote
+their value back, all visible in the transcript. What the design got wrong is a
+fact about the reader:
 
-**WHEN it happens, which the first draft left implicit and rung 1 forces to be
-explicit.** The replacement runs when **both** are true: the modifier is
-`capsLock` — the one value this bridge cannot synthesize (§2.3) — **and** the
-Accessibility grant is held, so keys can be pressed at all. A machine that will
-never press a key gains nothing from two reader restarts, and §6's bound
-("only when the modifier is one this bridge cannot press") is what the first
-half says.
+> **VoiceOver watches that key, and when it changes under a running reader it puts
+> a modal question on screen asking the person whether they want to use
+> Control-Option instead.**
 
-`unknown` is **not** replaced, and that is the sharp case: a modifier this
-bridge could not read is one it cannot put back, so writing over it would
-destroy a setting nobody recorded. It stays a machine with no key route, and
-`vo` goes on being refused per press exactly as spec 0052 §3.3 has it.
+§2.5 had measured that a write does not take EFFECT without a restart, and that
+was read as "the running reader ignores it". It does not ignore it. Three
+consequences, and none of them is a patch:
 
-**And rung 1 has to know all of this**, or a Caps-Lock machine with AppleScript
-off is refused a session the bridge could have repaired. So §3.5's key route
-reads *Accessibility granted **and** the modifier is READABLE* — pressable now,
-or pressable after this rung has run — rather than *pressable now*.
+1. **The dialog blocks the reader from quitting**, so the teardown restart cannot
+   run. Measured: *"VoiceOver was asked to stop and was still running 10 seconds
+   later."* The reader is then left on the borrowed modifier with no session alive
+   — precisely the state the design existed to make impossible.
+2. **It changes the stored setting to something nobody chose.** The maintainer's
+   `SCRVOModifierControlOption` came back as `SCRVOModifierControlOptionOrCapsLock`
+   from a dialog he does not remember answering. Restored by hand, with the reader
+   stopped, and verified byte-for-byte against a pre-run snapshot.
+3. **A second defect the dialog hid.** Step 3 writes the person's value straight
+   back, so every later read of `ReaderModifierSetting` returns *their* modifier
+   and not the borrowed one — and the capture probe and every `vo+…` in the
+   session are refused. The borrow accomplishes nothing even when it works.
 
-**The file therefore never holds our value for longer than a moment.** A session
-that dies without tearing down — the SIGPIPE case — costs "the reader is on
-Control-Option until it next restarts", and the person's next restart puts it
-right with nothing to remember. Keeping our value in the file until teardown would
-have left a wrong stored preference **surviving reboots**, which is worse than the
-dangling capture voice and has no self-correction at all.
+**It is diagnosable only because a human said what was on his screen.** Nothing at
+the bridge's layer can see a modal window, and three plausible hypotheses for the
+failed quit — an auto-relaunch, a stale `NSRunningApplication` list, a race with
+the launch — were all wrong. That is the same lesson as the wedged Finder: when
+reads go quiet, ask what is in front of the person.
 
-### 3.4 Writing that file: exactly one key, exported fresh, every time
+**The promising replacement is a launch argument rather than a write.** The
+VoiceOver binary is a 16 KB launcher stub with no flags of its own, but it is a
+Cocoa app, so `NSUserDefaults`' **NSArgumentDomain** may apply — `open -a VoiceOver
+--args -SCRKeysToUseForVOModifier …` would set the modifier for one launch with
+nothing persisted, nothing to restore and nothing for the reader to notice.
+Unverified. **Board entry 13.28** owns it, and this spec claims none of it.
+
+**What this costs 13.26, stated plainly:** a machine whose `vo` is Caps Lock alone
+and whose AppleScript switch is off still gets no session. Rung 1 refuses it by
+name, as it did before, and spec 0052 §3.3's refusal stands unchanged.
+
+### 3.4 Writing that file: exactly one key, exported fresh, every time — NOT SHIPPED
+
+**Nothing in this entry writes VoiceOver's own preferences.** §3.3's replacement
+was removed by the live run, and this section went with it: `ReaderModifierStore`,
+`VoiceOverPrefsModifierStore`, the `PlistWriter` seam and its leaf were all
+implemented, tested and then deleted. It is kept here because the rules below are
+right and whoever attempts 13.28 will need them the moment anything writes that
+file again.
 
 Marlon's requirement, and the hazard is real: **that file holds around 120
 settings**, and `defaults import` replaces the whole domain.
@@ -403,51 +429,54 @@ an agent to reach for it would be instructing it to fail.
 | `Adapters/WorkspaceRunningApplications.swift` | **leaf — new** | `NSRunningApplication`. No decisions, no test file. |
 | `Adapters/VoiceOverLiveness.swift` | adapter — **amended** | answers over that seam; keeps `activate()` on the `ProcessRunner`; keeps the name script for the permission broker. |
 | `Domain/Ports/ReaderLiveness.swift` | port — **amended** | `readerIsRunning()`, and the header carries §3.7. |
-| `Domain/Ports/ReaderModifierStore.swift` | **port — new** | **WRITE ONLY**, beside the existing read-only `ReaderModifierSetting`; separated for the reason `PermissionBroker` separates `status` from `request` — one of them changes somebody's machine. *(The draft said "read the person's modifier, and write one"; rung 1 already reads it through `ReaderModifierSetting`, and two ports answering one question is two answers waiting to differ.)* `unknown` is not a writable value and is refused by name. |
-| `Adapters/VoiceOverPrefsModifierStore.swift` | **adapter — new** | §3.4's read → modify → write-back, one key, fresh each time, with the read-back and the key-count check. Holds the `PlistReader` seam and the new `PlistWriter` — **not** a `ProcessRunner`; see §3.4's amendment, `defaults` cannot reach the group container. |
-| `Adapters/Ports/PlistWriter.swift` | **adapter seam — new** | write a property list back to a path, preserving its format. The write half of `PlistReader`, separated for the reason `PermissionBroker` separates `status` from `request`. |
-| `Adapters/FilePlistWriter.swift` | **leaf — new** | `PropertyListSerialization` plus an atomic write. No decisions, no test file. |
-| `Domain/Ports/ReaderRestart.swift` | **port — new** | quit, wait for exit, start again. Its own port rather than a method on `ReaderLiveness`, because §3.2 makes it an act with a policy attached rather than a question. |
+| ~~`Domain/Ports/ReaderModifierStore.swift`~~ | **written, then DELETED** | The write side of the modifier. Implemented, unit-tested and removed the same evening — see §3.3. |
+| ~~`Adapters/VoiceOverPrefsModifierStore.swift`~~ | **written, then DELETED** | §3.4's read → modify → write-back. Its tests passed; the design is unsound on a running reader. |
+| ~~`Adapters/Ports/PlistWriter.swift`~~, ~~`Adapters/FilePlistWriter.swift`~~ | **written, then DELETED** | The seam and leaf that let anything in this bridge write a plist. **Nothing does, and that is a property worth keeping** — `PlistReader` is read-only again and its header says why. |
+| `Domain/Ports/ReaderRestart.swift` | **port — new** | quit, wait for exit, start again. Its own port rather than a method on `ReaderLiveness`, because §3.2 makes it an act with a policy attached rather than a question. **One caller as shipped**: the registration rung. |
 | `Adapters/VoiceOverRestart.swift` | **adapter — new** | §3.2's sequence. Holds a `ProcessRunner`, the `RunningApplications` seam and a `Clock` — the wait for the process to be **gone** is the whole point, and a clock in an adapter is `PluginKitProviderLifecycle`'s existing shape. |
 | `Domain/Ports/ChangeJournal.swift` | **port — new** | §3.10. Owns `ReaderChange`, its own DTO. Nothing throws, per `Transcript`. |
 | `Adapters/FileChangeJournal.swift` | **adapter — new** | one JSON line per change, at the fixed path. Over the existing `FileWriter` seam, exactly as `FileTranscript` is. |
 | `scripts/voiceover_restore.py` | **instrument — new** | reads the journal, prints open changes, `--apply` puts the voice back. |
-| `Domain/Controllers/ReaderEdgeSetup.swift` | controller — **amended** | §3.1's preparation, §3.5's rung 1, §3.3's modifier step, §3.6's two-route proof. |
-| `Domain/Controllers/Session.swift` | controller — **amended** | teardown reverses the session state: the modifier, then the voice. |
-| `Domain/Entities/SetupRung.swift` | entity — **amended** | a rung for the modifier, between `voiceSelection` and `captureProof` — §3.1's order. |
-| `Domain/Ports/AdapterFactory.swift` | port — **amended** | `readerScripting`, `readerModifierStore`, `readerRestart` and `changeJournal` join the set. |
+| `Domain/Controllers/ReaderEdgeSetup.swift` | controller — **amended** | §3.1's preparation, §3.5's rung 1, §3.6's two-route proof, and the restart that PUBLISHES a newly registered voice — the rung 13.20 could not climb. |
+| `Domain/Controllers/Session.swift` | controller — **amended** | teardown reverses the session state: the voice, and it closes the journal entry. |
+| `Domain/Entities/SetupRung.swift` | entity — **unchanged as shipped** | A sixth rung for the modifier existed between `voiceSelection` and `captureProof` for an afternoon; §3.3 took it out again, and the enum has its five. |
+| `Domain/Ports/AdapterFactory.swift` | port — **amended** | `readerScripting`, `readerRestart` and `changeJournal` join the set. |
 | `Domain/Controllers/Commands/PressGesture.swift` | controller — **amended** | §3.9's three-way diagnosis, and §3.11's sentence. |
-| `Entities/Documents/common.md` | document | what a session does to the machine, and what it puts back; the ring (§2.4). |
+| `Entities/Documents/common.md` | document | what a session does to the machine, and what it puts back; the ring (§2.4); and that `killall && open -a` races. |
+| `Adapters/PublishedVoices.swift` + `SystemPublishedVoices` | seam + leaf — **amended** | `refresh()`. **The live run's other finding**: a registered provider's voices do not appear until something asks the system to re-read them (`AVSpeechSynthesisProviderVoice.updateSpeechVoices()`). `CaptureProbe` had called it since 13.4 and the handshake never did, so the first connect registered, restarted the reader to publish the voice, and the voice had never been published. |
+| `Domain/Ports/ProviderLifecycle.swift` | port — **amended** | `publish()`, separate from `register()` for the reason above, and it polls. |
 | `Entities/Documents/expert.md` | document | §3.11: ask the human for the switch, and reconnect. |
 | `scripts/voiceover_without_applescript.sh`, `voiceover_press_count.sh` | instruments — new | §2.1 and §2.4, already landed. |
 
 ## 5. The live checklist this earns
 
 Run with the AppleScript switch **off**, which is the state this entry exists for.
+**Run on 2026-09-02; results and the finding that removed items 5–8 are in
+[PR #98](https://github.com/marlon-sousa/screen-readers-mcp/pull/98).**
 
 1. `bash scripts/voiceover_without_applescript.sh` reports §2.1's four answers.
 2. `connect_reader` establishes a silent session with the switch off.
 3. `press_gesture ["vo+m"]` drives it and speech comes back.
 4. `press_gesture ["go to menu bar"]` fails and names the switch, telling the agent
    to press the key — not "the reader is not responding".
-5. On a **Caps-Lock-bound** machine: `connect_reader` replaces the modifier,
-   restarts the reader, announces that it is doing so, and establishes.
-6. The person's preference file holds **their own** modifier throughout the
-   session — checked while the session is open.
-7. Teardown restarts and leaves the reader on their modifier.
-8. A session killed with SIGPIPE leaves the file holding their modifier, and their
-   next reader restart puts the running reader right.
-9. The preference file's key count is unchanged across a whole session.
+5. The person's preference file is **byte-identical** before and after a whole
+   session, key count included. *(This replaced four items about the modifier
+   replacement, which §3.3 no longer does.)*
+6. A session killed with SIGPIPE leaves an OPEN entry in the change journal, and
+   `python3 scripts/voiceover_restore.py --apply` puts the voice back with pitch,
+   rate and volume intact.
+7. With the switch back **on**, a session still establishes and a command name
+   still works — the control, so none of the above is bought by breaking the route
+   that already worked.
 
 ## 6. Honest limits
 
 - **The command-name route is genuinely gone** with the switch off, and with it the
   acts that have no key at all (spec 0052 §2.4). That is a real loss of capability
   for a real reduction in what the machine exposes, and the guidance says so.
-- **Every modifier replacement costs two reader restarts** — one to apply, one to
-  put back. On an attended machine that is two interruptions, which is why §3.2
-  requires an announcement and why the replacement happens only when the modifier
-  is one this bridge cannot press.
-- **A concurrent write can still be lost**, in the milliseconds between a fresh
-  export and its import. It cannot be locked out; it can only be made small, which
-  §3.4 does.
+- **A Caps-Lock machine with the switch off still gets no session at all.** §3.3
+  was the answer to that and the live run withdrew it, so spec 0052 §3.3's refusal
+  stands unchanged and rung 1 names it. **Board entry 13.28** owns the retry.
+- **A registration still costs one reader restart**, because macOS publishes a
+  newly registered voice no other way. It is paid only by whoever has just run
+  `poe build`; a person who has not rebuilt anything pays nothing.

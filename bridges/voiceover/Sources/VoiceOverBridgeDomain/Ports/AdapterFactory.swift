@@ -16,7 +16,7 @@ import ScreenReaderWire
 
 /// The mode-specific collaborators a session drives.
 ///
-/// SEVENTEEN FIELDS AT 13.26, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
+/// SIXTEEN FIELDS AT 13.26, AND THAT IS THE HONEST STATE OF THIS BRIDGE. The seam
 /// exists because `hello` is where a reader edge is built; what goes in it
 /// arrives with the entry that can supply it:
 ///
@@ -31,7 +31,7 @@ import ScreenReaderWire
 /// | `keyPresser` | 13.17, chords |
 /// | `readerModifier` | 13.25, `vo` |
 /// | `readerScripting` | 13.26, AppleScript as a capability |
-/// | `readerModifierStore`, `readerRestart`, `changeJournal` | 13.26, preparing the reader and putting it back -- here |
+/// | `readerRestart`, `changeJournal` | 13.26, preparing the reader and putting it back -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
 /// nothing while the capability list says it does, which is the one thing the
@@ -128,26 +128,19 @@ public struct AdapterSet {
 	/// human can change it in VoiceOver Utility while a session is open.
 	public let readerScripting: any ReaderScriptingSetting
 
-	/// How the VoiceOver modifier is SET, where the person's own is one this
-	/// bridge cannot press -- 13.26.
-	///
-	/// IT IS A SECOND PORT BESIDE `readerModifier` RATHER THAN A METHOD ON IT, for
-	/// the reason `PermissionBroker` separates `status` from `request`: one of them
-	/// looks at somebody's machine and the other edits it, and the read-only one is
-	/// held by a command handler on every single `pressGesture`. Handing that
-	/// handler something that can write would make "it never writes" a matter of
-	/// discipline instead of a matter of what it was constructed with.
-	///
-	/// REACHED ONLY BY `ReaderEdgeSetup`. No command handler may touch it.
-	public let readerModifierStore: any ReaderModifierStore
-
 	/// How the reader is taken away and brought back -- 13.26, and the port that
 	/// reverses 13.20's rule that no handshake may do this.
 	///
-	/// USED BY EXACTLY TWO THINGS: the modifier rung, which needs the reader to
-	/// re-read a preference it only reads at startup, and teardown, which puts the
-	/// person's own modifier back in force. Never by a command handler, and never
-	/// speculatively -- see the port for the bounds, which are the point of it.
+	/// USED BY EXACTLY ONE THING: the registration rung, because macOS publishes a
+	/// newly registered capture voice only after VoiceOver restarts. Never by a
+	/// command handler, and never speculatively -- see the port for the bounds,
+	/// which are the point of it.
+	///
+	/// IT NEARLY HAD A SECOND CALLER. 13.26 also borrowed the VoiceOver modifier on
+	/// a Caps-Lock machine, which needed two restarts per session; the live run
+	/// found that writing that preference under a running reader makes VoiceOver
+	/// put a modal question on screen, and the whole borrow came out. See
+	/// `ReaderModifierSetting`.
 	public let readerRestart: any ReaderRestart
 
 	/// The record of what this session changed on somebody's machine, and of what
@@ -223,7 +216,6 @@ public struct AdapterSet {
 		keyPresser: any KeyPresser,
 		readerModifier: any ReaderModifierSetting,
 		readerScripting: any ReaderScriptingSetting,
-		readerModifierStore: any ReaderModifierStore,
 		readerRestart: any ReaderRestart,
 		changeJournal: any ChangeJournal,
 		permissions: any PermissionBroker,
@@ -241,7 +233,6 @@ public struct AdapterSet {
 		self.keyPresser = keyPresser
 		self.readerModifier = readerModifier
 		self.readerScripting = readerScripting
-		self.readerModifierStore = readerModifierStore
 		self.readerRestart = readerRestart
 		self.changeJournal = changeJournal
 		self.permissions = permissions

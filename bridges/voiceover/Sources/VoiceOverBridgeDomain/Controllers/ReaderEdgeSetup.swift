@@ -27,17 +27,17 @@
 // selecting the voice has been the bridge's job since 13.6, and starting the
 // reader is one more. What was missing was a decision about who does it.
 //
-// SIX RUNGS, ALL EAGER, IN ORDER -- see SetupRung, which owns the vocabulary
+// FIVE RUNGS, ALL EAGER, IN ORDER -- see SetupRung, which owns the vocabulary
 // and composes every failure sentence:
 //
 //   1. permissions   -- READ, never asked for; and it wants ONE ROUTE, not every
 //                       grant (13.26)
 //   2. readerRunning -- ask, activate, ask again
-//   3. registration  -- lsregister then pluginkit, only when unregistered
+//   3. registration  -- lsregister then pluginkit, only when unregistered, then a
+//                       RESTART: only a restart publishes a newly registered
+//                       voice, which is the rung 13.20 could not climb
 //   4. voiceSelection-- record the user's voice, then write ours
-//   5. readerModifier-- borrow Control-Option where the person is on Caps Lock,
-//                       and put their own choice back in the FILE at once (13.26)
-//   6. captureProof  -- make the reader speak and require it to arrive
+//   5. captureProof  -- make the reader speak and require it to arrive
 //
 // AND 13.26 CHANGED WHAT A RUNG IS. 13.20 turned reporting into climbing; spec
 // 0053 §3.1 turns climbing into PREPARING -- these are things made true, not
@@ -70,8 +70,10 @@
 // 2026-09-02: *"restarting vo is not a problem for capturing as a bridge
 // handshake, if needed."* Spec 0053 §3.2. The bounds are what make it safe:
 //
-//   * ONLY FOR A NAMED REASON -- today, a modifier this bridge cannot press.
-//     Never speculatively, and never as a way past a failure it cannot explain.
+//   * ONLY FOR A NAMED REASON -- today, exactly one: a capture voice the system
+//     has just been told about, which macOS publishes only after the reader
+//     restarts. Never speculatively, and never as a way past a failure it cannot
+//     explain.
 //   * ANNOUNCED FIRST, through the bridge's own synthesizer, which is audible
 //     even in a silent session because it goes around the reader entirely.
 //   * QUIT, WAIT FOR THE PROCESS TO BE GONE, THEN OPEN. `killall` alone does not
@@ -165,7 +167,6 @@ public struct ReaderEdgeSetup {
 		try confirmReaderIsRunning()
 		try registerProvider()
 		try selectCaptureVoice()
-		try prepareModifier(routes)
 		try openSilenceChannel()
 		try proveCapture(over: routes)
 	}
@@ -193,19 +194,8 @@ public struct ReaderEdgeSetup {
 		/// reader's own command names can be dispatched.
 		let commandNames: Bool
 		/// What the person has bound `vo` to, read once at rung 1 and carried, so
-		/// the modifier rung and the probe cannot read the machine twice and get two
-		/// answers.
+		/// rung 1 and the probe cannot read the machine twice and get two answers.
 		let modifier: ModifierSetting
-		/// Whether the modifier rung has work to do -- the person is on Caps Lock
-		/// alone, which this bridge cannot synthesize, AND this process holds the
-		/// Accessibility grant, so a replacement would actually buy a key route.
-		///
-		/// THE SECOND HALF IS WHAT KEEPS IT PROPORTIONATE. Every replacement costs
-		/// TWO reader restarts -- one to apply, one to put back -- and on an attended
-		/// machine that is two interruptions of somebody who is using their computer.
-		/// Spending them on a machine that can never post a key event would be
-		/// spending them for nothing.
-		let modifierMustBeReplaced: Bool
 	}
 
 	// -- rung 1: permissions ---------------------------------------------------
@@ -248,21 +238,21 @@ public struct ReaderEdgeSetup {
 		let scripting = adapters.readerScripting.scripting()
 		// `vo` has to RESOLVE for the key route to reach the reader -- see `Routes`.
 		//
-		// READABLE, NOT PRESSABLE, AND THAT IS 13.26's REFINEMENT OF 13.25. A
-		// machine on Caps Lock cannot be pressed as it stands, and this handshake can
-		// FIX that: it writes Control-Option, restarts, and writes the person's own
-		// choice straight back (spec 0053 §3.3). So the question rung 1 asks is
-		// whether the modifier is one this bridge can either press or replace, and
-		// only `unknown` is neither -- a modifier that could not be READ is one that
-		// could not be PUT BACK, and writing over it would destroy a setting nobody
-		// recorded.
+		// PRESSABLE NOW, and 13.26 tried to widen this and had to put it back. The
+		// entry briefly asked only that the modifier be READABLE, on the reasoning
+		// that a Caps-Lock machine could be repaired: write Control-Option, restart,
+		// write the person's own choice straight back. THE LIVE RUN KILLED IT --
+		// writing that key under a running reader makes VoiceOver put a modal
+		// question on screen asking the person whether they wanted Control-Option,
+		// which blocks the reader from quitting and changes a setting nobody chose
+		// (measured 2026-09-02). So the question is the narrow one again: can this
+		// bridge press `vo` as the machine stands?
 		let modifier = adapters.readerModifier.modifier()
-		let keys = accessibility == .granted && modifier != .unknown
+		let modifierPressable = modifier == .controlOption || modifier == .controlOptionOrCapsLock
 		let routes = Routes(
-			keys: keys,
+			keys: accessibility == .granted && modifierPressable,
 			commandNames: automation == .granted && scripting == .enabled,
-			modifier: modifier,
-			modifierMustBeReplaced: keys && modifier == .capsLock)
+			modifier: modifier)
 		context.transcript.note(
 			"setup: routes -- keys \(routes.keys ? "yes" : "no"), "
 				+ "command names \(routes.commandNames ? "yes" : "no"), "
@@ -273,9 +263,8 @@ public struct ReaderEdgeSetup {
 				"this bridge has no way to drive VoiceOver on this machine, and it needs only ONE of "
 					+ "the two. Pressing the reader's own commands as KEYS needs the Accessibility "
 					+ "grant, which is \(described(accessibility)), AND a VoiceOver modifier this "
-					+ "bridge can either press or replace -- and this machine's reads as "
-					+ "'\(modifier.rawValue)', which means the preference could not be read at all, so "
-					+ "there is nothing here that could be safely put back afterwards. Sending "
+					+ "bridge can synthesize -- it is set to \(modifier.rawValue) here, and a "
+					+ "synthesized Caps Lock is invisible to the reader (measured 2026-09-02). Sending "
 					+ "the reader's own COMMAND NAMES needs the AppleEvents grant, which is "
 					+ "\(described(automation)), together with VoiceOver's own AppleScript switch, "
 					+ "which is \(scripting.rawValue).",
@@ -283,9 +272,8 @@ public struct ReaderEdgeSetup {
 					"ask the human at this machine for EITHER: Accessibility, under System Settings > "
 					+ "Privacy & Security > Accessibility -- which is the route to prefer, since it is "
 					+ "what a person's own keystrokes use and it leaves VoiceOver closed to every other "
-					+ "process on the machine (a modifier of Caps Lock is fine -- this bridge replaces "
-					+ "it for the session and puts it straight back; what it cannot work with is a "
-					+ "preference file it cannot read) -- OR VoiceOver Utility > General > \"Allow "
+					+ "process on the machine, and with the VoiceOver modifier set to Control-Option "
+					+ "under VoiceOver Utility > Commands -- OR VoiceOver Utility > General > \"Allow "
 					+ "VoiceOver to be controlled with AppleScript\" together with the Automation "
 					+ "grant. Then "
 					+ "connect again. This bridge does not raise a consent dialog itself: a handshake "
@@ -353,6 +341,93 @@ public struct ReaderEdgeSetup {
 				))
 		}
 		context.transcript.note("setup: registered -- \(adapters.providerLifecycle.state().rawValue)")
+		try publishTheVoice()
+	}
+
+	/// Make the system PUBLISH the voice it has just been told about -- 13.26, and
+	/// this is the rung 13.20 could not climb.
+	///
+	/// ============================================================================
+	/// ONLY A READER RESTART PUBLISHES A NEWLY REGISTERED VOICE.
+	/// ============================================================================
+	///
+	/// That is a macOS fact, not a bridge limitation, and it is why 13.20's rung 3
+	/// could succeed while rung 5 failed: the extension was registered, the system
+	/// knew about it, and VoiceOver went on offering the list of voices it had read
+	/// at startup. 13.20 could only NAME the restart and ask a human to run it,
+	/// because no handshake was allowed to take a screen reader away.
+	///
+	/// It is allowed now (spec 0053 §3.2), and this is one of exactly two named
+	/// reasons in the bridge. IT IS REACHED ONLY FROM `notRegistered`: an ordinary
+	/// handshake on a healthy machine does not enter `registerProvider` at all, so
+	/// it never restarts anything. What triggers it in practice is `poe build`,
+	/// which begins `rm -rf build` and makes the system forget the extension -- so
+	/// the developer who has just rebuilt pays one restart, and the blind person
+	/// who has not rebuilt anything pays none.
+	///
+	/// A RESTART THAT FAILS IS NOT FATAL *HERE*, which is the difference from the
+	/// modifier rung. There, the restart is the only thing that puts the reader on
+	/// keys this bridge can press, so failing it fails the rung. Here the reader may
+	/// have published the voice anyway, or may not have needed to, and this rung
+	/// cannot tell. So the failure is written down and the climb goes on to the
+	/// rungs that CAN tell.
+	///
+	/// AND ONE OF THEM WILL, WHICH IS THE POINT OF NOT FAILING HERE. If the voice is
+	/// genuinely still unpublished, rung 4 refuses to select it and says so by name;
+	/// if it selects and nothing is captured, rung 6 says so with evidence. Either
+	/// way the session is refused by the rung that actually knows, with a recovery
+	/// that fits -- rather than by this one, guessing.
+	private func publishTheVoice() throws {
+		guard adapters.providerLifecycle.state() < .published else {
+			context.transcript.note("setup: the capture voice is already published")
+			return
+		}
+
+		// ============================================================================
+		// PUBLISH FIRST, RESTART SECOND -- AND GETTING THAT BACKWARDS COST 13.26 ITS
+		// FIRST LIVE CONNECT.
+		// ============================================================================
+		//
+		// A registered provider's voices do not appear because it registered:
+		// something has to ask the system to re-read them. Nothing here was asking,
+		// so the first live run registered the extension, restarted VoiceOver to
+		// publish the voice, and the voice had never been published at all -- the
+		// reader came back up with a voice list that still did not contain it, and
+		// the climb failed at `voiceSelection` one rung later. Measured 2026-09-02,
+		// transcript 22:31:35-37, and the fix is an ORDER rather than a new step.
+		//
+		// So: ask the system, wait until the voice is really there, and only then
+		// spend somebody's screen reader on a restart. A restart taken before the
+		// voice exists is a restart taken for nothing.
+		do {
+			try adapters.providerLifecycle.publish()
+			context.transcript.note("setup: the system now offers the capture voice")
+		} catch {
+			throw CommandError(
+				SetupRung.registration.failed(
+					describe(error),
+					agentMustDo:
+						"tell the human at this machine what the message above says, and connect again. "
+						+ "The extension is registered; what has not happened is the system offering its "
+						+ "voice, which it does on its own schedule."
+				))
+		}
+
+		warn(
+			"The screen reader bridge has just registered its capture voice with the system, and "
+				+ "macOS only offers a newly registered voice after VoiceOver restarts. It is restarting "
+				+ "VoiceOver now. VoiceOver will be back in a moment.")
+		do {
+			try adapters.readerRestart.restart()
+			context.transcript.note(
+				"setup: restarted the reader to publish the capture voice -- "
+					+ "\(adapters.providerLifecycle.state().rawValue)")
+		} catch let failure as ReaderRestartError {
+			// NOT FATAL. See above: the capture proof is the rung that knows.
+			context.transcript.note(
+				"setup: the reader could not be restarted to publish the capture voice, and the "
+					+ "capture proof will say whether that mattered: \(failure.description)")
+		}
 	}
 
 	// -- rung 4: the voice -----------------------------------------------------
@@ -394,144 +469,14 @@ public struct ReaderEdgeSetup {
 		}
 	}
 
-	// -- rung 5: the modifier, which is the one rung that RESTARTS the reader ---
-
-	/// Put VoiceOver on a modifier this bridge can synthesize, if it is not on one
-	/// already -- and leave the person's own choice in the FILE while doing it.
-	///
-	/// ============================================================================
-	/// THIS IS THE RUNG THAT TAKES SOMEBODY'S SCREEN READER AWAY, TWICE.
-	/// ============================================================================
-	///
-	/// 13.20 wrote down, as Decided, that *"no handshake in this bridge may decide
-	/// on a restart -- it takes the reader away from somebody who is using it."*
-	/// Marlon reversed that on 2026-09-02: *"restarting vo is not a problem for
-	/// capturing as a bridge handshake, if needed."* Spec 0053 §3.2, and the bounds
-	/// are what make the reversal safe rather than merely permitted -- a named
-	/// reason, an announcement first, and a quit that WAITS.
-	///
-	/// WHY IT IS NEEDED AT ALL. Where `vo` is bound to Caps Lock alone this bridge
-	/// cannot press it: a synthesized Caps Lock is invisible to the reader, measured
-	/// four different ways on 2026-09-02, and the platform explains it -- Caps Lock
-	/// is a system-level toggle, and posting `.maskAlphaShift` reports that it is
-	/// down without making the system believe it. The only route to it is HID-level
-	/// remapping, which is a driver-class intervention on somebody's keyboard and is
-	/// not something this bridge will do. So the choice was: refuse those machines a
-	/// key route, or borrow the modifier for the session.
-	///
-	/// ============================================================================
-	/// THE ORDER IS THE WHOLE DESIGN, AND IT IS SPEC 0053 §3.3.
-	/// ============================================================================
-	///
-	///   1. write ours;
-	///   2. RESTART -- the running reader is now on ours, because VoiceOver reads
-	///      this key ONLY AT STARTUP (measured 2026-09-02: writing it and pressing
-	///      the chord produced nothing; restarting and pressing it produced "we are
-	///      in dock");
-	///   3. IMMEDIATELY write the person's setting back into the file;
-	///   4. at teardown, restart again so the reader is on their own modifier.
-	///
-	/// SO THE FILE NEVER HOLDS OUR VALUE FOR LONGER THAN A MOMENT, and step 3 is in
-	/// a `defer` so it runs when step 2 THREW as well as when it succeeded. A
-	/// session that dies without tearing down costs "the reader is on Control-Option
-	/// until it next restarts", and the person's own next restart puts that right
-	/// with nothing for anybody to remember. Keeping our value in the file until
-	/// teardown would have left a WRONG STORED PREFERENCE SURVIVING REBOOTS, which
-	/// is worse than the dangling capture voice this lane has already paid for and
-	/// has no self-correction at all.
-	private func prepareModifier(_ routes: Routes) throws {
-		guard routes.modifierMustBeReplaced else { return }
-		let theirs = routes.modifier
-
-		// ANNOUNCED BEFORE ANYTHING HAPPENS, through the bridge's own synthesizer,
-		// which is audible even in a silent session because it goes around VoiceOver
-		// entirely (13.10). Nobody is dropped into silence unwarned. It is GUARDED,
-		// though: a courtesy that could fail a handshake would be a courtesy with
-		// more power than the thing it is a courtesy about, and the restart is going
-		// to happen either way.
-		warn(
-			"The screen reader bridge is restarting VoiceOver. Your VoiceOver modifier is set to "
-				+ "Caps Lock, which this bridge cannot press, so it is borrowing Control and Option for "
-				+ "this session. Your own setting is already saved and VoiceOver will be back in a "
-				+ "moment.")
-
-		do {
-			try adapters.readerModifierStore.store(.controlOption)
-		} catch {
-			throw CommandError(
-				SetupRung.readerModifier.failed(
-					"VoiceOver's modifier is set to Caps Lock, which a synthesized event cannot reach "
-						+ "(measured 2026-09-02), and this bridge could not replace it for the session: "
-						+ "\(describe(error)) Nothing was changed and nothing was restarted.",
-					agentMustDo:
-						"ask the human at this machine to set the VoiceOver modifier to Control-Option "
-						+ "under VoiceOver Utility > Commands, or to switch on VoiceOver Utility > "
-						+ "General > \"Allow VoiceOver to be controlled with AppleScript\", and connect "
-						+ "again."
-				))
-		}
-		adapters.changeJournal.changed(Self.modifierChange(was: theirs, now: .controlOption))
-		// STEP 3, AND IT RUNS EVEN IF THE RESTART THREW. See the header: the file
-		// must not be left holding our value.
-		defer { restoreTheirModifierFile(theirs) }
-
-		do {
-			try adapters.readerRestart.restart()
-		} catch let failure as ReaderRestartError {
-			throw CommandError(
-				SetupRung.readerModifier.failed(
-					"VoiceOver had to be restarted so that it would read the modifier this bridge can "
-						+ "press -- it reads that setting only at startup -- and the restart did not "
-						+ "complete: \(failure.description)",
-					agentMustDo: failure.readerStillRunning
-						? "tell the human at this machine what that says. Their screen reader is still "
-							+ "running and their own settings are untouched; they can restart VoiceOver "
-							+ "themselves with Command-F5 twice, and you can connect again."
-						: "TELL THE HUMAN AT THIS MACHINE IMMEDIATELY, and say it in the announcement "
-							+ "channel as well as in your reply: VoiceOver is NOT RUNNING and they have no "
-							+ "screen reader until it is started. Command-F5 is what they press. Their own "
-							+ "settings are untouched."
-				))
-		}
-		// SET ONLY NOW, so teardown restarts exactly when something was replaced.
-		context.replacedModifier = theirs
-		adapters.changeJournal.changed(Self.runningModifierChange(was: theirs))
-		context.transcript.note(
-			"setup: VoiceOver was on '\(theirs.rawValue)', which this bridge cannot press; it is "
-				+ "running on control+option for this session and the preference file holds their own "
-				+ "choice again")
-	}
-
-	/// Step 3 of §3.3: the person's own choice goes back into the file at once.
-	///
-	/// IT SWALLOWS ITS OWN FAILURE AND SAYS SO LOUDLY, and the two halves of that
-	/// are both deliberate. It cannot throw, because it runs in a `defer` on a path
-	/// that may already be throwing something more important. And a failure here is
-	/// the single worst outcome this rung has -- a wrong modifier stored in somebody
-	/// 's preferences, surviving reboots -- so it is written into the transcript in
-	/// as many words, and the journal entry is LEFT OPEN, which is exactly what
-	/// `scripts/voiceover_restore.py` is looking for.
-	private func restoreTheirModifierFile(_ theirs: ModifierSetting) {
-		do {
-			try adapters.readerModifierStore.store(theirs)
-			adapters.changeJournal.restored(Self.modifierChange(was: theirs, now: .controlOption))
-		} catch {
-			context.transcript.note(
-				"setup: THE VOICEOVER MODIFIER PREFERENCE COULD NOT BE PUT BACK -- it still says "
-					+ "control+option and this person had it on '\(theirs.rawValue)'. \(describe(error)) "
-					+ "This survives a reboot and nothing expires it: see the change journal, and "
-					+ "scripts/voiceover_restore.py")
-			warn(
-				"The screen reader bridge could not restore your VoiceOver modifier setting. It is "
-					+ "still set to Control and Option. Your session will work, but please check "
-					+ "VoiceOver Utility, Commands, when you are finished.")
-		}
-	}
-
 	/// Say something to the human, and never let it stop anything.
 	///
 	/// GUARDED FOR THE REASON EVERY CUE IN THIS BRIDGE IS: a courtesy is never worth
-	/// a session, and the announcer reaches an audio device that may be gone.
+	/// a session, and the announcer reaches an audio device that may be gone. Its
+	/// one caller is the restart, which spec 0053 §3.2 requires to be ANNOUNCED --
+	/// through the bridge's own synthesizer, which is audible even in a silent
+	/// session because it goes around the reader entirely, so nobody is dropped into
+	/// silence unwarned.
 	private func warn(_ text: String) {
 		do {
 			try adapters.announcer.announce(text)
@@ -553,22 +498,6 @@ public struct ReaderEdgeSetup {
 			store: "com.apple.SpeakSelection / VoiceOverDefaultVoiceSelections / voiceId",
 			was: previous,
 			now: "the screen-readers-mcp capture voice")
-	}
-
-	static func modifierChange(was theirs: ModifierSetting, now ours: ModifierSetting) -> ReaderChange {
-		ReaderChange(
-			kind: .modifier,
-			store: "VoiceOver default.plist / SCRKeysToUseForVOModifier",
-			was: theirs.rawValue,
-			now: ours.rawValue)
-	}
-
-	static func runningModifierChange(was theirs: ModifierSetting) -> ReaderChange {
-		ReaderChange(
-			kind: .runningModifier,
-			store: "the running VoiceOver process (it reads the modifier only at startup)",
-			was: theirs.rawValue,
-			now: ModifierSetting.controlOption.rawValue)
 	}
 
 	// -- the marker channel ----------------------------------------------------

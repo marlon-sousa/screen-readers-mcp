@@ -407,16 +407,16 @@ public final class Session {
 		// the reader is back on the user's own voice while a marker still says
 		// silence, which is nothing at all.
 		//
-		// AND THE MODIFIER LAST OF THE THREE, WHICH 13.26 GOT WRONG ON PAPER FIRST.
-		// Spec 0053 §3.1 originally said "the modifier, the voice", in the order the
-		// handshake took them. Putting the modifier back means RESTARTING the reader,
-		// and a restart re-reads the voice selection -- so restoring the modifier
-		// first would restart VoiceOver while it was still pointed at the capture
-		// voice, which is precisely 13.23's hazard: the reader comes up, cannot
-		// publish that voice, falls back to the system default AND PERSISTS THE
-		// FALLBACK, and the record of the person's own voice is gone. Voice first,
-		// restart after it, and they come up on their own voice and their own
-		// modifier together. The spec was amended rather than the code bent to it.
+		// 13.26 BRIEFLY ADDED A THIRD STEP HERE and a live run took it out again: a
+		// session that had BORROWED the VoiceOver modifier restarted the reader to
+		// give it back. Writing that preference under a running reader makes
+		// VoiceOver put a modal question on screen, which blocks the very quit this
+		// teardown depends on -- measured 2026-09-02. What survives is the ordering
+		// argument, worth keeping because the next attempt will meet it: a restart
+		// RE-READS the voice selection, so anything that restarts the reader at
+		// teardown must run AFTER the voice has been put back, or the reader comes up
+		// unable to publish the capture voice, falls back to the system default and
+		// PERSISTS the fallback -- 13.23's hazard, reached by the cleanup.
 		if let adapters = context.adapters {
 			// NO GUARD, AND THE TYPE IS WHY: `release` does not throw -- it is a
 			// best-effort delete over a mechanism whose guarantee is the expiry --
@@ -428,7 +428,6 @@ public final class Session {
 					adapters.changeJournal.restored(ReaderEdgeSetup.voiceChange(was: previous))
 				}
 			}
-			restoreReaderModifier(adapters)
 		}
 
 		transcript.sessionClosed(reason: ending.rawValue)
@@ -439,43 +438,6 @@ public final class Session {
 			guarded("the session-end cue") { try self.signals.sessionEnded() }
 		}
 		channel.close()
-	}
-
-	/// Give the person their own VoiceOver modifier back, by restarting the reader.
-	///
-	/// ONLY WHEN THIS SESSION REPLACED IT. `replacedModifier` is set by the setup
-	/// rung and only after the replacement succeeded, so a teardown that restarted
-	/// a reader nothing had changed is unwritable rather than merely avoided.
-	///
-	/// A RESTART, NOT A WRITE, and that is spec 0053 §3.3's whole point: the
-	/// preference FILE has held the person's own value since the handshake, so
-	/// there is nothing to write. What is ours is the RUNNING reader, which read
-	/// the file once at startup -- and the only way back is to make it read the
-	/// file again.
-	///
-	/// ANNOUNCED FIRST, because this takes a blind person's screen reader away for
-	/// several seconds and they are entitled to know why. The announcement is
-	/// guarded like every other courtesy here; the restart is guarded too, and a
-	/// failed one leaves the journal entry OPEN, which is exactly what
-	/// `scripts/voiceover_restore.py` reports.
-	///
-	/// AND NOTHING DEPENDS ON THIS RUNNING. A SIGKILL skips it, and the cost is
-	/// "the reader is on Control-Option until it next restarts" -- which the
-	/// person's own next restart puts right, with nothing for anybody to remember.
-	/// That self-correction is why §3.3 puts their value back in the FILE
-	/// immediately instead of holding it until here.
-	private func restoreReaderModifier(_ adapters: AdapterSet) {
-		guard let theirs = context.replacedModifier else { return }
-		guarded("warning the human about the closing restart") {
-			try adapters.announcer.announce(
-				"The screen reader bridge is finished and is restarting VoiceOver, so that your own "
-					+ "VoiceOver modifier setting is back in force. VoiceOver will be back in a moment.")
-		}
-		guarded("restarting VoiceOver to restore the user's own modifier") {
-			try adapters.readerRestart.restart()
-			adapters.changeJournal.restored(ReaderEdgeSetup.runningModifierChange(was: theirs))
-			context.replacedModifier = nil
-		}
 	}
 
 	/// Run one step that may fail, and never let its failure stop the others.

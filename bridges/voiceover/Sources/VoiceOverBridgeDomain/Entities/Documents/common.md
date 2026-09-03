@@ -566,9 +566,10 @@ do not assume a facility exists because another reader has one.
 `connect_reader` does not merely open a channel here. Before it answers it reads
 the two permissions this bridge needs — reads, never asks for; nothing here
 raises a consent dialog — starts VoiceOver if it is not running, registers the
-capture voice's extension if the system has forgotten it, points the reader at
-that voice, puts VoiceOver on a modifier this bridge can actually press if it is
-not on one, and then makes the reader speak and requires the words to arrive. If
+capture voice's extension if the system has forgotten it — restarting the reader
+when it had to, because macOS publishes a newly registered voice no other way —
+points the reader at that voice, and then makes the reader speak and requires the
+words to arrive. If
 any of that could not be done, **you get a named failure instead of a session** —
 which step, what was wrong, and what you must do, usually "tell the person at this
 machine to do X, then connect again".
@@ -590,20 +591,20 @@ Three consequences worth holding on to:
 
 ### What it changed on this person's machine, and what puts it back
 
-Two settings, and both are put back when your session ends — however it ends,
-including a watchdog firing.
+**Exactly one setting: the voice VoiceOver speaks with.** It is on the capture
+voice for the duration, and the person's own is restored when your session ends —
+however it ends, including a watchdog firing or a failed handshake.
 
-1. **The voice VoiceOver speaks with.** It is on the capture voice for the
-   duration; the person's own is restored at teardown.
-2. **The VoiceOver modifier, but only where it was Caps Lock alone.** A
-   synthesized Caps Lock is invisible to this reader — that is a platform fact,
-   not a gap — so on such a machine the bridge borrows Control-Option for the
-   session and **restarts VoiceOver**, announcing that it is about to, out loud,
-   before it does. Their own setting goes straight back into the preference file,
-   so what is borrowed is only the *running* reader, and teardown restarts once
-   more to give it back.
+**Nothing else of theirs is touched.** In particular this bridge does **not**
+change the VoiceOver modifier. It was going to: on a machine where `vo` is bound
+to Caps Lock alone this bridge cannot press it, so the plan was to borrow
+Control-Option for the session. VoiceOver turns out to watch that key and put a
+modal question on screen when it changes — measured 2026-09-02 — so the borrow was
+withdrawn. On such a machine `vo+…` is refused by name and the command-name route
+is what you have; if the AppleScript switch is off too, there is no session at all
+and the connect says so.
 
-**If a session dies without tearing down**, both of those are recorded in
+**If a session dies without tearing down**, the voice change is recorded in
 `~/Library/Logs/screen-readers-mcp/reader-changes.jsonl` — one line per change,
 one per restore. Anything with no matching restore is still changed.
 `python3 scripts/voiceover_restore.py` reports what is open and puts back what can
@@ -611,13 +612,14 @@ be put back. Say so to the person at the machine if you ever see a connect fail
 after the voice step; it is the difference between a five-second fix and an
 afternoon.
 
-### The bridge may restart the reader now, for two named reasons only
+### The bridge may restart the reader now, for one named reason only
 
-Those reasons are: the capture voice was registered a moment ago and macOS
-publishes a newly registered voice only after VoiceOver restarts, and the modifier
-above. It never restarts speculatively, it always announces first through its own
-synthesizer — which you can hear even in a silent session — and it quits, waits
-for the process to be gone, and *then* starts it.
+That reason is: the capture voice was registered a moment ago, and macOS publishes
+a newly registered voice only after VoiceOver restarts. In practice that happens to
+whoever has just rebuilt this bridge, and to nobody else. It never restarts
+speculatively, it always announces first through its own synthesizer — which you
+can hear even in a silent session — and it quits, waits for the process to be gone,
+and *then* starts it.
 
 **That last part matters if you are ever telling a human to do it by hand.**
 `killall VoiceOver && open -a VoiceOver` looks right and is not: `killall` returns
