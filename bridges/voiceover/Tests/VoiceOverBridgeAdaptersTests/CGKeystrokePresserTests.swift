@@ -135,8 +135,8 @@ struct CGKeystrokePresserTests {
 		#expect(
 			poster.sequence == [
 				.flags(0x37, .maskCommand),
-				.key(201, flags: .maskCommand, characters: "l", keyDown: true),
-				.key(201, flags: .maskCommand, characters: "l", keyDown: false),
+				.key(201, flags: .maskCommand, characters: nil, keyDown: true),
+				.key(201, flags: .maskCommand, characters: nil, keyDown: false),
 				.flags(0x37, []),
 			])
 	}
@@ -231,8 +231,8 @@ struct CGKeystrokePresserTests {
 		try presser(poster: poster).press(
 			Keystroke(modifiers: [.command], keys: [.character("f")]))
 		#expect(poster.keyed.count == 2)
-		#expect(poster.keyed[0] == .init(keyCode: 202, flags: .maskCommand, characters: "f", keyDown: true))
-		#expect(poster.keyed[1] == .init(keyCode: 202, flags: .maskCommand, characters: "f", keyDown: false))
+		#expect(poster.keyed[0] == .init(keyCode: 202, flags: .maskCommand, characters: nil, keyDown: true))
+		#expect(poster.keyed[1] == .init(keyCode: 202, flags: .maskCommand, characters: nil, keyDown: false))
 	}
 
 	// -- two keys held together, which is 13.22 ---------------------------------
@@ -386,9 +386,10 @@ struct CGKeystrokePresserTests {
 		// it matches keycode and flags -- and VoiceOver matches on the CHARACTER,
 		// so `control+option+shift+q` reached VO-Q, moved a different setting and
 		// reported success. Spec 0052 §2.3.
+		// THE CHORD IS A READER CHORD, and since 13.29 it has to be: an
+		// application chord is left exactly as the system built it.
 		let poster = FakeEventPoster()
-		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], keys: [.character("l")]))
+		try presser(poster: poster).press(readerChord([.character("l")]))
 
 		#expect(poster.keyed.map(\.characters) == ["l", "l"])
 	}
@@ -402,7 +403,7 @@ struct CGKeystrokePresserTests {
 			// `4` and `$` share keycode 204 in the invented layout, `$` on the
 			// shifted layer -- so this is the shifted character of the key being
 			// pressed, read from the layout rather than upper-cased by hand.
-			Keystroke(modifiers: [.shift], keys: [.character("4")]))
+			readerChord([.character("4")], plus: [.shift]))
 
 		#expect(poster.keyed.map(\.keyCode) == [204, 204])
 		#expect(poster.keyed.map(\.characters) == ["$", "$"])
@@ -415,7 +416,7 @@ struct CGKeystrokePresserTests {
 		// `4` while Shift was held, which is a keyboard state that cannot happen.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.command], keys: [.character("$")]))
+			readerChord([.character("$")]))
 
 		#expect(poster.keyed.map(\.characters) == ["$", "$"])
 		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskShift) })
@@ -428,7 +429,7 @@ struct CGKeystrokePresserTests {
 		// than each key answering for itself.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [], keys: [.character("$"), .character("4")]))
+			readerChord([.character("$"), .character("4")]))
 
 		#expect(poster.keyed.filter(\.keyDown).map(\.characters) == ["$", "$"])
 	}
@@ -453,11 +454,61 @@ struct CGKeystrokePresserTests {
 		let layout = FakeKeyboardLayout()
 		layout.unstampable = [201]
 		let poster = FakeEventPoster()
-		try presser(layout: layout, poster: poster).press(
-			Keystroke(modifiers: [.command], keys: [.character("l")]))
+		try presser(layout: layout, poster: poster).press(readerChord([.character("l")]))
 
 		#expect(poster.keyed.map(\.keyCode) == [201, 201])
 		#expect(poster.keyed.allSatisfy { $0.characters == nil })
+	}
+
+	// -- and NOBODY ELSE gets one, which is 13.29 -------------------------------
+
+	@Test("AN APPLICATION CHORD IS LEFT EXACTLY AS THE SYSTEM BUILT IT")
+	func applicationChordsAreNeverStamped() throws {
+		// The defect this entry fixed, and it is the whole entry. Measured
+		// 2026-09-03 against TextEdit: `command+a`/`command+c` stamped copied
+		// nothing and unstamped copied the document, and `command+shift+c` stamped
+		// opened no window and unstamped opened the Colors panel. Stamping the
+		// character the event ALREADY CARRIED broke it just as thoroughly, so this
+		// asserts the absence of the call and not the value it would have written.
+		for chord in [
+			Keystroke(modifiers: [.command], keys: [.character("l")]),
+			Keystroke(modifiers: [.command, .shift], keys: [.character("l")]),
+			Keystroke(modifiers: [.control], keys: [.character("l")]),
+			Keystroke(modifiers: [.option], keys: [.character("l")]),
+			Keystroke(modifiers: [], keys: [.character("l")]),
+		] {
+			let poster = FakeEventPoster()
+			try presser(poster: poster).press(chord)
+			#expect(poster.keyed.allSatisfy { $0.characters == nil })
+			// It still goes out -- this is about what the event says, not whether
+			// there is one.
+			#expect(poster.keyed.map(\.keyCode) == [201, 201])
+		}
+	}
+
+	@Test("CONTROL AND OPTION TOGETHER ARE THE READER's, so that chord IS stamped")
+	func readerChordsKeepTheirStamp() throws {
+		// The other half of the same line: 13.25's fix is untouched for the chords
+		// it was for. A chord holding only ONE of the reader's two modifiers is not
+		// the reader's, which is what the `control` and `option` rows above say.
+		let poster = FakeEventPoster()
+		try presser(poster: poster).press(readerChord([.character("l")]))
+		#expect(poster.keyed.allSatisfy { $0.characters == "l" })
+	}
+
+	/// A chord aimed at the reader: its own modifiers held, and the flag the
+	/// parser would have set for it.
+	///
+	/// Hand-built rather than parsed because these are ADAPTER tests -- what
+	/// `holdsReaderModifier` means and when the parser sets it belong to
+	/// `KeystrokeTests`, and a test that went through `parse` here would fail for
+	/// two unrelated reasons.
+	private func readerChord(
+		_ keys: [Keystroke.Key], plus extra: Set<Keystroke.Modifier> = []
+	) -> Keystroke {
+		let readers: Set<Keystroke.Modifier> = [.control, .option]
+		return Keystroke(
+			modifiers: readers.union(extra), keys: keys, holdsReaderModifier: true)
 	}
 
 	@Test("the key-up carries the same character as the key-down")
@@ -466,9 +517,10 @@ struct CGKeystrokePresserTests {
 		// one that acts on key-down would otherwise disagree about which key it was.
 		let poster = FakeEventPoster()
 		try presser(poster: poster).press(
-			Keystroke(modifiers: [.shift], keys: [.character("4")]))
+			readerChord([.character("4")], plus: [.shift]))
 
 		#expect(poster.keyed.count == 2)
 		#expect(poster.keyed[0].characters == poster.keyed[1].characters)
+		#expect(poster.keyed[0].characters == "$")
 	}
 }

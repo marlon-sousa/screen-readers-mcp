@@ -602,7 +602,11 @@ struct PressGestureTests {
 
 		#expect(sender.pressed.isEmpty)
 		#expect(
-			keys.pressed == [Keystroke(modifiers: [.control, .option], keys: [.character("m")])])
+			keys.pressed == [
+				Keystroke(
+					modifiers: [.control, .option], keys: [.character("m")],
+					holdsReaderModifier: true)
+			])
 	}
 
 	@Test("THE BINDING IS READ PER CALL, not once and remembered")

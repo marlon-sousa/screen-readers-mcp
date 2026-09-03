@@ -280,8 +280,11 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.29**
-in lane 3, and the next free spec number is **0054**. Board number **13.28** was
+The next free board number is **11.38** in the convergence series and **13.30**
+in lane 3, and the next free spec number is **0055**. Spec **0054** and board
+number **13.29** were spent on 2026-09-03 by a field report from an agent driving
+this bridge against a real application -- every application chord had been silently
+dead since 13.25 -- and this line moved in the same commit. Board number **13.28** was
 spent on 2026-09-02 by 13.26's own live run, which removed a feature that entry had
 already implemented -- writing the VoiceOver modifier raises a modal dialog on a
 running reader -- and this line moved in the same commit. Spec **0053** was spent on
@@ -2130,6 +2133,46 @@ rule intends.
     instrument answers it. If the answer is no, the honest outcome is that this
     entry closes as "not possible without HID-level remapping", which 13.26 already
     declined to do to somebody's keyboard. Spec: none yet.
+
+13.29. **Done (2026-09-03)** -- **Every chord a person presses, not just the
+    reader's** (lane 3). Raised by an agent driving this bridge against a real
+    application on 2026-09-03 and relayed by Marlon: `command+k`, `command+/`,
+    `command+m`, `command+a`, `command+c` and `command+shift+a` all reported
+    `pressed` and **did nothing**, while the same chords sent by System Events
+    worked in the same app, the same field, seconds apart.
+
+    **13.25 caused it, and 13.25's own checklist hid it.** That entry stamped every
+    character key's event with the character the active layout produces, because
+    this reader matches its bindings on the CHARACTER and `vo+shift+q` was reaching
+    VO-Q. The stamp works for the reader and removes the chord from every
+    application: measured 2026-09-03 across eight legs against TextEdit,
+    control-probe-control, with the stamp as the only variable -- `command+a`
+    /`command+c` copied nothing stamped and copied the document unstamped, and
+    `command+shift+c` opened no window stamped and opened the Colors panel
+    unstamped, both run in each order. **It is the call and not the character**:
+    `command+c` stamped with `"c"`, byte for byte what the event already carried,
+    died just the same, so there is no "stamp only when it changes something"
+    narrowing. **And a Shift is not an escape** -- which matters because
+    13.25's checklist contains exactly ONE Command chord, `command+shift+c`,
+    recorded as opening the Colors panel. It does not reproduce on the code that
+    shipped. One measured chord, of the one shape that would look like a control,
+    is how a week of broken application input passed review.
+
+    **The fix is one guard and one fact carried down.** `Keystroke` gains
+    `holdsReaderModifier`, set by `parse` from the `ModifierSetting` it already
+    reads, and true when the chord holds every modifier this machine's reader uses
+    -- so `vo+m` and a literal `control+option+m` are the same fact, and a machine
+    whose `vo` is Caps Lock or unreadable claims nothing. `CGKeystrokePresser`
+    stamps only when it is true. 13.25's correction survives untouched for the
+    chords it was for; everything else goes out exactly as the window server built
+    it.
+
+    **What this entry does NOT do**, and it is the open question rather than an
+    omission: it never asks whether the stamp is needed at all. If a proper
+    `CGEventSource` makes the window server fill both the `characters` and
+    `charactersIgnoringModifiers` fields itself, the stamp and this flag both
+    delete. That is a live measurement against the reader and it is **13.30**.
+    Spec 0054.
 
 ## Convergence (requires C and D both Done)
 
