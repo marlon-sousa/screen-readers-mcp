@@ -47,12 +47,22 @@ public final class CGEventPoster: EventPoster {
 		event.post(tap: .cghidEventTap)
 	}
 
-	public func post(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) throws {
+	/// THE CHARACTERS ARE STAMPED AFTER THE FLAGS AND BEFORE THE POST, and which
+	/// characters they are was decided one layer up. Setting none leaves the
+	/// unshifted character the system filled in when the event was built -- see
+	/// the seam, which carries the measurement.
+	public func post(
+		keyCode: UInt16, flags: CGEventFlags, characters: String?, keyDown: Bool
+	) throws {
 		guard let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: keyDown)
 		else {
 			throw EventPostingFailure("the system would not create a keyboard event")
 		}
 		event.flags = flags
+		if let characters {
+			let units = Array(characters.utf16)
+			event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+		}
 		event.post(tap: .cghidEventTap)
 	}
 

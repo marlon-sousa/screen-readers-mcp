@@ -9,65 +9,84 @@ Read the next section before anything else. It is the one place where this reade
 differs from every other one you may have driven, and getting it wrong produces
 failures that look like a broken interface.
 
-## `press_gesture` takes TWO notations, and the difference matters
+## What a VoiceOver user presses — and what you press
 
-On this reader a gesture id is either **one of VoiceOver's own English command
-names**, which the reader dispatches itself, or **a keystroke**, which this
-bridge posts at the system:
+A VoiceOver user drives this reader by holding **VO** and pressing a key. VO-M
+reaches the menu bar, VO-Right Arrow moves to the next item, VO-Space activates
+what the cursor is on. That is the vocabulary this document is written in, and it
+is what you should be sending:
 
-    press_gesture { gestures: ["describe item in voiceover cursor"] }   # the reader
-    press_gesture { gestures: ["command+l"] }                           # the system
-    press_gesture { gestures: ["kb:h"] }                                # the system
+    press_gesture { gestures: ["vo+m"] }            # go to the menu bar
+    press_gesture { gestures: ["vo+rightArrow"] }   # move to the next item
+    press_gesture { gestures: ["vo+space"] }        # activate it
+    press_gesture { gestures: ["command+l"] }       # and the ordinary Mac chords
 
-**Two things tell them apart, and you only need the first one.**
+**`vo` is read off this machine, never guessed.** VoiceOver's modifier is
+Control-Option, or Caps Lock, or either — the person chooses it in VoiceOver
+Utility — and this bridge reads their choice and presses that. What comes back in
+`pressed` is the **resolved** spelling (`control+option+m`), so the record of your
+run says which keys actually went out, and one press tells you what this machine
+is set to.
 
-- **`kb:` says "this is a key".** Everything after it is a keystroke, whatever it
-  looks like. That is what lets you press a single letter — `kb:h`, the key an
-  ordinary user presses to move by heading with single-key Quick Nav on. Without
-  the prefix, `h` is looked up as one of the reader's command names and refused.
-- **Otherwise a `+` says it**, so `command+l` needs no prefix. A command name is
-  a phrase and always contains a space; a keystroke never does. So `command key`
-  is a command the reader performs and `command+l` is a chord the system
-  receives.
+If the person here has bound it to **Caps Lock alone**, `vo+…` is refused by name
+and nothing is pressed. This bridge cannot synthesize that key, and
+`control+option+…` is not a substitute: on that machine those two keys are not the
+modifier at all, and pressing them would do something else entirely. The refusal
+says so and names the route that still works.
 
-The prefix is optional on a chord and required on a lone key. `kb:command+l` and
-`command+l` are the same gesture.
+**Why keys rather than the reader's own command names.** This reader will also
+dispatch its commands by name, and it is a real capability — but the two are
+different paths through the machine. A keystroke goes out through the window
+server, past the application under test, and reaches VoiceOver's event tap, which
+is exactly the journey a person's keypress makes. A command name is dispatched
+*inside* the reader and never passes the application at all. **So an application
+that swallows or reinterprets VO-M is invisible to the command name**, which
+reports success while a real user is stuck — and that is the defect class you are
+here to find. Press what a person presses.
 
-**Prefer the command name whenever one exists.** It costs no permission at all,
-it works whatever the user has rebound, and the reader diagnoses it for you. The
-keystroke route exists for the chords the reader has no command for — which is
-most of the ones an ordinary Mac user presses.
+## The reader's own command names, and what they are for
 
-Four consequences that save round trips:
+The other notation is one of VoiceOver's own English command names, which the
+reader dispatches itself:
 
-- **An unknown command name fails cleanly and changes nothing.** The reader
-  answers `Command does not exist (6)`. So guessing a name costs one round trip
-  and is safe — which makes trying one a legitimate way to find out whether this
-  reader has a facility, and a better one than trusting a list that goes stale
-  every macOS release.
-- **The vocabulary is large** — 414 commands on macOS 15.0 — and this document
-  names only what a session actually needs. The reader is the authority on the
-  rest.
-- **This document contains no table of key combinations for reader commands**,
-  and one would be worse than useless: what a user has bound to a command is
-  theirs, it differs between the desktop and the laptop layout and between the
-  three commanders, and none of it changes the command's name.
-- **VoiceOver's own `VO-D` shorthand is refused**, by this bridge rather than by
-  the reader. It is neither a command name the reader will dispatch nor a chord
-  this bridge can press: `VO` is whatever the person has bound their VoiceOver
-  modifier to — Control-Option, or Caps Lock, or both — so pressing it would mean
-  guessing at somebody's own configuration. Send the command name, or write the
-  literal keys out as `control+option+d`.
+    press_gesture { gestures: ["describe item in voiceover cursor"] }
+
+**Two things tell the notations apart, and you only need the first.** A command
+name is a phrase and always contains a space; a keystroke never does. And `kb:`
+in front of an id says "this is a key" whatever it looks like, which is what lets
+you press a single letter — `kb:h`, below.
+
+They remain worth reaching for, in three cases and not as a habit:
+
+- **They cost no permission at all.** A keystroke is a system event and costs the
+  Accessibility grant (below); a command name costs nothing. On a machine that
+  will not grant it, the command names are the whole of what you have.
+- **They are your diagnosis.** A key that does nothing where its command name
+  works is a finding, not a dead end: either the person has rebound that key, or
+  the application swallowed it — and the second is a real defect in the thing you
+  are testing. Say which route you took, always, and say it when the two disagree.
+- **Some commands have no key at all.** Measured on macOS 15.0 on 2026-09-02:
+  `find next button`, `find next text field`, `toggle web navigation dom or
+  group`, `mute speech toggle` and `pause or resume speaking` ship with **no**
+  factory keystroke. A user reaches them through the rotor or the Commands menu;
+  you reach them by name.
+
+**An unknown command name fails cleanly and changes nothing.** The reader answers
+`Command does not exist (6)`, so guessing one costs a round trip and is safe --
+which makes trying a name a legitimate way to find out whether this reader has a
+facility, and a better one than trusting a list that goes stale every macOS
+release. The vocabulary is large (415 commands on macOS 15.0) and this document
+names only what a session needs.
 
 ## Keystrokes: how to write one, and what it costs
 
-    command+l          control+option+space          shift+command+4          kb:h
-    kb:leftArrow+rightArrow
+    vo+m       vo+shift+w      vo+command+h      command+l      kb:h
+    control+option+space       shift+command+4   kb:leftArrow+rightArrow
 
-**Modifiers first, the keys last, joined by `+`.** The modifiers are `command`,
-`control`, `option` (`alt` also works), `shift` and `fn`; case does not matter
-and neither does the order of the modifiers among themselves. A key is a single
-character, or one of these names:
+**Modifiers first, the keys last, joined by `+`.** The modifiers are `vo`,
+`command`, `control`, `option` (`alt` also works), `shift` and `fn`; case does not
+matter and neither does the order of the modifiers among themselves. A key is a
+single character, or one of these names:
 
 | Key | Write | Also accepted |
 |---|---|---|
@@ -87,9 +106,10 @@ because they would not:
 - **`delete`** means a different key on each platform — this machine's Delete
   erases backwards, Windows' erases forwards. Write `backspace` or
   `forwardDelete`, or send the reader's own `delete key` command.
-- **`insert`** is a key this keyboard does not have. Neither is there an `nvda`
-  modifier: VoiceOver's is Control-Option unless the person rebound it, so send
-  the command name rather than guessing at somebody's configuration.
+- **`insert`** is a key this keyboard does not have. It is NVDA's own modifier,
+  and **the counterpart here is `vo`**: write `vo+m` where you would have written
+  `insert+m`. Each reader's bridge resolves its own modifier, so the two ids mean
+  the same act on two machines whose modifier keys are different.
 
 **And one key has no shared spelling at all:** NVDA calls forward delete
 `delete`, which is exactly the name refused here. A script that runs on both
@@ -98,32 +118,38 @@ readers has to spell that one key differently.
 - **A key with NO modifier needs the `kb:` prefix** — `kb:h`, `kb:enter`. Without
   it the id is a command name. That is not pedantry: the reader has commands for
   most single keys (`return key`, `tab key`, `left arrow key`, `f8 key`), it
-  performs them itself, and **they cost no permission at all**. Prefer them.
-  `kb:` is for the keys the reader has no command for — which is every letter,
-  and letters are what single-key Quick Nav is made of.
+  performs them itself, and **they cost no permission at all**. `kb:` is for the
+  keys the reader has no command for — which is every letter, and letters are
+  what single-key Quick Nav is made of.
 - **Two ordinary keys may be held together** — `kb:leftArrow+rightArrow`, which
   is arrow-key Quick Nav. Every part after the modifiers is a key, so there is no
   second separator to learn and `command+leftArrow+rightArrow` says what it looks
   like. The keys go down in the order you wrote them and come up in reverse, so
   they really are held at the same moment — which is what the reader detects;
   sending the two arrows as two gestures moves nothing. There is no limit of two.
-  **Prefer a command name anyway where one exists**: this is an expression, not a
-  recommendation, for the reasons under "What this reader does not offer".
 - **A keystroke costs the Accessibility grant**, exactly as `type_text` does, and
-  the request is raised on the first one of a session. A session that presses only
-  command names and reads speech is never asked for anything — so if you do not
-  need a key, do not send one.
-- **The keyboard layout is the machine's, not yours.** Which physical key
-  produces `l` depends on the layout the person is typing on, and this bridge asks
-  the live layout rather than assuming an American keyboard. If the active layout
-  has no key for a character, the press **fails by name and sends nothing** — it
-  never presses a different key instead. That failure is a real answer: try
-  another chord, or ask the person at the machine.
+  the request is raised on the first one of a session. **A session that drives
+  this reader the way a user does will be asked for it**, once, and that is the
+  price of pressing what a person presses. A session that only reads speech, or
+  only sends command names, is still never asked for anything.
+- **The keyboard layout is the machine's, not yours.** Which physical key produces
+  `l` depends on the layout the person is typing on, and this bridge asks the live
+  layout rather than assuming an American keyboard. If the active layout has no key
+  for a character, the press **fails by name and sends nothing** — it never presses
+  a different key instead. That failure is a real answer: try another chord, or ask
+  the person at the machine.
+- **A shifted chord carries its shifted character**, and this is stated because it
+  was measured rather than assumed (2026-09-02): this reader matches its bindings
+  on the **character** an event carries, not on the key and the modifier flags. So
+  `vo+shift+q` reaches VO-Shift-Q and not VO-Q — which it did, silently, before
+  that was found. If you ever meet a shifted chord that lands on its unshifted
+  binding, that is the shape to suspect.
 - **What arrives is still not what was sent.** The application may swallow or
   reinterpret a chord, and nothing here can see that. A check that needs to know
   what happened asks the application or the reader afterwards.
 
-Re-runnable as `bash scripts/voiceover_chords.sh` in this repository.
+Re-runnable as `bash scripts/voiceover_chords.sh` and
+`bash scripts/voiceover_vo_modifier.sh` in this repository.
 
 ## Do NOT build a chord out of the reader's modifier commands
 
@@ -241,33 +267,63 @@ utterance reading `https://www.blindtec.com.br/blog/`.
 This is what the macOS accessibility contract assumes of an ordinary VoiceOver
 user, and therefore what any interface is entitled to assume you have.
 
-**And it sits somewhere different from where it sits on a Windows reader.** On
-NVDA, moving a cursor independently of system focus is an expert's escape hatch.
-On VoiceOver it is *how everybody works*: the VoiceOver cursor is the primary
-means of navigation for an ordinary user, not a way around a broken interface.
-A stance transcribed from a Windows reader would forbid the thing this
+**Every keystroke in the tables below was read out of this reader's own factory
+configuration**, on macOS 15.0, on 2026-09-02 — not remembered from Apple's
+documentation. Re-runnable as `python3 scripts/voiceover_default_bindings.py`,
+which presses nothing and needs no permission. The command name beside each key
+is what the same act is called, and it is there for the three reasons above:
+it costs no grant, it works whatever the person has bound, and it is how you tell
+a rebinding from a defect.
+
+**One honest limit on the whole table.** These are the FACTORY bindings. A person
+who has rebound a command in VoiceOver Utility gets their own key, which this
+bridge does not read. So a key that does nothing while its command name works
+means one of two things, and finding out which is one extra call.
+
+**And this vocabulary sits somewhere different from where it sits on a Windows
+reader.** On NVDA, moving a cursor independently of system focus is an expert's
+escape hatch. On VoiceOver it is *how everybody works*: the VoiceOver cursor is
+the primary means of navigation for an ordinary user, not a way around a broken
+interface. A stance transcribed from a Windows reader would forbid the thing this
 platform's own users do all day. That is the single most important reason this
 document exists.
 
 **Moving around** — the VoiceOver cursor, which is ordinary here:
 
-- `move right`, `move left`, `move up`, `move down` — through the elements of
-  whatever you are in.
-- `start interacting with item`, `stop interacting with item` — down into a
-  group, table or text area, and back out. This is the structure of macOS
-  navigation and there is no substitute for it.
-- `go to menu bar`, `go to dock`, `go to desktop`, `go to status menus` — the
-  desktop's own places, reached by name.
-- `item chooser` — a searchable list of what is in the window.
-- `rotor`, `next rotor item`, `previous rotor item`, `move up in rotor`,
-  `move down in rotor` — the rotor, which is how a user changes what the arrows
-  do.
-- `find next heading`, `find next link`, `find next button`, `find next control`,
-  `find next text field`, `find next table`, and their `find previous`
-  counterparts — web and document navigation by element type. These are this
-  platform's single-letter navigation, and like it they are **inside** every
-  stance's vocabulary: they are how a user reads a page, not a way around a
-  broken one.
+| What a user presses | The same act by name |
+|---|---|
+| `vo+rightArrow`, `vo+leftArrow`, `vo+upArrow`, `vo+downArrow` | `move right`, `move left`, `move up`, `move down` |
+| `vo+shift+downArrow` | `start interacting with item` |
+| `vo+shift+upArrow` | `stop interacting with item` |
+| `vo+m` | `go to menu bar` |
+| `vo+m` twice | `go to status menus` |
+| `vo+d` | `go to dock` |
+| `vo+shift+d` | `go to desktop` |
+| `vo+i` | `item chooser` — a searchable list of what is in the window |
+| `vo+u` | `rotor` |
+| `vo+command+upArrow`, `vo+command+downArrow` | `move up in rotor`, `move down in rotor` |
+| `vo+shift+escape` | `jump to top level` |
+
+`start interacting with item` and `stop interacting with item` are the structure
+of macOS navigation — down into a group, table or text area, and back out — and
+there is no substitute for them.
+
+**Finding things in a page or a document** — this platform's single-letter
+navigation, and like it these are **inside** every stance's vocabulary: they are
+how a user reads a page, not a way around a broken one.
+
+| What a user presses | The same act by name |
+|---|---|
+| `vo+command+h` / `vo+command+shift+h` | `find next heading` / `find previous heading` |
+| `vo+command+l` / `vo+command+shift+l` | `find next link` / `find previous link` |
+| `vo+command+j` | `find next control` |
+| `vo+command+t` | `find next table` |
+| `vo+command+x` | `find next list` |
+| `vo+command+g` | `find next image` |
+| `vo+command+n` | `find next landmark` |
+| — no factory key — | `find next button`, `find next text field` |
+
+`vo+f` is `find`, and `vo+g` finds the next match of what you searched for.
 
 **Single-key Quick Nav is the same thing under the person's own fingers**, and
 when it is on the letters do it: `kb:h` for the next heading, `kb:l` for a link,
@@ -276,54 +332,54 @@ turns it on and navigates a page that way all day, so it is inside every stance'
 vocabulary too — press the letters the way a person would.
 
 Two things to know before you rely on it. It is a **mode**, and it is off unless
-somebody turned it on; `toggle single-key quick nav on or off` flips it and says
-which way it went, which is how you find out (see "How you read state" below).
-**Turn it on with that command and not with the key chord you may know from
-Apple's own documentation** — a person toggles Quick Nav by pressing Left Arrow
-and Right Arrow *together*, and this bridge can now press that
-(`kb:leftArrow+rightArrow`), which does not make it the way to do it. All three
-toggles have command names, they cost no permission, and each says out loud which
-way it went. The chord costs the Accessibility grant, and it moves **two**
-settings rather than one: measured 2026-09-01, it takes single-key Quick Nav down
-with arrow-key Quick Nav, so an agent reaching for it to turn one on may silently
-change how the letter keys behave as well. It does announce something — measured
-2026-09-02, a generic "Quick Nav on" or "off" — but that announcement **does not
-say which of the two settings moved**, and it moved both. So the chord tells you
-less than it appears to, which is the reason to prefer the command name rather
-than merely a matter of permissions.
-And while it is on, those letters no longer reach the page as text — which is
-what makes it worth turning off again before you type into a field.
+somebody turned it on; `vo+q` (`toggle single-key quick nav on or off`) flips it
+and says which way it went, which is how you find out. Its sibling `vo+shift+q`
+is `toggle arrow-key quick nav on or off`. **Prefer either of those to the key
+chord you may know from Apple's own documentation** — a person toggles Quick Nav
+by pressing Left Arrow and Right Arrow *together*, and this bridge can press that
+(`kb:leftArrow+rightArrow`), which does not make it the way to do it: measured
+2026-09-01, that chord moves **two** settings rather than one, taking single-key
+Quick Nav down with arrow-key Quick Nav, and the announcement it makes ("Quick Nav
+on"/"off", measured 2026-09-02) does not say which of them moved. So it tells you
+less than it appears to. And while single-key Quick Nav is on, those letters no
+longer reach the page as text — which is what makes it worth turning off again
+before you type into a field.
 
-**Acting on things**, through the key commands above: `return key` to activate,
-`space` — which is not in the vocabulary, so use `return key` or the item's own
-command — and `tab key` to move forward. Backwards is `shift+tab`, which is a
-keystroke and costs the Accessibility grant, so `move left` is the cheaper way
-when the VoiceOver cursor will do.
+**Acting on things**: `vo+space` (`perform action for item`) activates what the
+cursor is on; `kb:enter` and `kb:tab` are the ordinary keys, and `shift+tab` goes
+backwards. `vo+shift+m` opens the shortcut menu — what a right-click would show.
 
 **The chords an ordinary Mac user presses in the first minute**, all of which are
-keystrokes rather than command names: `command+l` (the location bar),
+the system's rather than the reader's: `command+l` (the location bar),
 `command+f` (find), `command+t` (a new tab), `command+n`, `command+s`,
 `command+a`, `command+z`, `command+shift+tab`. Use them the way a person would.
 
 **Typing** is `type_text`, into whatever holds keyboard focus. It presses no
 Enter and submits nothing.
 
-## VoiceOver's reading commands, as this reader names them
+## VoiceOver's reading commands, as a user presses them
 
 These re-read what is already in front of you. They make no claim about
 reachability, so they are inside **every** persona's vocabulary:
 
-| What it does | Command |
-|---|---|
-| Describe what the VoiceOver cursor is on | `describe item in voiceover cursor` |
-| Describe what has keyboard focus | `describe item with keyboard focus` |
-| Read everything under the cursor | `read contents of voiceover cursor` |
-| Read the whole window | `read contents of window` |
-| Describe the window itself | `describe window` |
-| Read the current line, paragraph, character | `read current line`, `read current paragraph`, `read current character` |
-| Where the cursor is, and how big | `describe position of item in voiceover cursor`, `describe size of item in voiceover cursor` |
-| What applications are open | `describe open applications` |
-| Stop or resume speaking | `pause or resume speaking` |
+| What it does | Pressed | By name |
+|---|---|---|
+| Describe what the VoiceOver cursor is on | `vo+f3` | `describe item in voiceover cursor` |
+| Describe what has keyboard focus | `vo+f4` | `describe item with keyboard focus` |
+| Read everything under the cursor | `vo+a` | `read contents of voiceover cursor` |
+| Read the whole window | `vo+shift+w` | `read contents of window` |
+| Describe the window itself | `vo+f2` | `describe window` |
+| Read the current line, word, character | `vo+l`, `vo+w`, `vo+c` | `read current line`, `read current word`, `read current character` |
+| Read the current paragraph, sentence | `vo+p`, `vo+s` | `read current paragraph`, `read current sentence` |
+| Repeat the last thing said | `vo+z` | `repeat last phrase` |
+| What applications are open | `vo+f1` | `describe open applications` |
+| Stop or resume speaking | — no factory key — | `pause or resume speaking` |
+
+On a laptop keyboard the function-key rows are also bound as `fn+vo+3`,
+`fn+vo+4`, and so on — the same commands, reached the way a person reaches them
+when the top row is media keys. This bridge presses `vo+f3` as written; whether
+that needs `fn` on the machine in front of you is the machine's own setting, and
+one this bridge does not read.
 
 `describe item in voiceover cursor` is the *orient* step of the loop in
 `screenreader://guidance` on this reader. It describes what the cursor is already
@@ -368,12 +424,19 @@ to name:
 | Speech, sound, or the reader itself | `mute speech toggle`, `mute sound toggle`, `mute voiceover toggle` |
 | The VoiceOver-modifier lock | `toggle the vo modifier lock on or off` |
 
-**Two warnings, and the second one is about somebody's machine.** These are
+**Three warnings, and the second one is about somebody's machine.** These are
 toggles: they do not arrive at a state, they flip one, so pressing one twice
 returns the machine to where it was and pressing one once leaves it changed for
 whoever uses this computer next. And `mute voiceover toggle` and `toggle screen
 curtain on or off` change what a *person* can perceive — never press either
 without a reason you could defend to the person sitting there.
+
+The third is about the last row. **The VoiceOver-modifier lock is invisible from
+here.** When it is on the reader behaves as though VO were held down, so ordinary
+letters become commands and your `vo+…` chords are not what a person's would be.
+Nothing in this bridge can read that state. If ordinary keys start behaving like
+reader commands, or your VO chords stop landing where they should, suspect it —
+and note that pressing `vo+;` to find out would itself change it.
 
 ## Where you are: two cursors, and they separate
 
@@ -422,14 +485,18 @@ do not assume a facility exists because another reader has one.
 - **No "list open windows" that this bridge can drive**, but `describe open
   applications` and `item chooser` between them cover most of what you would want
   it for.
-- **No account of what a chord DID.** Two ordinary keys held together are
-  expressible — `kb:leftArrow+rightArrow`, which is how a Mac user toggles Quick
-  Nav — but `press_gesture` reports what it PRESSED and never what the reader made
-  of it. The chord that toggles Quick Nav moves two settings and announces
-  neither, so **the reader's own command name is still the answer** where one
-  exists: it moves exactly one setting and says which way it went. If you meet an
-  act that has no command name, say so: it is a gap worth recording rather than a
-  thing to work around with `type_text`, which sends characters and not keys.
+- **No account of what a chord DID.** `press_gesture` reports what it PRESSED and
+  never what the reader made of it, which is the contract's own rule everywhere.
+  Where that matters most is a chord that moves more than one thing:
+  `kb:leftArrow+rightArrow` moves two Quick Nav settings and names neither, while
+  `vo+q` and `vo+shift+q` each move one and say which way it went. If you meet an
+  act that has neither a key nor a command name, say so: it is a gap worth
+  recording rather than a thing to work around with `type_text`, which sends
+  characters and not keys.
+- **No reading of the person's own key bindings.** The keys in this document are
+  the reader's factory bindings. If somebody has rebound a command in VoiceOver
+  Utility this bridge does not know, and the key will simply do nothing — which is
+  why every table here names the command beside the key.
 
 ## Your session was SET UP before you were handed it
 

@@ -58,4 +58,35 @@ public protocol KeyboardLayout: AnyObject {
 	/// keycode with a plausible default. Pressing something else instead is the
 	/// one outcome this seam exists to make impossible.
 	func key(for character: Character) -> LayoutKey?
+
+	// ==========================================================================
+	// AND THE FORWARD QUESTION, WHICH 13.25 HAD TO ADD.
+	// ==========================================================================
+	//
+	// Everything above asks the BACKWARD question -- which key produces this
+	// character -- because that is what building an event needs. The forward one
+	// is what SENDING it correctly needs, and the difference cost a real defect.
+	//
+	// MEASURED 2026-09-02: a `CGEvent` built from a keycode carries the UNSHIFTED
+	// character whatever flags are set on it and whatever Shift transitions were
+	// posted before it. An application never notices, because it matches the
+	// keycode and the flags. THE READER MATCHES ON THE CHARACTER -- so
+	// `control+option+shift+q` reached VO-Q rather than VO-Shift-Q, moved a
+	// different setting, and reported success. Spec 0052 §2.3, re-runnable as
+	// `bash scripts/voiceover_vo_modifier.sh`.
+	//
+	// So the presser stamps the character a real keypress would carry, and this is
+	// where it asks what that is. The DECISION -- which layer is in force, and
+	// that a named key is never stamped -- stays above the seam, in
+	// `CGKeystrokePresser`, where it is an ordinary unit test.
+
+	/// What `keyCode` produces on this layout, on the shifted layer or the plain
+	/// one, or nil if the layout cannot say.
+	///
+	/// NIL IS "DO NOT STAMP", NOT A FAILURE. A layout that will not answer leaves
+	/// the event carrying whatever the system filled in, which is what this bridge
+	/// sent for every keystroke before 13.25 -- worse for a shifted chord, and
+	/// no worse for anything else. A press that failed here instead would refuse
+	/// chords that have always worked.
+	func character(forKeyCode keyCode: UInt16, shifted: Bool) -> String?
 }

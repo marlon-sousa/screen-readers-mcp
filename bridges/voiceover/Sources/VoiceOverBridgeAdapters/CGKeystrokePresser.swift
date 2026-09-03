@@ -109,13 +109,25 @@ public final class CGKeystrokePresser: KeyPresser {
 		if resolved.contains(where: \.shifted) { modifiers.insert(.shift) }
 		let held = Keystroke.Modifier.allCases.filter(modifiers.contains)
 		let flags = Self.flags(for: modifiers)
+		// WHAT EACH EVENT WILL SAY IT IS -- 13.25, and it is decided HERE because
+		// it is a decision. A CGEvent built from a keycode carries the UNSHIFTED
+		// character whatever flags are on it; an application never notices, and
+		// this reader matches on the character, so `control+option+shift+q` used to
+		// reach VO-Q rather than VO-Shift-Q and say it had succeeded (spec 0052
+		// §2.3). The Shift in force is the one computed just above -- asked for, or
+		// added because a key sits on the shifted layer -- so a chord that acquires
+		// a Shift for one of its keys stamps every character on the shifted layer,
+		// which is what one hand on one Shift key produces.
+		let stamped = zip(keystroke.keys, resolved).map {
+			stamp($0, resolved: $1, shifted: modifiers.contains(.shift))
+		}
 
 		// TWO DEFERS, AND THEIR ORDER IS THE POINT. Swift runs them in reverse, so
 		// the keys come up first and the modifiers after them -- which is what a
 		// real keyboard does, and the opposite would release Command while `l` was
 		// still down. Both run whatever happened below, and both swallow their own
 		// failures rather than replacing the caller's error; see the header.
-		var pressed: [UInt16] = []
+		var pressed: [(keyCode: UInt16, characters: String?)] = []
 		defer { release(held) }
 		defer { releaseKeys(pressed, flags: flags) }
 		do {
@@ -130,9 +142,10 @@ public final class CGKeystrokePresser: KeyPresser {
 			// measured 2026-09-01: the two arrows sent sequentially move nothing,
 			// and sent together they toggle arrow-key Quick Nav. No delay between
 			// the events is needed.
-			for key in resolved {
-				try poster.post(keyCode: key.keyCode, flags: flags, keyDown: true)
-				pressed.append(key.keyCode)
+			for (key, characters) in zip(resolved, stamped) {
+				try poster.post(
+					keyCode: key.keyCode, flags: flags, characters: characters, keyDown: true)
+				pressed.append((key.keyCode, characters))
 			}
 		} catch let failure as EventPostingFailure {
 			throw KeyPressFailure(failure.description)
@@ -148,9 +161,10 @@ public final class CGKeystrokePresser: KeyPresser {
 	/// was pressed rather than everything that was asked for -- a key-down that
 	/// never went out needs no key-up, and posting one would tell whatever is
 	/// watching about a keystroke that never happened.
-	private func releaseKeys(_ pressed: [UInt16], flags: CGEventFlags) {
-		for keyCode in pressed.reversed() {
-			try? poster.post(keyCode: keyCode, flags: flags, keyDown: false)
+	private func releaseKeys(_ pressed: [(keyCode: UInt16, characters: String?)], flags: CGEventFlags) {
+		for key in pressed.reversed() {
+			try? poster.post(
+				keyCode: key.keyCode, flags: flags, characters: key.characters, keyDown: false)
 		}
 	}
 
@@ -201,6 +215,20 @@ public final class CGKeystrokePresser: KeyPresser {
 			}
 			return found
 		}
+	}
+
+	/// The characters one resolved key should carry, or nil to leave the event as
+	/// the system built it.
+	///
+	/// A NAMED KEY IS NEVER STAMPED, and that is the second half of the decision.
+	/// An arrow or a function key is layout-independent, its character is a
+	/// private-use code point (`\u{F702}` for Left Arrow) that this bridge would
+	/// be inventing rather than reading, and the system fills it correctly -- which
+	/// is why 13.22's arrow chords work today. The event only lies about the
+	/// SHIFTED LAYER of a character key, so that is the only thing corrected.
+	private func stamp(_ key: Keystroke.Key, resolved: LayoutKey, shifted: Bool) -> String? {
+		guard case .character = key else { return nil }
+		return layout.character(forKeyCode: resolved.keyCode, shifted: shifted)
 	}
 
 	/// The flag one modifier sets.

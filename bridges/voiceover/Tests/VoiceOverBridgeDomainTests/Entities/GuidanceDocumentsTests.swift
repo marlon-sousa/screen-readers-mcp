@@ -89,6 +89,41 @@ struct GuidanceDocumentsTests {
 
 		// 13.11's own half: how state is read on a reader that cannot be asked.
 		#expect(text.contains("toggle web navigation dom or group"))
+
+		// 13.25: the keys a VoiceOver user presses, which is what this document is
+		// now written in -- the modifier resolved from the machine, the Caps Lock
+		// refusal, and the reason the keystroke is the route rather than the
+		// reader's own dispatch channel.
+		#expect(text.contains("vo+m"))
+		#expect(text.contains("Caps Lock"))
+		#expect(text.contains("never passes the application"))
+		// And the character rule, which is a measurement this entry paid for.
+		#expect(text.contains("shifted character"))
+	}
+
+	@Test("the `user` stance is told to PRESS, and what the command name is for")
+	func theUserStancePressesKeys() throws {
+		// 13.25's demotion, in the one document that decides how a stand-in drives.
+		// A stance that still recommended the reader's own dispatch channel would
+		// be a stand-in for nobody: the whole claim of this tool is that an agent
+		// does what the user does.
+		let text = try GuidanceDocuments.guidance(for: "user").text
+		#expect(text.contains("Press the keys"))
+		#expect(text.contains("vo+m"))
+		#expect(text.contains("wrong DEFAULT"))
+		// And the cost, stated rather than hidden: this stance pays a permission
+		// dialog for fidelity.
+		#expect(text.contains("Accessibility grant"))
+	}
+
+	@Test("the `validator` stance is given the two-route comparison as a finding")
+	func theValidatorComparesTheTwoRoutes() throws {
+		// What this entry makes possible and no other stance document says: a key
+		// that does nothing where its command name works is either a swallowed
+		// keystroke -- a defect in the thing under test -- or a rebinding.
+		let text = try GuidanceDocuments.guidance(for: "validator").text
+		#expect(text.contains("driven two ways"))
+		#expect(text.contains("rebound"))
 	}
 
 	@Test("no document promises a capability this bridge does not serve")

@@ -13,6 +13,16 @@ hardest elsewhere do not exist here:
   `set_log_level` are not served by this bridge, because VoiceOver keeps no
   diagnostic log of its own. On NVDA this stance's method is "act, then read what
   the reader thought it was doing"; here the second half is missing.
+- **The key bindings are readable, and this bridge only resolves ONE of them.**
+  `vo` is read from `SCRKeysToUseForVOModifier` in VoiceOver's own preferences,
+  so a `vo+…` chord presses what this machine is set to. The other 300-odd factory
+  bindings are in the reader's shipped configuration
+  (`ScreenReaderConfiguration.archived-scrconfig`, joined to
+  `SCRStringsToCommandsMap.scrconfig` on the command identifier) and this bridge
+  does not read them at run time — `python3 scripts/voiceover_default_bindings.py`
+  in the repository prints the join. A person's own REBINDINGS are in their
+  preferences and nothing reads those, which is the gap behind "the key did
+  nothing but the command name worked".
 - **There is no readable configuration.** `get_config` and `set_config` do not
   exist. VoiceOver's settings live in three preference files — `default.plist`
   (deviations only), `journal.plist` (a per-key last-changed index, which
@@ -33,6 +43,15 @@ questions get asked here. A silent session captures everything while the machine
 stays quiet, so a long investigation costs the person at the machine nothing.
 
 The instruments this reader *does* give you that the other stances leave alone:
+
+- **The same act, driven two ways.** A keystroke (`vo+m`) goes out through the
+  window server and past the application under test; the reader's own command name
+  (`go to menu bar`) is dispatched inside the reader and never touches it. Driving
+  both and comparing is a mechanism question no single observation answers, and it
+  separates three states that look alike from one side: the application swallowed
+  the keystroke, the person rebound that key, or the reader itself is not acting.
+  The `validator` stance uses this to characterise a finding; you can use it to
+  work out what a component is doing.
 
 - **`Command does not exist (6)`.** An unknown command name fails cleanly and
   changes nothing, so enumerating what this reader can do by asking it is cheap
