@@ -280,8 +280,13 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.30**
-in lane 3, and the next free spec number is **0055**. Spec **0054** and board
+The next free board number is **11.38** in the convergence series and **13.32**
+in lane 3, and the next free spec number is **0056**. Spec **0055** and board
+number **13.31** were spent on 2026-09-03 by one question Marlon asked of the
+AppleScript inventory -- if a user cannot type a command name, why should we have
+to -- and this line moved in the same commit. **13.30 stands reserved** by 13.29
+for the stamp measurement and has no entry of its own yet, which is why this entry
+took 13.31. Spec **0054** and board
 number **13.29** were spent on 2026-09-03 by a field report from an agent driving
 this bridge against a real application -- every application chord had been silently
 dead since 13.25 -- and this line moved in the same commit. Board number **13.28** was
@@ -2173,6 +2178,41 @@ rule intends.
     `charactersIgnoringModifiers` fields itself, the stamp and this flag both
     delete. That is a live measurement against the reader and it is **13.30**.
     Spec 0054.
+
+13.31. **Not started** -- **A user cannot type a command name, so neither may we**
+    (lane 3). Marlon, 2026-09-03, on reading an inventory of where this bridge
+    still uses AppleScript: *"if a user cannot type a command, why should we have
+    to?"* No VoiceOver user has the command-name channel -- a person presses VO-M,
+    and reaches an act with no key through the Commands menu -- so **the channel is
+    deleted, entirely**, and with it every AppleEvent this bridge sends.
+
+    **13.25 demoted it and this entry finishes the job.** That entry found the
+    dispatch route reporting success on chords a real user was stuck on, hiding the
+    defect class the tool exists to find, and left the route as an automation
+    convenience. The convenience was still bought with a switch -- *"Allow VoiceOver
+    to be controlled with AppleScript"* -- that lets ANY process drive the screen
+    reader a blind person depends on, which is an indefensible thing to ask for in
+    exchange for a route no human has.
+
+    **Five callers, and four of them delete with no capability loss at all**: rung
+    5's capture probe already has `vo+f7` beside it; `TCCPermissionBroker` read the
+    Automation grant only because the channel needed it; `VoiceOverFocusInspector`'s
+    cursor route serves a session that can no longer exist; `VoiceOverLiveness` has
+    not used its script since 13.26. The fifth is `VoiceOverGestureSender`, and what
+    it costs is **five commands that ship with no factory key** -- which a user
+    reaches through the Commands menu (`vo+h` twice, type, Enter), and so can this
+    bridge, because that is keystrokes plus typed text and it has had both since
+    13.8.
+
+    **The cascade is the interesting half.** `Permission.automationVoiceOver`,
+    `ReaderScriptingSetting`, `VoiceOverPrefsScriptingSetting` and the whole
+    `Precondition` entity (its only case was the switch) delete; rung 1 asks ONE
+    question instead of two; `Gesture` stops being a choice and `CommandVocabulary`
+    returns a `Keystroke` or refuses. The entry adds no file, which is most of the
+    argument for it. **The known limit, stated rather than discovered:** the
+    Commands menu is LOCALIZED where the dispatch names were English, so the
+    English-name route through it is unverified off an English locale -- handed to
+    13.27, which is already decoding this reader's own strings. Spec 0055.
 
 ## Convergence (requires C and D both Done)
 
