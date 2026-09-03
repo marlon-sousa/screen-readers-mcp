@@ -34,14 +34,16 @@ struct PressGestureTests {
 		permissions: FakePermissionBroker = FakePermissionBroker(),
 		transcript: FakeTranscript = FakeTranscript(),
 		announcer: FakeAnnouncer = FakeAnnouncer(),
-		readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting()
+		readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
+		readerScripting: FakeReaderScriptingSetting = FakeReaderScriptingSetting()
 	) -> SessionContext {
 		let context = SessionContext(
 			clock: FakeClock(), transcript: transcript, attended: true, close: { _ in })
 		context.mode = mode
 		context.adapters = fakeAdapterSet(
 			mode: mode, gestureSender: sender, readerLiveness: liveness, keyPresser: keys,
-			readerModifier: readerModifier, permissions: permissions, announcer: announcer)
+			readerModifier: readerModifier, readerScripting: readerScripting,
+			permissions: permissions, announcer: announcer)
 		context.speech = SpeechBuffer(clock: FakeClock())
 		return context
 	}
@@ -349,7 +351,7 @@ struct PressGestureTests {
 	func aDeadChannelIsNamed() throws {
 		let sender = FakeGestureSender()
 		sender.failures["go to desktop"] = .scriptingChannelDead
-		let liveness = FakeReaderLiveness(answersItsOwnName: true)
+		let liveness = FakeReaderLiveness(isRunning: true)
 		do {
 			_ = try handler.execute(
 				context(sender: sender, liveness: liveness), request(["go to desktop"]))
@@ -373,12 +375,127 @@ struct PressGestureTests {
 		sender.failures["go to desktop"] = .scriptingChannelDead
 		do {
 			_ = try handler.execute(
-				context(sender: sender, liveness: FakeReaderLiveness(answersItsOwnName: false)),
+				context(sender: sender, liveness: FakeReaderLiveness(isRunning: false)),
 				request(["go to desktop"]))
 			Issue.record("expected the dispatch to fail")
 		} catch let error as CommandError {
 			#expect(!error.description.contains(ReaderCondition.scriptingChannelDead.rawValue))
-			#expect(error.description.contains("did not answer its own name"))
+			#expect(error.description.contains("is not running at all"))
+			// COMMAND-F5, NOT `killall && open`: the recovery a person at the machine
+			// actually performs, and the one the 2026-09-02 field report found works
+			// when the pair this repo used to print did not.
+			#expect(error.description.contains("Command-F5"))
+		}
+	}
+
+	// ==========================================================================
+	// 13.26: THREE CONDITIONS FAIL WITH IDENTICAL ERROR NUMBERS, AND THE MIDDLE
+	// ONE WAS A SHIPPED DEFECT.
+	// ==========================================================================
+	//
+	// Measured live on 2026-09-02 with the AppleScript switch OFF: `return
+	// commander` fails -1728 and `perform command` fails -1708 -- EXACTLY the pair
+	// a wedged reader answers with, which `VoiceOverGestureSender` maps to
+	// `scriptingChannelDead`. So the bridge told a blind person to restart their
+	// screen reader to repair a switch they had deliberately turned off, and every
+	// clause of the sentence was true. Only the PREFERENCE separates the two, and
+	// this bridge was already reading it and never consulting it here.
+
+	@Test("with the AppleScript switch OFF, the reader is not blamed and the KEY is named")
+	func aSwitchedOffChannelIsNotAWedgedReader() throws {
+		let sender = FakeGestureSender()
+		sender.failures["go to desktop"] = .scriptingChannelDead
+		let scripting = FakeReaderScriptingSetting(setting: .disabled)
+		do {
+			_ = try handler.execute(
+				context(sender: sender, readerScripting: scripting), request(["go to desktop"]))
+			Issue.record("expected the dispatch to fail")
+		} catch let error as CommandError {
+			// THE RECOVERY IT MUST NOT GIVE. A restart repairs nothing here, and
+			// following it costs a blind person their screen reader for no reason.
+			#expect(!error.description.contains(readerRestartCommand))
+			#expect(!error.description.contains(ReaderCondition.scriptingChannelDead.rawValue))
+			// What it must say instead: the switch, that the reader is fine, and the
+			// route that does work on this machine.
+			#expect(error.description.contains("AppleScript"))
+			#expect(error.description.contains("running and healthy"))
+			#expect(error.description.lowercased().contains("press the key"))
+		}
+	}
+
+	@Test("an UNREADABLE switch is reported as unreadable, never as switched off")
+	func anUnreadableSwitchIsItsOwnAnswer() throws {
+		// The same rule the setting's own port makes: "I could not look" is not "it
+		// is off", and an agent told the wrong one sends a human to a settings pane
+		// that may already be right.
+		let sender = FakeGestureSender()
+		sender.failures["go to desktop"] = .scriptingChannelDead
+		do {
+			_ = try handler.execute(
+				context(sender: sender, readerScripting: FakeReaderScriptingSetting(setting: .unknown)),
+				request(["go to desktop"]))
+			Issue.record("expected the dispatch to fail")
+		} catch let error as CommandError {
+			#expect(error.description.contains("not readable"))
+			#expect(!error.description.contains("switched off"))
+		}
+	}
+
+	@Test("with the switch ON, a dead object model is still reported as one")
+	func aGenuinelyDeadChannelIsStillNamed() throws {
+		// The control for the two above: this is spec 0041's measured state, it is
+		// the one case a restart actually repairs, and 13.26 must not have made it
+		// unreportable.
+		let sender = FakeGestureSender()
+		sender.failures["go to desktop"] = .scriptingChannelDead
+		do {
+			_ = try handler.execute(
+				context(sender: sender, readerScripting: FakeReaderScriptingSetting(setting: .enabled)),
+				request(["go to desktop"]))
+			Issue.record("expected the dispatch to fail")
+		} catch let error as CommandError {
+			#expect(error.description.contains(ReaderCondition.scriptingChannelDead.rawValue))
+			#expect(error.description.contains(readerRestartCommand))
+		}
+	}
+
+	@Test("the expert is told it can ASK a human for the switch, and where")
+	func theSwitchCanBeRequestedFromAHuman() throws {
+		// Marlon, 2026-09-02: "Then the expert can, if they need, request apple
+		// script permission, and this has to be given by a human." There is no
+		// mechanism to build -- no API sets that switch -- so the affordance is this
+		// sentence, at the moment an agent discovers it wants the route.
+		let sender = FakeGestureSender()
+		sender.failures["go to desktop"] = .scriptingChannelDead
+		do {
+			_ = try handler.execute(
+				context(sender: sender, readerScripting: FakeReaderScriptingSetting(setting: .disabled)),
+				request(["go to desktop"]))
+			Issue.record("expected the dispatch to fail")
+		} catch let error as CommandError {
+			#expect(error.description.contains("ask_user"))
+			#expect(error.description.contains("VoiceOver Utility > General"))
+			#expect(error.description.contains("reconnect"))
+		}
+	}
+
+	@Test("a reader that is GONE is diagnosed before the switch is even read")
+	func aMissingReaderOutranksTheSwitch() throws {
+		// Order matters: on a machine with the switch off AND no reader, telling the
+		// agent to press a key would be telling it to press keys at nothing.
+		let sender = FakeGestureSender()
+		sender.failures["go to desktop"] = .scriptingChannelDead
+		let scripting = FakeReaderScriptingSetting(setting: .disabled)
+		do {
+			_ = try handler.execute(
+				context(
+					sender: sender, liveness: FakeReaderLiveness(isRunning: false),
+					readerScripting: scripting),
+				request(["go to desktop"]))
+			Issue.record("expected the dispatch to fail")
+		} catch let error as CommandError {
+			#expect(error.description.contains("is not running at all"))
+			#expect(scripting.reads == 0)
 		}
 	}
 

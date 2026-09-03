@@ -96,9 +96,13 @@ struct SessionRoundTripTests {
 	/// instead of quietly consuming a command's script in its place.
 	private func commandScripts(_ scripts: FakeAppleScriptRunner) -> [String] {
 		var remaining = scripts.scripts
+		// SINCE 13.26 THE LIVENESS SCRIPT IS NOT ONE OF THESE. The handshake asks
+		// the running-application list whether the reader is there, which costs no
+		// permission and sends no AppleEvent -- so the only script a healthy
+		// handshake sends is the capture probe, and that only on a machine that
+		// offers the command-name route at all.
 		for expected in [
-			VoiceOverLiveness.readerNameScript,
-			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand),
+			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand)
 		] {
 			guard let index = remaining.firstIndex(of: expected) else {
 				Issue.record("the handshake no longer sends: \(expected)")

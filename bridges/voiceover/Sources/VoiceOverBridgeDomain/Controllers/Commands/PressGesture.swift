@@ -5,7 +5,9 @@
 // all, and WHICH ROUTE it takes), the GestureSender port (a command name), the
 // KeyPresser port (a keystroke), the PermissionBroker port (the grant a
 // keystroke costs), the session's SpeechBuffer (the grace window), and -- only
-// on a failure -- the ReaderLiveness port.
+// on a failure -- the ReaderLiveness and ReaderScriptingSetting ports, which
+// together separate THREE conditions that fail with identical error numbers
+// (13.26; see `explain`, which carries the measurement).
 //
 // ============================================================================
 // ONE COMMAND, TWO ROUTES, AND THE AGENT DOES NOT HAVE TO CHOOSE.
@@ -173,7 +175,7 @@ public final class PressGestureHandler: CommandHandler {
 			do {
 				try adapters.gestureSender.press(command)
 			} catch let failure as GestureError {
-				throw CommandError(explain(failure, command, adapters.readerLiveness))
+				throw CommandError(explain(failure, command, adapters))
 			}
 		case .keystroke(let keystroke):
 			do {
@@ -186,33 +188,79 @@ public final class PressGestureHandler: CommandHandler {
 
 	/// Turn a dispatch failure into something an agent can act on.
 	///
-	/// THE ONE PLACE THE TWO PORTS ARE COMBINED, and the reason `ReaderLiveness`
-	/// is a port of its own rather than a boolean the sender returns: "the reader
-	/// answers its own name but not its own state" is a claim about TWO channels,
-	/// and only a caller holding both can make it. Spec 0041 measured exactly that
-	/// state -- the object model dead while the process ran and answered its name
-	/// -- and required that a bridge report it as a distinct, named condition
-	/// rather than as an empty result.
+	/// THE ONE PLACE THE PORTS ARE COMBINED, and the reason `ReaderLiveness` is a
+	/// port of its own rather than a boolean the sender returns: "the reader is
+	/// there but its object model is not" is a claim about TWO channels, and only
+	/// a caller holding both can make it. Spec 0041 measured exactly that state --
+	/// the object model dead while the process ran -- and required that a bridge
+	/// report it as a distinct, named condition rather than as an empty result.
 	///
-	/// Liveness is asked ONLY here, on a failure that makes the answer mean
-	/// something. Asking before every gesture would double the cost of the
-	/// commonest command in the protocol to learn "yes".
+	/// ============================================================================
+	/// THREE CONDITIONS, NOT TWO -- AND THE MIDDLE ONE WAS A SHIPPED DEFECT.
+	/// ============================================================================
+	///
+	/// Until 13.26 this method asked one question, and on the machine 13.26 exists
+	/// to support it gave a true sentence with a useless recovery. MEASURED LIVE,
+	/// 2026-09-02, with "Allow VoiceOver to be controlled with AppleScript" OFF:
+	///
+	///     press_gesture ["go to menu bar"]
+	///       -> "scriptingChannelDead: VoiceOver answers its own name but not its
+	///           own state. Recovery: restart the reader ..."
+	///
+	/// Every clause of that is true. No restart brings back a switch the person
+	/// deliberately turned off, so the recovery sent a human -- a blind human, at
+	/// their own machine -- to take their screen reader away for nothing.
+	///
+	/// The cause is that the switch REMOVES THE SCRIPTING OBJECT MODEL and leaves
+	/// the application answering its own properties, so it fails with **exactly**
+	/// the numbers a wedged reader fails with: `-1728` to `return commander` and
+	/// `-1708` to `perform command`, which is the pair `VoiceOverGestureSender`
+	/// maps to `scriptingChannelDead`. The two states are NOT distinguishable by
+	/// error number, ever. What separates them is the PREFERENCE, which this
+	/// bridge already reads and until now never consulted here. Spec 0053 §2.1.
+	///
+	/// So: the reader is gone; or the route is switched off on this machine and
+	/// the agent should PRESS THE KEY; or the route is on and the object model is
+	/// genuinely dead, which is the one case a restart repairs.
+	///
+	/// BOTH READS ARE CHEAP AND BOTH HAPPEN ONLY ON A FAILURE. Liveness is now a
+	/// running-application lookup rather than an AppleEvent (13.26), and the
+	/// scripting setting is two file reads; asking either before every gesture
+	/// would still be paying for an answer that is almost always the dull one.
 	private func explain(
-		_ failure: GestureError, _ command: String, _ liveness: any ReaderLiveness
+		_ failure: GestureError, _ command: String, _ adapters: AdapterSet
 	) -> String {
 		guard case .scriptingChannelDead = failure else {
 			return failure.description
 		}
-		guard liveness.readerAnswersItsOwnName() else {
-			// A DIFFERENT CONDITION WITH A DIFFERENT RECOVERY, and this is the
-			// distinction the port exists for: nothing answered at all, so the
-			// reader is gone or wedged rather than half-alive.
+		guard adapters.readerLiveness.readerIsRunning() else {
+			// NOTHING IS THERE TO ANSWER, and that is the distinction the port
+			// exists for: the reader is gone or wedged rather than half-alive, and
+			// the recovery is a different one.
 			return
-				"'\(command)' could not be dispatched and VoiceOver did not answer its own name "
-				+ "either, so the reader is not running or is not responding. Recovery: check that "
-				+ "VoiceOver is running (Command-F5), and that this bridge is allowed to control it "
-				+ "under System Settings > Privacy & Security > Automation"
+				"'\(command)' could not be dispatched, and VoiceOver is not running at all. "
+				+ "Recovery: ask the human at this machine to start VoiceOver -- Command-F5 is "
+				+ "what a person presses -- and try again."
 		}
+		let scripting = adapters.readerScripting.scripting()
+		guard scripting == .enabled else {
+			// THE MIDDLE CONDITION. Not a fault, not a wedge: a deliberate setting,
+			// and the agent has another route to the same act.
+			return
+				"'\(command)' is a COMMAND NAME, and this machine does not offer that route: "
+				+ "VoiceOver Utility > General > \"Allow VoiceOver to be controlled with "
+				+ "AppleScript\" is \(scripting == .disabled ? "switched off" : "not readable from here"). "
+				+ "VoiceOver itself is running and healthy -- nothing needs restarting. WHAT YOU MUST "
+				+ "DO: press the KEY for this act instead, which is what a person at this machine "
+				+ "does and needs no AppleScript at all (`screenreader://reader-guidance` names the "
+				+ "keys). An act with no key of its own is reached through the Commands menu -- "
+				+ "`vo+h` twice, type its name, Enter. If you are the `expert` stance and you "
+				+ "genuinely need the command-name route as an instrument, ask the human for it with "
+				+ "`ask_user` -- that switch is theirs to give, it exists in VoiceOver Utility > "
+				+ "General, and it is read when the reader starts, so reconnect afterwards."
+		}
+		// THE ROUTE IS ON AND STILL FAILED. This is the one spec 0041 measured, and
+		// the one a restart actually repairs.
 		return "'\(command)' could not be dispatched. \(ReaderCondition.scriptingChannelDead.described)"
 	}
 }

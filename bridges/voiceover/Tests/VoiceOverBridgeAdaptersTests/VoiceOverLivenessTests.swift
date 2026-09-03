@@ -1,10 +1,16 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/VoiceOverLiveness.swift.
 //
-// The property under test is that the probe stays the NARROWEST question that
-// separates "the object model died" from "the reader is gone". `return name` is
-// an application-level property, which is exactly why spec 0041 could measure it
-// still answering while every VoiceOver-specific call failed. A richer probe
-// would fail alongside the call it is meant to be a control for.
+// WHAT IS UNDER TEST CHANGED WITH 13.26, AND THE OLD TESTS ARE THE RECORD OF WHY.
+// Until then the question "is the reader there" was an AppleEvent -- `tell
+// application "VoiceOver" to return name` -- chosen because an application-level
+// property answers when the scripting object model is dead (spec 0041). It
+// worked, and it cost a PERMISSION the session might have had no other use for,
+// on a machine that intended to drive the reader entirely by keystrokes.
+//
+// So the question is now the running-application list, which costs nothing and
+// cannot be switched off. Two properties matter here and both have a test: the
+// IDENTIFIER it asks about (case-sensitive, and a wrong one answers "not running"
+// forever), and that starting the reader is still `open` and never `killall`.
 
 import Fakes
 import Testing
@@ -14,17 +20,39 @@ import Testing
 
 @Suite("VoiceOverLiveness")
 struct VoiceOverLivenessTests {
-	@Test("it asks for the reader's own name and nothing else")
-	func itAsksForTheName() throws {
-		let runner = FakeAppleScriptRunner()
-		runner.defaultAnswer = "VoiceOver"
-		_ = VoiceOverLiveness(runner: runner, tools: FakeProcessRunner()).readerAnswersItsOwnName()
-		let script = try #require(runner.scripts.first)
-		#expect(script == "tell application \"VoiceOver\" to return name")
-		// Nothing that needs the object model: no cursor, no last phrase, no
-		// window. Those are the calls this one is the control FOR.
-		#expect(!script.contains("cursor"))
-		#expect(!script.contains("last phrase"))
+	private func liveness(
+		applications: FakeRunningApplications = FakeRunningApplications(),
+		tools: FakeProcessRunner = FakeProcessRunner()
+	) -> VoiceOverLiveness {
+		VoiceOverLiveness(applications: applications, tools: tools)
+	}
+
+	@Test("IT ASKS THE RUNNING-APPLICATION LIST, and sends no AppleEvent at all")
+	func itAsksTheWorkspace() {
+		// The whole of 13.26 in one assertion: this question no longer costs a
+		// grant, so a machine that has never granted Automation -- and has the
+		// AppleScript switch off, which is where a careful VoiceOver user should
+		// be able to leave it -- can still have its reader confirmed.
+		let applications = FakeRunningApplications()
+		#expect(liveness(applications: applications).readerIsRunning())
+		#expect(applications.asked == ["com.apple.VoiceOver"])
+	}
+
+	@Test("THE IDENTIFIER IS EXACT, because a wrong one answers `not running` forever")
+	func theIdentifierIsExact() {
+		// Measured 2026-09-02: `com.apple.VoiceOver` finds the reader and
+		// `com.apple.voiceover` returns an empty list with NO error. So a typo here
+		// would report a dead reader on a healthy machine, permanently and
+		// silently -- and it would look exactly like the condition rung 2 exists to
+		// report. The spelling was read out of the app's own Info.plist.
+		#expect(VoiceOverLiveness.readerBundleIdentifier == "com.apple.VoiceOver")
+		let elsewhere = FakeRunningApplications(running: ["com.apple.voiceover"])
+		#expect(!liveness(applications: elsewhere).readerIsRunning())
+	}
+
+	@Test("a machine where it is not running says so")
+	func notRunningSaysSo() {
+		#expect(!liveness(applications: FakeRunningApplications(running: [])).readerIsRunning())
 	}
 
 	@Test("activating the reader OPENS it, and never kills it")
@@ -35,7 +63,7 @@ struct VoiceOverLivenessTests {
 		// asserts the absence of the one that was measured not to work, because
 		// getting it wrong here is the most expensive mistake in this file.
 		let tools = FakeProcessRunner()
-		VoiceOverLiveness(runner: FakeAppleScriptRunner(), tools: tools).activate()
+		liveness(tools: tools).activate()
 		#expect(
 			tools.invocations == [
 				FakeProcessRunner.Invocation(
@@ -47,45 +75,23 @@ struct VoiceOverLivenessTests {
 	func activationSwallowsItsFailures() {
 		// The port answers nothing on purpose: `open` hands the launch to the
 		// system and returns, so there is nothing here to report on. A failure to
-		// even launch the tool is a "no" that `readerAnswersItsOwnName` will give
-		// a moment later, in the words its caller already handles.
+		// even launch the tool is a "no" that `readerIsRunning` will give a moment
+		// later, in the words its caller already handles.
 		let tools = FakeProcessRunner()
 		tools.failure = ProcessFailure("could not run /usr/bin/open")
-		VoiceOverLiveness(runner: FakeAppleScriptRunner(), tools: tools).activate()
+		liveness(tools: tools).activate()
 		#expect(tools.invocations.count == 1)
 	}
 
-	@Test("an answer in ANY language counts, because the name is localized")
-	func anyNonEmptyAnswerCounts() {
-		// The lane's no-reader-strings rule: the maintainer's machine speaks
-		// Portuguese. That it answered at all is the signal; comparing the text
-		// with "VoiceOver" would be a test that passes in English only.
-		let runner = FakeAppleScriptRunner()
-		runner.defaultAnswer = "Voz Over"
-		#expect(VoiceOverLiveness(runner: runner, tools: FakeProcessRunner()).readerAnswersItsOwnName())
-	}
-
-	@Test("an empty answer is not an answer")
-	func emptyIsNotAnAnswer() {
-		let runner = FakeAppleScriptRunner()
-		runner.defaultAnswer = ""
-		#expect(!VoiceOverLiveness(runner: runner, tools: FakeProcessRunner()).readerAnswersItsOwnName())
-	}
-
-	@Test("every failure is a `no`, and none of them escapes")
-	func everyFailureIsANo() {
-		// The port promises not to throw: its one caller is already handling a
-		// failure, and every way this can fail is a "no" as far as that caller is
-		// concerned. What each failure MEANS is the gesture sender's business and
-		// it has already said so by the time this is asked.
-		for failure in [
-			AppleScriptError(number: -600, message: "not running") as any Error,
-			AppleScriptError(number: -1743, message: "not authorized"),
-			ProcessFailure("could not run /usr/bin/osascript"),
-		] {
-			let runner = FakeAppleScriptRunner()
-			runner.answers = [.failure(failure)]
-			#expect(!VoiceOverLiveness(runner: runner, tools: FakeProcessRunner()).readerAnswersItsOwnName())
-		}
+	@Test("the name script is KEPT, for the one caller that is asking about AppleEvents")
+	func theNameScriptSurvivesForTheBroker() {
+		// It stopped being this class's probe and did not stop existing:
+		// `TCCPermissionBroker` sends it to learn whether the AUTOMATION GRANT is in
+		// force, because on this bridge that grant is a fact about the CHANNEL
+		// rather than about the calling binary. Asserted here so that a tidy-up
+		// which deletes an unused constant has to read this sentence first.
+		#expect(
+			VoiceOverLiveness.readerNameScript
+				== "tell application \"VoiceOver\" to return name")
 	}
 }

@@ -517,7 +517,11 @@ public struct Keystroke: Equatable, Sendable {
 	/// nothing and will look like the application ignoring a chord.
 	private static let reasonModifierIsCapsLock =
 		"\"vo\" is the VoiceOver modifier, and on this machine it is bound to CAPS LOCK alone -- "
-		+ "read from the reader's own preferences, not assumed. This bridge cannot synthesize that, "
+		+ "read from the reader's own preferences, not assumed. This bridge cannot synthesize that "
+		+ "-- measured 2026-09-02, and it is a property of the platform rather than a gap here: "
+		+ "Caps Lock is a system-level toggle, a posted `CGEvent` cannot hold it, and the reader "
+		+ "never sees the chord (the letter reached the focused application instead). Reaching it "
+		+ "would take HID-level remapping, which is not something to do to somebody's keyboard, "
 		+ "and \"control+option\" is NOT a substitute here: those two keys are not the modifier on "
 		+ "this machine and pressing them would do something else entirely. Send the reader's own "
 		+ "command name instead (\"go to menu bar\", \"read contents of window\"), which works "

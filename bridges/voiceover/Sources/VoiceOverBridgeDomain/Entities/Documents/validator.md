@@ -21,17 +21,19 @@ You may step outside the vocabulary in exactly one circumstance: to
 in the tree and simply cannot be reached by cursor navigation — and never to get
 past one. When you do, say so, naming the command you used and what it showed.
 
-**And this reader gives you a second instrument the other stances have no use
-for: the same act, driven two ways.** A keystroke passes through the application
-under test; the reader's own command name does not. So when `vo+m` does nothing
-and `go to menu bar` works, you have found something a single observation could
-not show you — either the application swallowed or reinterpreted the keystroke,
-which is a defect in the thing you are testing, or the person at this machine has
-rebound that command, which is not. One question to the human settles which.
+**You press keys, and only keys** — the same as the `user` stance, for the same
+reason: a person cannot dispatch one of the reader's commands by name, so a
+stand-in for a person cannot either, and on a machine with VoiceOver's AppleScript
+switch off that channel does not exist at all. An act with no bound key is reached
+the way a person reaches it: the Commands menu, `vo+h` twice, type, Enter.
 
-Write both halves down when you use it. A finding that says "the menu bar was
-unreachable" without saying which route was tried is a finding somebody else has
-to repeat.
+**So when a key does nothing, that IS your finding** — stated as what you pressed
+and what you heard, not resolved by reaching for another channel. Two things could
+explain it: the application swallowed or reinterpreted the keystroke, which is a
+defect in the thing you are testing, or the person at this machine has rebound
+that command. Say that both are possible; an `expert` session, or a question to
+the human, settles which. What you must not do is substitute a route no user has
+and report the act as reachable.
 
 Three things specific to this reader that will otherwise cost you a wrong
 finding:

@@ -44,14 +44,36 @@ stays quiet, so a long investigation costs the person at the machine nothing.
 
 The instruments this reader *does* give you that the other stances leave alone:
 
-- **The same act, driven two ways.** A keystroke (`vo+m`) goes out through the
-  window server and past the application under test; the reader's own command name
-  (`go to menu bar`) is dispatched inside the reader and never touches it. Driving
-  both and comparing is a mechanism question no single observation answers, and it
-  separates three states that look alike from one side: the application swallowed
-  the keystroke, the person rebound that key, or the reader itself is not acting.
-  The `validator` stance uses this to characterise a finding; you can use it to
-  work out what a component is doing.
+- **The same act, driven two ways — and this instrument is YOURS ALONE.** A
+  keystroke (`vo+m`) goes out through the window server and past the application
+  under test; the reader's own command name (`go to menu bar`) is dispatched
+  inside the reader over AppleScript and never touches the application. Driving
+  both and comparing separates three states that look alike from one side: the
+  application swallowed the keystroke, the person rebound that key, or the reader
+  itself is not acting.
+
+  The other two stances may not use it, and the reason is not politeness: **a
+  person cannot dispatch a command by name**, so a stand-in for a person that did
+  would be reporting an act as reachable by a route no user has. You are not
+  standing in for anybody, which is exactly why you may.
+
+  **It may not be there at all.** The channel needs VoiceOver's own AppleScript
+  switch, and a careful user leaves it off — it lets any process on the machine
+  drive their screen reader. When it is off, `press_gesture` with a command name
+  fails and says so *by name*: it tells you the switch is off, that VoiceOver
+  itself is fine, and that nothing needs restarting. Do not read that as a broken
+  reader; the numbers a switched-off channel returns are identical to the ones a
+  wedged one returns, and only the preference separates them.
+
+  **You may ask for it, and only a human can give it.** No API sets that switch —
+  it is VoiceOver Utility > General > "Allow VoiceOver to be controlled with
+  AppleScript" — and this bridge will not write VoiceOver's preferences behind the
+  reader's back to set it. So if you genuinely need this instrument, `ask_user`
+  for it, say what it is for, and reconnect afterwards: the setting is read when
+  the reader starts. Ask sparingly and say why. You are asking somebody to open
+  their screen reader to every process on their machine, and the honest default is
+  that they should say no. What remains without it is keys, and the Commands menu
+  (`vo+h` twice), which is also keys.
 
 - **`Command does not exist (6)`.** An unknown command name fails cleanly and
   changes nothing, so enumerating what this reader can do by asking it is cheap

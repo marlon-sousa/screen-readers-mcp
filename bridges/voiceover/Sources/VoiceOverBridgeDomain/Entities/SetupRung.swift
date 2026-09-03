@@ -1,4 +1,4 @@
-// ROLE: entity -- the five rungs a handshake climbs, and the ONE place a rung's
+// ROLE: entity -- the six rungs a handshake climbs, and the ONE place a rung's
 // failure sentence is composed. Pure.
 //
 // USED BY: ReaderEdgeSetup, which is the controller that climbs them. BUILT BY:
@@ -6,7 +6,7 @@
 //
 // WHY IT IS A TYPE AND NOT FIVE STRINGS IN A CONTROLLER. Until 13.20 `hello`
 // only ever REPORTED where `ProviderState` had stopped; now it climbs, and a
-// climb that can stop in five places is a climb that can grow five different
+// climb that can stop in six places is a climb that can grow six different
 // shapes of apology. One of them would say what is wrong and not what to do
 // about it, and that is the shape this repo has decided against everywhere else
 // it makes a named failure: `ReaderCondition`, `Precondition` and `Permission`
@@ -24,8 +24,17 @@
 //
 // THE ORDER OF THE CASES IS THE ORDER OF THE CLIMB, and it is load-bearing to
 // read it that way: permissions before anything is touched, a reader before
-// anything is asked of one, registration before selection, and the proof last,
-// because it is the only rung that is EVIDENCE rather than inference.
+// anything is asked of one, registration before selection, the modifier before
+// anything is pressed, and the proof last, because it is the only rung that is
+// EVIDENCE rather than inference.
+//
+// AND SINCE 13.26 THE RUNGS ARE THINGS MADE TRUE RATHER THAN CHECKS THAT MAY
+// FAIL. 13.20 turned reporting into climbing; spec 0053 §3.1 turns climbing into
+// PREPARING -- the reader is started, the extension registered, the voice
+// selected, the modifier replaced where this bridge cannot press the person's
+// own, and only then is capture proved. What teardown reverses is the SESSION
+// state and only that: the voice, then the modifier. The registration stays,
+// which is 13.20's rule unchanged.
 
 public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 	/// This process is allowed to drive the machine at all. READ, never asked
@@ -33,8 +42,10 @@ public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 	/// handshake that raised a consent dialog would be a handshake that hangs.
 	case permissions
 
-	/// VoiceOver is running and answers its own name. The bridge may ACTIVATE it
-	/// to get there; it may never restart it.
+	/// VoiceOver's process is running. The bridge ACTIVATES it to get there --
+	/// and, since 13.26, may RESTART it later for a named reason (spec 0053 §3.2),
+	/// which reverses a rule 13.20 marked Decided. Not here, though: this rung only
+	/// ever starts.
 	case readerRunning
 
 	/// The capture voice's extension is registered with the system. MACHINE
@@ -44,6 +55,12 @@ public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 	/// VoiceOver is set to speak with the capture voice. SESSION state: put back
 	/// on every teardown path.
 	case voiceSelection
+
+	/// The VoiceOver modifier is one this bridge can synthesize -- 13.26. SESSION
+	/// state: the file is put back within this rung, and the RUNNING reader is put
+	/// back by a restart at teardown. See ReaderEdgeSetup, which carries the order,
+	/// and spec 0053 §3.3, which is what makes it safe.
+	case readerModifier
 
 	/// An utterance actually arrived. The only rung that is evidence.
 	case captureProof
@@ -59,6 +76,8 @@ public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 			return "register the capture voice's extension with the system"
 		case .voiceSelection:
 			return "point VoiceOver at the capture voice"
+		case .readerModifier:
+			return "put VoiceOver on a modifier this bridge can actually press"
 		case .captureProof:
 			return "prove that what the reader says actually reaches this bridge"
 		}

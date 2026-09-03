@@ -1,19 +1,35 @@
 // ROLE: adapter -- IMPLEMENTS the ReaderLiveness domain port, over the
-// AppleScriptRunner seam.
+// RunningApplications seam.
 //
 // BUILT BY: VoiceOverAdapterFactory. USED BY: the PressGesture handler, through
-// the port, and only after a dispatch has already failed.
+// the port, and only after a dispatch has already failed; and by
+// ReaderEdgeSetup's rung 2, before anything is asked of the reader.
 //
-// IT ASKS THE NARROWEST QUESTION THAT SEPARATES TWO FAILURES. `return name` is
-// an APPLICATION-level property: answering it needs the process, the AppleEvents
-// grant and nothing else -- no scripting object model, no cursor, no window.
-// That is precisely why spec 0041 could measure it still answering while every
-// VoiceOver-specific call failed with `-1728`/`-1708`. Any richer probe would
-// have failed too, and the two conditions would have looked identical again.
+// ============================================================================
+// IT USED TO ASK BY APPLEEVENT, AND 13.26 STOPPED IT. THAT IS THE ENTRY TO READ.
+// ============================================================================
 //
-// SO THE PROBE MUST NOT BE "IMPROVED". Reading `last phrase`, or the cursor, or
-// anything the reader has to consult its own object model for, would turn this
-// into a second copy of the failing call rather than a control for it.
+// The old probe was `tell application "VoiceOver" to return name` -- an
+// APPLICATION-level property, chosen because it answers when the scripting object
+// model is dead, which is what separates two failures that otherwise look
+// identical (spec 0041 measured exactly that state). It worked. What it cost was
+// a PERMISSION: the handshake could not confirm the reader existed without the
+// Automation grant, on a machine that may have intended to drive the reader
+// entirely by keystrokes and needed no AppleEvents at all.
+//
+// And the requirement behind 13.26 is sharper than convenience: "Allow VoiceOver
+// to be controlled with AppleScript" lets ANY process drive the screen reader a
+// blind person depends on, so every use of that channel had to justify itself.
+// This one could not. The running-application list answers the same question with
+// NO permission, cannot be switched off, and is exact where the AppleEvent was a
+// proxy.
+//
+// THE DISTINCTION SPEC 0041 NEEDS IS NOT LOST -- IT MOVED, AND IMPROVED. "The
+// process is there but the command failed" is now composed by the caller from
+// this answer AND the AppleScript switch's state, which separates THREE
+// conditions where the old probe separated two: the reader is gone; the reader is
+// there and the command-name route is switched off; the reader is there, the
+// route is on, and the object model is dead. See `PressGestureHandler.explain`.
 //
 // AND SINCE 13.20 IT CAN START THE READER, WHICH IS THE OPPOSITE QUESTION ASKED
 // BY A DIFFERENT CALLER. `ReaderEdgeSetup` asks BEFORE anything, because a
@@ -45,50 +61,45 @@
 import VoiceOverBridgeDomain
 
 public final class VoiceOverLiveness: ReaderLiveness {
-	/// The probe itself, PUBLIC because a second reader asks the same question of
-	/// a different thing and must not ask it in different words.
+	/// The script that ASKS THE READER ITS OWN NAME.
 	///
-	/// `TCCPermissionBroker` sends this script to find out whether the automation
-	/// grant is in force, because on this bridge that grant is a fact about the
-	/// CHANNEL rather than about the calling binary (13.11). It cannot go through
-	/// this class: liveness collapses every failure into `false`, and the broker
-	/// needs the NUMBER -- `-1743` is the missing grant and everything else is
-	/// not. So the two share the script and not the interpretation, which is the
-	/// same shape `captureVoiceIdentifierSuffix` already has: read a second time
-	/// rather than copied, so a change to what is asked cannot reach one caller
-	/// and miss the other.
+	/// NO LONGER THIS CLASS'S PROBE (13.26) -- liveness is answered from the
+	/// running-application list now, at no permission cost. It stays here, and
+	/// stays public, because `TCCPermissionBroker` sends it to find out whether
+	/// the AUTOMATION GRANT is in force: on this bridge that grant is a fact about
+	/// the CHANNEL rather than about the calling binary (13.11), and the only way
+	/// to learn it is to use the channel and read the number -- `-1743` is the
+	/// missing grant and everything else is not.
+	///
+	/// It is a question about AppleEvents, in other words, and it now lives with
+	/// the one caller that is asking about AppleEvents.
 	public static let readerNameScript = "tell application \"VoiceOver\" to return name"
+
+	/// VoiceOver's bundle identifier, which is what the running-application list
+	/// is keyed by.
+	public static let readerBundleIdentifier = "com.apple.VoiceOver"
 
 	/// How the reader is started. `open` is what was measured to work; `killall`
 	/// on its own is what was measured NOT to, and nothing here ever kills.
 	public static let openTool = "/usr/bin/open"
 
-	private let runner: any AppleScriptRunner
+	private let applications: any RunningApplications
 	private let tools: any ProcessRunner
 
-	public init(runner: any AppleScriptRunner, tools: any ProcessRunner) {
-		self.runner = runner
+	public init(applications: any RunningApplications, tools: any ProcessRunner) {
+		self.applications = applications
 		self.tools = tools
 	}
 
-	public func readerAnswersItsOwnName() -> Bool {
-		guard let name = try? runner.run(Self.readerNameScript) else {
-			return false
-		}
-		// A REPLY IS THE ANSWER, NOT ITS CONTENTS. The name is localized like
-		// every other string this reader produces, so comparing it with
-		// "VoiceOver" would be a test that passes in English and fails in
-		// Portuguese -- which is the lane's own no-reader-strings rule, and the
-		// same trap `OSAScriptRunner` records for error messages. That it
-		// answered AT ALL is the whole signal.
-		return !name.isEmpty
+	public func readerIsRunning() -> Bool {
+		applications.isRunning(bundleIdentifier: Self.readerBundleIdentifier)
 	}
 
 	/// Ask the system to start VoiceOver, and answer nothing.
 	///
 	/// `open` hands the launch to the launch services daemon and returns, so
 	/// there is nothing here to report on -- the port says as much, and the only
-	/// evidence that counts is `readerAnswersItsOwnName` afterwards. A failure to
+	/// evidence that counts is `readerIsRunning` afterwards. A failure to
 	/// even run the tool is swallowed for the same reason every failure in this
 	/// class is: the caller is about to ask the question that actually matters.
 	public func activate() {

@@ -281,7 +281,10 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.38** in the convergence series and **13.28**
-in lane 3, and the next free spec number is **0053**. Spec **0052** and board
+in lane 3, and the next free spec number is **0054**. Spec **0053** was spent on
+2026-09-02 by 13.26, which grew from one question about the AppleScript switch
+into the frame for the whole handshake; this line moved in the same commit. Spec
+**0052** and board
 numbers **13.25**, **13.26** and **13.27** were spent on 2026-09-02: the first by
 a question Marlon asked of the field report -- why a VoiceOver gesture is a
 command name where an NVDA one is `NVDA+t` -- and the other two by what specifying
@@ -1957,32 +1960,112 @@ rule intends.
       by stamping the character the active layout produces on the layer being
       pressed.
 
-13.26. **Not started** -- **The handshake has two routes to its proof** (lane 3).
-    Raised by Marlon on 2026-09-02 while 13.25 was being specified: *do we still
-    need VoiceOver controlled by AppleScript as a gate, to begin with?*
+13.26. **Done (2026-09-02)** -- **The bridge PREPARES the reader, and puts it
+    back** (lane 3). Spec:
+    [0053-the-bridge-prepares-the-reader.md](specs/0053-the-bridge-prepares-the-reader.md).
 
-    **The evaluation is spec 0052 §8.1**, and the short answer is that it is not a
-    gate this bridge chose: `hello`'s rung 5 (`captureProof`) presses `describe
-    item in voiceover cursor` to make the reader speak, so a machine with the
-    switch off gets no session at all -- in either mode. `getFocusInfo`'s no-grant
-    route and `ReaderLiveness` need it too.
+    **This entry was renamed while it was being specified, and the old title is
+    worth keeping visible because it shows how much the answer grew.** It was
+    filed as *"the handshake has two routes to its proof"* -- one question, raised
+    by Marlon on 2026-09-02 while 13.25 was being specified: *do we still need
+    VoiceOver controlled by AppleScript as a gate, to begin with?* Answering it
+    turned out to require the handshake to stop INSPECTING the machine and start
+    PREPARING it, and the board entry never caught up until this PR.
 
-    **What 13.25 changed is that there is now a second route.** `vo+f3` IS
-    `describe item in voiceover cursor` as a keystroke. So the proof could be made
-    without AppleScript, at the cost of the Accessibility grant -- which 13.20
-    deliberately never REQUESTS during a handshake (a consent dialog would hang
-    it) but does READ. So the shape is the one `getFocusInfo` already has: two
-    routes, chosen by what the machine already holds. AppleScript on, use the
-    command name; else Accessibility already granted, press `vo+f3`; else fail
-    naming BOTH fixes rather than one.
+    **The requirement, in Marlon's words, and it is the frame for everything
+    else:**
 
-    **Why it is its own entry.** It changes the handshake ladder, and its live
-    checklist needs a machine with the switch OFF -- which means turning the
-    maintainer's off and back on, where getting it wrong leaves him without a
-    working session. And the bridge cannot turn that switch on itself: no API sets
-    it, and writing VoiceOver's preferences behind the reader's back is the
-    manoeuvre that destroyed his stored voice settings once already (spec 0047
-    finding 17). Spec: none yet.
+    > if we don't need apple script control for the operation, and we shouldn't
+    > need, letting it on is an ask for doing "wrong stuff". a normal user doesn't
+    > need it, so either I have a solid reason to let it on or it will be
+    > disabled.
+
+    > so the bridge has to "prepare voiceover". This makes sure voice is the way
+    > it should, vo keys are the way they should, and vo is started.
+
+    > And restore should kind of do the same in reverse.
+
+    A blind person must be able to leave that switch **off** -- it lets any
+    process on the machine drive the screen reader they depend on -- and this
+    bridge must still establish a session, drive the reader, and prove it can hear
+    it. 13.25 is what made that possible: keys are a route to this reader now, so
+    AppleScript stopped being the only one.
+
+    **What shipped.**
+
+    - **Rung 1 asks for a ROUTE, not for every permission.** It used to loop over
+      `Permission.allCases` and refuse unless every one was granted. Now:
+      Accessibility plus a readable modifier means keys; the Automation grant plus
+      the AppleScript switch means command names; neither is a refusal naming BOTH
+      fixes, because an agent told about one of them sends a human to grant the
+      wrong thing.
+    - **The capture proof has two routes, and the command name goes FIRST** --
+      deliberately the opposite of 13.25's rule for driving. A keystroke passes the
+      application under test and a command name does not; that is the whole
+      fidelity argument, and none of it applies to a probe, which tests nothing in
+      front of the person. The cheapest, least invasive route wins. The probe is
+      `speak the time and date` / `vo+f7`, chosen by Marlon over `go to dock`
+      because that one MOVES the VoiceOver cursor and a connect that quietly walked
+      somebody's cursor would be a small invisible edit to where they were
+      standing, every time.
+    - **Liveness stopped being an AppleEvent.** "Is VoiceOver running" is the
+      running-application list now: no permission, cannot be switched off, and
+      exact where the AppleEvent was a proxy.
+    - **The modifier is borrowed where it is Caps Lock**, which a synthesized event
+      cannot reach on this platform (measured four ways). Write ours, restart,
+      **write theirs straight back** -- so the FILE never holds our value for more
+      than a moment and a crash costs "the reader is on Control-Option until it
+      next restarts" rather than a wrong preference surviving reboots.
+    - **Everything a session changes is journalled**, one file for the machine,
+      and `scripts/voiceover_restore.py` reports what is open and puts it back.
+
+    **IT REVERSES A RULE MARKED DECIDED, and that is the entry's sharpest single
+    line.** 13.20 wrote *"no handshake in this bridge may decide on a restart --
+    it takes the reader away from somebody who is using it."* Marlon reversed it
+    on 2026-09-02: *"restarting vo is not a problem for capturing as a bridge
+    handshake, if needed."* The bounds are the point -- only for a named reason,
+    announced first through the bridge's own synthesizer, and **quit, WAIT for the
+    process to be gone, then open**. It also unblocks the one rung 13.20 could not
+    climb, since macOS publishes a newly registered capture voice only after a
+    restart.
+
+    **And it found a SHIPPED DEFECT on exactly the machine it exists to serve.**
+    Measured live 2026-09-02 with the switch off, `press_gesture ["go to menu
+    bar"]` answered *"scriptingChannelDead ... Recovery: restart the reader"*.
+    Every clause of that is true and the recovery is useless -- no restart brings
+    back a switch somebody deliberately turned off, and following it costs a blind
+    person their screen reader for nothing. The cause is that the switch removes
+    the scripting **object model** and leaves the application answering its own
+    properties, so it fails with **exactly** the numbers a wedged reader fails
+    with: `-1728` to `return commander`, `-1708` to `perform command`. The two
+    states are not distinguishable by error number, ever; only the PREFERENCE
+    separates them, and the bridge was already reading it and never consulting it
+    there. It consults it now, and separates three conditions where it separated
+    two.
+
+    **Who may use the dispatch channel at all**, settled with 13.25 and made
+    consequential here -- *"can a user send commands directly? No? Then so cannot
+    the agent."* `user` and `validator` press keys only; the channel is the
+    `expert`'s instrument, and that stance is told plainly that it may be absent.
+    *"Then the expert can, if they need, request apple script permission, and this
+    has to be given by a human"* -- there is no mechanism to build, because no API
+    sets that switch, so the affordance is `ask_user` plus a failure sentence that
+    names the pane at the moment an agent discovers it wants the route.
+
+    **What it cost elsewhere.** Teardown's order was amended while implementing:
+    the voice goes back BEFORE the closing restart, because a restart re-reads the
+    voice selection and restoring the modifier first would restart VoiceOver while
+    it was still on the capture voice -- 13.23's hazard exactly, where the reader
+    falls back to the system default and PERSISTS the fallback. The spec was
+    amended rather than the code bent to it.
+
+    **What it does NOT do**, so the entry is not credited with more than it earns:
+    it adds no `restore_reader_settings` wire command. The
+    [2026-09-02 field report](docs/feedback/2026-09-02-acter-run.md) asks for one;
+    that is a change to the shared contract, the Go binding, the capability gate
+    and lane 1 as well as lane 3, and it is a board entry of its own. The journal
+    and the script answer *"what did this leave behind, and put it back"* today,
+    with no protocol change, and are what such a command would be built on.
 
 13.27. **Not started** -- **The key bindings this machine actually has** (lane 3).
     13.25's guidance names the reader's FACTORY bindings, read from the shipped

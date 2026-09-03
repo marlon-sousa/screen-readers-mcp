@@ -306,6 +306,54 @@ public enum Wiring {
 		VoiceOverPrefsModifierSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
 	}
 
+	/// How the VoiceOver modifier is SET -- the WRITE side of the setting above,
+	/// and the only thing in this process that may edit VoiceOver's preferences.
+	///
+	/// A SEPARATE OBJECT FROM THE READER, over a separate seam, because that is
+	/// what makes `VoiceOverPrefsModifierSetting`'s "IT NEVER WRITES" a property of
+	/// the object graph rather than a promise in a comment. Same home directory and
+	/// same `VoiceOverPreferencesFile` derivation, so the reader and the writer
+	/// cannot come to disagree about which file they mean.
+	public static func readerModifierStore(
+		reader: (any PlistReader)? = nil, writer: (any PlistWriter)? = nil
+	) -> any ReaderModifierStore {
+		VoiceOverPrefsModifierStore(
+			reader: reader ?? FilePlistReader(),
+			writer: writer ?? FilePlistWriter(),
+			home: NSHomeDirectory())
+	}
+
+	/// How the reader is taken away and brought back. ONE PER PROCESS, and it is
+	/// the one collaborator in this graph that can leave a blind person with no
+	/// screen reader -- so it is built in exactly one place and is visible here.
+	public static func readerRestart(
+		tools: (any ProcessRunner)? = nil,
+		applications: (any RunningApplications)? = nil,
+		clock: any Clock = RealClock()
+	) -> any ReaderRestart {
+		VoiceOverRestart(
+			tools: tools ?? SubprocessRunner(),
+			applications: applications ?? WorkspaceRunningApplications(),
+			clock: clock)
+	}
+
+	/// The record of what sessions on this machine changed and put back.
+	///
+	/// ONE FILE FOR THE WHOLE MACHINE, appended to by every session -- unlike the
+	/// per-session transcript beside it, and for the reason the port gives: what a
+	/// repair needs is every session's unfinished business, and a crashed session
+	/// cannot be relied on to name its own file. So the path is derived here rather
+	/// than handed a fresh one per connection.
+	public static func changeJournal(home: String = NSHomeDirectory()) -> any ChangeJournal {
+		let path = FileChangeJournal.defaultPath(home: home)
+		try? FileManager.default.createDirectory(
+			atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path,
+			withIntermediateDirectories: true)
+		// APPENDING, and the leaf's own header says why choosing the other one
+		// would have quietly wiped every earlier session's unresolved changes.
+		return FileChangeJournal(writer: AppendingTextFileWriter(path: path))
+	}
+
 	/// The persisted settings. ONE PER PROCESS, because two would be two caches of
 	/// one file -- and this one deliberately caches nothing at all.
 	public static func bridgeConfig(defaults: (any Defaults)? = nil) -> any BridgeConfig {
@@ -382,6 +430,11 @@ public enum Wiring {
 		poster: (any EventPoster)? = nil,
 		layout: (any KeyboardLayout)? = nil,
 		readerModifier: (any ReaderModifierSetting)? = nil,
+		readerScripting: (any ReaderScriptingSetting)? = nil,
+		readerModifierStore: (any ReaderModifierStore)? = nil,
+		readerRestart: (any ReaderRestart)? = nil,
+		changeJournal: (any ChangeJournal)? = nil,
+		applications: (any RunningApplications)? = nil,
 		tree: (any AccessibilityTree)? = nil,
 		frontmost: (any FrontmostApplication)? = nil,
 		trust: (any AccessibilityTrust)? = nil,
@@ -397,8 +450,13 @@ public enum Wiring {
 				tools: tools ?? SubprocessRunner(),
 				permissions: permissions ?? permissionBroker(),
 				poster: poster ?? eventPoster(),
+				applications: applications ?? WorkspaceRunningApplications(),
 				layout: layout ?? keyboardLayout(),
 				readerModifier: readerModifier ?? readerModifierSetting(),
+				readerScripting: readerScripting ?? self.readerScripting(),
+				readerModifierStore: readerModifierStore ?? self.readerModifierStore(),
+				readerRestart: readerRestart ?? self.readerRestart(clock: clock),
+				changeJournal: changeJournal ?? self.changeJournal(),
 				tree: tree ?? accessibilityTree(),
 				frontmost: frontmost ?? frontmostApplication(),
 				trust: trust ?? accessibilityTrust(),

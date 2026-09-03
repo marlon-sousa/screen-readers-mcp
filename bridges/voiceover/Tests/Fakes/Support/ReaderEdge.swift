@@ -65,8 +65,13 @@ public func testAdapterFactory(
 	tools: any ProcessRunner = FakeProcessRunner(),
 	permissions: any PermissionBroker = FakePermissionBroker(),
 	poster: any EventPoster = FakeEventPoster(),
+	applications: any RunningApplications = FakeRunningApplications(),
 	layout: any KeyboardLayout = FakeKeyboardLayout(),
 	readerModifier: any ReaderModifierSetting = FakeReaderModifierSetting(),
+	readerScripting: any ReaderScriptingSetting = FakeReaderScriptingSetting(),
+	readerModifierStore: any ReaderModifierStore = FakeReaderModifierStore(),
+	readerRestart: any ReaderRestart = FakeReaderRestart(),
+	changeJournal: any ChangeJournal = FakeChangeJournal(),
 	tree: any AccessibilityTree = FakeAccessibilityTree(),
 	frontmost: any FrontmostApplication = FakeFrontmostApplication(),
 	trust: any AccessibilityTrust = FakeAccessibilityTrust(),
@@ -85,8 +90,13 @@ public func testAdapterFactory(
 		tools: tools,
 		permissions: permissions,
 		poster: poster,
+		applications: applications,
 		layout: layout,
 		readerModifier: readerModifier,
+		readerScripting: readerScripting,
+		readerModifierStore: readerModifierStore,
+		readerRestart: readerRestart,
+		changeJournal: changeJournal,
 		tree: tree,
 		frontmost: frontmost,
 		trust: trust,
@@ -153,6 +163,10 @@ public func fakeAdapterSet(
 	textTyper: FakeTextTyper = FakeTextTyper(),
 	keyPresser: FakeKeyPresser = FakeKeyPresser(),
 	readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
+	readerScripting: FakeReaderScriptingSetting = FakeReaderScriptingSetting(),
+	readerModifierStore: FakeReaderModifierStore = FakeReaderModifierStore(),
+	readerRestart: FakeReaderRestart = FakeReaderRestart(),
+	changeJournal: FakeChangeJournal = FakeChangeJournal(),
 	permissions: FakePermissionBroker = FakePermissionBroker(),
 	focusInspector: FakeFocusInspector = FakeFocusInspector(),
 	announcer: FakeAnnouncer = FakeAnnouncer(),
@@ -161,6 +175,7 @@ public func fakeAdapterSet(
 ) -> AdapterSet {
 	if captureProbeSpeaks {
 		answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
+		answerTheCaptureProbe(pressing: keyPresser, speaking: speechSource)
 	}
 	return AdapterSet(
 		mode: mode,
@@ -172,6 +187,10 @@ public func fakeAdapterSet(
 		textTyper: textTyper,
 		keyPresser: keyPresser,
 		readerModifier: readerModifier,
+		readerScripting: readerScripting,
+		readerModifierStore: readerModifierStore,
+		readerRestart: readerRestart,
+		changeJournal: changeJournal,
 		permissions: permissions,
 		focusInspector: focusInspector,
 		announcer: announcer,
@@ -196,6 +215,24 @@ public func answerTheCaptureProbe(
 	sender.onPress = { command in
 		previous?(command)
 		guard command == ReaderEdgeSetup.captureProbeCommand else { return }
+		source.emit(captureProbeUtterance)
+	}
+}
+
+/// The same healthy reader, answering the probe when it arrives as a KEYSTROKE
+/// -- which is the route a machine with no AppleScript control takes (13.26).
+///
+/// TWO FUNCTIONS RATHER THAN ONE THAT GUESSES, because the two routes are the
+/// thing under test: a fake that answered whichever probe it happened to receive
+/// could not tell a handshake that chose the key route from one that chose the
+/// command name. The `fakeAdapterSet` builder installs both, so an ordinary test
+/// does not care; a test about the ROUTE installs one.
+public func answerTheCaptureProbe(
+	pressing presser: FakeKeyPresser, speaking source: FakeSpeechSource
+) {
+	let previous = presser.onPress
+	presser.onPress = { keystroke in
+		previous?(keystroke)
 		source.emit(captureProbeUtterance)
 	}
 }

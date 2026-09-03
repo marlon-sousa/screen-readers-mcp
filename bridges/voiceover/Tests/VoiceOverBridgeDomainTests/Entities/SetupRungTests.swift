@@ -43,11 +43,14 @@ struct SetupRungTests {
 	func theOrderIsTheClimb() {
 		// Load-bearing to read it that way: permissions before anything is
 		// touched, a reader before anything is asked of one, registration before
-		// selection, and the proof last because it is the only rung that is
-		// EVIDENCE rather than inference.
+		// selection, the MODIFIER before anything is pressed (13.26 -- it restarts
+		// the reader, so it must not happen after the proof has already made it
+		// speak), and the proof last because it is the only rung that is EVIDENCE
+		// rather than inference.
 		#expect(
 			SetupRung.allCases == [
-				.permissions, .readerRunning, .registration, .voiceSelection, .captureProof,
+				.permissions, .readerRunning, .registration, .voiceSelection, .readerModifier,
+				.captureProof,
 			])
 	}
 }

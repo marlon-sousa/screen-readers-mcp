@@ -231,6 +231,24 @@ public final class CGKeystrokePresser: KeyPresser {
 		return layout.character(forKeyCode: resolved.keyCode, shifted: shifted)
 	}
 
+	/// CAPS LOCK IS NOT IN `Keystroke.Modifier`, AND THAT IS A MEASUREMENT.
+	///
+	/// VoiceOver lets a person bind its modifier to Caps Lock, and this bridge
+	/// refuses `vo` on such a machine rather than pressing something else (spec
+	/// 0052 §3.3). The reason is not caution: measured 2026-09-02 with the
+	/// maintainer listening, a synthesized Caps Lock -- as a `flagsChanged`
+	/// transition, as a bare `.maskAlphaShift` on the key event, as an ordinary
+	/// held key, and held for 300 ms -- produced no reader command at all, and the
+	/// letter went into the text editor that had focus. Apple's own documentation
+	/// says why: `maskAlphaShift` REPORTS that Caps Lock is down and posting it
+	/// does not make the system believe it, because Caps Lock is a system-level
+	/// toggle. The only route to it is HID-level remapping (`hidutil`, IOKit
+	/// seizing the device), which is a driver-class intervention on somebody's
+	/// keyboard and not something this bridge will do.
+	///
+	/// So a case here would be a modifier that compiles, reads well, and presses
+	/// nothing.
+
 	/// The flag one modifier sets.
 	///
 	/// `fn` is `.maskSecondaryFn`, which is the flag the window server sets for a

@@ -124,7 +124,7 @@ the question** — the handshake now climbs the ladder and refuses in BOTH modes
 for a promise neither mode is exempt from. See "The handshake CLIMBS the ladder"
 above.
 
-## The handshake CLIMBS the ladder, and it never restarts the reader
+## The handshake PREPARES the reader — and it MAY restart it
 
 `connect_reader` makes its own setup (spec 0050, board entry 13.20). `hello` used
 to REPORT where `ProviderState` had stopped — refusing a silent session by named
@@ -135,18 +135,22 @@ this route must never give. It cost an hour of 13.19's live checklist on
 2026-08-31, and the trigger is our own build: `build.sh` begins `rm -rf build`,
 so the system forgets the extension every time this bridge is rebuilt.
 
-`ReaderEdgeSetup` now runs five rungs, all eager, in this order, each failing by
-name with what the AGENT must do:
+**13.26 CHANGED WHAT A RUNG IS**, and it is the entry to read before touching any
+of this. 13.20 turned reporting into climbing; spec 0053 §3.1 turns climbing into
+**preparing** — these are things made true, not checks that may fail, and two of
+them now WRITE to somebody's machine. `ReaderEdgeSetup` runs **six** rungs, all
+eager, in this order, each failing by name with what the AGENT must do:
 
 | # | Rung | What it does | Costs |
 |---|---|---|---|
-| 1 | `permissions` | READS Accessibility and Automation-of-VoiceOver | one subprocess (the automation grant is a fact about the channel) |
-| 2 | `readerRunning` | asks the reader its name; if silent, `open -a VoiceOver` and asks again | one subprocess, usually one |
+| 1 | `permissions` | READS both grants and the AppleScript switch, and requires **one workable ROUTE** rather than every permission (13.26) | two file reads and one subprocess |
+| 2 | `readerRunning` | asks the running-application list; if absent, `open -a VoiceOver` and asks again | **no permission at all** since 13.26 |
 | 3 | `registration` | `lsregister -f` then `pluginkit -a`, **only** from `notRegistered`, confirmed by polling | nothing on a healthy machine |
 | 4 | `voiceSelection` | records the user's voice, writes ours, confirms | unchanged from 13.6 |
-| 5 | `captureProof` | presses `describe item in voiceover cursor` and requires the utterance to arrive | one command and one poll interval |
+| 5 | `readerModifier` | where `vo` is Caps Lock: announce, write ours, **restart**, write theirs straight back (13.26) | nothing on an ordinary machine; **two reader restarts** on a Caps-Lock one |
+| 6 | `captureProof` | `speak the time and date` by name, or `vo+f7` as a key, and requires the utterance to arrive | one command and one poll interval |
 
-Five rules bind anyone editing this.
+Six rules bind anyone editing this.
 
 **IT IS FATAL IN BOTH MODES, AND THAT IS NOT 13.6's ASYMMETRY REVERSED.** 13.6's
 rule is about a promise concerning a human's EARS, which only `silent` makes, and
@@ -168,20 +172,57 @@ it drives the reader directly and opens no session.
 
 **SESSION STATE IS RESTORED AT TEARDOWN; MACHINE STATE IS NOT.** The voice
 SELECTION is session state and goes back on every teardown path (hard invariant
-3, unchanged). The REGISTRATION is machine state and stays. There is deliberately
-no `unregister()` and nothing at teardown may be paired with `register()`,
-however much the symmetry appeals: undoing it recreates the exact bug this entry
-fixes, and the accept loop is serial today but will not always be — one client's
-disconnect must never deregister the voice under another.
+3, unchanged), and since 13.26 so is the borrowed MODIFIER. The REGISTRATION is
+machine state and stays. There is deliberately no `unregister()` and nothing at
+teardown may be paired with `register()`, however much the symmetry appeals:
+undoing it recreates the exact bug 13.20 fixes, and the accept loop is serial
+today but will not always be — one client's disconnect must never deregister the
+voice under another.
 
-**THE RUNG THIS BRIDGE CANNOT CLIMB IS `registered` → `published`**, because the
-system publishes a newly registered voice only after VoiceOver RESTARTS and no
-handshake may restart a blind person's screen reader. So rung 3 succeeds, rung 5
-fails, and the failure names the restart as the remaining action. **Every
-sentence in this repo that names a restart spells it as a pair** —
-`killall VoiceOver && open -a VoiceOver`, through `readerRestartCommand`, because
-`killall` on its own was MEASURED on 2026-08-31 not to relaunch the reader and
-would leave somebody with no screen reader at all.
+**THE VOICE GOES BACK BEFORE THE MODIFIER, AND GETTING THAT BACKWARDS COSTS A
+VOICE.** Spec 0053 §3.1 said "the modifier, the voice" until it was implemented,
+in the order the climb takes them. Restoring the modifier means **restarting the
+reader**, and a restart re-reads the voice selection — so the reader would come
+up unable to publish the capture voice, fall back to the system default **and
+persist the fallback**, which is 13.23's hazard exactly and destroys the record of
+the person's own voice. Voice first, restart after it. The spec was amended rather
+than the code bent to it, and `SessionTests` asserts the order rather than the
+calls.
+
+**AND EVERYTHING A SESSION CHANGES IS JOURNALLED** —
+`~/Library/Logs/screen-readers-mcp/reader-changes.jsonl`, one line per change and
+one per restore, appended to by every session and read by nothing in this bridge.
+A `changed` with no matching `restored` is what a crashed session left behind, and
+`scripts/voiceover_restore.py` is the reader. It answers ask 1 of the 2026-09-02
+field report, and the argument for it is that report's own recovery: a handshake
+failed with the capture voice left selected, nothing could say so, and putting it
+back by hand destroyed the user's pitch, rate and volume. See `ChangeJournal`.
+
+**IT MAY RESTART THE READER NOW, AND THAT REVERSES A RULE MARKED DECIDED.** This
+section said, until 13.26, that *"no handshake in this bridge may decide on a
+restart — it takes the reader away from somebody who is using it"*, and that
+`registered` → `published` was therefore the one rung it could not climb. Marlon
+reversed it on 2026-09-02: *"restarting vo is not a problem for capturing as a
+bridge handshake, if needed."* Spec 0053 §3.2. **The bounds are the point, and
+they bind the caller rather than the port:**
+
+- **Only for a named reason** — a capture voice registered but not published, or
+  a modifier that had to be replaced. Never speculatively, and never as a way
+  past a failure the bridge cannot explain.
+- **Announced first**, through the bridge's own synthesizer, which is audible
+  even when the reader is silenced. `ReaderRestart` makes no sound; the
+  controller does, because only the controller knows why.
+- **Quit, WAIT for the process to be gone, then open.**
+
+**AND `killall VoiceOver && open -a VoiceOver` IS WRONG, WHICH THIS FILE PRINTED
+AS ADVICE FOR WEEKS.** Two independent defects: `killall` alone does not relaunch
+the reader (measured 2026-08-31), and **the `&&` races** — `killall` returns when
+the SIGNAL IS SENT, and `open -a` on an application the system still believes is
+running does nothing at all. The 2026-09-02 field report is very probably that:
+following this repository's own instruction left every scripting call answering
+`-1728` and cost about twenty minutes and an interruption of the blind user at the
+machine, until **Command-F5** fixed what `open -a` had not. So `VoiceOverRestart`
+polls between the two halves, and a sentence written for a HUMAN says Command-F5.
 
 **THE PROOF'S UTTERANCE IS REAL SPEECH AND IT STAYS IN THE BUFFER.** Index 1 of
 every session holds what the reader said when it was asked to describe its
@@ -463,6 +504,41 @@ sentence in the shipped guidance document telling an agent that a chord needs
 about one channel became a false statement about the bridge, it read like a
 platform limit, and so nobody looked for the missing feature behind it while a
 blind user's commonest act stayed unreachable. Spec 0048 §1.1 keeps the record.
+
+## A KEY CAN BE SEVERAL COMMANDS, AND THE READER KEEPS A RING
+
+Measured 2026-09-02, re-runnable as `bash scripts/voiceover_press_count.sh`, and
+it is documentation rather than code — there is nothing for this bridge to
+implement, and a great deal for an agent to get wrong.
+
+VoiceOver binds several commands to one key and tells them apart by **press
+count**; the reader's own factory configuration carries the field, which
+`scripts/voiceover_default_bindings.py` prints as "(pressed 2 times)". Thirty of
+the 301 default bindings use it.
+
+**Apple documents it as "press twice", which reads as "twice in quick
+succession". The machine does not behave that way.** Four presses of `vo+f7` two
+seconds apart cycled wifi, time, battery, wifi; ten seconds of waiting did not
+reset it; and a single `vo+f2` in between did. So it is a RING advanced by each
+press of that key and **reset by a different command, not by time** — which is
+the maintainer's own account of living with it, and it is the sentence the
+guidance document carries.
+
+Three things follow for this repository:
+
+- **`pressGesture` cannot report which command ran**, and must not pretend to.
+  It reports what it PRESSED (protocol.md §7.3), the reader decides what that
+  meant, and the speech that comes back is the evidence. That is the existing
+  rule doing its job rather than a gap.
+- **A probe that presses such a key must not assert on WHICH answer it gets.**
+  Board entry 13.26's capture proof presses `vo+f7`, and its requirement is that
+  an utterance ARRIVED -- the time, the battery and the wifi status all satisfy
+  it equally. A rung that expected a time would fail on a healthy machine
+  whenever the ring happened to be elsewhere.
+- **It is the one place a command NAME is more precise than a key**, rather than
+  merely cheaper: a name selects exactly one command and has no ring. 13.25
+  demoted the command name as the way to stand in for a user; this is a real
+  reason to reach for one when a check depends on which command ran.
 
 ## Pressing a chord: the layout is the hard part, and there is no table
 

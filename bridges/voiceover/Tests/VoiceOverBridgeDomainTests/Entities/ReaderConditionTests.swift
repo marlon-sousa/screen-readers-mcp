@@ -56,15 +56,25 @@ struct ReaderConditionTests {
 		#expect(lsregister.lowerBound < pluginkit.lowerBound)
 	}
 
-	@Test("EVERY RESTART IS SPELLED AS A PAIR, because a bare killall leaves no screen reader")
+	@Test("NO RESTART SENTENCE MAY NAME THE KILL WITHOUT THE WAIT AND THE OPEN")
 	func aRestartIsNeverJustAKillall() {
 		// MEASURED 2026-08-31: `killall VoiceOver` does NOT relaunch the reader.
 		// A recovery that stopped after the kill is one somebody could follow into
-		// silence, so no sentence in this file may name the kill without the open.
+		// silence, so no sentence in this file may name the kill on its own.
 		for condition in ReaderCondition.allCases where condition.recovery.contains("killall") {
 			#expect(condition.recovery.contains(readerRestartCommand))
 		}
-		#expect(readerRestartCommand == "killall VoiceOver && open -a VoiceOver")
+		// AND THE PAIR ITSELF WAS WRONG UNTIL 13.26. `killall && open -a` races:
+		// killall returns when the signal is sent, so `open` fires into a reader the
+		// system still believes is running and does nothing at all. The 2026-09-02
+		// field report followed this repository's own advice into exactly that, and
+		// asked for "either restart the reader the way that works, or print the
+		// gesture that works". The gesture is Command-F5.
+		#expect(readerRestartCommand.contains("Command-F5"))
+		#expect(!readerRestartCommand.contains("killall VoiceOver && open"))
+		// The shell form is still offered, and it is spelled with its WAIT.
+		#expect(readerRestartCommand.contains("WAIT"))
+		#expect(readerRestartCommand.contains("open -a VoiceOver"))
 	}
 
 	@Test("a reader that is not running is its OWN condition, separate from a dead object model")

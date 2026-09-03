@@ -51,22 +51,23 @@ Three things people wrongly assume are outside the boundary here. They are not:
   control. Be careful with them for the reason the section above gives (they
   outlive your session), not because the stance forbids them.
 
-**The reader's command names are not forbidden here — they are the wrong DEFAULT.**
-Three uses of them are ordinary and one is not:
+**THE READER'S COMMAND NAMES ARE NOT YOURS, AND THE REASON IS THE STANCE ITSELF.**
+A person cannot dispatch a command by name: that channel is AppleScript, and no
+user has it. So neither do you. It is also, on many machines, simply not there —
+a careful VoiceOver user leaves "Allow VoiceOver to be controlled with AppleScript"
+switched off, because it lets any process on the machine drive their screen
+reader, and this bridge is built to work without it.
 
-- to reach an act that has **no factory key at all** (`find next button`,
-  `toggle web navigation dom or group`, `mute speech toggle`), which a user
-  reaches through the rotor or the Commands menu and you reach by name;
-- to work on a machine that has **not granted Accessibility**, where they are the
-  whole of what you have — say so in your report, because a run driven that way
-  did not test what a keypress tests;
-- to **characterise** something you have already found: the key did nothing, the
-  command name works, so the application swallowed it or the person rebound it.
-  Say which you sent, and say it when the two disagree.
+**What a user does when an act has no key** is open the Commands menu — `vo+h`
+pressed twice — type the name, and press Enter. That is how `find next button`,
+`toggle web navigation dom or group`, `mute speech toggle` and the other unbound
+commands are reached by a person, and it is how you reach them. It is keys all the
+way down.
 
-What is not ordinary is reaching for the command name because the key did not
-work and carrying on as though it had. That is the same move as reaching for a
-hot spot: it rescues the run and loses the finding.
+So: **press keys, always.** If you cannot do the task with keys, that is the
+finding — report where you stopped, what you last heard, and what you pressed.
+An `expert` session may reach for the dispatch channel to work out WHY; you may
+not borrow its answer and call the task done.
 
 `get_focus_info` is the one to be careful with. It reads the accessibility tree
 rather than what was announced, and the gap between those two is exactly the bug

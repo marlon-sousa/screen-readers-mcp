@@ -135,10 +135,36 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 /// How a human restarts this reader, spelled as ONE string so it cannot be
 /// half-quoted anywhere.
 ///
+/// ============================================================================
+/// IT SAID `killall VoiceOver && open -a VoiceOver` UNTIL 13.26, AND THAT LINE
+/// WAS WRONG IN TWO WAYS. BOTH WERE PAID FOR.
+/// ============================================================================
+///
 /// MEASURED 2026-08-31: `killall VoiceOver` on its own does NOT relaunch it. A
 /// recovery that stopped after the kill would leave a blind person with no screen
 /// reader and no obvious way back, which is the single worst thing any sentence
-/// in this file could cause. `open -a VoiceOver` is what brings it back, so the
-/// two travel together everywhere -- here, in the setup failures, in the guidance
-/// document and in this bridge's README.
-public let readerRestartCommand = "killall VoiceOver && open -a VoiceOver"
+/// in this file could cause. That much was right, and it is why the two halves
+/// were made to travel together.
+///
+/// WHAT IT MISSED IS THAT THE PAIR RACES. `killall` returns when the SIGNAL IS
+/// SENT, not when the process is gone, so `open -a` can fire into a reader macOS
+/// still believes is running -- and `open` on a running application does nothing
+/// at all. The 2026-09-02 field report is very probably exactly that: following
+/// this sentence left the reader in a state where every scripting call answered
+/// `-1728`, and it cost about twenty minutes and an interruption of the blind user
+/// at the machine before COMMAND-F5 fixed what `open -a` had not. Its ask, in as
+/// many words: *"Either restart the reader the way that works, or print the
+/// gesture that works."*
+///
+/// SO THIS IS THE GESTURE NOW, AND THE SHELL FORM IS SPELLED WITH ITS WAIT. The
+/// audience for this string is a HUMAN AT THE MACHINE -- every sentence that
+/// carries it reads "ask the human at this machine to ..." -- and what a person
+/// presses to toggle VoiceOver is Command-F5. The bridge's own restarts do not go
+/// through this string at all: they go through `ReaderRestart`, which quits, polls
+/// until the process is gone, and only then starts it.
+public let readerRestartCommand =
+	"press Command-F5 twice -- once to stop VoiceOver and once to start it again. "
+	+ "(From a terminal it is `killall VoiceOver`, then WAIT until "
+	+ "`pgrep -x VoiceOver` finds nothing, then `open -a VoiceOver`. Do not join "
+	+ "those with `&&`: killall returns as soon as the signal is sent, so `open` "
+	+ "fires while the reader is still shutting down and does nothing at all.)"

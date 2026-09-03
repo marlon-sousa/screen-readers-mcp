@@ -55,6 +55,22 @@ public final class SessionContext {
 	/// half-way still leaves teardown holding what the user had.
 	public var previousVoice: String?
 
+	/// The VoiceOver modifier the person had, when this session replaced it --
+	/// 13.26. Nil means nothing was replaced, which is the ordinary case.
+	///
+	/// WHAT IT OWES IS A RESTART, NOT A WRITE, and that is the whole subtlety of
+	/// spec 0053 §3.3. The preference FILE was put back within the handshake, so it
+	/// holds the person's own value for the entire session; what is ours is the
+	/// RUNNING reader, which read the file once at startup. So teardown restarts,
+	/// and a session that dies without tearing down costs "the reader is on
+	/// Control-Option until it next restarts" -- which their own next restart puts
+	/// right, with nothing for anybody to remember.
+	///
+	/// SET AFTER THE REPLACEMENT SUCCEEDED, never before: a teardown that restarted
+	/// a reader nothing had changed would be taking somebody's screen reader away
+	/// for no reason at all.
+	public var replacedModifier: ModifierSetting?
+
 	/// The third watchdog itself, once a SILENT session has established one.
 	///
 	/// IT LIVES HERE RATHER THAN INSIDE THE SESSION SINCE 13.10, and that is a

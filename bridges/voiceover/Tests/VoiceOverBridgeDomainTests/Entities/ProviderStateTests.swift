@@ -29,14 +29,30 @@ struct ProviderStateTests {
 		#expect(ProviderState.selected.observing(captured: false) == .selected)
 	}
 
-	@Test("evidence does not promote a state that could not have produced it")
-	func staleEvidenceDoesNotPromote() {
-		// Utterances cannot have arrived through a voice the reader is not using,
-		// so a buffer with entries in it says something about the PAST rather than
-		// about now -- most obviously when a session outlived the voice being
-		// changed under it.
-		#expect(ProviderState.published.observing(captured: true) == .published)
-		#expect(ProviderState.notRegistered.observing(captured: true) == .notRegistered)
+	@Test("AN UTTERANCE THAT ARRIVED PROMOTES FROM ANY STATE -- 13.26")
+	func evidenceBeatsInference() {
+		// This test asserted the OPPOSITE until 13.26, on the reasoning that
+		// utterances cannot have arrived through a voice the reader is not using --
+		// sound reasoning on a false premise. Every state below `capturing` is
+		// INFERRED, and one of the questions the inference asks (does VoiceOver
+		// offer our voice?) goes over AppleScript, which a careful user switches
+		// off. Measured 2026-09-02: `poe conformance` refused a session on a machine
+		// whose extension was registered, enabled and published, because it could
+		// not interrogate the reader.
+		//
+		// An utterance arriving proves everything beneath it -- there is no other
+		// way it could have got here.
+		#expect(ProviderState.published.observing(captured: true) == .capturing)
+		#expect(ProviderState.notRegistered.observing(captured: true) == .capturing)
+		#expect(ProviderState.selected.observing(captured: true) == .capturing)
+	}
+
+	@Test("and nothing arriving leaves the inference exactly as it was")
+	func silenceChangesNothing() {
+		// The inference is still what says WHY, when there is nothing to hear.
+		for state in ProviderState.allCases {
+			#expect(state.observing(captured: false) == state)
+		}
 	}
 
 	@Test("a healthy, freshly selected session reports NO conditions")

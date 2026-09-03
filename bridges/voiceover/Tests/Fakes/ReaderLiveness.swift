@@ -11,7 +11,7 @@ import VoiceOverBridgeDomain
 public final class FakeReaderLiveness: ReaderLiveness {
 	/// What it answers. Defaults to the healthy reader, because that is the state
 	/// nearly every test is in.
-	public var answersItsOwnName: Bool
+	public var isRunning: Bool
 	public private(set) var asked = 0
 	public private(set) var activations = 0
 
@@ -21,13 +21,13 @@ public final class FakeReaderLiveness: ReaderLiveness {
 	/// from one that gives up on it.
 	public var activationSucceeds = true
 
-	public init(answersItsOwnName: Bool = true) {
-		self.answersItsOwnName = answersItsOwnName
+	public init(isRunning: Bool = true) {
+		self.isRunning = isRunning
 	}
 
-	public func readerAnswersItsOwnName() -> Bool {
+	public func readerIsRunning() -> Bool {
 		asked += 1
-		return answersItsOwnName
+		return isRunning
 	}
 
 	/// COUNTED, and the count is the point: `activate()` may be called only when
@@ -36,6 +36,6 @@ public final class FakeReaderLiveness: ReaderLiveness {
 	/// notice a session that keeps taking somebody's screen over.
 	public func activate() {
 		activations += 1
-		if activationSucceeds { answersItsOwnName = true }
+		if activationSucceeds { isRunning = true }
 	}
 }

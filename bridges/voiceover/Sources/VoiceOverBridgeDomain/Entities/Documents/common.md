@@ -56,7 +56,21 @@ name is a phrase and always contains a space; a keystroke never does. And `kb:`
 in front of an id says "this is a key" whatever it looks like, which is what lets
 you press a single letter — `kb:h`, below.
 
-They remain worth reaching for, in three cases and not as a habit:
+**NO USER HAS THIS CHANNEL, AND THAT DECIDES WHO MAY USE IT.** A person cannot
+dispatch one of the reader's commands by name — they press keys, and to reach a
+command with no key they open the Commands menu (`vo+h` pressed twice), type the
+name and press Enter. So a session standing in for a user presses keys, always,
+and uses that menu for the rest; the dispatch channel belongs to the `expert`
+stance, which is standing in for nobody. Your own stance section below says which
+you are.
+
+**And it may not exist on this machine.** The channel is VoiceOver's own
+AppleScript control, which a careful user switches off — it lets any process on
+the machine drive their screen reader. When it is off, a command name fails with a
+message saying so and telling you to press the key instead. Keys always work; this
+does not.
+
+Where it is available, it is worth reaching for in three cases and not as a habit:
 
 - **They cost no permission at all.** A keystroke is a system event and costs the
   Accessibility grant (below); a command name costs nothing. On a machine that
@@ -150,6 +164,55 @@ readers has to spell that one key differently.
 
 Re-runnable as `bash scripts/voiceover_chords.sh` and
 `bash scripts/voiceover_vo_modifier.sh` in this repository.
+
+## SOME KEYS ARE A RING, and the second press is a different command
+
+This one will produce a result you did not ask for and give you no sign that it
+did, so read it before you press a key twice.
+
+VoiceOver binds **several commands to one key** and tells them apart by how many
+times it has been pressed. `vo+f7` is the time and date; pressed again it is the
+battery status; again and it is the wifi status. Thirty of this reader's factory
+bindings are like that — `vo+w` spells the word alphabetically on the second
+press and phonetically on the third, `vo+m` twice goes to the status menus rather
+than the menu bar.
+
+**Apple's documentation writes it as "press twice", which reads as "twice in
+quick succession". That is not what the machine does.** Measured on macOS 15.0,
+2026-09-02, through this bridge's own key presser:
+
+| what was sent | what the reader said |
+|---|---|
+| `vo+f7` | the wifi status |
+| `vo+f7` again, two seconds later | the time and date |
+| `vo+f7` again | the battery status |
+| `vo+f7` again | the wifi status |
+| `vo+f2`, then `vo+f7` | **the time and date** — back to the first |
+| `vo+f7` ten seconds later | the battery status — waiting changed nothing |
+
+So it is a **ring**: each press advances to the next command bound to that key,
+and **the ring is reset by pressing a DIFFERENT command, not by waiting.** Where
+you land depends on what the person at this machine, or your own last call, did
+before you.
+
+Three consequences, and the third is the useful one:
+
+- **A key is not a promise about which command runs.** `press_gesture` reports
+  what it PRESSED; the reader decides what that meant, and nothing in the result
+  says which of the bound commands answered. What came back in `speech` is your
+  only evidence, and on this reader it is a good one — the three answers above
+  cannot be mistaken for each other.
+- **Do not press a key twice to hear something again.** That is a different
+  command. Use `vo+z` (`repeat last phrase`), or read the speech you already have
+  by index.
+- **To get the FIRST meaning of such a key, press a different command first** —
+  any one, including a harmless one like `vo+f2`. Or send the reader's own
+  **command name**, which names exactly one command and has no ring at all. This
+  is the one place where the command name is more precise than the key rather
+  than merely cheaper, and it is worth reaching for when a check depends on
+  which of the bound commands ran.
+
+Re-runnable as `bash scripts/voiceover_press_count.sh` in this repository.
 
 ## Do NOT build a chord out of the reader's modifier commands
 
@@ -498,17 +561,19 @@ do not assume a facility exists because another reader has one.
   Utility this bridge does not know, and the key will simply do nothing — which is
   why every table here names the command beside the key.
 
-## Your session was SET UP before you were handed it
+## Your session was SET UP before you were handed it, and it will be PUT BACK
 
 `connect_reader` does not merely open a channel here. Before it answers it reads
-the two permissions this bridge needs, starts VoiceOver if it is not running,
-registers the capture voice's extension with the system if the system has
-forgotten it, points the reader at that voice, and then makes the reader speak
-and requires the words to arrive. If any of that could not be done, **you get a
-named failure instead of a session** — which step, what was wrong, and what you
-must do, usually "tell the person at this machine to do X, then connect again".
+the two permissions this bridge needs — reads, never asks for; nothing here
+raises a consent dialog — starts VoiceOver if it is not running, registers the
+capture voice's extension if the system has forgotten it, points the reader at
+that voice, puts VoiceOver on a modifier this bridge can actually press if it is
+not on one, and then makes the reader speak and requires the words to arrive. If
+any of that could not be done, **you get a named failure instead of a session** —
+which step, what was wrong, and what you must do, usually "tell the person at this
+machine to do X, then connect again".
 
-Two consequences worth holding on to:
+Three consequences worth holding on to:
 
 - **An empty `get_speech` now means the reader said nothing.** It used to be able
   to mean "this machine cannot capture at all", and the two were
@@ -516,18 +581,49 @@ Two consequences worth holding on to:
   whose capture was proved a moment ago. So an empty read is a fact about the
   interface you are testing, not a fault to go hunting for.
 - **The first utterance of every session is not yours.** Index 1 holds what the
-  reader said when the setup asked it to describe what its cursor is on — real
-  speech, recorded like any other, and incidentally a useful statement of where
-  you are starting from. Your own first utterance is index 2. Take a bookmark
+  reader said when the setup asked it for the time and date — real speech,
+  recorded like any other. Your own first utterance is index 2. Take a bookmark
   with `get_next_speech_index` before you act, as you would anyway, and none of
   this matters.
+- **The setup probe is a key on some machines and a command name on others**, and
+  you cannot tell from here. It does not matter: it moves nothing either way.
 
-One thing the bridge will **not** do for you: restart the reader. macOS only
-publishes a newly registered voice after VoiceOver restarts, so if the setup had
-to register the extension, the connect fails and tells you to ask the person at
-the machine to run `killall VoiceOver && open -a VoiceOver` and connect again.
-That is not the bridge being timid — restarting somebody's screen reader without
-asking is taking their computer away mid-sentence.
+### What it changed on this person's machine, and what puts it back
+
+Two settings, and both are put back when your session ends — however it ends,
+including a watchdog firing.
+
+1. **The voice VoiceOver speaks with.** It is on the capture voice for the
+   duration; the person's own is restored at teardown.
+2. **The VoiceOver modifier, but only where it was Caps Lock alone.** A
+   synthesized Caps Lock is invisible to this reader — that is a platform fact,
+   not a gap — so on such a machine the bridge borrows Control-Option for the
+   session and **restarts VoiceOver**, announcing that it is about to, out loud,
+   before it does. Their own setting goes straight back into the preference file,
+   so what is borrowed is only the *running* reader, and teardown restarts once
+   more to give it back.
+
+**If a session dies without tearing down**, both of those are recorded in
+`~/Library/Logs/screen-readers-mcp/reader-changes.jsonl` — one line per change,
+one per restore. Anything with no matching restore is still changed.
+`python3 scripts/voiceover_restore.py` reports what is open and puts back what can
+be put back. Say so to the person at the machine if you ever see a connect fail
+after the voice step; it is the difference between a five-second fix and an
+afternoon.
+
+### The bridge may restart the reader now, for two named reasons only
+
+Those reasons are: the capture voice was registered a moment ago and macOS
+publishes a newly registered voice only after VoiceOver restarts, and the modifier
+above. It never restarts speculatively, it always announces first through its own
+synthesizer — which you can hear even in a silent session — and it quits, waits
+for the process to be gone, and *then* starts it.
+
+**That last part matters if you are ever telling a human to do it by hand.**
+`killall VoiceOver && open -a VoiceOver` looks right and is not: `killall` returns
+when the signal is sent rather than when the process is gone, so `open` can fire
+into a reader the system still believes is running and do nothing at all. What a
+person actually presses is **Command-F5**, twice.
 
 ## Two things about the machine you are driving
 
