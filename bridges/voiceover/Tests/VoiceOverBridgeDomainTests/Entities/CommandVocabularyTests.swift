@@ -46,6 +46,12 @@ struct CommandVocabularyTests {
 				// The key, and the menu for an act that has none.
 				#expect(refusal.description.contains("vo+m"))
 				#expect(refusal.description.contains("Commands menu"))
+				// AND NOT THE `kb:` CLAUSE, which is the fix 13.31's own live run
+				// bought: sending `go to menu bar` came back advising
+				// `kb:go to menu bar`, a malformed keystroke the next call would also
+				// refuse. A refusal that names an unusable id costs a round trip and
+				// teaches a spelling that does not exist.
+				#expect(!refusal.description.contains("\(CommandVocabulary.keyboardSource):\(name)"))
 			} catch {
 				Issue.record("unexpected error: \(error)")
 			}
@@ -88,7 +94,10 @@ struct CommandVocabularyTests {
 			_ = try CommandVocabulary.classify("h", readerModifier: .controlOption)
 			Issue.record("expected 'h' to be refused")
 		} catch let refusal as GestureIdRefused {
+			// A LONE TOKEN GETS THE CLAUSE A PHRASE DOES NOT, which is the whole of
+			// the distinction: `kb:h` is a keystroke and `kb:go to menu bar` is not.
 			#expect(refusal.description.contains("kb:h"))
+			#expect(refusal.description.contains("single key"))
 		} catch {
 			Issue.record("unexpected error: \(error)")
 		}

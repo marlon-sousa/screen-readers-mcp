@@ -166,12 +166,24 @@ public enum CommandVocabulary {
 	/// written about this bridge -- will send one, and it must not conclude that the
 	/// act is unreachable. It is reachable; it takes the key, or the menu a person
 	/// uses when there is no key.
+	/// THE PREFIX IS OFFERED ONLY TO AN ID THAT COULD BE A KEY, and that clause was
+	/// wrong in the first build of this entry -- found on 13.31's own live run, by
+	/// sending `go to menu bar` and being told to try `kb:go to menu bar`, which is
+	/// a malformed keystroke and could never work. A refusal that names an id the
+	/// next call will also refuse costs the agent a round trip and teaches it a
+	/// spelling that does not exist. So a PHRASE is sent to the key and the menu; a
+	/// LONE TOKEN, which is what `h` is, is additionally told how to say it means
+	/// the key.
 	private static func reasonNotAKeystroke(_ gesture: String) -> String {
-		"it reads as one of the reader's own command names, and this bridge no longer dispatches "
+		let base =
+			"it reads as one of the reader's own command names, and this bridge no longer dispatches "
 			+ "those -- no VoiceOver user can type a command name, so neither does a session standing "
 			+ "in for one. Press the KEY the act is bound to instead (\"vo+m\" for the menu bar, "
-			+ "\"vo+f7\" for the time and date); \(commandsMenuRoute). If you meant a single key, say "
-			+ "so with the source prefix: \"\(keyboardSource):\(gesture)\""
+			+ "\"vo+f7\" for the time and date); \(commandsMenuRoute)"
+		guard !gesture.contains(" ") else { return base }
+		return base
+			+ ". If you meant a single key, say so with the source prefix: "
+			+ "\"\(keyboardSource):\(gesture)\""
 	}
 
 	/// Why VoiceOver's own `VO-D` shorthand is refused, and what to write instead.
