@@ -69,8 +69,12 @@ The instruments this reader *does* give you that the other stances leave alone:
   it is VoiceOver Utility > General > "Allow VoiceOver to be controlled with
   AppleScript" — and this bridge will not write VoiceOver's preferences behind the
   reader's back to set it. So if you genuinely need this instrument, `ask_user`
-  for it, say what it is for, and reconnect afterwards: the setting is read when
-  the reader starts. Ask sparingly and say why. You are asking somebody to open
+  for it, say what it is for, and **reconnect afterwards**. The switch itself takes
+  effect at once — measured 2026-09-02: a reader that had been running for
+  seventeen minutes answered `return commander` the moment the setting was turned
+  on, with no restart. What needs the reconnect is this bridge: it works out which
+  routes it has at the handshake and carries that answer for the whole session.
+  Ask sparingly and say why. You are asking somebody to open
   their screen reader to every process on their machine, and the honest default is
   that they should say no. What remains without it is keys, and the Commands menu
   (`vo+h` twice), which is also keys.

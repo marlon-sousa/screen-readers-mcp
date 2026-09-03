@@ -475,7 +475,14 @@ struct PressGestureTests {
 		} catch let error as CommandError {
 			#expect(error.description.contains("ask_user"))
 			#expect(error.description.contains("VoiceOver Utility > General"))
-			#expect(error.description.contains("reconnect"))
+			// Case-insensitive: the sentence emphasises the word, and a test that
+			// pinned the casing would break on a rewording that changed nothing.
+			#expect(error.description.lowercased().contains("reconnect"))
+			// AND IT MUST NOT SAY THE SWITCH NEEDS A READER RESTART. Measured
+			// 2026-09-02: a reader running for seventeen minutes answered `return
+			// commander` the moment the switch was turned on. What needs the reconnect
+			// is this bridge, which fixes its routes at the handshake.
+			#expect(error.description.contains("no reader restart"))
 		}
 	}
 

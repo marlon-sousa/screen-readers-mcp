@@ -256,8 +256,10 @@ public final class PressGestureHandler: CommandHandler {
 				+ "keys). An act with no key of its own is reached through the Commands menu -- "
 				+ "`vo+h` twice, type its name, Enter. If you are the `expert` stance and you "
 				+ "genuinely need the command-name route as an instrument, ask the human for it with "
-				+ "`ask_user` -- that switch is theirs to give, it exists in VoiceOver Utility > "
-				+ "General, and it is read when the reader starts, so reconnect afterwards."
+				+ "`ask_user` -- that switch is theirs to give, and it lives in VoiceOver Utility > "
+				+ "General. It takes effect at once, with no reader restart (measured 2026-09-02), but "
+				+ "you must RECONNECT: this bridge decides which routes it has at the handshake and "
+				+ "carries that answer for the whole session."
 		}
 		// THE ROUTE IS ON AND STILL FAILED. This is the one spec 0041 measured, and
 		// the one a restart actually repairs.

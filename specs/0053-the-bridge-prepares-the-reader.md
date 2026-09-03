@@ -359,6 +359,14 @@ So it lands in two places and costs no port:
 2. **The `expert` document** says the same once, in the section that already tells
    that stance the channel may be unavailable.
 
+**AND THE SWITCH TAKES EFFECT AT ONCE, which the live run's control check found and
+which both sentences got wrong at first.** They said the setting "is read when the
+reader starts". Measured 2026-09-02: VoiceOver had been running for **seventeen
+minutes** when the switch was turned on, and that same process answered `return
+commander` immediately — where moments earlier it had failed `-1728`. The reconnect
+advice is still right, for a different reason: **this bridge** fixes its routes at
+rung 1 and carries them for the whole session. Both sentences now say that.
+
 `user` and `validator` are told nothing about it, per §3.8: a stance that may not
 use the channel has no business asking somebody to open it.
 
@@ -467,7 +475,9 @@ Run with the AppleScript switch **off**, which is the state this entry exists fo
    rate and volume intact.
 7. With the switch back **on**, a session still establishes and a command name
    still works — the control, so none of the above is bought by breaking the route
-   that already worked.
+   that already worked. **It also proves §3.6 both ways**: the probe takes the KEY
+   route with the switch off and the COMMAND NAME with it on, which is the
+   command-name-first rule doing exactly what it says.
 
 ## 6. Honest limits
 
