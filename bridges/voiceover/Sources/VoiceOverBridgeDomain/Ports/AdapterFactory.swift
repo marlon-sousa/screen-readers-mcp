@@ -24,13 +24,12 @@ import ScreenReaderWire
 /// |---|---|
 /// | `speechSource` | 13.5, the capture feed |
 /// | `silenceControl`, `providerLifecycle` | 13.6, capture mode |
-/// | `gestureSender`, `readerLiveness` | 13.7, input: commands |
+/// | `readerLiveness` | 13.7, input: commands (its `gestureSender` deleted at 13.31) |
 /// | `textTyper`, `permissions` | 13.8, input: typing |
 /// | `focusInspector` | 13.9, focus |
 /// | `announcer`, `userPrompter` | 13.10, the human channel |
 /// | `keyPresser` | 13.17, chords |
 /// | `readerModifier` | 13.25, `vo` |
-/// | `readerScripting` | 13.26, AppleScript as a capability |
 /// | `readerRestart`, `changeJournal` | 13.26, preparing the reader and putting it back -- here |
 ///
 /// A field stubbed ahead of its entry would be a collaborator that answers
@@ -59,10 +58,6 @@ public struct AdapterSet {
 
 	/// Where the capture voice has got to, and how the reader is pointed at it.
 	public let providerLifecycle: any ProviderLifecycle
-
-	/// How a command reaches the reader. Present in both modes: a gesture is
-	/// dispatched identically whether or not the human can hear the result.
-	public let gestureSender: any GestureSender
 
 	/// Whether the reader is there at all, asked only when something has already
 	/// failed. IT IS A SECOND FIELD RATHER THAN A BOOLEAN THE SENDER RETURNS, and
@@ -111,22 +106,6 @@ public struct AdapterSet {
 	///
 	/// READ PER CALL, NEVER CACHED. See the port.
 	public let readerModifier: any ReaderModifierSetting
-
-	/// Whether AppleScript control of VoiceOver is switched on on this machine --
-	/// 13.26.
-	///
-	/// IT IS IN THE SET BECAUSE IT IS PART OF A DIAGNOSIS, not because a command
-	/// needs it. Until this entry the switch was read only by the launcher's
-	/// startup report; now `ReaderEdgeSetup` asks it to decide whether the
-	/// command-name route is available at all, and `PressGestureHandler` asks it
-	/// when a command name has already failed -- which is the difference between
-	/// telling an agent "the reader is not responding" and telling it "that route
-	/// is switched off on this machine, press the key instead".
-	///
-	/// PROCESS-SCOPED, like the permission broker: it describes the machine rather
-	/// than anything about a session, and it is read fresh each time because a
-	/// human can change it in VoiceOver Utility while a session is open.
-	public let readerScripting: any ReaderScriptingSetting
 
 	/// How the reader is taken away and brought back -- 13.26, and the port that
 	/// reverses 13.20's rule that no handshake may do this.
@@ -210,12 +189,10 @@ public struct AdapterSet {
 		speechSource: any SpeechSource,
 		silenceControl: any SilenceControl,
 		providerLifecycle: any ProviderLifecycle,
-		gestureSender: any GestureSender,
 		readerLiveness: any ReaderLiveness,
 		textTyper: any TextTyper,
 		keyPresser: any KeyPresser,
 		readerModifier: any ReaderModifierSetting,
-		readerScripting: any ReaderScriptingSetting,
 		readerRestart: any ReaderRestart,
 		changeJournal: any ChangeJournal,
 		permissions: any PermissionBroker,
@@ -227,12 +204,10 @@ public struct AdapterSet {
 		self.speechSource = speechSource
 		self.silenceControl = silenceControl
 		self.providerLifecycle = providerLifecycle
-		self.gestureSender = gestureSender
 		self.readerLiveness = readerLiveness
 		self.textTyper = textTyper
 		self.keyPresser = keyPresser
 		self.readerModifier = readerModifier
-		self.readerScripting = readerScripting
 		self.readerRestart = readerRestart
 		self.changeJournal = changeJournal
 		self.permissions = permissions

@@ -39,13 +39,17 @@
 #     run. That is a LEASE, not a state: `bye` releases it, and if this script is
 #     killed the marker expires on its own and the machine speaks again without
 #     anything running (13.6, hard invariant 3 in its macOS form).
-#   * It presses ONE VoiceOver command -- `describe item in voiceover cursor` by
-#     default -- which describes what the cursor is already on and moves nothing.
-#   * It types nothing and presses no chord, so it needs no Accessibility grant
-#     and raises no consent dialog. Pressing a command NAME is an AppleEvent;
-#     that is 13.8's whole lever, as 13.17 narrowed it.
-#   * It writes no preference. The bridge itself selects the capture voice at the
-#     handshake and puts your own voice back on every teardown path.
+#   * It presses ONE VoiceOver gesture -- `vo+f3`, describe item in VoiceOver
+#     cursor -- which describes what the cursor is already on and moves nothing.
+#   * IT ASKS FOR THE ACCESSIBILITY GRANT, once, and 13.31 is why. This script
+#     sent the reader's own COMMAND NAME until then, which was an AppleEvent and
+#     cost no grant -- 13.8's lever, as 13.17 narrowed it. That route is deleted
+#     (spec 0055): no VoiceOver user can type a command name, so this bridge does
+#     not send one. A key is a system event, so on a machine that has never
+#     granted Accessibility this run raises one consent dialog.
+#   * It types nothing, and it writes no preference.
+#     The bridge itself selects the capture voice at the handshake and puts your
+#     own voice back on every teardown path.
 #
 # IT NEEDS A BRIDGE ALREADY LISTENING, which is the one thing it will not start
 # for you: the bridge is either the .app's control dialog with Start pressed, or
@@ -154,9 +158,7 @@ if sys.stdin.isatty():
 else:
 	print("   no terminal on stdin; listening in 5 seconds -- you should hear NOTHING")
 	time.sleep(5)
-pressed = call(
-	"pressGesture", gestures=["describe item in voiceover cursor"], graceMs=1500, announce=""
-)
+pressed = call("pressGesture", gestures=["vo+f3"], graceMs=1500, announce="")
 if pressed is not None:
 	said = [entry["text"] for entry in pressed.get("speech", [])]
 	print(f"   the reader said {len(said)} utterance(s), captured and not heard:")

@@ -61,14 +61,12 @@ public func testAdapterFactory(
 	capturePath: String = unusedCapturePath(),
 	markerPath: String = unusedMarkerPath(),
 	lifecycle: any ProviderLifecycle = FakeProviderLifecycle(),
-	scripts: any AppleScriptRunner = FakeAppleScriptRunner(),
 	tools: any ProcessRunner = FakeProcessRunner(),
 	permissions: any PermissionBroker = FakePermissionBroker(),
 	poster: any EventPoster = FakeEventPoster(),
 	applications: any RunningApplications = FakeRunningApplications(),
 	layout: any KeyboardLayout = FakeKeyboardLayout(),
 	readerModifier: any ReaderModifierSetting = FakeReaderModifierSetting(),
-	readerScripting: any ReaderScriptingSetting = FakeReaderScriptingSetting(),
 	readerRestart: any ReaderRestart = FakeReaderRestart(),
 	changeJournal: any ChangeJournal = FakeChangeJournal(),
 	tree: any AccessibilityTree = FakeAccessibilityTree(),
@@ -78,21 +76,19 @@ public func testAdapterFactory(
 	prompter: any UserPrompter = FakeUserPrompter(),
 	captureProbeSpeaks: Bool = true
 ) -> VoiceOverAdapterFactory {
-	if captureProbeSpeaks, let fake = scripts as? FakeAppleScriptRunner {
-		answerTheCaptureProbe(on: fake, writingTo: capturePath)
+	if captureProbeSpeaks {
+		answerTheCaptureProbe(pressing: poster, writingTo: capturePath)
 	}
 	return VoiceOverAdapterFactory(
 		capturePath: capturePath,
 		markerPath: markerPath,
 		lifecycle: lifecycle,
-		scripts: scripts,
 		tools: tools,
 		permissions: permissions,
 		poster: poster,
 		applications: applications,
 		layout: layout,
 		readerModifier: readerModifier,
-		readerScripting: readerScripting,
 		readerRestart: readerRestart,
 		changeJournal: changeJournal,
 		tree: tree,
@@ -103,28 +99,31 @@ public func testAdapterFactory(
 	)
 }
 
-/// Make a fake script runner behave like a HEALTHY reader: one that answers its
-/// own name, and that speaks when the capture probe is pressed.
+/// Make a fake EVENT POSTER behave like a HEALTHY reader: one that speaks when
+/// the capture probe is pressed.
 ///
-/// TWO SCRIPTS, BECAUSE THE HANDSHAKE SENDS TWO. Rung 2 asks the reader its own
-/// name through the real `VoiceOverLiveness`, and rung 5 presses the probe
-/// through the real `VoiceOverGestureSender` -- both over this one seam. A fake
-/// that answered the name script with the empty default would report a dead
-/// reader on every machine, and the whole suite would fail at rung 2 for a reason
-/// none of it is about.
+/// ONE PROBE, BECAUSE THE HANDSHAKE SENDS ONE. It sent two until 13.31 -- an
+/// AppleEvent asking the reader its own name at rung 2, and the probe itself at
+/// rung 5, both over a script runner this rig had to answer for. Rung 2 reads the
+/// running-application list now (13.26) and rung 5 presses a key (13.31), so what
+/// is left is a poster that produces speech.
 ///
-/// The name is answered from the SCRIPT the adapter publishes rather than from a
-/// copy of it, so a change to what liveness asks cannot leave this rig answering
-/// a question nobody sends any more.
+/// IT ANSWERS ANY PRESS RATHER THAN MATCHING THE PROBE'S KEYS, and that is the one
+/// thing to know before reusing it. The probe reaches this seam as a keycode and a
+/// set of flags -- there is no `vo+f7` left in it to match on, and reconstructing
+/// one here would be this rig deciding what the layout means. A test that needs to
+/// know WHICH keys were pressed asserts on the poster's own record; this only
+/// makes the machine one a session can be established on.
 ///
 /// The speech is one `synthesize` line in the capture voice's own feed format,
-/// appended when the probe command goes out. The format is the extension's, not
-/// ours to invent: `ContainerFileSpeechSource` reads `event`, `text` and `at`,
-/// and a line with no `ssml` is the documented fallback path.
-public func answerTheCaptureProbe(on scripts: FakeAppleScriptRunner, writingTo path: String) {
-	scripts.scriptedAnswers[VoiceOverLiveness.readerNameScript] = "VoiceOver"
-	scripts.onScript = { script in
-		guard script.contains(ReaderEdgeSetup.captureProbeCommand) else { return }
+/// appended when a key goes out. The format is the extension's, not ours to
+/// invent: `ContainerFileSpeechSource` reads `event`, `text` and `at`, and a line
+/// with no `ssml` is the documented fallback path.
+public func answerTheCaptureProbe(pressing poster: any EventPoster, writingTo path: String) {
+	guard let fake = poster as? FakeEventPoster else { return }
+	let previous = fake.onKeyDown
+	fake.onKeyDown = { event in
+		previous?(event)
 		let line = Data(
 			"{\"event\":\"synthesize\",\"text\":\"\(captureProbeUtterance)\",\"at\":0}\n".utf8)
 		if let handle = FileHandle(forWritingAtPath: path) {
@@ -156,12 +155,10 @@ public func fakeAdapterSet(
 	speechSource: FakeSpeechSource = FakeSpeechSource(),
 	silenceControl: FakeSilenceControl = FakeSilenceControl(),
 	providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
-	gestureSender: FakeGestureSender = FakeGestureSender(),
 	readerLiveness: FakeReaderLiveness = FakeReaderLiveness(),
 	textTyper: FakeTextTyper = FakeTextTyper(),
 	keyPresser: FakeKeyPresser = FakeKeyPresser(),
 	readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
-	readerScripting: FakeReaderScriptingSetting = FakeReaderScriptingSetting(),
 	readerRestart: FakeReaderRestart = FakeReaderRestart(),
 	changeJournal: FakeChangeJournal = FakeChangeJournal(),
 	permissions: FakePermissionBroker = FakePermissionBroker(),
@@ -171,7 +168,6 @@ public func fakeAdapterSet(
 	captureProbeSpeaks: Bool = true
 ) -> AdapterSet {
 	if captureProbeSpeaks {
-		answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
 		answerTheCaptureProbe(pressing: keyPresser, speaking: speechSource)
 	}
 	return AdapterSet(
@@ -179,12 +175,10 @@ public func fakeAdapterSet(
 		speechSource: speechSource,
 		silenceControl: silenceControl,
 		providerLifecycle: providerLifecycle,
-		gestureSender: gestureSender,
 		readerLiveness: readerLiveness,
 		textTyper: textTyper,
 		keyPresser: keyPresser,
 		readerModifier: readerModifier,
-		readerScripting: readerScripting,
 		readerRestart: readerRestart,
 		changeJournal: changeJournal,
 		permissions: permissions,
@@ -202,27 +196,13 @@ public func fakeAdapterSet(
 /// would be two ideas of what a working machine does, and they would differ the
 /// first time somebody changed the probe.
 ///
-/// It CHAINS rather than replacing: a test that installed its own `onPress` to
-/// make speech arrive as a consequence of ITS command keeps working.
-public func answerTheCaptureProbe(
-	pressing sender: FakeGestureSender, speaking source: FakeSpeechSource
-) {
-	let previous = sender.onPress
-	sender.onPress = { command in
-		previous?(command)
-		guard command == ReaderEdgeSetup.captureProbeCommand else { return }
-		source.emit(captureProbeUtterance)
-	}
-}
-
-/// The same healthy reader, answering the probe when it arrives as a KEYSTROKE
-/// -- which is the route a machine with no AppleScript control takes (13.26).
+/// IT WAS A PAIR OF FUNCTIONS UNTIL 13.31 -- one for the probe dispatched as a
+/// command name and one for the probe pressed as a key -- because the two routes
+/// were the thing under test and a fake that answered whichever it happened to
+/// receive could not tell them apart. There is one route now.
 ///
-/// TWO FUNCTIONS RATHER THAN ONE THAT GUESSES, because the two routes are the
-/// thing under test: a fake that answered whichever probe it happened to receive
-/// could not tell a handshake that chose the key route from one that chose the
-/// command name. The `fakeAdapterSet` builder installs both, so an ordinary test
-/// does not care; a test about the ROUTE installs one.
+/// It CHAINS rather than replacing: a test that installed its own `onPress` to
+/// make speech arrive as a consequence of ITS keystroke keeps working.
 public func answerTheCaptureProbe(
 	pressing presser: FakeKeyPresser, speaking source: FakeSpeechSource
 ) {
@@ -240,4 +220,9 @@ public func answerTheCaptureProbe(
 /// the reader was asked to describe its cursor and it did -- so it lands at
 /// index 1 of every session's buffer, which is a consequence tests have to
 /// account for rather than one the bridge hides.
+///
+/// The probe is `vo+f7` since 13.31, which is what a person presses to hear the
+/// time and date. It was `describe item in voiceover cursor` when this comment was
+/// written, and what it asks for is unchanged: something that always speaks and
+/// moves nothing.
 public let captureProbeUtterance = "capture probe, fake reader"

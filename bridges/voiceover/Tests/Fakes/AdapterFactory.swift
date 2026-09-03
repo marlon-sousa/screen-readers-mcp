@@ -24,27 +24,23 @@ public final class FakeAdapterFactory: AdapterFactory {
 	/// those are invisible in the AdapterSet itself.
 	public let silenceControl = FakeSilenceControl()
 	public let providerLifecycle: FakeProviderLifecycle
-	/// The same again for 13.7's two: a session test asserts what was DISPATCHED,
-	/// and that is invisible in the AdapterSet the handshake hands back.
-	public let gestureSender = FakeGestureSender()
+	/// And 13.7's `readerLiveness`. Its `gestureSender` was exposed beside it until
+	/// 13.31, which deleted the command-name route and the port with it.
 	public let readerLiveness = FakeReaderLiveness()
 	/// And 13.8's two, for the same reason -- plus one this file cannot leave
 	/// implicit: the broker records whether the Accessibility grant was ever
-	/// REQUESTED, and a session test asserting that a run of COMMAND-NAME gestures
-	/// never asked for it is asserting the entry's whole claim.
+	/// REQUESTED, and a session test asserting that a HANDSHAKE never asked for it
+	/// is asserting what survives of that entry's claim.
 	public let textTyper = FakeTextTyper()
 	public let permissions = FakePermissionBroker()
-	/// And 13.17's one, exposed for the reason the gesture sender is: a session
-	/// test asserts WHICH ROUTE a gesture id took, and "the chord went to the
-	/// system rather than to the reader" is invisible in the AdapterSet.
+	/// And 13.17's one, which since 13.31 is the ONLY way a gesture leaves this
+	/// bridge. Exposed because what was pressed is invisible in the AdapterSet the
+	/// handshake hands back.
 	public let keyPresser = FakeKeyPresser()
 	/// And 13.25's one, exposed so a session test can put this machine on a
 	/// different VoiceOver modifier -- Caps Lock, or one that cannot be read --
 	/// and assert that `vo+m` is refused over a real wire with nothing pressed.
 	public let readerModifier = FakeReaderModifierSetting()
-	/// And 13.26's, exposed so a session test can put this machine on one with no
-	/// AppleScript control at all and assert that a session is still established.
-	public let readerScripting = FakeReaderScriptingSetting()
 	/// The one collaborator that takes somebody's screen reader away. Exposed
 	/// because the assertion worth making about it is usually that it was NOT
 	/// called: an ordinary handshake restarts nothing.
@@ -85,7 +81,6 @@ public final class FakeAdapterFactory: AdapterFactory {
 		self.refusal = refusal
 		self.providerLifecycle = providerLifecycle
 		if captureProbeSpeaks {
-			answerTheCaptureProbe(pressing: gestureSender, speaking: speechSource)
 			answerTheCaptureProbe(pressing: keyPresser, speaking: speechSource)
 		}
 	}
@@ -98,12 +93,10 @@ public final class FakeAdapterFactory: AdapterFactory {
 			speechSource: speechSource,
 			silenceControl: silenceControl,
 			providerLifecycle: providerLifecycle,
-			gestureSender: gestureSender,
 			readerLiveness: readerLiveness,
 			textTyper: textTyper,
 			keyPresser: keyPresser,
 			readerModifier: readerModifier,
-			readerScripting: readerScripting,
 			readerRestart: readerRestart,
 			changeJournal: changeJournal,
 			permissions: permissions,

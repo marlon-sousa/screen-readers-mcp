@@ -453,18 +453,30 @@ past it is how an evening goes missing.
 You do **not** need to select the voice in VoiceOver Utility. The bridge selects
 it at the handshake and puts your own voice back on every teardown path.
 
-### 3. Switch on AppleScript control of VoiceOver
+### 3. Grant Accessibility, and check the VoiceOver modifier
 
-VoiceOver Utility → **General** → *Allow VoiceOver to be controlled with
-AppleScript*. **No API sets this and the bridge cannot**: without it every
-gesture, every liveness check and the VoiceOver-cursor route of `get_focus_info`
-fail with `-1743`. The launcher prints whether it is on before anything is
-pressed.
+This bridge drives VoiceOver by **pressing the keys a person presses**, so it
+needs one grant and one setting:
 
-macOS will also ask for **Automation** permission the first time the bridge sends
-the reader an event, and for **Accessibility** the first time a session calls
-`type_text` — and only then, which is the design. A session that presses commands
-and reads speech asks for neither.
+- **Accessibility** — System Settings → Privacy & Security → Accessibility. macOS
+  asks for it the first time a session presses a gesture or calls `type_text`, and
+  from nowhere else: connecting reads permissions and requests none, so nothing
+  pops a dialog at a machine nobody is watching.
+- **The VoiceOver modifier must include Control-Option** — VoiceOver Utility →
+  **Commands**. A synthesized Caps Lock is invisible to the reader (measured
+  2026-09-02), so a machine bound to Caps Lock alone gets no session, and the
+  handshake says so by name. That gap is board entry 13.28.
+
+The launcher prints what the machine can do before anything is pressed.
+
+**You do NOT need "Allow VoiceOver to be controlled with AppleScript", and this
+bridge no longer uses it.** It did until board entry 13.31: `press_gesture` also
+took the reader's own English command names and dispatched them inside VoiceOver
+over an AppleEvent. That route never passed the application under test, so it
+reported success on chords a real user was stuck on — and it was bought by asking
+a blind person to leave a switch on that lets **any** process drive their screen
+reader. Spec 0055. Nothing here sends an AppleEvent now, and no Automation grant
+is asked for or read.
 
 > **If you are working over SSH, the consent dialog names something that looks
 > unrelated.** macOS attributes an event to the process it holds *responsible*,
@@ -486,9 +498,9 @@ swift build --product BridgeListener
 ```
 
 It prints where it is listening, where it reads captured speech from, and what
-the machine can do before anything is pressed: the capture voice's state, whether
-AppleScript control is on, and which permissions are held. Reading those costs
-nothing and asks nobody for anything.
+the machine can do before anything is pressed: the capture voice's state and
+whether Accessibility is granted. Reading those costs nothing and asks nobody for
+anything.
 
 **Redirect it to a file if you like; do NOT wrap it in `script(1)`.** Running the
 bridge under a pty breaks the accessibility reads — every `get_focus_info`

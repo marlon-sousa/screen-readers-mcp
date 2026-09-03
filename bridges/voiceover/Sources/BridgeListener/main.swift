@@ -222,36 +222,21 @@ print("writing capture mode to \(Wiring.markerPath())")
 // going to fail says so before a human starts pressing keys -- by name, with the
 // recovery, which is the whole point of ProviderState.
 print("capture voice: \(Wiring.providerLifecycle().state().report)")
-// AND THE TWO ANSWERS THE READER'S OWN SETTINGS OWE (13.10). AppleScript control
-// is a PRECONDITION -- observable, unsettable by this bridge, and required -- so
-// the recovery is printed with it rather than left to be rediscovered when every
-// gesture fails with -1743.
-switch Wiring.readerScripting().scripting() {
-case .enabled:
-	print("AppleScript control of VoiceOver: on")
-case .disabled:
-	print("AppleScript control of VoiceOver: OFF -- \(Precondition.readerScripting.recovery)")
-case .unknown:
-	print("AppleScript control of VoiceOver: cannot tell (neither location could be read)")
-}
-// The permissions, READ and never requested: `status` shows no dialog, which is
-// what makes it safe to print on a machine nobody is sitting at. The commands
-// that ask for one are `typeText` and a KEYSTROKE `pressGesture` -- the two that
-// post a system event; pressing the reader's own command names asks nothing.
+// The permission, READ and never requested: `status` shows no dialog, which is
+// what makes it safe to print on a machine nobody is sitting at. The three things
+// that ask for it are `typeText`, `pressGesture` and nothing else -- both post
+// system events, which since 13.31 is the only way this bridge drives the reader
+// at all.
 //
-// THIS ROW USED TO LIE, AND 13.11 IS WHERE IT STOPPED. Until then the automation
-// permission was read with `AEDeterminePermissionToAutomateTarget`, which answers
-// about the CALLING BINARY -- and this launcher sends no AppleEvents: every one
-// leaves an `osascript` subprocess whose events are attributed to whatever
-// process macOS holds responsible. Measured 2026-08-30: this line printed
-// `not granted` one minute after this very process had driven the reader through
-// a whole MCP session. It now asks the channel, so what it prints is what the
-// gestures will actually get.
-//
-// THREE ANSWERS, AND THE THIRD ONE IS PRINTED AS ITSELF. `cannot tell` is not a
-// hedge: it is what a channel that failed for a NON-permission reason is worth,
-// and it points at the likeliest of those, because a human reading this row is
-// about to go and change a setting that was never the problem.
+// THIS BLOCK USED TO PRINT TWO MORE ROWS, AND BOTH WENT WITH THE APPLESCRIPT
+// CHANNEL AT 13.31. One was VoiceOver's own "Allow VoiceOver to be controlled with
+// AppleScript" switch, printed as a PRECONDITION because it was observable,
+// unsettable by this bridge and required; the other was the Automation grant,
+// which 13.11 had to teach this launcher to read by USING the channel rather than
+// by asking about this binary (measured 2026-08-30: it printed `not granted` one
+// minute after this very process had driven the reader through a whole MCP
+// session). Neither is required now, so printing either would send a human to
+// change a setting that cannot affect anything. Spec 0055.
 let broker = Wiring.permissionBroker()
 for permission in Permission.allCases {
 	switch broker.status(of: permission) {
@@ -259,12 +244,6 @@ for permission in Permission.allCases {
 		print("permission \(permission.rawValue): granted")
 	case .notGranted:
 		print("permission \(permission.rawValue): NOT GRANTED -- \(permission.recovery)")
-	case .cannotTell:
-		print(
-			"permission \(permission.rawValue): cannot tell -- the reader did not answer, which "
-				+ "is not a permission failure. Check that VoiceOver is running before changing "
-				+ "anything about grants."
-		)
 	}
 }
 dispatchMain()

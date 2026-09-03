@@ -280,8 +280,16 @@ it (11.11–11.13, specs 0024–0026). They had precedence, so the external-run
 entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
-The next free board number is **11.38** in the convergence series and **13.30**
-in lane 3, and the next free spec number is **0055**. Spec **0054** and board
+The next free board number is **11.38** in the convergence series and **13.34**
+in lane 3, and the next free spec number is **0056**. Board numbers **13.32** and
+**13.33** were spent on 2026-09-03 by 13.31's own live checklist -- a restore
+script that does not restore, and a launcher that dies when it asks a human a
+question -- and neither took a spec number of its own, the 13.11 precedent. Spec **0055** and board
+number **13.31** were spent on 2026-09-03 by one question Marlon asked of the
+AppleScript inventory -- if a user cannot type a command name, why should we have
+to -- and this line moved in the same commit. **13.30 stands reserved** by 13.29
+for the stamp measurement and has no entry of its own yet, which is why this entry
+took 13.31. Spec **0054** and board
 number **13.29** were spent on 2026-09-03 by a field report from an agent driving
 this bridge against a real application -- every application chord had been silently
 dead since 13.25 -- and this line moved in the same commit. Board number **13.28** was
@@ -2173,6 +2181,94 @@ rule intends.
     `charactersIgnoringModifiers` fields itself, the stamp and this flag both
     delete. That is a live measurement against the reader and it is **13.30**.
     Spec 0054.
+
+13.31. **Done (2026-09-03)** -- **A user cannot type a command name, so neither may we**
+    (lane 3). Marlon, 2026-09-03, on reading an inventory of where this bridge
+    still uses AppleScript: *"if a user cannot type a command, why should we have
+    to?"* No VoiceOver user has the command-name channel -- a person presses VO-M,
+    and reaches an act with no key through the Commands menu -- so **the channel is
+    deleted, entirely**, and with it every AppleEvent this bridge sends.
+
+    **13.25 demoted it and this entry finishes the job.** That entry found the
+    dispatch route reporting success on chords a real user was stuck on, hiding the
+    defect class the tool exists to find, and left the route as an automation
+    convenience. The convenience was still bought with a switch -- *"Allow VoiceOver
+    to be controlled with AppleScript"* -- that lets ANY process drive the screen
+    reader a blind person depends on, which is an indefensible thing to ask for in
+    exchange for a route no human has.
+
+    **Five callers, and four of them delete with no capability loss at all**: rung
+    5's capture probe already has `vo+f7` beside it; `TCCPermissionBroker` read the
+    Automation grant only because the channel needed it; `VoiceOverFocusInspector`'s
+    cursor route serves a session that can no longer exist; `VoiceOverLiveness` has
+    not used its script since 13.26. The fifth is `VoiceOverGestureSender`, and what
+    it costs is **five commands that ship with no factory key** -- which a user
+    reaches through the Commands menu (`vo+h` twice, type, Enter), and so can this
+    bridge, because that is keystrokes plus typed text and it has had both since
+    13.8.
+
+    **The cascade is the interesting half.** `Permission.automationVoiceOver`,
+    `ReaderScriptingSetting`, `VoiceOverPrefsScriptingSetting` and the whole
+    `Precondition` entity (its only case was the switch) delete; rung 1 asks ONE
+    question instead of two; `Gesture` stops being a choice and `CommandVocabulary`
+    returns a `Keystroke` or refuses. The entry adds no file, which is most of the
+    argument for it. **The known limit, stated rather than discovered:** the
+    Commands menu is LOCALIZED where the dispatch names were English, so the
+    English-name route through it is unverified off an English locale -- handed to
+    13.27, which is already decoding this reader's own strings. Spec 0055.
+
+13.32. **Not started** -- **The restore script does not restore** (lane 3). Found by
+    13.31's own live checklist on 2026-09-03, on the maintainer's machine, with his
+    voice left on the capture voice by a crashed session -- which is exactly the
+    situation `scripts/voiceover_restore.py` exists for, and it did not handle it.
+    Three defects, in order of how badly they mislead:
+
+    **It reports the JOURNAL rather than the MACHINE.** After the voice had been put
+    back by another route it went on printing *"it is now: the screen-readers-mcp
+    capture voice"* as a statement of fact. It is a log reader presenting log state
+    as machine state, so any restore performed another way makes it lie -- and the
+    person reading it is by definition somebody recovering from a crash, which is
+    the worst moment to be told a false thing confidently.
+
+    **`--apply` did not apply.** It printed instructions instead of restoring, and
+    the summary line still read *"Nothing was changed. Run again with --apply"* --
+    which is what it had just been run with.
+
+    **The instructions it printed name the WRONG KEY.** It offered
+    `PlistBuddy -c 'Set :SCRKeysToUseForVOModifier com.apple.eloquence.pt-BR.Reed'`
+    -- setting the VOICEOVER MODIFIER to a voice identifier. A human following it
+    would put a voice id into the setting that decides what `vo` is, which is the
+    setting 13.26 already learned not to write (VoiceOver puts a modal question on
+    screen when it changes). This one is close to dangerous rather than merely
+    wrong.
+
+    **13.23 is the entry that created this script**, and its argument was that a
+    crashed session leaves the voice selected and nothing can say so. The journal
+    half works -- the change was recorded correctly, with the right previous value.
+    The recovery half was never exercised against a real open change until now.
+    Spec: none yet.
+
+13.33. **Not started** -- **`askUser` kills the launcher** (lane 3). Also found by
+    13.31's live checklist, and NOT caused by it: `main` was built in a worktree as a
+    control and crashes identically. `BridgeListener` dies with **SIGILL (exit 132)**
+    the moment `askUser` opens its AppKit window, preceded by
+    *"Attempting to add timer to main runloop, but the main thread has exited"*.
+
+    **The cause is structural rather than incidental.** `main.swift` ends with
+    `dispatchMain()`, which parks the main thread by exiting it -- and AppKit needs a
+    real main run loop. So `AppKitPromptWindow` is scheduling onto a run loop that is
+    not there. It has presumably never worked from this launcher; what hid it is that
+    `askUser` is only reached by `poe live`, whose script asks its question LAST and
+    prints its closing summary before the process dies.
+
+    **What it costs is more than a crash**: the session dies without tearing down, so
+    the capture voice is left selected -- which is how 13.32's finding was produced in
+    the first place. The two are one story.
+
+    **It is 13.14's territory**, because the control dialog is what gives this bundle
+    a real `NSApplication` and a main run loop. Until then either the launcher runs
+    an `NSApplication` of its own, or `UserPrompter` is not reachable from it and says
+    so by name rather than crashing. Spec: none yet.
 
 ## Convergence (requires C and D both Done)
 

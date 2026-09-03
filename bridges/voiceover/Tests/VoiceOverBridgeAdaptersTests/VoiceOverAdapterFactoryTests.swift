@@ -53,15 +53,17 @@ struct VoiceOverAdapterFactoryTests {
 		#expect(silent.speechSource is ContainerFileSpeechSource)
 	}
 
-	@Test("both modes get a gesture sender and a liveness probe, for the same reason")
+	@Test("both modes get a liveness probe, for the same reason")
 	func bothModesGetTheInputEdge() throws {
-		// A command is dispatched to the reader identically whether or not the
-		// human can hear the result -- rendering is the extension's business and
-		// the only thing a mode changes on this route.
+		// A gesture reaches the reader identically whether or not the human can
+		// hear the result -- rendering is the extension's business and the only
+		// thing a mode changes on this route. A `gestureSender` was asserted beside
+		// this until 13.31, which deleted the command-name route; what presses a
+		// gesture now is the key presser, checked below with the rest of the event
+		// path.
 		let factory = testAdapterFactory()
 		for mode in [CaptureMode.live, .silent] {
 			let set = try factory.build(mode: mode)
-			#expect(set.gestureSender is VoiceOverGestureSender)
 			#expect(set.readerLiveness is VoiceOverLiveness)
 		}
 	}

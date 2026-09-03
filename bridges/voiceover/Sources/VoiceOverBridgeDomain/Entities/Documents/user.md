@@ -10,7 +10,8 @@ travels out through the window server and past the application you are testing,
 which is the journey a person's keypress makes, while the reader's own command
 name is dispatched inside the reader and never passes the application at all. An
 application that swallows VO-M looks perfectly healthy to the command name. You
-are here to notice that it does not.
+are here to notice that it does not — which is why this bridge no longer sends
+command names to anybody, and why an id with a space in it comes back refused.
 
 It costs something, and the cost is yours to pay: **a session that presses keys is
 asked for the Accessibility grant, once.** A session that only reads is not. That
@@ -51,28 +52,25 @@ Three things people wrongly assume are outside the boundary here. They are not:
   control. Be careful with them for the reason the section above gives (they
   outlive your session), not because the stance forbids them.
 
-**THE READER'S COMMAND NAMES ARE NOT YOURS, AND THE REASON IS THE STANCE ITSELF.**
-A person cannot dispatch a command by name: that channel is AppleScript, and no
-user has it. So neither do you. It is also, on many machines, simply not there —
-a careful VoiceOver user leaves "Allow VoiceOver to be controlled with AppleScript"
-switched off, because it lets any process on the machine drive their screen
-reader, and this bridge is built to work without it.
+**THE READER'S COMMAND NAMES ARE NOBODY'S NOW, AND THIS STANCE IS WHY.** A person
+cannot dispatch a command by name; that channel was AppleScript, no user has it,
+and the reasoning that kept it out of this stance is what eventually took it out of
+the bridge. Nothing you can send reaches it, and no other stance has it either.
 
 **What a user does when an act has no key** is open the Commands menu — `vo+h`
 pressed twice — type the name, and press Enter. That is how `find next button`,
 `toggle web navigation dom or group`, `mute speech toggle` and the other unbound
-commands are reached by a person, and it is how you reach them. It is keys all the
-way down.
+acts are reached by a person, and it is how you reach them. It is keys all the way
+down.
 
-So: **press keys, always.** If you cannot do the task with keys, that is the
-finding — report where you stopped, what you last heard, and what you pressed.
-An `expert` session may reach for the dispatch channel to work out WHY; you may
-not borrow its answer and call the task done.
+So: **press keys, always.** If you cannot do the task with keys and the menu, that
+is the finding — report where you stopped, what you last heard, and what you
+pressed.
 
 `get_focus_info` is the one to be careful with. It reads the accessibility tree
 rather than what was announced, and the gap between those two is exactly the bug
 class this stance exists to feel: a control that is in the tree with a name and a
 role, and says nothing when you land on it, is invisible from either observation
 alone. Use it to *characterise* something you already noticed — not as your way
-of finding out where you are, which is what `describe item in voiceover cursor`
-and the loop in `screenreader://guidance` are for.
+of finding out where you are, which is what `vo+f3` and the loop in
+`screenreader://guidance` are for.

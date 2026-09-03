@@ -64,7 +64,7 @@ let bridgeVersion = "0.0.0-conformance"
 /// TWO ENTRIES, AND THEY ARE THERE FOR DIFFERENT REASONS.
 ///
 /// The second is the CROSS-LANGUAGE AGREEMENT: the Go driver presses that exact
-/// string and expects those exact lines, and the two sides spell it out
+/// gesture id and expects those exact lines, and the two sides spell it out
 /// separately because neither can import the other's constant. It stays a
 /// literal on purpose.
 ///
@@ -77,11 +77,31 @@ let bridgeVersion = "0.0.0-conformance"
 /// machine is involved. It cost a real reader two restarts and a preference write
 /// before anybody looked here. Keeping them separate also keeps the round trip
 /// honest: the speech the test asserts on is caused by the test's OWN press.
+///
+/// BOTH ARE KEYSTROKES SINCE 13.31, and both are keyed by their RESOLVED
+/// spelling, because that is what reaches the presser: `vo` is expanded against
+/// this machine's modifier before a key is pressed, so a map keyed on `vo+m`
+/// would never be hit. `resolved` does that expansion once, with the same
+/// modifier the fake reader edge reports, so neither key is a hand-copied
+/// `control+option+...` literal that a change to the fake would silently strip.
+let harnessModifier = ModifierSetting.controlOption
+
+/// One gesture id in the spelling that reaches the key presser.
+///
+/// A gesture id this harness cannot classify is a bug in the harness rather than
+/// something to fall back from, so it answers the id itself and the missing
+/// speech says which one it was.
+func resolved(_ gesture: String) -> String {
+	guard let keystroke = try? CommandVocabulary.classify(gesture, readerModifier: harnessModifier)
+	else { return gesture }
+	return CommandVocabulary.identifier(for: keystroke)
+}
+
 let scriptedSpeech: [String: [String]] = [
-	ReaderEdgeSetup.captureProbeCommand: [
+	resolved(ReaderEdgeSetup.captureProbeKeystroke): [
 		"conformance harness, the reader speaks"
 	],
-	"describe item in voiceover cursor": [
+	resolved("vo+m"): [
 		"conformance harness, text area",
 		"one of two",
 	],
@@ -178,8 +198,9 @@ let readerEdge = FakeAdapterFactory()
 // which is what makes the grace window a real thing to test rather than a buffer
 // that was already full. It is the whole reason a "press, then read what it said"
 // round trip can be proved across the language boundary with no reader present.
-readerEdge.gestureSender.onPress = { command in
-	for line in scriptedSpeech[command] ?? [] {
+readerEdge.readerModifier.setting = harnessModifier
+readerEdge.keyPresser.onPress = { keystroke in
+	for line in scriptedSpeech[CommandVocabulary.identifier(for: keystroke)] ?? [] {
 		readerEdge.speechSource.emit(line, at: Date().timeIntervalSince1970)
 	}
 }

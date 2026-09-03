@@ -11,7 +11,7 @@
 # that they are "two views that only usually agree" -- a claim nobody in this
 # repo had re-measured. `getFocusInfo` answers from the KEYBOARD/accessibility
 # view; an agent that wants what the user HEARS uses
-# pressGesture ["describe item in voiceover cursor"] and reads the captured
+# pressGesture ["vo+f3"] and reads the captured
 # speech. This script is where the difference between those two becomes visible.
 #
 # WHY IT IS A SEPARATE SCRIPT FROM `voiceover_focus.sh`, and this is the reason
@@ -148,7 +148,7 @@ echo "   the two cursors now DIFFER"
 echo "       -> the measurement. VoiceOver's cursor moved and keyboard focus did"
 echo "          not, which is exactly the state an agent has to be able to tell"
 echo "          apart: getFocusInfo answers the KEYBOARD view, and"
-echo "          pressGesture [\"describe item in voiceover cursor\"] plus a speech"
+echo "          pressGesture [\"vo+f3\"] plus a speech"
 echo "          read answers what the user HEARS."
 echo "   they still AGREE"
 echo "       -> either the press did nothing (check the reader's answer above), or"

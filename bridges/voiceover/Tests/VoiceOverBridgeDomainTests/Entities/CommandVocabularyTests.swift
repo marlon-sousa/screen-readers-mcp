@@ -1,19 +1,25 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Entities/CommandVocabulary.swift.
 //
-// The property under test is a ROUTING DECISION, not a format: this reader takes
-// its own English command names AND keystrokes, they go to two different places
-// at two different permission costs, and the id itself is all there is to tell
-// them apart. The real command names asserted below were read out of the
-// machine's own `SCRStringsToCommandsMap.scrconfig` -- 415 entries on macOS 15.0
-// -- so the space rule is tested against the vocabulary it has to survive rather
-// than against invented examples.
+// THE PROPERTY UNDER TEST STOPPED BEING A ROUTING DECISION AT 13.31. It was one
+// for eight entries: this reader took its own English command names AND
+// keystrokes, they went to two different places at two different permission
+// costs, and the id was all there was to tell them apart. There is one
+// destination now -- no VoiceOver user can type a command name, so neither does a
+// session standing in for one (spec 0055) -- and what is left here is a
+// vocabulary: which ids are keystrokes, and what every other id is told.
+//
+// SO HALF THE TESTS IN THIS FILE ARE REFUSALS THAT USED TO BE ACCEPTANCES, and
+// they are kept in that shape on purpose rather than deleted. The phrases below
+// were read out of the machine's own `SCRStringsToCommandsMap.scrconfig` -- 415
+// entries on macOS 15.0 -- and every agent that has driven this bridge, and every
+// document written about it before now, says to send exactly them. What the
+// refusal has to do is teach the route a person takes, and that is asserted here
+// rather than assumed.
 //
 // THE NAMED TEST THAT REFUSED `control+l` WAS DELETED WITH 13.17, in the commit
 // that made the promise keepable -- the pattern 13.6 and 13.10 both followed
-// before it. What replaced it is the classification below: the same id, no
-// longer refused, and now asserted to take the SYSTEM route rather than the
-// reader one. The refusal that survives is `VO-D`, and it survives for a reason
-// no feature can retire (see below).
+// before it, and the pattern this entry follows in the other direction. The
+// refusal that survives untouched is `VO-D`, for a reason no feature retires.
 
 import Testing
 
@@ -21,47 +27,80 @@ import Testing
 
 @Suite("CommandVocabulary")
 struct CommandVocabularyTests {
-	// -- the reader's own commands ---------------------------------------------
+	// -- what is no longer a gesture id -----------------------------------------
 
-	@Test("an English command name passes through untouched, as a READER command")
-	func aCommandNamePasses() throws {
-		#expect(try CommandVocabulary.classify("go to desktop", readerModifier: .controlOption) == .readerCommand("go to desktop"))
-		#expect(
-			try CommandVocabulary.classify("describe item in voiceover cursor", readerModifier: .controlOption)
-				== .readerCommand("describe item in voiceover cursor"))
+	@Test("AN ENGLISH COMMAND NAME IS REFUSED, AND THE REFUSAL TEACHES THE ROUTE")
+	func aCommandNameIsRefused() {
+		// The whole of 13.31 at this layer. These are real entries in the reader's
+		// own vocabulary and they were accepted here until this entry, so an agent
+		// carrying any earlier guidance will send one. The refusal must not read as
+		// "unknown gesture": the act is reachable, by the key it is bound to or
+		// through the menu a person uses when there is no key.
+		for name in ["go to desktop", "describe item in voiceover cursor", "mute speech toggle"] {
+			do {
+				_ = try CommandVocabulary.classify(name, readerModifier: .controlOption)
+				Issue.record("expected '\(name)' to be refused")
+			} catch let refusal as GestureIdRefused {
+				#expect(refusal.gesture == name)
+				#expect(refusal.description.contains("command names"))
+				// The key, and the menu for an act that has none.
+				#expect(refusal.description.contains("vo+m"))
+				#expect(refusal.description.contains("Commands menu"))
+				// AND NOT THE `kb:` CLAUSE, which is the fix 13.31's own live run
+				// bought: sending `go to menu bar` came back advising
+				// `kb:go to menu bar`, a malformed keystroke the next call would also
+				// refuse. A refusal that names an unusable id costs a round trip and
+				// teaches a spelling that does not exist.
+				#expect(!refusal.description.contains("\(CommandVocabulary.keyboardSource):\(name)"))
+			} catch {
+				Issue.record("unexpected error: \(error)")
+			}
+		}
 	}
 
-	@Test("a real command name containing a HYPHEN passes -- the vocabulary has three")
-	func hyphensInsideRealCommandsPass() throws {
+	@Test("a phrase containing a HYPHEN is refused as a phrase, not as VO-D notation")
+	func hyphensInsideRealCommandsAreNotChords() {
 		// This is the case that makes the naive "a hyphen means a chord" rule
-		// wrong, and both of these are real entries in the machine's own map.
-		#expect(
-			try CommandVocabulary.classify("toggle single-key quick nav on or off", readerModifier: .controlOption)
-				== .readerCommand("toggle single-key quick nav on or off"))
-		#expect(
-			try CommandVocabulary.classify("toggle arrow-key quick nav on or off", readerModifier: .controlOption)
-				== .readerCommand("toggle arrow-key quick nav on or off"))
+		// wrong, and both of these are real entries in the machine's own map. The
+		// space rule still decides, and it decides between two REFUSALS now -- so
+		// the assertion is which message the agent gets, and it is the useful one.
+		for name in [
+			"toggle single-key quick nav on or off", "toggle arrow-key quick nav on or off",
+		] {
+			do {
+				_ = try CommandVocabulary.classify(name, readerModifier: .controlOption)
+				Issue.record("expected '\(name)' to be refused")
+			} catch let refusal as GestureIdRefused {
+				#expect(refusal.description.contains("Commands menu"))
+				// NOT the hyphen-shorthand message, which would tell an agent to
+				// rewrite a sentence with plus signs in it.
+				#expect(!refusal.description.contains("hyphen shorthand"))
+			} catch {
+				Issue.record("unexpected error: \(error)")
+			}
+		}
 	}
 
-	@Test("a command that presses a key THROUGH the reader is still a command")
-	func keyCommandsPass() throws {
-		// "f8 key" and "command key" are in the vocabulary, and they cost no
-		// Accessibility grant -- so they stay the cheap route to a single key, and
-		// refusing them would be this entity mistaking a command name for the thing
-		// it is named after. The modifiers among them famously DO NOT COMPOSE
-		// (`scripts/voiceover_modifiers.sh`), which is why a chord needs the other
-		// route rather than two of these.
-		#expect(try CommandVocabulary.classify("f8 key", readerModifier: .controlOption) == .readerCommand("f8 key"))
-		#expect(try CommandVocabulary.classify("command key", readerModifier: .controlOption) == .readerCommand("command key"))
-	}
-
-	@Test("surrounding whitespace is trimmed, and nothing else is touched")
-	func whitespaceIsTrimmed() throws {
-		// The one liberty taken with an opaque value: a trailing space would fail
-		// as `Command does not exist` and no agent would ever see why. Internal
-		// spacing and case are the reader's business.
-		#expect(try CommandVocabulary.classify("  go to desktop\n", readerModifier: .controlOption) == .readerCommand("go to desktop"))
-		#expect(try CommandVocabulary.classify("Go To Desktop", readerModifier: .controlOption) == .readerCommand("Go To Desktop"))
+	@Test("A LONE TOKEN IS REFUSED, AND THE REFUSAL NAMES ITS PREFIXED FORM")
+	func aLoneTokenIsRefused() {
+		// `f8 key` and `command key` were commands that pressed a key THROUGH the
+		// reader, and a bare `return` was one too -- which is why an unprefixed lone
+		// token was never a keystroke here. That reasoning is gone with the route,
+		// and the rule is kept anyway: `kb:h` is what the transcript writes and what
+		// lane 1 writes, so a notation that accepted `h` as well would be one an
+		// agent has to learn twice. The refusal costs one round trip and names the
+		// spelling that works.
+		do {
+			_ = try CommandVocabulary.classify("h", readerModifier: .controlOption)
+			Issue.record("expected 'h' to be refused")
+		} catch let refusal as GestureIdRefused {
+			// A LONE TOKEN GETS THE CLAUSE A PHRASE DOES NOT, which is the whole of
+			// the distinction: `kb:h` is a keystroke and `kb:go to menu bar` is not.
+			#expect(refusal.description.contains("kb:h"))
+			#expect(refusal.description.contains("single key"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	// -- keystrokes ------------------------------------------------------------
@@ -74,13 +113,12 @@ struct CommandVocabularyTests {
 		// exactly this notation, and now it works.
 		#expect(
 			try CommandVocabulary.classify("command+l", readerModifier: .controlOption)
-				== .keystroke(Keystroke(modifiers: [.command], keys: [.character("l")])))
+				== Keystroke(modifiers: [.command], keys: [.character("l")]))
 		#expect(
 			try CommandVocabulary.classify("control+option+space", readerModifier: .controlOption)
-				== .keystroke(
-					Keystroke(
-						modifiers: [.control, .option], keys: [.named(.space)],
-						holdsReaderModifier: true)))
+				== Keystroke(
+					modifiers: [.control, .option], keys: [.named(.space)],
+					holdsReaderModifier: true))
 	}
 
 	@Test("TWO ORDINARY KEYS ARE A KEYSTROKE HERE TOO, and the vocabulary needed no change")
@@ -91,23 +129,23 @@ struct CommandVocabularyTests {
 		// chord is arrow-key Quick Nav, which is the one an agent meets first.
 		#expect(
 			try CommandVocabulary.classify("leftArrow+rightArrow", readerModifier: .controlOption)
-				== .keystroke(Keystroke(modifiers: [], keys: [.named(.leftArrow), .named(.rightArrow)])))
+				== Keystroke(modifiers: [], keys: [.named(.leftArrow), .named(.rightArrow)]))
 		#expect(
 			try CommandVocabulary.classify("kb:leftArrow+rightArrow", readerModifier: .controlOption)
 				== CommandVocabulary.classify("leftArrow+rightArrow", readerModifier: .controlOption))
-		// And it costs the Accessibility grant exactly as a one-key chord does --
-		// a `CGEvent` is a `CGEvent` -- which is what keeps 13.8's lever intact.
-		#expect(try CommandVocabulary.classify("leftArrow+rightArrow", readerModifier: .controlOption).isKeystroke == true)
 	}
 
-	@Test("THE SPACE RULE IS WHAT DECIDES: `command key` is a command, `command+l` is not")
+	@Test("THE SPACE RULE IS WHAT DECIDES: `command key` is a phrase, `command+l` is a chord")
 	func theSpaceRuleSeparatesThem() throws {
-		// The whole discriminator, in one assertion. Every real command name that
-		// carries a separator carries spaces too, and no command in the 415 is a
-		// bare `+`-joined token -- so the rule that decides is one this file
-		// already lived by before there was anything to decide between.
-		#expect(try CommandVocabulary.classify("command key", readerModifier: .controlOption).isKeystroke == false)
-		#expect(try CommandVocabulary.classify("command+l", readerModifier: .controlOption).isKeystroke == true)
+		// The discriminator, in one test. It used to separate two acceptances --
+		// `command key` was one of the reader's own commands -- and it now separates
+		// an acceptance from a refusal, which is a smaller job for the same rule.
+		#expect(throws: GestureIdRefused.self) {
+			try CommandVocabulary.classify("command key", readerModifier: .controlOption)
+		}
+		#expect(
+			try CommandVocabulary.classify("command+l", readerModifier: .controlOption).keys
+				== [.character("l")])
 	}
 
 	// -- the source prefix, which is 13.19 --------------------------------------
@@ -122,8 +160,13 @@ struct CommandVocabularyTests {
 		// reader where an unprefixed id does not mean the keyboard. This one.
 		#expect(
 			try CommandVocabulary.classify("kb:h", readerModifier: .controlOption)
-				== .keystroke(Keystroke(modifiers: [], keys: [.character("h")])))
-		#expect(try CommandVocabulary.classify("h", readerModifier: .controlOption) == .readerCommand("h"))
+				== Keystroke(modifiers: [], keys: [.character("h")]))
+		// `h` bare was a COMMAND NAME until 13.31 and is now a refusal that names
+		// this spelling -- see `aLoneTokenIsRefused`. The prefix still does the
+		// deciding; what it decides between has changed.
+		#expect(throws: GestureIdRefused.self) {
+			try CommandVocabulary.classify("h", readerModifier: .controlOption)
+		}
 	}
 
 	@Test("the prefix is accepted on a chord too, and changes nothing about it")
@@ -131,7 +174,10 @@ struct CommandVocabularyTests {
 		// An agent that has learned the prefix should not have to learn where NOT
 		// to write it, and lane 1 accepts it on everything.
 		#expect(try CommandVocabulary.classify("kb:command+l", readerModifier: .controlOption) == CommandVocabulary.classify("command+l", readerModifier: .controlOption))
-		#expect(try CommandVocabulary.classify("KB:Down", readerModifier: .controlOption).described == "kb:downArrow")
+		#expect(
+			CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify("KB:Down", readerModifier: .controlOption))
+				== "kb:downArrow")
 	}
 
 	@Test("THE PREFIX OUTRANKS THE SHAPE OF WHAT FOLLOWS IT")
@@ -180,12 +226,20 @@ struct CommandVocabularyTests {
 	}
 
 	@Test("a COLON INSIDE A PHRASE is not a source -- the space rule again")
-	func aColonAfterAPhraseIsNotASource() throws {
-		// Checked on the machine rather than assumed: none of the 415 entries in
-		// `SCRStringsToCommandsMap.scrconfig` contains a colon. If one ever does,
-		// this is the rule that keeps it a command name.
-		#expect(
-			try CommandVocabulary.classify("say this: now", readerModifier: .controlOption) == .readerCommand("say this: now"))
+	func aColonAfterAPhraseIsNotASource() {
+		// A source is a single token, so a phrase before the colon means the colon
+		// is part of the phrase -- which is refused as a phrase, with the route a
+		// person takes, rather than as an unknown source. The distinction matters
+		// because the two messages send an agent to different places.
+		do {
+			_ = try CommandVocabulary.classify("say this: now", readerModifier: .controlOption)
+			Issue.record("expected a refusal")
+		} catch let refusal as GestureIdRefused {
+			#expect(refusal.description.contains("Commands menu"))
+			#expect(!refusal.description.contains("gesture source"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	@Test("a malformed keystroke is refused as a GESTURE ID, carrying the parse's reason")
@@ -239,7 +293,6 @@ struct CommandVocabularyTests {
 			Issue.record("expected a refusal")
 		} catch let refusal as GestureIdRefused {
 			#expect(refusal.description.contains("vo+d"))
-			#expect(refusal.description.contains("describe item in voiceover cursor"))
 			// Not sent to the literal keys any more: on a Caps Lock machine they are
 			// not the modifier, and this refusal cannot see which machine it is on.
 			#expect(!refusal.description.contains("control+option+d"))
@@ -271,9 +324,10 @@ struct CommandVocabularyTests {
 				Issue.record("expected an empty id to be refused")
 			} catch let refusal as GestureIdRefused {
 				#expect(refusal.description.contains("empty"))
-				// Both routes named, because both are available now.
-				#expect(refusal.description.contains("go to desktop"))
+				// The notation, spelled the three ways an id can look.
+				#expect(refusal.description.contains("vo+m"))
 				#expect(refusal.description.contains("command+l"))
+				#expect(refusal.description.contains("kb:h"))
 			} catch {
 				Issue.record("unexpected error: \(error)")
 			}
@@ -282,13 +336,16 @@ struct CommandVocabularyTests {
 
 	// -- what the handler reports ----------------------------------------------
 
-	@Test("`described` is what the bridge UNDERSTOOD, not what it was handed")
+	@Test("`identifier` is what the bridge UNDERSTOOD, not what it was handed")
 	func describedReportsTheUnderstanding() throws {
 		// It is what goes in the transcript and in the `pressed` entry, so a reader
 		// of either sees which keys went out rather than an echo of the agent's own
-		// text.
-		#expect(try CommandVocabulary.classify("  go to desktop ", readerModifier: .controlOption).described == "go to desktop")
-		#expect(try CommandVocabulary.classify("Command+L", readerModifier: .controlOption).described == "command+l")
+		// text. Surrounding whitespace is trimmed on the way in, which is the one
+		// liberty taken with an opaque id.
+		#expect(
+			CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify("  Command+L\n", readerModifier: .controlOption))
+				== "command+l")
 	}
 
 	@Test("THE SOURCE PREFIX APPEARS EXACTLY WHERE DROPPING IT WOULD LIE")
@@ -297,17 +354,26 @@ struct CommandVocabularyTests {
 		// name -- so a modifier-free keystroke keeps its prefix. A chord does not
 		// need one, and going without keeps the spelling identical to lane 1's
 		// documented form, which is the point of standardizing on it.
-		#expect(try CommandVocabulary.classify("kb:h", readerModifier: .controlOption).described == "kb:h")
-		#expect(try CommandVocabulary.classify("kb:command+l", readerModifier: .controlOption).described == "command+l")
+		#expect(
+			CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify("kb:h", readerModifier: .controlOption)) == "kb:h")
+		#expect(
+			CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify("kb:command+l", readerModifier: .controlOption))
+				== "command+l")
 		// A multi-key chord with no modifiers keeps the prefix too -- 13.22. It
 		// would round-trip without one, since the `+` classifies it; the rule stays
 		// "no modifiers, so say which vocabulary" rather than growing a clause.
 		#expect(
-			try CommandVocabulary.classify("leftArrow+rightArrow", readerModifier: .controlOption).described
+			CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify("leftArrow+rightArrow", readerModifier: .controlOption))
 				== "kb:leftArrow+rightArrow")
 		for id in ["kb:h", "command+l", "kb:downArrow", "shift+command+4", "leftArrow+rightArrow"] {
-			let described = try CommandVocabulary.classify(id, readerModifier: .controlOption).described
-			#expect(try CommandVocabulary.classify(described, readerModifier: .controlOption).described == described)
+			let spelled = CommandVocabulary.identifier(
+				for: try CommandVocabulary.classify(id, readerModifier: .controlOption))
+			#expect(
+				CommandVocabulary.identifier(
+					for: try CommandVocabulary.classify(spelled, readerModifier: .controlOption)) == spelled)
 		}
 	}
 
@@ -319,10 +385,9 @@ struct CommandVocabularyTests {
 		// rules that were already here classify it.
 		#expect(
 			try CommandVocabulary.classify("vo+m", readerModifier: .controlOption)
-				== .keystroke(
-					Keystroke(
-						modifiers: [.control, .option], keys: [.character("m")],
-						holdsReaderModifier: true)))
+				== Keystroke(
+					modifiers: [.control, .option], keys: [.character("m")],
+					holdsReaderModifier: true))
 	}
 
 	@Test("the `kb:` prefix is accepted on one too, and changes nothing")
@@ -332,15 +397,21 @@ struct CommandVocabularyTests {
 				== CommandVocabulary.classify("vo+m", readerModifier: .controlOption))
 	}
 
-	@Test("a COMMAND NAME containing those two letters is untouched")
-	func aCommandNameIsNotAModifier() throws {
+	@Test("a PHRASE containing those two letters is not read as a modifier")
+	func aCommandNameIsNotAModifier() {
 		// The space rule does this work, and it is worth an assertion because `vo`
-		// is now a token with a meaning: "toggle the vo modifier lock on or off" is
-		// one of the reader's 415 commands and must still reach the reader.
-		#expect(
-			try CommandVocabulary.classify("toggle the vo modifier lock on or off",
-				readerModifier: .controlOption)
-				== .readerCommand("toggle the vo modifier lock on or off"))
+		// is a token with a meaning: "toggle the vo modifier lock on or off" is one
+		// of the reader's own acts, and an agent will send it here. What it must get
+		// back is the phrase refusal with the route, not a complaint about a chord.
+		do {
+			_ = try CommandVocabulary.classify(
+				"toggle the vo modifier lock on or off", readerModifier: .controlOption)
+			Issue.record("expected a refusal")
+		} catch let refusal as GestureIdRefused {
+			#expect(refusal.description.contains("Commands menu"))
+		} catch {
+			Issue.record("unexpected error: \(error)")
+		}
 	}
 
 	@Test("A REFUSED `vo` IS REPORTED AGAINST THE ID THE AGENT SENT")

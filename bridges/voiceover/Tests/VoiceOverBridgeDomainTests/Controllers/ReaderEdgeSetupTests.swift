@@ -27,8 +27,6 @@ struct ReaderEdgeSetupTests {
 		permissions: FakePermissionBroker = FakePermissionBroker(),
 		liveness: FakeReaderLiveness = FakeReaderLiveness(),
 		lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
-		gestures: FakeGestureSender = FakeGestureSender(),
-		scripting: FakeReaderScriptingSetting = FakeReaderScriptingSetting(),
 		modifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
 		keys: FakeKeyPresser = FakeKeyPresser(),
 		silence: FakeSilenceControl = FakeSilenceControl(),
@@ -44,11 +42,9 @@ struct ReaderEdgeSetupTests {
 			speechSource: speechSource,
 			silenceControl: silence,
 			providerLifecycle: lifecycle,
-			gestureSender: gestures,
 			readerLiveness: liveness,
 			keyPresser: keys,
 			readerModifier: modifier,
-			readerScripting: scripting,
 			readerRestart: restart,
 			changeJournal: journal,
 			permissions: permissions,
@@ -162,11 +158,11 @@ struct ReaderEdgeSetupTests {
 
 	@Test("A HEALTHY MACHINE CLIMBS ALL FIVE RUNGS, and the proof is an utterance arriving")
 	func aHealthyMachineClimbs() throws {
-		let gestures = FakeGestureSender()
+		let keys = FakeKeyPresser()
 		let lifecycle = FakeProviderLifecycle()
 		let transcript = FakeTranscript()
 		let (setup, context, speech) = machine(
-			lifecycle: lifecycle, gestures: gestures, transcript: transcript)
+			lifecycle: lifecycle, keys: keys, transcript: transcript)
 		try setup.establish()
 
 		// The reader was pointed at our voice, and what the user had is held for
@@ -175,7 +171,7 @@ struct ReaderEdgeSetupTests {
 		#expect(context.previousVoice == "com.apple.voice.compact.pt-BR.Luciana")
 		// The probe was pressed, and its answer is in the buffer -- which is the
 		// only evidence `ProviderState.capturing` accepts.
-		#expect(gestures.pressed == [ReaderEdgeSetup.captureProbeCommand])
+		#expect(keys.describedPresses == ["control+option+f7"])
 		#expect(speech.lastIndex() == 1)
 		#expect(lifecycle.state().observing(captured: !speech.isEmpty) == .capturing)
 		#expect(transcript.notes.contains { $0.contains("capturing") })
@@ -205,10 +201,10 @@ struct ReaderEdgeSetupTests {
 	@Test("A MISSING GRANT STOPS THE HANDSHAKE, AND NOTHING ASKS FOR IT")
 	func aMissingGrantStopsTheClimbWithoutAsking() {
 		// 13.8's LEVER, DEFENDED FROM THE ENTRY THAT MOST WANTED TO SPEND IT. The
-		// handshake reads both grants and requests neither: `request` raises a
-		// system consent dialog, and a handshake that waited on a modal nobody may
-		// be looking at is a handshake that hangs. There are still exactly two
-		// callers of `request` in this bridge and both are command handlers.
+		// handshake READS the grant and never requests it: `request` raises a system
+		// consent dialog, and a handshake that waited on a modal nobody may be
+		// looking at is a handshake that hangs. There are still exactly two callers
+		// of `request` in this bridge and both are command handlers.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		let lifecycle = FakeProviderLifecycle()
 		let (setup, _, _) = machine(permissions: permissions, lifecycle: lifecycle)
@@ -221,91 +217,75 @@ struct ReaderEdgeSetupTests {
 		#expect(lifecycle.registerCalls == 0)
 	}
 
-	@Test("the refusal tells the AGENT what to do, and names BOTH ways out")
+	@Test("the refusal tells the AGENT what to do, and names the one route there is")
 	func theRefusalIsAddressedToTheAgent() {
-		// The audience is not the person at the machine -- nobody may be there. And
-		// since 13.26 there are TWO grants that would each be enough on their own,
-		// so a refusal naming one of them would send a human to grant the wrong
-		// thing.
-		let (setup, _, _) = machine(
-			permissions: FakePermissionBroker(state: .notGranted),
-			scripting: FakeReaderScriptingSetting(setting: .disabled))
+		// The audience is not the person at the machine -- nobody may be there.
+		//
+		// IT NAMED TWO WAYS OUT FROM 13.26 TO 13.31, because either grant was enough
+		// on its own and a refusal naming one would send a human to grant the wrong
+		// thing. There is one route now: this bridge presses the keys a person
+		// presses, so Accessibility and a pressable modifier are the whole of it.
+		let (setup, _, _) = machine(permissions: FakePermissionBroker(state: .notGranted))
 		let message = failure { try setup.establish() }
 		#expect(message?.contains("ask the human at this machine") == true)
 		#expect(message?.contains("connect again") == true)
 		#expect(message?.contains("Accessibility") == true)
-		#expect(message?.contains("AppleScript") == true)
-		// And it says which route to prefer, and why -- the reason is the person's
-		// own security rather than this bridge's convenience.
-		#expect(message?.contains("closed to every other") == true)
+		#expect(message?.contains("VoiceOver Utility") == true)
+		// AND IT NO LONGER MENTIONS APPLESCRIPT, which would send a human to switch
+		// on a channel this bridge does not use -- the very switch 13.31 exists so
+		// that nobody has to leave on.
+		#expect(message?.contains("AppleScript") == false)
 	}
 
-	@Test("`cannotTell` is not read as a NO, and says which read was inconclusive")
-	func anUnreadableGrantStopsIt() {
-		// Reporting it as `notGranted` would send a human to System Settings to fix
-		// a grant they already hold, which is the false negative 13.11 removed --
-		// and it matters more now, since the channel that answers the automation
-		// grant is exactly the one 13.26 expects to be switched off.
-		let (setup, _, _) = machine(
-			permissions: FakePermissionBroker(state: .cannotTell),
-			scripting: FakeReaderScriptingSetting(setting: .disabled))
-		let message = failure { try setup.establish() }
-		#expect(message?.contains("could not determine") == true)
-	}
+	// -- rung 1 as a ROUTE check, which is 13.26 as 13.31 narrowed it ------------
 
-	// -- rung 1 as a ROUTE check, which is 13.26 --------------------------------
-
-	@Test("ACCESSIBILITY ALONE IS ENOUGH: no AppleScript, no Automation, and a session")
+	@Test("ACCESSIBILITY AND A PRESSABLE MODIFIER ARE THE WHOLE REQUIREMENT")
 	func keysAloneEstablish() throws {
-		// The entry's whole point. "Allow VoiceOver to be controlled with
-		// AppleScript" lets any process drive a blind person's screen reader, so a
-		// bridge that required it to be on would be asking them to hold a door open
-		// for everyone. A machine with Accessibility and nothing else can be driven
-		// by keys, which is what a person uses.
+		// 13.26's point, arrived at from the other side. That entry widened this rung
+		// so a machine with no AppleScript control could still get a session, because
+		// "Allow VoiceOver to be controlled with AppleScript" lets any process drive
+		// a blind person's screen reader and requiring it was asking them to hold a
+		// door open for everyone. 13.31 deleted the other route entirely, so what was
+		// then one of two acceptable answers is now the only one.
 		let permissions = FakePermissionBroker(state: .granted)
-		permissions.states[.automationVoiceOver] = .notGranted
-		let (setup, _, _) = machine(
-			permissions: permissions,
-			scripting: FakeReaderScriptingSetting(setting: .disabled))
-		try setup.establish()
-		#expect(permissions.requests.isEmpty)
-	}
-
-	@Test("THE COMMAND-NAME ROUTE ALONE IS ENOUGH TOO, which is the old machine")
-	func commandNamesAloneEstablish() throws {
-		// A machine that has never granted Accessibility, with the switch on: it
-		// cannot press a key and it can dispatch the reader's own commands, and
-		// that is a session. Nothing about this entry takes that away.
-		let permissions = FakePermissionBroker(state: .granted)
-		permissions.states[.accessibility] = .notGranted
 		let (setup, _, _) = machine(permissions: permissions)
 		try setup.establish()
 		#expect(permissions.requests.isEmpty)
 	}
 
-	@Test("the AppleScript SWITCH being off removes that route even with the grant")
-	func theSwitchIsPartOfTheRoute() {
-		// The grant and the switch are two different things and both are needed for
-		// the command-name route: `kTCCServiceAppleEvents` says this process may
-		// send events to VoiceOver, and the switch says VoiceOver will act on them.
-		let permissions = FakePermissionBroker(state: .granted)
-		permissions.states[.accessibility] = .notGranted
-		let (setup, _, _) = machine(
-			permissions: permissions,
-			scripting: FakeReaderScriptingSetting(setting: .disabled))
+	@Test("A CAPS LOCK MACHINE IS REFUSED, and the refusal says what to change")
+	func aCapsLockMachineIsRefused() {
+		// THE ONE MACHINE 13.31 MAKES STRICTLY WORSE, and it is named rather than
+		// hidden: a synthesized Caps Lock is invisible to the reader (measured
+		// 2026-09-02), so a machine bound to it cannot be driven by keys -- and until
+		// this entry it could still be driven by name. It is board entry 13.28.
+		let (setup, _, _) = machine(modifier: FakeReaderModifierSetting(.capsLock))
+		let message = failure { try setup.establish() }
+		#expect(message?.contains(SetupRung.permissions.rawValue) == true)
+		#expect(message?.contains("capsLock") == true)
+		#expect(message?.contains("Control-Option") == true)
+	}
+
+	@Test("an UNREADABLE modifier is refused too, because pressing it would be a guess")
+	func anUnreadableModifierIsRefused() {
+		// What 13.19 refused was GUESSING, and guessing is still refused. "I could
+		// not look" is not "it is at its default".
+		let (setup, _, _) = machine(modifier: FakeReaderModifierSetting(.unknown))
 		#expect(failure { try setup.establish() } != nil)
 	}
 
-	@Test("each grant is read ONCE, and neither is ever requested")
+	@Test("the grant is read ONCE, and never requested")
 	func eachGrantIsReadOnce() throws {
-		// The routes are computed at rung 1 and carried to rung 5 rather than being
-		// asked for again, so a handshake cannot read a permission twice and get two
+		// The modifier is read once at rung 1 and CARRIED to rung 5 rather than
+		// asked for again, so a handshake cannot read the machine twice and get two
 		// answers -- and so "nothing here requests anything" stays checkable.
 		let permissions = FakePermissionBroker()
-		let (setup, _, _) = machine(permissions: permissions)
+		let modifier = FakeReaderModifierSetting()
+		let (setup, _, _) = machine(permissions: permissions, modifier: modifier)
 		try setup.establish()
-		#expect(permissions.statusReads == Permission.allCases)
+		#expect(permissions.statusReads == [.accessibility])
 		#expect(permissions.requests.isEmpty)
+		#expect(modifier.reads == 1)
 	}
 
 	// -- rung 2: a reader to talk to -------------------------------------------
@@ -415,13 +395,19 @@ struct ReaderEdgeSetupTests {
 
 	@Test("THE PROBE IS THE SAFE ONE, and it is pressed after the bookmark is taken")
 	func theProbeMovesNothing() throws {
-		// `describe item in voiceover cursor` describes what the cursor is on and
-		// MOVES NOTHING. A probe that navigated would make every connect a small
-		// invisible edit to where the person was standing.
-		let gestures = FakeGestureSender()
-		let (setup, _, speech) = machine(gestures: gestures)
+		// `vo+f7` speaks the time and date and MOVES NOTHING. A probe that navigated
+		// would make every connect a small invisible edit to where the person was
+		// standing -- which is why `go to dock`, also guaranteed to speak, was
+		// declined for it.
+		//
+		// IT IS PRESSED RATHER THAN DISPATCHED SINCE 13.31. The rung used to choose
+		// the command name where the machine offered it, on the reasoning that a
+		// probe is not a user act and a name sends no key into whatever window
+		// somebody is sitting in. That route is gone, so the choice went with it.
+		let keys = FakeKeyPresser()
+		let (setup, _, speech) = machine(keys: keys)
 		try setup.establish()
-		#expect(gestures.pressed == ["speak the time and date"])
+		#expect(keys.describedPresses == ["control+option+f7"])
 		// The utterance the probe caused landed at 1, after the sentinel -- so it
 		// was bookmarked before the press and not counted from stale speech.
 		#expect(speech.entry(at: 1).text == captureProbeUtterance)
@@ -444,14 +430,17 @@ struct ReaderEdgeSetupTests {
 		#expect(message?.contains(ReaderCondition.captureVoiceNotOfferedByReader.rawValue) == true)
 	}
 
-	@Test("a reader that will not take the probe is reported as that, not as silence")
+	@Test("a probe that cannot be PRESSED is reported as that, not as silence")
 	func aRefusedProbeIsItsOwnFailure() {
-		let gestures = FakeGestureSender()
-		gestures.failures[ReaderEdgeSetup.captureProbeCommand] = .scriptingChannelDead
-		let (setup, _, _) = machine(gestures: gestures)
+		// A bridge that could not press the probe never learned anything about
+		// capture, so reporting "nothing was captured" would be blaming the voice
+		// for a keyboard.
+		let keys = FakeKeyPresser()
+		keys.failures["control+option+f7"] = KeyPressFailure("the event could not be posted")
+		let (setup, _, _) = machine(keys: keys)
 		let message = failure { try setup.establish() }
 		#expect(message?.contains(SetupRung.captureProof.rawValue) == true)
-		#expect(message?.contains("would not take") == true)
+		#expect(message?.contains("could not be pressed") == true)
 	}
 
 	// -- the marker channel, and where it sits ---------------------------------
@@ -464,10 +453,10 @@ struct ReaderEdgeSetupTests {
 		// inaudible. Capture is unaffected -- the capture voice emits to the sink
 		// before it synthesizes (13.5), so a silent proof still proves.
 		let silence = FakeSilenceControl()
-		let gestures = FakeGestureSender()
+		let keys = FakeKeyPresser()
 		var suppressedWhenPressed = false
-		gestures.onPress = { _ in suppressedWhenPressed = silence.isSuppressing }
-		let (setup, _, _) = machine(mode: .silent, gestures: gestures, silence: silence)
+		keys.onPress = { _ in suppressedWhenPressed = silence.isSuppressing }
+		let (setup, _, _) = machine(mode: .silent, keys: keys, silence: silence)
 		try setup.establish()
 		#expect(suppressedWhenPressed)
 		#expect(

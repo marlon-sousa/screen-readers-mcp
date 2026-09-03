@@ -17,6 +17,12 @@
 // Automation grant, on a machine that may have intended to drive the reader
 // entirely by keystrokes and needed no AppleEvents at all.
 //
+// THE SCRIPT ITSELF OUTLIVED THE PROBE BY FIVE ENTRIES AND IS NOW GONE TOO. It
+// stayed public because `TCCPermissionBroker` sent it to read the Automation
+// grant -- the only way to learn a permission that belonged to the CHANNEL rather
+// than to this binary. 13.31 deleted the command-name route, so there is no
+// channel, no grant to read and no script anywhere in this bridge (spec 0055).
+//
 // And the requirement behind 13.26 is sharper than convenience: "Allow VoiceOver
 // to be controlled with AppleScript" lets ANY process drive the screen reader a
 // blind person depends on, so every use of that channel had to justify itself.
@@ -24,12 +30,12 @@
 // NO permission, cannot be switched off, and is exact where the AppleEvent was a
 // proxy.
 //
-// THE DISTINCTION SPEC 0041 NEEDS IS NOT LOST -- IT MOVED, AND IMPROVED. "The
-// process is there but the command failed" is now composed by the caller from
-// this answer AND the AppleScript switch's state, which separates THREE
-// conditions where the old probe separated two: the reader is gone; the reader is
-// there and the command-name route is switched off; the reader is there, the
-// route is on, and the object model is dead. See `PressGestureHandler.explain`.
+// THE DISTINCTION SPEC 0041 NEEDED IS NOT LOST; IT STOPPED EXISTING. That spec
+// required "the process is there but its object model is not" be reported as a
+// named condition, and 13.26 composed it from this answer plus the AppleScript
+// switch. There is no object model in this bridge since 13.31, so what is left for
+// a caller to ask is the plain question this class was always best at: is the
+// reader there at all. See `PressGestureHandler.explain`.
 //
 // AND SINCE 13.20 IT CAN START THE READER, WHICH IS THE OPPOSITE QUESTION ASKED
 // BY A DIFFERENT CALLER. `ReaderEdgeSetup` asks BEFORE anything, because a
@@ -61,20 +67,6 @@
 import VoiceOverBridgeDomain
 
 public final class VoiceOverLiveness: ReaderLiveness {
-	/// The script that ASKS THE READER ITS OWN NAME.
-	///
-	/// NO LONGER THIS CLASS'S PROBE (13.26) -- liveness is answered from the
-	/// running-application list now, at no permission cost. It stays here, and
-	/// stays public, because `TCCPermissionBroker` sends it to find out whether
-	/// the AUTOMATION GRANT is in force: on this bridge that grant is a fact about
-	/// the CHANNEL rather than about the calling binary (13.11), and the only way
-	/// to learn it is to use the channel and read the number -- `-1743` is the
-	/// missing grant and everything else is not.
-	///
-	/// It is a question about AppleEvents, in other words, and it now lives with
-	/// the one caller that is asking about AppleEvents.
-	public static let readerNameScript = "tell application \"VoiceOver\" to return name"
-
 	/// VoiceOver's bundle identifier, which is what the running-application list
 	/// is keyed by.
 	public static let readerBundleIdentifier = "com.apple.VoiceOver"

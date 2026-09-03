@@ -34,63 +34,47 @@ and nothing is pressed. This bridge cannot synthesize that key, and
 modifier at all, and pressing them would do something else entirely. The refusal
 says so and names the route that still works.
 
-**Why keys rather than the reader's own command names.** This reader will also
-dispatch its commands by name, and it is a real capability — but the two are
-different paths through the machine. A keystroke goes out through the window
-server, past the application under test, and reaches VoiceOver's event tap, which
-is exactly the journey a person's keypress makes. A command name is dispatched
-*inside* the reader and never passes the application at all. **So an application
-that swallows or reinterprets VO-M is invisible to the command name**, which
-reports success while a real user is stuck — and that is the defect class you are
-here to find. Press what a person presses.
+**Keys are the only way in, and that is on purpose.** This reader will also
+dispatch its own commands by name — `go to menu bar` rather than `vo+m` — and
+this bridge used to send them. It does not any more, and the reason is the
+reason you are here. A keystroke goes out through the window server, past the
+application under test, and reaches VoiceOver's event tap, which is exactly the
+journey a person's keypress makes. A command name is dispatched *inside* the
+reader and never passes the application at all. **So an application that swallows
+or reinterprets VO-M is invisible to the command name**, which reports success
+while a real user is stuck — and that is the defect class you are here to find.
 
-## The reader's own command names, and what they are for
+**So an id with a space in it is refused**, and the refusal names the key. If you
+have driven this bridge before, or read anything written about it, you may reach
+for `describe item in voiceover cursor`; send `vo+f3` instead. The tables further
+down give the key for every act this document names.
 
-The other notation is one of VoiceOver's own English command names, which the
-reader dispatches itself:
+## Reaching an act that has no key
 
-    press_gesture { gestures: ["describe item in voiceover cursor"] }
+Some acts have no keystroke at all. Measured on macOS 15.0 on 2026-09-02: `find
+next button`, `find next text field`, `toggle web navigation dom or group`, `mute
+speech toggle` and `pause or resume speaking` ship with **no** factory binding.
 
-**Two things tell the notations apart, and you only need the first.** A command
-name is a phrase and always contains a space; a keystroke never does. And `kb:`
-in front of an id says "this is a key" whatever it looks like, which is what lets
-you press a single letter — `kb:h`, below.
+**You reach them the way a person does: the Commands menu.** Press `vo+h` twice,
+type the act's name, press Enter.
 
-**NO USER HAS THIS CHANNEL, AND THAT DECIDES WHO MAY USE IT.** A person cannot
-dispatch one of the reader's commands by name — they press keys, and to reach a
-command with no key they open the Commands menu (`vo+h` pressed twice), type the
-name and press Enter. So a session standing in for a user presses keys, always,
-and uses that menu for the rest; the dispatch channel belongs to the `expert`
-stance, which is standing in for nobody. Your own stance section below says which
-you are.
+    press_gesture { gestures: ["vo+h", "vo+h"] }
+    type_text     { text: "mute speech toggle" }
+    press_gesture { gestures: ["kb:enter"] }
 
-**And it may not exist on this machine.** The channel is VoiceOver's own
-AppleScript control, which a careful user switches off — it lets any process on
-the machine drive their screen reader. When it is off, a command name fails with a
-message saying so and telling you to press the key instead. Keys always work; this
-does not.
+Read the speech after each step: the menu announces itself, and it announces what
+it has narrowed to as you type, so you can see whether it found the act before you
+commit to it.
 
-Where it is available, it is worth reaching for in three cases and not as a habit:
+**One caveat, and it is honest rather than tidy.** The menu is rendered in the
+machine's own language, while the names above are English. On a machine whose
+system language is not English, typing an English name may match nothing — read
+the speech, and if it has found nothing, ask the person at the machine what the
+act is called for them (`ask_user`). The rotor (`vo+u`) is the other route a
+person uses, and it is worth trying for anything about navigating by element.
 
-- **They cost no permission at all.** A keystroke is a system event and costs the
-  Accessibility grant (below); a command name costs nothing. On a machine that
-  will not grant it, the command names are the whole of what you have.
-- **They are your diagnosis.** A key that does nothing where its command name
-  works is a finding, not a dead end: either the person has rebound that key, or
-  the application swallowed it — and the second is a real defect in the thing you
-  are testing. Say which route you took, always, and say it when the two disagree.
-- **Some commands have no key at all.** Measured on macOS 15.0 on 2026-09-02:
-  `find next button`, `find next text field`, `toggle web navigation dom or
-  group`, `mute speech toggle` and `pause or resume speaking` ship with **no**
-  factory keystroke. A user reaches them through the rotor or the Commands menu;
-  you reach them by name.
-
-**An unknown command name fails cleanly and changes nothing.** The reader answers
-`Command does not exist (6)`, so guessing one costs a round trip and is safe --
-which makes trying a name a legitimate way to find out whether this reader has a
-facility, and a better one than trusting a list that goes stale every macOS
-release. The vocabulary is large (415 commands on macOS 15.0) and this document
-names only what a session needs.
+**If an act has neither a key nor a menu entry you can reach, say so.** That is a
+finding about this reader, not a failure of yours, and it is worth writing down.
 
 ## Keystrokes: how to write one, and what it costs
 
@@ -130,11 +114,10 @@ because they would not:
 readers has to spell that one key differently.
 
 - **A key with NO modifier needs the `kb:` prefix** — `kb:h`, `kb:enter`. Without
-  it the id is a command name. That is not pedantry: the reader has commands for
-  most single keys (`return key`, `tab key`, `left arrow key`, `f8 key`), it
-  performs them itself, and **they cost no permission at all**. `kb:` is for the
-  keys the reader has no command for — which is every letter, and letters are
-  what single-key Quick Nav is made of.
+  it the id is refused, and the refusal names the prefixed spelling. It is the
+  same spelling this bridge writes back to you in `pressed` and in the run's
+  record, and the same one the other reader in this contract uses, so one notation
+  means one thing everywhere.
 - **Two ordinary keys may be held together** — `kb:leftArrow+rightArrow`, which
   is arrow-key Quick Nav. Every part after the modifiers is a key, so there is no
   second separator to learn and `command+leftArrow+rightArrow` says what it looks
@@ -142,10 +125,11 @@ readers has to spell that one key differently.
   they really are held at the same moment — which is what the reader detects;
   sending the two arrows as two gestures moves nothing. There is no limit of two.
 - **A keystroke costs the Accessibility grant**, exactly as `type_text` does, and
-  the request is raised on the first one of a session. **A session that drives
-  this reader the way a user does will be asked for it**, once, and that is the
-  price of pressing what a person presses. A session that only reads speech, or
-  only sends command names, is still never asked for anything.
+  the request is raised on the first one of a session. **Every session that drives
+  this reader will be asked for it**, once, and that is the price of pressing what
+  a person presses. A session that only reads speech is never asked for anything,
+  and neither is connecting: this bridge reads permissions at the handshake and
+  requests none, so nothing pops a dialog at a machine nobody is watching.
 - **The keyboard layout is the machine's, not yours.** Which physical key produces
   `l` depends on the layout the person is typing on, and this bridge asks the live
   layout rather than assuming an American keyboard. If the active layout has no key
@@ -206,11 +190,11 @@ Three consequences, and the third is the useful one:
   command. Use `vo+z` (`repeat last phrase`), or read the speech you already have
   by index.
 - **To get the FIRST meaning of such a key, press a different command first** —
-  any one, including a harmless one like `vo+f2`. Or send the reader's own
-  **command name**, which names exactly one command and has no ring at all. This
-  is the one place where the command name is more precise than the key rather
-  than merely cheaper, and it is worth reaching for when a check depends on
-  which of the bound commands ran.
+  any one, including a harmless one like `vo+f2`. That is what a person does, and
+  it is the only route: the reader's own command names select exactly one command
+  and have no ring, but this bridge does not send them (see the top of this
+  document). If a check depends on WHICH of the bound commands ran, reset the ring
+  first and read the speech to confirm where you landed.
 
 Re-runnable as `bash scripts/voiceover_press_count.sh` in this repository.
 
@@ -236,9 +220,10 @@ error tells you it did not work.
 
 So:
 
-- **Never send `command key` followed by a letter and expect a chord.** It will
-  report success twice and do the wrong thing. Send `command+l`, which is one
-  call and really is a chord.
+- **This is history rather than advice now**, because this bridge no longer sends
+  the reader's command names at all — `command key` is not an id you can send. It
+  is kept because it explains why `press_gesture` takes a chord as ONE id: the
+  route that looked like it would compose one does not.
 - **`type_text` cannot press one either.** It carries a Unicode *payload*, which
   is how literal text arrives; it does not hold a modifier down. Typing and
   chording are two different acts and this reader has a route for each.
@@ -333,15 +318,19 @@ user, and therefore what any interface is entitled to assume you have.
 **Every keystroke in the tables below was read out of this reader's own factory
 configuration**, on macOS 15.0, on 2026-09-02 — not remembered from Apple's
 documentation. Re-runnable as `python3 scripts/voiceover_default_bindings.py`,
-which presses nothing and needs no permission. The command name beside each key
-is what the same act is called, and it is there for the three reasons above:
-it costs no grant, it works whatever the person has bound, and it is how you tell
-a rebinding from a defect.
+which presses nothing and needs no permission.
+
+**The second column is the act's NAME, not an id you can send.** It is what the
+act is called in VoiceOver Utility and in the Commands menu, so it is what you
+type into that menu to reach an act with no key — and it is the word to use when
+you tell a human what you did.
 
 **One honest limit on the whole table.** These are the FACTORY bindings. A person
 who has rebound a command in VoiceOver Utility gets their own key, which this
-bridge does not read. So a key that does nothing while its command name works
-means one of two things, and finding out which is one extra call.
+bridge does not read. So a key that does nothing here may mean the person rebound
+it rather than that the application swallowed it, and the way to tell is to ask
+them (`ask_user`) or to look in the Commands menu, which lists what this machine
+actually has.
 
 **And this vocabulary sits somewhere different from where it sits on a Windows
 reader.** On NVDA, moving a cursor independently of system focus is an expert's
@@ -353,7 +342,7 @@ document exists.
 
 **Moving around** — the VoiceOver cursor, which is ordinary here:
 
-| What a user presses | The same act by name |
+| What a user presses | What the act is called |
 |---|---|
 | `vo+rightArrow`, `vo+leftArrow`, `vo+upArrow`, `vo+downArrow` | `move right`, `move left`, `move up`, `move down` |
 | `vo+shift+downArrow` | `start interacting with item` |
@@ -375,7 +364,7 @@ there is no substitute for them.
 navigation, and like it these are **inside** every stance's vocabulary: they are
 how a user reads a page, not a way around a broken one.
 
-| What a user presses | The same act by name |
+| What a user presses | What the act is called |
 |---|---|
 | `vo+command+h` / `vo+command+shift+h` | `find next heading` / `find previous heading` |
 | `vo+command+l` / `vo+command+shift+l` | `find next link` / `find previous link` |
@@ -425,7 +414,7 @@ Enter and submits nothing.
 These re-read what is already in front of you. They make no claim about
 reachability, so they are inside **every** persona's vocabulary:
 
-| What it does | Pressed | By name |
+| What it does | Press | What the act is called |
 |---|---|---|
 | Describe what the VoiceOver cursor is on | `vo+f3` | `describe item in voiceover cursor` |
 | Describe what has keyboard focus | `vo+f4` | `describe item with keyboard focus` |
@@ -444,10 +433,10 @@ when the top row is media keys. This bridge presses `vo+f3` as written; whether
 that needs `fn` on the machine in front of you is the machine's own setting, and
 one this bridge does not read.
 
-`describe item in voiceover cursor` is the *orient* step of the loop in
-`screenreader://guidance` on this reader. It describes what the cursor is already
-on and **moves nothing**, which makes it the safe probe: reach for it whenever
-what you heard after acting was not enough.
+`vo+f3` is the *orient* step of the loop in `screenreader://guidance` on this
+reader. It describes what the cursor is already on and **moves nothing**, which
+makes it the safe probe: reach for it whenever what you heard after acting was not
+enough.
 
 ## How you read state on a reader that cannot be asked
 
@@ -459,20 +448,24 @@ is nothing to read before a write, which is exactly what `set_state`'s contract
 requires.
 
 **What replaces it: toggle, and listen to what the reader says.** Every one of
-these announces its own resulting state out loud, and `press_gesture` returns
-that announcement in the same call:
+these announces its own resulting state out loud, and the speech comes back in
+the same call:
 
-    press_gesture { gestures: ["toggle web navigation dom or group"] }
+    press_gesture { gestures: ["kb:leftArrow+rightArrow"] }   # arrow-key Quick Nav
     -> speech: [ "<the mode it has just arrived in>" ]
 
 So you read the state by causing it to be spoken. If it is not the one you
-wanted, press the same command again. That is full authority over all of them.
+wanted, do it again. That is full authority over all of them.
+
+**Most of these have no key**, so the route is the Commands menu — `vo+h` twice,
+type the name, Enter (see "Reaching an act that has no key" at the top). The
+names below are what you type there.
 
 **The toggles worth knowing**, out of the 45 — these are the ones that change how
 an interface behaves under you, so they are the ones a session needs to be able
 to name:
 
-| What it changes | Command |
+| What it changes | What the act is called |
 |---|---|
 | DOM order versus grouped web navigation | `toggle web navigation dom or group` |
 | Single-key Quick Nav (letters jump by element) | `toggle single-key quick nav on or off` |
@@ -516,7 +509,7 @@ So, concretely:
 
 - **If you navigated with `press_gesture` and then asked where you are, you got
   the element you left**, not the one you are on. To ask about the VoiceOver
-  cursor, press `describe item in voiceover cursor` and read the speech.
+  cursor, press `vo+f3` and read the speech.
 - **`role` and `appModule` are stable across machines**; `role` is the raw
   `AXRole` (`AXTextArea`, `AXButton`) and `appModule` is a bundle identifier
   (`com.apple.TextEdit`).
@@ -553,19 +546,20 @@ do not assume a facility exists because another reader has one.
   Where that matters most is a chord that moves more than one thing:
   `kb:leftArrow+rightArrow` moves two Quick Nav settings and names neither, while
   `vo+q` and `vo+shift+q` each move one and say which way it went. If you meet an
-  act that has neither a key nor a command name, say so: it is a gap worth
-  recording rather than a thing to work around with `type_text`, which sends
-  characters and not keys.
+  act you can reach neither by key nor through the Commands menu, say so: it is a
+  gap worth recording rather than a thing to work around with `type_text`, which
+  sends characters and not keys.
 - **No reading of the person's own key bindings.** The keys in this document are
   the reader's factory bindings. If somebody has rebound a command in VoiceOver
-  Utility this bridge does not know, and the key will simply do nothing — which is
-  why every table here names the command beside the key.
+  Utility this bridge does not know, and the key will simply do nothing. The
+  Commands menu lists what this machine actually has, and the person at it can
+  tell you.
 
 ## Your session was SET UP before you were handed it, and it will be PUT BACK
 
 `connect_reader` does not merely open a channel here. Before it answers it reads
-the two permissions this bridge needs — reads, never asks for; nothing here
-raises a consent dialog — starts VoiceOver if it is not running, registers the
+the permission this bridge needs — reads, never asks for; nothing here raises a
+consent dialog — starts VoiceOver if it is not running, registers the
 capture voice's extension if the system has forgotten it — restarting the reader
 when it had to, because macOS publishes a newly registered voice no other way —
 points the reader at that voice, and then makes the reader speak and requires the
@@ -586,8 +580,8 @@ Three consequences worth holding on to:
   recorded like any other. Your own first utterance is index 2. Take a bookmark
   with `get_next_speech_index` before you act, as you would anyway, and none of
   this matters.
-- **The setup probe is a key on some machines and a command name on others**, and
-  you cannot tell from here. It does not matter: it moves nothing either way.
+- **The setup probe is `vo+f7`**, the time and date, which always speaks and moves
+  nothing. It is pressed like anything else this bridge sends.
 
 ### What it changed on this person's machine, and what puts it back
 
@@ -600,9 +594,13 @@ change the VoiceOver modifier. It was going to: on a machine where `vo` is bound
 to Caps Lock alone this bridge cannot press it, so the plan was to borrow
 Control-Option for the session. VoiceOver turns out to watch that key and put a
 modal question on screen when it changes — measured 2026-09-02 — so the borrow was
-withdrawn. On such a machine `vo+…` is refused by name and the command-name route
-is what you have; if the AppleScript switch is off too, there is no session at all
-and the connect says so.
+withdrawn. On such a machine there is **no session at all**, and the connect says
+so and names what a person would have to change. It is a real gap and it is known.
+
+**And this bridge asks nothing of VoiceOver's "Allow VoiceOver to be controlled
+with AppleScript" switch.** It used to need it, for the command-name route that no
+longer exists. If the person at this machine has it off, that costs you nothing;
+if they have it on, nothing here uses it, and they can turn it off.
 
 **If a session dies without tearing down**, the voice change is recorded in
 `~/Library/Logs/screen-readers-mcp/reader-changes.jsonl` — one line per change,

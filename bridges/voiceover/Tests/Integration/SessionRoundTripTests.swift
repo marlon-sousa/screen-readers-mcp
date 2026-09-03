@@ -30,8 +30,7 @@ struct SessionRoundTripTests {
 			handlers: [String: any CommandHandler]? = nil,
 			attended: Bool = true,
 			lifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),
-			scripts: FakeAppleScriptRunner = FakeAppleScriptRunner(),
-			permissions: FakePermissionBroker = FakePermissionBroker(),
+				permissions: FakePermissionBroker = FakePermissionBroker(),
 			poster: FakeEventPoster = FakeEventPoster(),
 			layout: FakeKeyboardLayout = FakeKeyboardLayout(),
 			readerModifier: FakeReaderModifierSetting = FakeReaderModifierSetting(),
@@ -52,7 +51,7 @@ struct SessionRoundTripTests {
 				handlers: handlers
 					?? Registry.build(
 						factory: testAdapterFactory(
-							lifecycle: lifecycle, scripts: scripts, permissions: permissions, poster: poster,
+							lifecycle: lifecycle, permissions: permissions, poster: poster,
 							layout: layout, readerModifier: readerModifier, tree: tree,
 							frontmost: frontmost, trust: trust,
 							announcer: announcer, prompter: prompter
@@ -86,31 +85,28 @@ struct SessionRoundTripTests {
 		}
 	}
 
-	/// The scripts a COMMAND sent, with the handshake's own two removed.
+	/// Forget the handshake's own key press, so what is left is the command's.
 	///
-	/// SINCE 13.20 EVERY `hello` SENDS TWO SCRIPTS DOWN THIS SEAM: rung 2 asks the
-	/// reader its own name, and rung 5 presses the capture probe and requires the
-	/// utterance to come back. Every assertion in this file is about what a
-	/// COMMAND did, so the handshake's two are taken out here -- BY NAME rather
-	/// than by count, so that a handshake which stopped sending one fails loudly
-	/// instead of quietly consuming a command's script in its place.
-	private func commandScripts(_ scripts: FakeAppleScriptRunner) -> [String] {
-		var remaining = scripts.scripts
-		// SINCE 13.26 THE LIVENESS SCRIPT IS NOT ONE OF THESE. The handshake asks
-		// the running-application list whether the reader is there, which costs no
-		// permission and sends no AppleEvent -- so the only script a healthy
-		// handshake sends is the capture probe, and that only on a machine that
-		// offers the command-name route at all.
-		for expected in [
-			VoiceOverGestureSender.script(for: ReaderEdgeSetup.captureProbeCommand)
-		] {
-			guard let index = remaining.firstIndex(of: expected) else {
-				Issue.record("the handshake no longer sends: \(expected)")
-				continue
-			}
-			remaining.remove(at: index)
-		}
-		return remaining
+	/// EVERY `hello` PRESSES ONE KEY SINCE 13.31: rung 5 sends the capture probe --
+	/// `vo+f7` through the real presser -- and requires the utterance to come back.
+	/// Every assertion in this file is about what a COMMAND did, so the probe is
+	/// taken out here, and CHECKED on the way out: a handshake that stopped
+	/// pressing it fails loudly rather than quietly leaving a command's events
+	/// looking like two commands' worth.
+	///
+	/// IT USED TO STRIP SCRIPTS, and there were two: rung 2 asked the reader its
+	/// own name over an AppleEvent until 13.26, and rung 5 dispatched the probe by
+	/// name until 13.31. Neither channel exists, and the probe is the one thing
+	/// left to account for -- but it now lands on the seam the commands land on,
+	/// which is why this became a subtraction rather than a filter.
+	private func forgetTheHandshakeProbe(_ poster: FakeEventPoster) {
+		// Down and up on one key, with the reader's own modifier held for it. The
+		// keycode is not asserted: `f7` is a named key, so which code it is belongs
+		// to `Keystroke.NamedKey` and not to this file.
+		#expect(poster.keyed.count == 2)
+		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskControl) })
+		#expect(poster.keyed.allSatisfy { $0.flags.contains(.maskAlternate) })
+		poster.forgetRecording()
 	}
 
 	@Test("a live handshake answers with this bridge's identity and its capability set")
@@ -367,41 +363,40 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("a pressGesture off the wire reaches the reader as a COMMANDER-addressed script")
-	func aGestureReachesTheReaderEdge() throws {
-		// THE TEST THE UNITS CANNOT WRITE, and 13.6's lesson applied: every unit
-		// above runs against a graph its own test assembled, so a handler wired to
-		// the wrong command name, a result that does not encode, or an adapter the
-		// factory never actually builds would pass all of them. What is asserted
-		// here is the whole path -- a JSON frame in, the real Registry's handler,
-		// the real VoiceOverAdapterFactory's sender, and the script text that would
-		// have gone to `osascript`.
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(scripts: scripts)
+	@Test("A COMMAND NAME OFF THE WIRE IS REFUSED, AND THE REFUSAL TEACHES THE ROUTE")
+	func aCommandNameOffTheWireIsRefused() throws {
+		// 13.31, end to end, and the assertion is about the MESSAGE rather than the
+		// mechanism -- which is unusual here and deliberate. Until this entry `go to
+		// desktop` was dispatched to the reader by name over an AppleEvent; every
+		// agent that has ever driven this bridge, and every document written about
+		// it before now, says to send exactly that. So the one thing this refusal
+		// must not do is read like "unknown gesture", which would leave an agent
+		// believing the act is unreachable when it is a keystroke away.
+		let poster = FakeEventPoster()
+		let peer = Peer(poster: poster)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		forgetTheHandshakeProbe(poster)
 
 		try peer.send(
 			id: 2, cmd: "pressGesture",
 			params: ["gestures": .array([.string("go to desktop")]), "graceMs": .int(0)])
-		let response = try peer.reply()
-		guard case .success(let value) = try response.outcome() else {
-			Issue.record("pressGesture failed: \(response)")
-			return
-		}
-		let result = try value.decoded(as: GestureResult.self)
-		#expect(result.pressed.map(\.gesture) == ["go to desktop"])
-		// Nothing spoke, so the window is empty -- which is a fact about an
-		// instant and never a claim that the command said nothing (protocol.md
-		// §7.3). And `state` stays nil: no `state` capability on this reader.
-		#expect(result.speech.isEmpty)
-		#expect(result.state == nil)
+		let reply = try peer.reply()
+		let error = try #require(reply.error)
+		// The id it refused, so a batch says WHICH one.
+		#expect(error.message.contains("go to desktop"))
+		// The two routes a person actually has, named in the message.
+		#expect(error.message.contains("vo+m"))
+		#expect(error.message.contains("Commands menu"))
+		// NOTHING WAS PRESSED, which is what makes the refusal safe: the batch is
+		// classified before any of it moves the machine.
+		#expect(poster.keyed.isEmpty)
+		#expect(poster.posted.isEmpty)
+		#expect(peer.transcript.gestures.isEmpty)
 
-		// The script the real sender built, off the real wire request. This is the
-		// end-to-end form of the finding that unblocked this entry.
-		let script = try #require(commandScripts(scripts).first)
-		#expect(script == "tell application \"VoiceOver\" to tell commander to perform command \"go to desktop\"")
-		#expect(peer.transcript.gestures == ["go to desktop"])
+		// Still alive, which is the half that matters for a whole test run.
+		try peer.send(id: 3, cmd: "ping")
+		#expect(try peer.reply().id == 3)
 		peer.hangUp()
 	}
 
@@ -522,7 +517,7 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("A CHORD OFF THE WIRE REACHES THE EVENT PATH AND NOT THE APPLESCRIPT RUNNER")
+	@Test("A CHORD OFF THE WIRE REACHES THE EVENT PATH")
 	func aChordOffTheWireReachesTheEventPath() throws {
 		// THE TEST THE UNITS CANNOT WRITE. Every unit above runs against a
 		// hand-built `AdapterSet`; this one goes in at the socket, through the real
@@ -531,12 +526,12 @@ struct SessionRoundTripTests {
 		// machine. It is what proves the wiring, and it is the assertion that would
 		// have caught the bridge dispatching `command+l` to VoiceOver as though it
 		// were one of the reader's own command names -- which is what it did until
-		// this entry, right up to `Command does not exist (6)`.
+		// 13.17, right up to `Command does not exist (6)`.
 		let poster = FakeEventPoster()
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(scripts: scripts, poster: poster)
+		let peer = Peer(poster: poster)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		forgetTheHandshakeProbe(poster)
 		try peer.send(
 			id: 2, cmd: "pressGesture",
 			params: ["gestures": .array([.string("command+l")]), "graceMs": .int(0)])
@@ -548,11 +543,10 @@ struct SessionRoundTripTests {
 		#expect(poster.keyed.map(\.keyCode) == [201, 201])
 		#expect(poster.keyed.allSatisfy { $0.flags == .maskCommand })
 		#expect(poster.keyed.map(\.keyDown) == [true, false])
-		// AND NOT ONE APPLESCRIPT WAS RUN BY THE COMMAND. The chord never went near
-		// the reader; the only scripts on the seam are the handshake's own two.
-		#expect(commandScripts(scripts).isEmpty)
-		// Nor did it arrive as typed text, which would have inserted an `l` where
-		// a location bar should have opened.
+		// AND IT DID NOT ARRIVE AS TYPED TEXT, which would have inserted an `l` where
+		// a location bar should have opened. The other half of this assertion --
+		// that the chord did not go to the reader by name -- was here until 13.31
+		// and cannot be written any more: there is nowhere for it to have gone.
 		#expect(poster.posted.isEmpty)
 		peer.hangUp()
 	}
@@ -564,12 +558,13 @@ struct SessionRoundTripTests {
 		// notation for it, because the `+` was the whole discriminator and a lone
 		// token was looked up as one of the reader's commands. Both halves are
 		// asserted here on one connection, because the property is the DIFFERENCE
-		// between them: the same letter, two vocabularies, two destinations.
+		// between them: the same letter, prefixed and bare, and only one of them is
+		// a gesture id at all since 13.31.
 		let poster = FakeEventPoster()
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(scripts: scripts, poster: poster)
+		let peer = Peer(poster: poster)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		forgetTheHandshakeProbe(poster)
 
 		try peer.send(
 			id: 2, cmd: "pressGesture",
@@ -587,9 +582,8 @@ struct SessionRoundTripTests {
 		#expect(poster.keyed.allSatisfy { $0.flags == [] })
 		#expect(poster.keyed.map(\.keyDown) == [true, false])
 		#expect(poster.flagTransitions.isEmpty)
-		// Not to the reader, and not as typed text -- which is the route that made
-		// this reachable by accident and meant something else entirely.
-		#expect(commandScripts(scripts).isEmpty)
+		// And not as typed text -- which is the route that made this reachable by
+		// accident and meant something else entirely.
 		#expect(poster.posted.isEmpty)
 		// What the session is TOLD it pressed keeps the prefix, so the line can be
 		// replayed: `h` fed back in is a command name.
@@ -597,17 +591,17 @@ struct SessionRoundTripTests {
 		#expect(result.pressed.map(\.gesture) == ["kb:h"])
 		#expect(peer.transcript.gestures == ["kb:h"])
 
-		// And the unprefixed letter still goes to the reader, where it is refused
-		// by VoiceOver itself as a command that does not exist -- which is the
-		// cheap, correct failure, and proves the prefix is doing the deciding.
+		// AND THE UNPREFIXED LETTER IS REFUSED, WHICH IS WHAT CHANGED AT 13.31. It
+		// used to go to the reader as a command name -- that is what made `kb:` a
+		// discriminator and not a decoration. There is no such vocabulary now, so a
+		// bare `h` is a mistake, and the refusal names the spelling that works
+		// rather than leaving an agent to guess which of the two it meant.
 		try peer.send(
 			id: 3, cmd: "pressGesture",
 			params: ["gestures": .array([.string("h")]), "graceMs": .int(0)])
-		_ = try peer.reply()
-		#expect(
-			commandScripts(scripts) == [
-				"tell application \"VoiceOver\" to tell commander to perform command \"h\""
-			])
+		let refused = try peer.reply()
+		#expect(try #require(refused.error).message.contains("kb:h"))
+		// The rule is still doing the deciding: nothing more was pressed.
 		#expect(poster.keyed.count == 2)
 		peer.hangUp()
 	}
@@ -621,10 +615,10 @@ struct SessionRoundTripTests {
 		// Registry, the real handler and the real factory as ONE gesture rather
 		// than two.
 		let poster = FakeEventPoster()
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(scripts: scripts, poster: poster)
+		let peer = Peer(poster: poster)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		forgetTheHandshakeProbe(poster)
 
 		try peer.send(
 			id: 2, cmd: "pressGesture",
@@ -645,8 +639,7 @@ struct SessionRoundTripTests {
 		// Named keys, so the layout was never asked; no modifiers, so nothing was
 		// held and nothing can be left held.
 		#expect(poster.flagTransitions.isEmpty)
-		// Not to the reader, and not as typed text.
-		#expect(commandScripts(scripts).isEmpty)
+		// And not as typed text.
 		#expect(poster.posted.isEmpty)
 		// ONE press is reported, not two, and it is replayable.
 		let result = try value.decoded(as: GestureResult.self)
@@ -715,69 +708,69 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("a getFocusInfo off the wire reads the VOICEOVER CURSOR when the grant is not held")
-	func focusFallsBackToTheVoiceOverCursor() throws {
-		// The other route, end to end, and the same kind of assertion: the script
-		// text that would have gone to `osascript`. A bridge with no Accessibility
-		// grant still answers `getFocusInfo` -- thinner, and never by asking for
-		// the grant.
-		let scripts = FakeAppleScriptRunner()
-		scripts.defaultAnswer = "Ok button"
-		let peer = Peer(scripts: scripts, trust: FakeAccessibilityTrust(trusted: false))
+	@Test("a getFocusInfo off the wire FAILS BY NAME when the grant is revoked mid-session")
+	func focusNamesTheGrantWhenItIsRevoked() throws {
+		// THE ROUTE THAT REPLACED A ROUTE. Until 13.31 a session without the
+		// Accessibility grant still answered `getFocusInfo`, thinly, from
+		// VoiceOver's own cursor over an AppleEvent. There is no such session now --
+		// rung 1 refuses a machine that will not grant it, because pressing keys is
+		// the only way this bridge drives the reader -- so the branch went with the
+		// channel.
+		//
+		// WHAT MUST NOT HAPPEN IS AN EMPTY SNAPSHOT. A grant revoked while a session
+		// runs is a real state, and "nothing is focused" is a sentence an agent
+		// would act on by going to look for a defect in the application. So it
+		// fails, and the failure names the permission and its recovery.
+		let trust = FakeAccessibilityTrust(trusted: true)
+		let peer = Peer(trust: trust)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
 
+		trust.trusted = false
 		try peer.send(id: 2, cmd: "getFocusInfo")
-		let response = try peer.reply()
-		guard case .success(let value) = try response.outcome() else {
-			Issue.record("getFocusInfo failed: \(response)")
-			return
-		}
-		let result = try value.decoded(as: FocusInfoResult.self)
-		#expect(result.name == "Ok button")
-		// The cursor answers a rendering, not structure, so the rest is empty --
-		// and `value` is NULL rather than "", which is the distinction
-		// FocusInfoResult writes its own Codable to keep.
-		#expect(result.role.isEmpty)
-		#expect(result.states.isEmpty)
-		#expect(result.value == nil)
-		#expect(result.appModule == "com.apple.TextEdit")
+		let reply = try peer.reply()
+		let error = try #require(reply.error)
+		#expect(error.message.contains(Permission.accessibility.rawValue))
+		#expect(error.message.contains("Accessibility"))
 
-		#expect(
-			commandScripts(scripts) == [
-				"tell application \"VoiceOver\" to return text under cursor of vo cursor"
-			])
+		// Still alive: a revoked grant is a thing to report, not a session to end.
+		try peer.send(id: 3, cmd: "ping")
+		#expect(try peer.reply().id == 3)
 		peer.hangUp()
 	}
 
 	@Test("A SESSION THAT ALSO READS FOCUS STILL NEVER ASKS FOR THE ACCESSIBILITY GRANT")
 	func focusNeverTriggersAPermissionRequest() throws {
 		// 13.9 IS THE ENTRY THAT COULD HAVE QUIETLY SPENT 13.8's LEVER, because
-		// focus WANTS the same grant: it answers from the accessibility tree when
-		// the grant is held. It reads that fact through an adapter seam that shows
-		// no dialog, and never through the broker -- so a session that presses,
-		// reads speech and asks where it is goes past a counting broker without
-		// asking it anything at all, on BOTH routes.
-		// The grant is held at the handshake (13.20 refuses a session without it)
-		// and revoked immediately after, so the commands below run on a machine
-		// that does not hold it -- which is the state this scenario is about.
+		// focus WANTS the same grant. It reads that fact through an adapter seam
+		// that shows no dialog, and never through the broker -- so a session that
+		// reads where it is goes past a counting broker without asking it anything
+		// at all.
+		//
+		// THE LEVER IT WAS PROTECTING IS SPENT, AND THIS SCENARIO OUTLIVED IT. 13.25
+		// made keys the way this bridge drives the reader and 13.31 removed the
+		// alternative, so an ordinary session IS asked for Accessibility -- once, by
+		// a command that is about to post an event. What is still true, and still
+		// worth a scenario at this layer, is the narrower claim underneath it:
+		// NOTHING BUT THOSE COMMANDS ASKS. Not the handshake, which reads the grant
+		// at rung 1 and requests nothing, and not focus, which cannot request
+		// anything because of what it is holding.
 		let permissions = FakePermissionBroker(state: .granted)
-		let trust = FakeAccessibilityTrust(trusted: false)
+		let trust = FakeAccessibilityTrust(trusted: true)
 		let peer = Peer(permissions: permissions, trust: trust)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
 		try peer.send(id: 2, cmd: "getFocusInfo")
 		_ = try peer.reply()
-		// And again with the grant held, which is the route that USES it.
-		trust.trusted = true
 		try peer.send(id: 3, cmd: "getFocusInfo")
 		_ = try peer.reply()
 
 		#expect(permissions.requests.isEmpty)
-		// The handshake's own two reads and nothing since: focus reads the grant
-		// through a seam that cannot request it, and never through the broker.
-		#expect(permissions.statusReads == Permission.allCases)
-		// It did ask the cheap question -- once per command, on both routes.
+		// The handshake's one read and nothing since. It was two until 13.31, when
+		// the automation permission went with the channel that answered it.
+		#expect(permissions.statusReads == [.accessibility])
+		#expect(Permission.allCases == [.accessibility])
+		// It did ask the cheap question -- once per command.
 		#expect(trust.reads == 2)
 		peer.hangUp()
 	}
@@ -824,7 +817,7 @@ struct SessionRoundTripTests {
 		try peer.send(
 			id: 4, cmd: "pressGesture",
 			params: [
-				"gestures": .array([.string("go to desktop")]), "graceMs": .int(0),
+				"gestures": .array([.string("vo+f")]), "graceMs": .int(0),
 				"announce": .string("moving to the desktop"),
 			])
 		guard case .success = try peer.reply().outcome() else {
@@ -893,18 +886,16 @@ struct SessionRoundTripTests {
 
 	@Test("an unknown command comes back as an error frame, and the session survives it")
 	func anUnknownGestureIsAnErrorFrameNotADeadSession() throws {
-		// `Command does not exist (6)` is the clean failure this whole route was
-		// chosen for, and the session tolerating it is what makes a test run
-		// survive a command the agent got wrong.
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(scripts: scripts)
+		// AN ID THE BRIDGE ITSELF REFUSES, AND THAT IS 13.31's DOING. It used to be
+		// an id the READER refused -- `Command does not exist (6)`, the clean
+		// failure the command-name route was chosen for -- and the assertion was
+		// that a bad name cost one round trip and left the session alive. The
+		// vocabulary answers it now, before anything is dispatched, which is
+		// cheaper and says more; what has not changed is the half this test is
+		// named for.
+		let peer = Peer()
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
-		// QUEUED AFTER THE HANDSHAKE, which is 13.20's doing: the handshake sends
-		// two scripts of its own down this seam, and a failure queued before it
-		// would be spent on the reader-name probe instead of on the command this
-		// test is about.
-		scripts.failNext(number: 6, message: "Command does not exist.")
 
 		try peer.send(
 			id: 2, cmd: "pressGesture", params: ["gestures": .array([.string("no such command")])])
@@ -926,11 +917,11 @@ struct SessionRoundTripTests {
 		// server, past the application under test, rather than dispatched inside
 		// the reader where an application that swallows the chord cannot be seen.
 		let poster = FakeEventPoster()
-		let scripts = FakeAppleScriptRunner()
 		let layout = FakeKeyboardLayout(keys: ["m": LayoutKey(keyCode: 206, shifted: false)])
-		let peer = Peer(scripts: scripts, poster: poster, layout: layout)
+		let peer = Peer(poster: poster, layout: layout)
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
 		_ = try peer.reply()
+		forgetTheHandshakeProbe(poster)
 
 		try peer.send(
 			id: 2, cmd: "pressGesture",
@@ -951,8 +942,8 @@ struct SessionRoundTripTests {
 		#expect(poster.flagTransitions.last == [])
 		// And the event says it is `m`, which is what this reader matches on.
 		#expect(poster.keyed.map(\.characters) == ["m", "m"])
-		// Not to the reader: that is the route this entry demoted.
-		#expect(commandScripts(scripts).isEmpty)
+		// And not as typed text. "Not to the reader by name" was the other half of
+		// this assertion until 13.31 deleted the route 13.25 had demoted.
 		#expect(poster.posted.isEmpty)
 		// What the session is told it pressed is the RESOLVED spelling, so a record
 		// of the run says which keys went out on this machine.
@@ -962,31 +953,31 @@ struct SessionRoundTripTests {
 		peer.hangUp()
 	}
 
-	@Test("A CAPS LOCK MACHINE REFUSES IT OVER THE WIRE, AND PRESSES NOTHING")
-	func aCapsLockMachineRefusesTheChord() throws {
-		// The refusal that keeps the entry honest. `control+option` is not the
-		// modifier on this machine, so pressing it would send two keys that mean
-		// nothing here -- and the batch is classified before anything is
-		// dispatched, so the command name in front of it does not go out either.
+	@Test("A CAPS LOCK MACHINE IS REFUSED AT THE HANDSHAKE, AND GETS NO SESSION")
+	func aCapsLockMachineIsRefusedAtTheHandshake() throws {
+		// THE REFUSAL MOVED, AND THAT IS THE COST OF 13.31 IN ONE TEST. A machine
+		// whose VoiceOver modifier is Caps Lock alone cannot be driven by keys: a
+		// synthesized Caps Lock is invisible to the reader (measured 2026-09-02).
+		// Until this entry such a machine still got a session, because the
+		// command-name route did not need the modifier -- so the refusal happened
+		// per gesture, and `vo+m` came back with a message about Caps Lock while
+		// everything else worked.
+		//
+		// There is no second route now, so there is nothing to establish a session
+		// FOR, and rung 1 says so before anything is touched. That is board entry
+		// 13.28, and it is open.
 		let poster = FakeEventPoster()
-		let scripts = FakeAppleScriptRunner()
-		let peer = Peer(
-			scripts: scripts, poster: poster,
-			readerModifier: FakeReaderModifierSetting(.capsLock))
+		let peer = Peer(poster: poster, readerModifier: FakeReaderModifierSetting(.capsLock))
 		try peer.send(id: 1, cmd: "hello", params: ["mode": .string("live"), "protocolVersion": .int(1)])
-		_ = try peer.reply()
-
-		try peer.send(
-			id: 2, cmd: "pressGesture",
-			params: [
-				"gestures": .array([.string("go to dock"), .string("vo+m")]), "graceMs": .int(0),
-			])
 		let reply = try peer.reply()
 		let error = try #require(reply.error)
-		#expect(error.message.contains("CAPS LOCK"))
-		#expect(error.message.contains("command name"))
+		// It names the setting and where a human changes it, because that is the
+		// only thing anybody can do about this machine.
+		#expect(error.message.contains("capsLock"))
+		#expect(error.message.contains("VoiceOver Utility"))
+		// Nothing was pressed -- not even the capture probe, which is three rungs
+		// further up the ladder than the one that refused.
 		#expect(poster.keyed.isEmpty)
-		#expect(commandScripts(scripts).isEmpty)
 		peer.hangUp()
 	}
 }
