@@ -45,6 +45,17 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 	/// offering the voice.
 	public var publicationRefusal: ProviderError?
 
+	/// The identifiers this fake MACHINE publishes, or nil for "publishes anything
+	/// it is asked about" -- 13.24.
+	///
+	/// NIL BY DEFAULT, AND THAT IS DELIBERATE RATHER THAN LAZY. Every test written
+	/// before this entry describes a machine whose voices are all present, which is
+	/// the ordinary case; a default of "publishes nothing" would have silently
+	/// turned each of them into the degraded path and changed what they assert
+	/// without anybody editing them. A test that wants the removed-voice case says
+	/// so by setting this, which is the same shape as every refusal field above.
+	public var publishedVoices: Set<String>?
+
 	public private(set) var selectCalls = 0
 	public private(set) var registerCalls = 0
 	public private(set) var publishCalls = 0
@@ -84,6 +95,14 @@ public final class FakeProviderLifecycle: ProviderLifecycle {
 
 	public func selectedVoice() -> SelectedVoice? {
 		selected.map { SelectedVoice(identifier: $0, isCaptureVoice: $0 == captureVoiceIdentifier) }
+	}
+
+	/// MIRRORS THE REAL ADAPTER, which answers from the machine's published voice
+	/// list -- the same list it matches our own voice against. See `publishedVoices`
+	/// for why "unset" means yes.
+	public func systemPublishesVoice(_ identifier: String) -> Bool {
+		guard let publishedVoices else { return true }
+		return publishedVoices.contains(identifier)
 	}
 
 	/// COUNTED, and never undone. `register()` is MACHINE state: the port says in

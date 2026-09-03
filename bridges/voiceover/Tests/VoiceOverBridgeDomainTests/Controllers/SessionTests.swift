@@ -441,6 +441,44 @@ struct SessionTests {
 		#expect(outcome.transcript.closedReasons.count == 1)
 	}
 
+	@Test("A VOICE THE MACHINE NO LONGER PUBLISHES IS STILL WRITTEN BACK -- and said so")
+	func aRemovedVoiceIsStillRestored() {
+		// 13.24, and the direction matters more than the note. Writing it is what
+		// takes the reader OFF the capture voice; refusing would leave our own voice
+		// selected with no session alive, and the next reader restart would find it
+		// unpublished, fall back to the default AND PERSIST THE FALLBACK -- 13.23's
+		// hazard, caused by the cleanup rather than by the crash.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.publishedVoices = ["com.apple.voice.compact.pt-BR.Luciana"]
+		let journal = FakeChangeJournal()
+		let set = fakeAdapterSet(providerLifecycle: lifecycle, changeJournal: journal)
+		let outcome = run(
+			[hello(), request(2, "bye")], handlers: ["hello": edgeHandler(set), "bye": byeHandler()])
+
+		#expect(lifecycle.restored == ["com.apple.eloquence.pt-BR.Reed"])
+		// The write succeeds and the read-back confirms it either way -- VoiceOver
+		// only falls back at SPEECH time -- so without this note a degraded restore
+		// and a clean one are the same two lines.
+		#expect(outcome.transcript.notes.contains { $0.contains("no longer publishes") })
+		// AND THE JOURNAL LINE IS IDENTICAL TO A CLEAN ONE. A degraded restore is
+		// still a restore: the change is closed and the capture voice is off. Pairing
+		// is what `scripts/voiceover_restore.py` reads, and it must not be broken to
+		// carry a detail the transcript already holds.
+		#expect(journal.openKinds.isEmpty)
+	}
+
+	@Test("a clean restoration says nothing about publication")
+	func aPublishedVoiceRestoresQuietly() {
+		// THE CONTROL for the test above: the note must not appear on every teardown.
+		let lifecycle = FakeProviderLifecycle()
+		lifecycle.publishedVoices = ["com.apple.eloquence.pt-BR.Reed"]
+		let set = fakeAdapterSet(providerLifecycle: lifecycle)
+		let outcome = run(
+			[hello(), request(2, "bye")], handlers: ["hello": edgeHandler(set), "bye": byeHandler()])
+		#expect(lifecycle.restored == ["com.apple.eloquence.pt-BR.Reed"])
+		#expect(!outcome.transcript.notes.contains { $0.contains("no longer publishes") })
+	}
+
 	@Test("nothing is restored when there was nothing to restore")
 	func nothingToRestore() {
 		// The reader was already on our voice when the session started, which means

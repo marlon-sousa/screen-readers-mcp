@@ -21,6 +21,13 @@
 // anywhere (spec 0055). A named condition nothing can reach is worse than no
 // condition at all, because an agent will try to interpret it.
 //
+// AND FIVE AGAIN SINCE 13.24 -- BUT THE FIFTH IS A DIFFERENT SHAPE, which is
+// worth reading before adding a sixth. The four above are about OUR capture
+// voice and the reader, so `ProviderState` decides which are live.
+// `usersVoiceNotAvailable` is about the PERSON'S OWN voice, which no state of
+// ours has an opinion about, so it is read directly by its two callers and
+// appears in neither mapping below. See the case's own comment.
+//
 // USED BY: ProviderState, which says which of these are live for a given state;
 // the Hello handler, which refuses a silent session naming one; the two waiting
 // speech handlers, which name one instead of answering "not found"; and the
@@ -79,9 +86,42 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 	/// already been tried.
 	case readerNotRunning
 
+	/// The voice the PERSON chose is not one this machine publishes any more --
+	/// 13.24.
+	///
+	/// ============================================================================
+	/// THE FIRST CASE HERE THAT IS NOT ABOUT THE CAPTURE VOICE, AND NO
+	/// `ProviderState` MAPS TO IT.
+	/// ============================================================================
+	///
+	/// Every other case describes where OUR voice has got to, so `ProviderState`
+	/// owns which of them are live. This one describes the user's own voice, which
+	/// no state of ours has an opinion about -- so it is read directly, by
+	/// `ReaderEdgeSetup` at rung 4 and by `Session` at teardown. That asymmetry is
+	/// written down here rather than left for somebody to find surprising, and it is
+	/// the reason this case is not in `conditions` or `unheardConditions`.
+	///
+	/// IT IS NOT A REFUSAL. Spec 0056 §2.2, decided by Marlon on 2026-09-03: a
+	/// session on a machine whose owner's voice has been removed ESTABLISHES, in
+	/// both modes, and the person is told. The machine was already in that state
+	/// before the session connected, the session did not cause it and cannot fix it,
+	/// and refusing would deny testing on a reader that is otherwise capable of
+	/// everything the session wants -- while putting nothing back. What this entry
+	/// kills is the SILENCE, not the fallback.
+	///
+	/// AND ITS RECOVERY IS THE ONE THING THE PERSON HAS TO DO, which is why Marlon's
+	/// answer named it: *"that handshake announcement must let the user know and
+	/// give them instructions to install the voice."* It is SPOKEN, through the
+	/// bridge's own synthesizer, which is audible even in a silent session.
+	case usersVoiceNotAvailable
+
 	/// What has gone wrong, in one sentence, for a reader of the transcript.
 	public var summary: String {
 		switch self {
+		case .usersVoiceNotAvailable:
+			return
+				"the voice you had chosen is not one this machine publishes any more, so the reader "
+				+ "will speak with its default voice instead"
 		case .captureVoiceNotSelected:
 			return "VoiceOver is not speaking with the capture voice, so nothing it says can be captured"
 		case .captureVoiceNotOfferedByReader:
@@ -97,6 +137,22 @@ public enum ReaderCondition: String, Equatable, Sendable, CaseIterable {
 	/// What a human has to do about it. Measured, not guessed -- see the header.
 	public var recovery: String {
 		switch self {
+		case .usersVoiceNotAvailable:
+			// SPELLED IN FULL, because this is the one recovery in this file a person
+			// carries out in a settings pane rather than at a keyboard, and a
+			// half-named path is a path somebody hunts for. It is also the sentence
+			// this bridge SPEAKS, so it has to read aloud as an instruction.
+			//
+			// IT DOES NOT PROMISE THE VOICE WILL WORK ONCE INSTALLED. The list this
+			// condition is derived from publishes voices that are advertised and not
+			// installed (13.15), so "install it" is the action and "the reader will
+			// sound right again" is not a claim this bridge can make. See
+			// `ProviderLifecycle.systemPublishesVoice`.
+			return
+				"install it again under System Settings > Accessibility > Spoken Content > System "
+				+ "Voice > Manage Voices, or choose another voice there. Nothing needs restarting: "
+				+ "the selection applies live. This session is running normally in the meantime, and "
+				+ "it will put the same choice back when it ends"
 		case .captureVoiceNotSelected:
 			return
 				"the bridge selects the capture voice itself at every handshake; if it did not stick, the "

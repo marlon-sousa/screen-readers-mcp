@@ -275,6 +275,39 @@ struct PluginKitProviderLifecycleTests {
 		}
 	}
 
+	// -- 13.24: does this machine publish a given voice at all? -----------------
+
+	@Test("THE USER'S OWN VOICE IS RESOLVED AGAINST THE SAME LIST OURS IS")
+	func systemPublishesVoiceReadsTheMachine() {
+		// One authority, deliberately. If this asked a different question from the
+		// one `publishedCaptureVoice()` asks, the bridge could say our voice exists
+		// and the person's does not on grounds that have nothing to do with each
+		// other -- and a session would act on the disagreement.
+		let (lifecycle, _, _) = subject(published: [Self.publishedVoice, Self.usersVoice])
+		#expect(lifecycle.systemPublishesVoice(Self.usersVoice))
+		#expect(lifecycle.systemPublishesVoice(Self.publishedVoice))
+		#expect(!lifecycle.systemPublishesVoice("com.apple.voice.gone.pt-BR.Ghost"))
+	}
+
+	@Test("it matches EXACTLY, where our own voice is matched by suffix")
+	func systemPublishesVoiceIsAnExactMatch() {
+		// OURS is matched by suffix because the system prefixes the extension's
+		// bundle id onto what the audio unit declared, so the published string never
+		// equals it. A USER's voice identifier is whatever the preference holds and
+		// the list holds the same string, so a suffix match here would answer `true`
+		// for any identifier that happened to end the same way -- which is the one
+		// mistake that would make this check quietly useless.
+		let (lifecycle, _, _) = subject(published: ["com.apple.eloquence.pt-BR.Reed"])
+		#expect(!lifecycle.systemPublishesVoice("Reed"))
+		#expect(!lifecycle.systemPublishesVoice("pt-BR.Reed"))
+	}
+
+	@Test("a machine that publishes nothing publishes nothing")
+	func systemPublishesVoiceOnAnEmptyMachine() {
+		let (lifecycle, _, _) = subject(published: [])
+		#expect(!lifecycle.systemPublishesVoice(Self.usersVoice))
+	}
+
 	@Test("restoring puts the user's own voice back, and confirms that too")
 	func restoreConfirms() throws {
 		let (lifecycle, store, _) = subject(selected: Self.publishedVoice)

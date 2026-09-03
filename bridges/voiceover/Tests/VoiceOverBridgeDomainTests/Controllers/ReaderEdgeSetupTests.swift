@@ -177,6 +177,89 @@ struct ReaderEdgeSetupTests {
 		#expect(transcript.notes.contains { $0.contains("capturing") })
 	}
 
+	// ==========================================================================
+	// 13.24: A USER'S VOICE THIS MACHINE NO LONGER PUBLISHES.
+	// ==========================================================================
+	//
+	// THE THREE TESTS BELOW ARE ONE DECISION IN THREE HALVES, and the decision is
+	// spec 0056 §2.2 -- Marlon, 2026-09-03: *"I would like to have a default voice,
+	// but that handshake announcement must let the user know and give them
+	// instructions to install the voice."* So: the session ESTABLISHES, the person
+	// is TOLD, and the identifier is recorded ANYWAY so teardown still takes the
+	// reader off the capture voice.
+	//
+	// THE FOURTH IS THE CONTROL, and it is the one that would catch the mistake
+	// most likely to be made here: announcing on every handshake because the
+	// resolution was written the wrong way round.
+
+	@Test("A VOICE THIS MACHINE NO LONGER PUBLISHES DOES NOT REFUSE THE SESSION")
+	func aRemovedVoiceStillEstablishes() throws {
+		// The machine was already in this state before the session connected. It did
+		// not cause it, it cannot fix it, and refusing would deny testing on a reader
+		// that is otherwise perfectly capable -- while putting nothing back.
+		let lifecycle = FakeProviderLifecycle(selected: "com.apple.voice.gone.pt-BR.Ghost")
+		lifecycle.publishedVoices = ["com.apple.voice.compact.pt-BR.Luciana"]
+		let (setup, context, _) = machine(lifecycle: lifecycle)
+		try setup.establish()
+		// Recorded ANYWAY: writing it at teardown is what takes the reader off the
+		// capture voice, and refusing to record would leave our own voice selected --
+		// 13.23's hazard, reached by the cleanup itself.
+		#expect(context.previousVoice == "com.apple.voice.gone.pt-BR.Ghost")
+		#expect(lifecycle.selectCalls == 1)
+	}
+
+	@Test("AND THE PERSON IS TOLD OUT LOUD, with the identifier and how to install it")
+	func aRemovedVoiceIsAnnounced() throws {
+		// SPOKEN rather than noted, and that is the whole of Marlon's answer: it goes
+		// through the bridge's own synthesizer, which is audible even in a silent
+		// session because it goes around the reader entirely. A transcript note
+		// reaches an agent; only this reaches the person who can act on it.
+		let lifecycle = FakeProviderLifecycle(selected: "com.apple.voice.gone.pt-BR.Ghost")
+		lifecycle.publishedVoices = []
+		let announcer = FakeAnnouncer()
+		let transcript = FakeTranscript()
+		let (setup, _, _) = machine(
+			mode: .silent, lifecycle: lifecycle, transcript: transcript, announcer: announcer)
+		try setup.establish()
+
+		let spoken = try #require(announcer.spoken.first { $0.contains("com.apple.voice.gone") })
+		// The recovery, in full: a half-named settings path is a path somebody hunts
+		// for, and this one is read aloud rather than clicked from a link.
+		#expect(spoken.contains("Manage Voices"))
+		#expect(spoken.contains("System Settings"))
+		#expect(transcript.notes.contains { $0.contains(ReaderCondition.usersVoiceNotAvailable.rawValue) })
+	}
+
+	@Test("an ordinary machine is told nothing at all about its voice")
+	func aPublishedVoiceIsNotAnnounced() throws {
+		// THE CONTROL. A resolution written the wrong way round would announce on
+		// every single handshake, which is the mistake this test exists to catch --
+		// and the one a person would notice most.
+		let lifecycle = FakeProviderLifecycle(selected: "com.apple.voice.compact.pt-BR.Luciana")
+		lifecycle.publishedVoices = ["com.apple.voice.compact.pt-BR.Luciana"]
+		let announcer = FakeAnnouncer()
+		let (setup, context, _) = machine(lifecycle: lifecycle, announcer: announcer)
+		try setup.establish()
+		#expect(announcer.spoken.isEmpty)
+		#expect(context.previousVoice == "com.apple.voice.compact.pt-BR.Luciana")
+	}
+
+	@Test("a session that finds OUR OWN voice selected asks nothing about it")
+	func theCaptureVoiceIsNotResolvedAsTheUsers() throws {
+		// A previous session died without restoring, so the reader is on our voice.
+		// `previousVoice` stays nil -- Rule 0's first caveat -- and there is
+		// therefore nothing to resolve and nobody to warn. A resolution placed
+		// outside that guard would announce that the CAPTURE voice is missing, which
+		// is both false and alarming.
+		let lifecycle = FakeProviderLifecycle(selected: "org.screen-readers-mcp.capture.voice")
+		lifecycle.publishedVoices = []
+		let announcer = FakeAnnouncer()
+		let (setup, context, _) = machine(lifecycle: lifecycle, announcer: announcer)
+		try setup.establish()
+		#expect(context.previousVoice == nil)
+		#expect(announcer.spoken.isEmpty)
+	}
+
 	@Test("an already-registered machine is not registered again")
 	func registrationIsSkippedWhenItIsNotNeeded() throws {
 		// Re-registering something already registered publishes nothing new and

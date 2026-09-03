@@ -281,10 +281,19 @@ entries were renumbered to 11.14–11.17 on 2026-08-16 rather than the other way
 round, and #51 could not merge at all until that was untangled. Nearly every PR
 edits this file, so **a number that is free on main is not necessarily free**.
 The next free board number is **11.38** in the convergence series and **13.34**
-in lane 3, and the next free spec number is **0056**. Board numbers **13.32** and
+in lane 3, and the next free spec number is **0057**. Spec **0056** was spent on
+2026-09-03 by **13.24, 13.32 and 13.33 TAKEN TOGETHER** -- three failure points on
+one setting, the voice a session leaves selected on somebody's machine, sharing
+one design question about what a session may do with a voice identifier that does
+not resolve. Marlon approved the bundle that day, and **this line moved in the
+same commit**; the three entries consumed no new board number between them.
+**That is a precedent worth naming rather than a one-off**: entries bundle when
+they share a DECISION, not merely a file -- answering the same question three
+times in three PRs risks three answers. Board numbers **13.32** and
 **13.33** were spent on 2026-09-03 by 13.31's own live checklist -- a restore
 script that does not restore, and a launcher that dies when it asks a human a
-question -- and neither took a spec number of its own, the 13.11 precedent. Spec **0055** and board
+question -- and neither took a spec number of its own at the time, the 13.11
+precedent; they took 0056's when they were bundled. Spec **0055** and board
 number **13.31** were spent on 2026-09-03 by one question Marlon asked of the
 AppleScript inventory -- if a user cannot type a command name, why should we have
 to -- and this line moved in the same commit. **13.30 stands reserved** by 13.29
@@ -1850,10 +1859,63 @@ rule intends.
     What the two observed overruns had in common has not been isolated. Spec: none
     -- the 13.11 precedent. Done (PR #95, 2026-09-02).
 
-13.24. **Not started** -- **A voice identifier is used without ever being
-    resolved** (lane 3). Raised by Marlon on 2026-09-02 while 13.23 was being
+13.24. **Done (2026-09-03)** -- **A voice identifier is used without ever being
+    resolved** (lane 3). Spec:
+    [0056-the-voice-a-session-leaves-behind.md](specs/0056-the-voice-a-session-leaves-behind.md).
+    **BUNDLED WITH 13.32 AND 13.33** into one spec and one PR, approved by Marlon
+    on 2026-09-03: the three are three failure points on ONE setting -- the voice a
+    session leaves selected on somebody's machine -- and they share ONE design
+    question, which is what decided it. Answering *"what may a session do with a
+    voice identifier that does not resolve?"* three times in three PRs risks three
+    answers. Raised by Marlon on 2026-09-02 while 13.23 was being
     diagnosed, and kept separate from it on purpose: 13.23 is a bridge that dies,
     this is a bridge that quietly uses a voice that is not there.
+
+    **THE ENTRY'S OWN FRAMING WAS WRONG IN ONE WORD, AND THE WORD DECIDED THE
+    ANSWER.** The text below reads as the 13.20 shape -- refuse, as 13.20 refuses
+    an unusable capture voice. There are two identifiers, and only one of them was
+    ever unresolved: the CAPTURE voice has always been resolved, by
+    `publishedCaptureVoice()`, matched by suffix against the machine's real
+    published list, with rung 4 failing by name when there is no match. What was
+    never resolved is **the user's own voice**. So an unresolvable identifier here
+    never makes `getSpeech` meaningless and 13.20's precedent does not transfer.
+
+    **Decided by Marlon, 2026-09-03**, on being shown that correction:
+    *"I would like to have a default voice, but that handshake announcement must
+    let the user know and give them instructions to install the voice."* So:
+    **resolve and report, never refuse, in both modes.** The machine was already
+    in that state before the session connected; the session did not cause it,
+    cannot fix it, and refusing would deny testing on a reader that is otherwise
+    perfectly capable -- while putting nothing back. **The defect this entry names
+    is the SILENCE, not the fallback.**
+
+    **What shipped.** One new port method, `systemPublishesVoice`, answered from
+    the same published list our own voice is matched against -- one authority, so
+    the two answers cannot disagree. Rung 4 resolves what it records and, when the
+    machine does not publish it, SPEAKS a notice through the bridge's own
+    synthesizer (audible even in a silent session, because it goes around the
+    reader entirely) naming the voice and the settings path. Teardown asks the same
+    question and **still writes the identifier**, which is the decision rather than
+    an omission: writing it is what takes the reader OFF the capture voice, and
+    refusing would leave our voice selected with no session alive -- 13.23's
+    hazard, caused by the cleanup rather than by the crash. `ReaderCondition` gains
+    a fifth case, the first that is not about the capture voice and that no
+    `ProviderState` maps to.
+
+    **The honest limit, stated rather than discovered.** The authority is
+    `AVSpeechSynthesisVoice.speechVoices()`, which lists voices that are
+    **advertised and not installed** -- 13.15 measured exactly that with
+    `com.apple.eloquence.pt-BR.Reed`, the maintainer's own voice. **So this catches
+    a voice that was REMOVED and not one that was never installed**, the method is
+    named for what it can back up, and the live checklist had to demonstrate the
+    warning with a synthetic identifier because his own machine publishes his.
+
+    **Two things it deliberately did NOT do.** The agent is not told at `hello`:
+    `HelloResult` has no notes field, and adding one is a protocol change across
+    three bindings for a message whose only actionable audience is the person at
+    the machine, who has just been told out loud. And teardown does not announce --
+    a voice removed MID-session is noted and spoken to nobody, which is a stated
+    gap rather than a hidden one.
 
     **The gap.** Nothing checks that a voice identifier still resolves before it
     is used, in either of the two places one is used. At teardown the bridge
@@ -1875,7 +1937,8 @@ rule intends.
     Accessibility > Spoken Content > System Voice > Manage Voices. It needs a
     spec conversation first: whether a session may proceed on the default voice
     with a warning, or must refuse, is exactly the kind of question 13.20 settled
-    for capture and this has not settled for voices. Spec: none yet.
+    for capture and this has not settled for voices. **That question is answered
+    above: proceed, and tell the person.** Spec 0056.
 
 13.25. **Done (2026-09-02)** -- **A blind user sends KEYS, so the agent sends
     keys** (lane 3). Spec:
@@ -2217,7 +2280,11 @@ rule intends.
     English-name route through it is unverified off an English locale -- handed to
     13.27, which is already decoding this reader's own strings. Spec 0055.
 
-13.32. **Not started** -- **The restore script does not restore** (lane 3). Found by
+13.32. **Done (2026-09-03)** -- **The restore script does not restore** (lane 3).
+    Spec:
+    [0056-the-voice-a-session-leaves-behind.md](specs/0056-the-voice-a-session-leaves-behind.md),
+    **bundled with 13.24 and 13.33** -- see 13.24 for why the three are one entry.
+    Found by
     13.31's own live checklist on 2026-09-03, on the maintainer's machine, with his
     voice left on the capture voice by a crashed session -- which is exactly the
     situation `scripts/voiceover_restore.py` exists for, and it did not handle it.
@@ -2246,9 +2313,27 @@ rule intends.
     crashed session leaves the voice selected and nothing can say so. The journal
     half works -- the change was recorded correctly, with the right previous value.
     The recovery half was never exercised against a real open change until now.
-    Spec: none yet.
 
-13.33. **Not started** -- **`askUser` kills the launcher** (lane 3). Also found by
+    **ALL THREE LANDED IN ONE COMMIT AND HAVE ONE CAUSE**, which is worth recording
+    because it is a shape rather than an accident: b558c6e (13.26) is the file's
+    only commit, and the three defects are a botched removal of the modifier
+    branch. The half that called `restore_voice` was deleted with the modifier
+    kind; its `else` survived as `if True:`, which is why the PlistBuddy line ran
+    unconditionally and why `--apply` never applied. **A deletion that leaves a
+    dangling `else` is a deletion that keeps running the wrong half**, and nothing
+    caught it because `scripts/` is linted and has no test harness.
+
+    **A FOURTH DEFECT FELL OUT OF FIXING THE FIRST**, and it is the same one a
+    level up: the headline read *"1 setting(s) still changed"* from the journal's
+    count, over a machine that had already been put back. It now counts what is
+    still true OF THE MACHINE, and `is_open_on_the_machine` is where the two
+    questions are kept apart -- with "I could not read the preference" counting as
+    open, the same rule `process_is_running` applies to a pid it does not own.
+    Spec 0056.
+
+13.33. **Done (2026-09-03)** -- **`askUser` kills the launcher** (lane 3). Spec:
+    [0056-the-voice-a-session-leaves-behind.md](specs/0056-the-voice-a-session-leaves-behind.md),
+    **bundled with 13.24 and 13.32** -- see 13.24 for why. Also found by
     13.31's live checklist, and NOT caused by it: `main` was built in a worktree as a
     control and crashes identically. `BridgeListener` dies with **SIGILL (exit 132)**
     the moment `askUser` opens its AppKit window, preceded by
@@ -2268,7 +2353,23 @@ rule intends.
     **It is 13.14's territory**, because the control dialog is what gives this bundle
     a real `NSApplication` and a main run loop. Until then either the launcher runs
     an `NSApplication` of its own, or `UserPrompter` is not reachable from it and says
-    so by name rather than crashing. Spec: none yet.
+    so by name rather than crashing.
+
+    **THE LAUNCHER RUNS ONE, and it does not pre-empt 13.14.** `NSApplication.shared`
+    with an `.accessory` activation policy, created on the main thread, and
+    `application.run()` where `dispatchMain()` was. 13.14 gives the SHIPPED BUNDLE a
+    dialog wired through `Wiring.controlSurface`; this is a dev launcher `build.sh`
+    deliberately does not copy into the bundle, and borrowing AppKit's run loop is
+    not designing a UI. **The refusal was declined for what it cost**: it would have
+    made half of 13.10's human channel unexercisable against a real reader until
+    13.14 lands -- and needed a new adapter, its fake, its tests and a `Wiring` fork
+    keyed on which executable is running, to make a working feature not work.
+
+    **THERE IS NO HEADLESS TEST FOR IT, AND THERE MUST NOT BE**, which is
+    `AppKitPromptWindow`'s own no-test-file rule one layer up: a real
+    `NSApplication` in a test process takes focus from whatever the developer is
+    doing and announces itself out loud on a machine with a screen reader running.
+    It is proved by the live checklist and by nothing else. Spec 0056.
 
 ## Convergence (requires C and D both Done)
 

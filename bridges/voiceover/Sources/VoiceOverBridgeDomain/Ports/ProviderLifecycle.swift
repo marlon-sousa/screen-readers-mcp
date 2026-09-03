@@ -90,6 +90,45 @@ public protocol ProviderLifecycle: AnyObject {
 	/// What the reader is set to speak with, or nil if the store cannot be read.
 	func selectedVoice() -> SelectedVoice?
 
+	/// Whether THIS MACHINE publishes a voice under `identifier` -- 13.24.
+	///
+	/// ============================================================================
+	/// IT ANSWERS ABOUT THE USER'S OWN VOICE, WHICH NOTHING RESOLVED UNTIL 13.24.
+	/// ============================================================================
+	///
+	/// The CAPTURE voice has always been resolved: `publishedCaptureVoice()` matches
+	/// by suffix against the machine's real published list, and rung 4 fails by name
+	/// when there is no match. The user's own voice was recorded verbatim from the
+	/// preference and then used twice -- written back at teardown, and handed to the
+	/// extension as the pass-through voice -- without ever being checked.
+	///
+	/// A DEAD IDENTIFIER FAILS INVISIBLY, WHICH IS WHY IT NEEDS ASKING. The write
+	/// succeeds, the read-back confirms it, and VoiceOver falls back to its default
+	/// at SPEECH time -- so every call involved reports success and the person is
+	/// left on a voice they did not choose. That is the shape spec 0050 exists to
+	/// kill: a real failure that renders as "it just sounds different".
+	///
+	/// NEVER THROWS, for `state()`'s reason: "the system does not publish it" is an
+	/// ANSWER, and the whole point of asking is to say so by name.
+	///
+	/// ============================================================================
+	/// AND THE LIMIT IS PART OF THE CONTRACT: REMOVED, NOT NEVER-INSTALLED.
+	/// ============================================================================
+	///
+	/// The authority is the machine's published voice list -- the same one
+	/// `publishedCaptureVoice()` reads, deliberately, so this bridge has ONE answer
+	/// to "does this identifier exist here" rather than two that can disagree. That
+	/// list contains voices which are ADVERTISED AND NOT INSTALLED: board entry
+	/// 13.15 measured exactly that with `com.apple.eloquence.pt-BR.Reed`, the
+	/// maintainer's own voice, where every request falls back to Luciana in `say`
+	/// and in VoiceOver as much as here, and the two render byte-identical audio.
+	///
+	/// So a `true` from this means "the system publishes this identifier", and NOT
+	/// "the reader can speak with it". The method is named for what it can back up;
+	/// anything called `voiceIsInstalled` would be a sentence this bridge cannot
+	/// support, and the caller's message must not claim more either. Spec 0056 §2.3.
+	func systemPublishesVoice(_ identifier: String) -> Bool
+
 	/// Register the capture voice's extension with the system, and confirm it
 	/// took. ADDED AT 13.20; called by the handshake when `state()` is
 	/// `.notRegistered`, and by nothing at teardown -- see the header.

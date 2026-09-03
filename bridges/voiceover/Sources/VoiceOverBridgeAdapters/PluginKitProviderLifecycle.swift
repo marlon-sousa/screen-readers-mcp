@@ -146,6 +146,15 @@ public final class PluginKitProviderLifecycle: ProviderLifecycle {
 		return SelectedVoice(identifier: identifier, isCaptureVoice: isOurs(identifier))
 	}
 
+	/// THE SAME LIST `publishedCaptureVoice()` MATCHES AGAINST, read a second time
+	/// rather than duplicated: this bridge has one authority on "does this
+	/// identifier exist here", so the answer it gives about the user's voice cannot
+	/// disagree with the answer it gives about ours. See the port for what a `true`
+	/// does and does not claim.
+	public func systemPublishesVoice(_ identifier: String) -> Bool {
+		published.identifiers().contains(identifier)
+	}
+
 	public func register() throws {
 		guard let paths = bundlePaths else {
 			throw ProviderError(
