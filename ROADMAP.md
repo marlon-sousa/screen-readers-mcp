@@ -34,6 +34,11 @@ notes.
     "where does a VoiceOver bridge sit" was unanswered. It is answered: a third
     lane, parallel to the other two, because a VoiceOver bridge is neither the
     NVDA bridge nor the server and blocks on neither.
+  - **Lane 4 (comments) runs under its own rules — Decided in conversation.**
+    Its entries have no spec: the rule is AGENTS.md, "Comments say what the
+    code cannot", and the procedure is the `strip-comments` skill. Its three
+    entries touch disjoint files, so all three PRs may be open at once, and in
+    any order.
 - **Manual live-NVDA checklists** and their results live in the implementing
   PR's body as checkboxes; findings are written inline on the unchecked item
   (NVDA version, expected vs observed) and spawn new iteration entries here.
@@ -4192,6 +4197,30 @@ rather than before it.
       the `server-v*` release path 12a reserved the namespace for: a tag builds
       the binary, runs it to check its version against the tag, and publishes a
       draft release.
+
+## Status board — lane 4: comments say what the code cannot
+
+Each entry strips one area's comments under the AGENTS.md rule, following the
+`strip-comments` skill, in one comment-only PR. The same PR turns the comment
+gate on for that area in the root `pyproject.toml`, with the ratio it reached as
+the ceiling, so the area cannot drift back. Counts are from
+`python scripts/comments.py`, before any entry: comment lines, code lines.
+
+14.1. **The NVDA bridge and the wire contract** (lane 4). Spec: none, see the
+    lane rule. Files: every Go, Python and Swift file under `bridges/nvda/` and
+    `shared/`; the addon's copy of `protocol.py` regenerates from `shared/`.
+    Before: 7,569 comment, 12,901 code, 0.59.
+
+14.2. **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
+    every Swift file under `bridges/voiceover/`, except those an open PR
+    touches, which go in `pending`. Before: 12,941 comment, 18,436 code, 0.70.
+
+14.3. **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
+    file under `server/` except the generated `wire.gen.go`. Before: 7,734
+    comment, 18,166 code, 0.43.
+
+Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has no
+area in the gate yet.
 
 ## Out-of-band work (not board entries)
 

@@ -230,7 +230,10 @@ Rules that keep this honest:
 - **Every module header states its ROLE and its relationships**, not just what
   the code does: which port it implements, what it depends on, who builds it,
   who uses it. If a reader has to ask "what is this class for and who connects
-  it?", the header has failed — that question is the review test.
+  it?", the header has failed — that question is the review test. The header
+  is exactly that: one line per role and relationship (`ROLE:`,
+  `IMPLEMENTED BY:`, `BUILT BY:`, `USED BY:`), one sentence each, and nothing
+  after it but the facts the next section allows.
 - **Adapters are LAYERED so the untestable part shrinks to a leaf.** An adapter
   may depend on another adapter, but only through a seam in `adapters/ports/` —
   never on a concrete adapter. The upper adapter holds every decision and is
@@ -267,6 +270,53 @@ ports, `wiring.py`, the no-DI-container argument, the "mode is only known after
 [`bridges/nvda/AGENTS.md`](bridges/nvda/AGENTS.md); the Go mechanics — interface
 assertions, no package-level mutable state — are in
 [`server/AGENTS.md`](server/AGENTS.md).
+
+## Comments say what the code cannot — **Decided**
+
+Applies to every Go, Python and Swift file, tests included. A comment or
+docstring is one of five things:
+
+1. **The module header** described above: role and relationships, one line
+   each.
+2. **A measured fact**: what was measured, against which program and version,
+   and the value — "NVDA 2026.1 speaks the focus change before the gesture
+   returns". A version, never a date: a re-measurement needs the version, and
+   `git blame` already dates the line.
+3. **An invariant or hazard the code does not enforce**: "restore the synth in
+   a `finally`, or a crash leaves the user mute"; "call only on NVDA's main
+   thread".
+4. **What an absent value, an error or a rejection carries**: "nil means the
+   caller did not choose, and the capture mode's default applies".
+5. **A licence, tooling or generated-file header**, unchanged.
+
+One plain sentence, at the point of use, once in the repository. When a second
+place needs the same fact, it says "see" and a path.
+
+**Never in code**, because each has a home that is not the code:
+
+- why a design was chosen, what was tried and rejected, what it replaced, or
+  when it changed — that is the spec and the PR body;
+- a citation of a spec, a board entry, a lane or a decision, and a date — the
+  spec cites the code, never the reverse;
+- a spec amendment — it goes in the spec file;
+- architecture re-justified per file — this manual says it once;
+- a doc line on a field, parameter, method or test whose name already says it —
+  a test's name is its documentation, so rename a test rather than narrate it;
+- bold, and emphasis in capitals.
+
+The test when unsure: could a competent engineer with this manual and the specs
+work it out from the code in a few minutes? Then delete it. If still unsure,
+keep one sentence stating the fact and delete the rest.
+
+**The gate enforces the mechanical half.** `poe gate-comments`
+(`scripts/comments.py --check`, part of `poe gates` and the `shared` CI job)
+fails on a comment that cites a spec, board, lane, milestone or decision,
+carries a date, or uses bold. It also fails when an area's comment lines per
+code line rise above that area's `ceiling` in the root `pyproject.toml`. Lower
+a ceiling freely; raising one needs Marlon's approval in conversation. The
+judgement half — history, rationale and narration without a citation — is on
+the author and the reviewer. `python scripts/comments.py <files>` prints the
+counts for any set of files.
 
 ## Testing
 
@@ -705,6 +755,7 @@ only needs the merged code + its spec + this file.
   and merges with the PR — it does not land on main separately. Code on that
   branch starts only after the spec is approved in conversation; the PR is
   judged against its spec. If implementation forces a spec amendment, the
+  amendment is written in the spec file, never in a code comment, and the
   amendment rides in the same PR. (Process-level doc changes — this file,
   ROADMAP.md's rules — are still approved in conversation and may land
   directly on main.)
@@ -738,8 +789,8 @@ only needs the merged code + its spec + this file.
 - **Anything a live checklist DEPENDS ON is versioned, in the same PR as the
   checklist — Decided.** If a check needs a web page, a document, a sample file
   or a fixture of any kind, it goes in [`scripts/live_pages/`](scripts/live_pages/)
-  (or beside the driver that uses it), with a comment saying which item it serves
-  and why it is shaped the way it is. **Do not build one in a temp directory and
+  (or beside the driver that uses it), with a comment saying what check it
+  serves and what that check needs from its shape. **Do not build one in a temp directory and
   cite it.** The rule exists because that is exactly what happened on
   2026-08-22: three fixtures were written to a session scratchpad, and the PR
   went up quoting a measurement — 1103 lines, 5.73 s — that nobody else could
