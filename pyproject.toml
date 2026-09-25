@@ -452,7 +452,8 @@ ignore_fail = false
 
 # The comment gate, scripts/comments.py --check. An area is enforced once it has been stripped, and
 # its ceiling is the ratio it was stripped to. Lower a ceiling freely; raising one needs Marlon's
-# approval. `pending` lists files left unstripped because an open PR touches them.
+# approval. `pending` lists files left unstripped because an open PR touches them; the gate skips
+# them entirely, and whoever strips them removes them from the list.
 
 [tool.screen-readers-mcp.comments.server]
 paths = ["server"]

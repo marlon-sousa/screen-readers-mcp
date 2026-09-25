@@ -76,7 +76,7 @@ that are names: `ROLE:`, `SAFETY:`, `TODO:`, acronyms.
 1. `python scripts/comments.py $(git ls-files <area> | rg '\.(py|go|swift)$')` before and
    after, for the PR body. Only formatter reflow may change the code count.
 2. In the root `pyproject.toml`, set the area's `enforced = true` and its `ceiling` to
-   the measured ratio rounded up to the next 0.05, so a few new files do not trip it. If an open PR touches files in the
+   the next multiple of 0.05 strictly above the measured ratio, so a few new files do not trip it. If an open PR touches files in the
    area, leave those files unstripped, list them in `pending`, and name the PR.
 3. `uv run poe dev`, captured to a log and run once. Red means a non-comment line moved,
    or the gate found a citation; fix it and run again.

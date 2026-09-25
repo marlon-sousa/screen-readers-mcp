@@ -175,11 +175,11 @@ def check() -> int:
 		members = [f for f in files if any(f.startswith(p.rstrip("/") + "/") for p in area["paths"])]
 		total = Count()
 		for path in members:
+			if path in pending:
+				continue
 			result = count(ROOT / path)
 			total.comment += result.comment
 			total.code += result.code
-			if path in pending:
-				continue
 			for number, text in result.comments:
 				for pattern, reason in FORBIDDEN:
 					if pattern.search(text):
