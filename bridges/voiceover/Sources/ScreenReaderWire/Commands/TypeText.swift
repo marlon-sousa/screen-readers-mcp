@@ -1,17 +1,5 @@
-// ROLE: entity -- `typeText`'s params and result.
-//
-// Pure. Built by the TypeText handler (entry 13.8), which synthesizes keystrokes
-// rather than setting a field's value, so the reader speaks as a human typing
-// would make it speak.
-//
-// `graceMs` DEFAULTS TO 0 HERE AND TO 100 FOR A GESTURE, and the difference is
-// not an oversight: typing produces its speech as the keys land, while a gesture
-// produces it afterwards. The type names are the contract's -- TypeParams, not
-// TypeTextParams -- so the binding and the schema can be compared by name.
-//
-// THE TEXT IS NEVER LOGGED, because this is exactly how a secret is entered
-// (protocol.md §5). That obligation belongs to the transcript adapter; it is
-// noted here because this is where a reader meets the field.
+// ROLE: entity, `typeText`'s params and result.
+// The text is never logged, because this is how a secret is entered.
 
 public struct TypeParams: Codable, Equatable, Sendable {
 	public var text: String
@@ -33,7 +21,6 @@ public struct TypeParams: Codable, Equatable, Sendable {
 }
 
 public struct TypeResult: Codable, Equatable, Sendable {
-	/// How many characters were typed -- never the characters themselves.
 	public var typed: Int
 	public var speech: [SpeechEntry]
 	public var speechFrom: Int

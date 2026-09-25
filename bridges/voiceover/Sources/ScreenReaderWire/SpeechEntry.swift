@@ -1,28 +1,7 @@
-// ROLE: entity -- one thing the reader said, as it travels on the wire.
-//
-// Pure. Carried by SpeechResult, GestureResult and TypeResult -- three shapes in
-// three files, which is why it is a file of its own rather than living with any
-// of them.
-//
-// `index` IS THE BRIDGE'S OWN NUMBER, NOT THE READER'S. On macOS the capture
-// extension's sequence counter restarts whenever the system relaunches it
-// (measured, spec 0041 A4), so entry 13.5's SpeechBuffer assigns these indices
-// and discards the extension's. Nothing in this file can enforce that; the
-// header says it because the field looks equally trustworthy either way.
-//
-// `logPosition` IS AN NVDA COORDINATE, and this bridge has no log to position
-// into -- VoiceOver emits no diagnostic log of its own. It stays in the shape
-// because the shape is the contract's, and it defaults to 0, which is what the
-// Python binding does for a reader that cannot answer it.
-//
-// `emittedAt` is `YYYY-MM-DD HH:MM:SS.mmm` (spec 0028, protocol.md §7.1) --
-// NOT ISO 8601, which is what this header said until 13.5 read the contract
-// beside the Python renderer that produces it. The shape is the one the session
-// transcript and NVDA's own log are written in, so a stamp can be pasted
-// straight into a search of either; that joinability is the whole reason the
-// field is a wall clock. It is carried as a String rather than a Date because
-// the contract's field is a formatted instant, and parsing it here would make
-// this binding responsible for a calendar it has no use for.
+// ROLE: entity, one thing the reader said, as it travels on the wire.
+// `index` is assigned by the bridge, never taken from the capture extension; see Utterance.swift.
+// `logPosition` defaults to 0, because VoiceOver has no log to position into.
+// `emittedAt` is a wall-clock `YYYY-MM-DD HH:MM:SS.mmm`, not ISO 8601, as in the session transcript.
 
 public struct SpeechEntry: Codable, Equatable, Sendable {
 	public var text: String

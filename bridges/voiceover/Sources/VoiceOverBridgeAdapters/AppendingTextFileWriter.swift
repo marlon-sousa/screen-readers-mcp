@@ -1,37 +1,8 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the FileWriter seam over a file that is
-// APPENDED to rather than replaced. Real file IO, no decisions.
-//
-// USED BY: FileChangeJournal, through the seam, never directly.
+// ROLE: leaf adapter that implements the FileWriter seam over a file appended to, never replaced.
+// USED BY: FileChangeJournal, through the seam.
 // BUILT BY: Wiring.
-//
-// NO TEST FILE (leaf), like `TextFileWriter` beside it: everything worth
-// asserting is the journal's line format, one layer up, against a fake writer.
-//
-// ============================================================================
-// IT IS A SECOND LEAF RATHER THAN A FLAG ON THE FIRST, AND THE REASON IS A BUG
-// THAT WOULD HAVE BEEN INVISIBLE.
-// ============================================================================
-//
-// `TextFileWriter.open()` calls `FileManager.createFile(atPath:contents:)`, which
-// TRUNCATES an existing file. That is exactly right for a transcript: every
-// session gets a fresh `session-<stamp>.log`, so there is never anything to
-// truncate, and starting from empty is what you want if there somehow were.
-//
-// The change journal is the opposite in every respect. It is ONE file for the
-// whole machine, appended to by every session, and its entire value is that an
-// entry written three weeks ago is still there when somebody finally notices
-// their voice is wrong. Reusing the transcript's leaf would have wiped every
-// unresolved change on the next connect -- and it would have looked like it was
-// working, because the session that wiped the file immediately writes its own
-// entries into it. The evidence destroyed is always somebody ELSE's.
-//
-// So the two behaviours get two classes, and a caller picks by NAME rather than
-// by remembering a boolean. That is the same rule this bridge applies to
-// `PlistReader` and `PlistWriter`: the object you were handed decides what you
-// can do to somebody's machine.
-//
-// IT CREATES THE FILE WHEN THERE IS NONE, and seeks to the end when there is.
-// Both are what "append" means to whoever asked for it.
+// Never swap in TextFileWriter here: its `open()` truncates, which would wipe every earlier session's
+// unresolved changes from the journal.
 
 import Foundation
 
@@ -59,9 +30,7 @@ public final class AppendingTextFileWriter: FileWriter {
 
 	public func writeLine(_ text: String) {
 		guard let handle, let data = (text + "\n").data(using: .utf8) else { return }
-		// Written and flushed per line, and every failure swallowed -- the seam's
-		// contract. The tail is exactly what a crash would take, and a crash is the
-		// only reason this file exists.
+		// Written and flushed per line, and every failure swallowed, per the seam's contract.
 		do {
 			try handle.write(contentsOf: data)
 			try handle.synchronize()

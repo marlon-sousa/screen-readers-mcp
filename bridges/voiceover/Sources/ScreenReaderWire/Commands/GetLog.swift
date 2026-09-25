@@ -1,18 +1,9 @@
-// ROLE: entity -- `getLog`'s params and result.
-//
-// Pure. Not implemented by this bridge -- VoiceOver emits no diagnostic log of
-// its own (52 unified-log records in a measured hour, every one from a framework
-// it links; spec 0046 part 2), so `log` is not in its capability set. The shape
-// is bound anyway, for the reason in Command.swift's header.
-//
-// EVERY FILTER IS OPTIONAL AND THE BOUNDS ARE NOT: `maxEntries` defaults to 200
-// and `windows` to 1, because a log slice that were unbounded by default would
-// be incomplete by default -- an agent would read a truncated answer believing
-// it had the whole thing (protocol.md §5).
+// ROLE: entity, `getLog`'s params and result.
+// VoiceOver on macOS 15 emits no diagnostic log of its own (52 unified-log records in an hour, all from
+// frameworks it links), so this bridge does not advertise `log`.
 
 public struct GetLogParams: Codable, Equatable, Sendable {
-	/// The command anchor: which request's window to read. nil means the most
-	/// recently marked command.
+	/// nil means the most recently marked command.
 	public var commandId: Int?
 	public var windows: Int = 1
 	public var sincePosition: Int?
@@ -20,8 +11,7 @@ public struct GetLogParams: Codable, Equatable, Sendable {
 	public var minLevel: LogLevel?
 	public var contains: [String]?
 	public var exclude: [String]?
-	/// Which fields of each entry to render; nil means the reader's own default
-	/// selection (time, level, module, message).
+	/// nil means the reader's own default selection.
 	public var fields: [String]?
 	public var maxEntries: Int = 200
 
@@ -63,14 +53,11 @@ public struct GetLogParams: Codable, Equatable, Sendable {
 
 public struct LogSliceResult: Codable, Equatable, Sendable {
 	public var text: String
-	/// How many entries this slice carries, and how many matched before the
-	/// bound was applied -- so `truncated` is never the only warning.
 	public var entries: Int
 	public var matched: Int
 	public var truncated: Bool
 	public var nextPosition: Int
-	/// The verbosity the log was CAPTURED at, which bounds what any filter here
-	/// could have found.
+	/// The verbosity the log was captured at, which bounds what any filter could have found.
 	public var capturedAtLevel: LogLevel
 	public var fromCommandId: Int?
 	public var toCommandId: Int?

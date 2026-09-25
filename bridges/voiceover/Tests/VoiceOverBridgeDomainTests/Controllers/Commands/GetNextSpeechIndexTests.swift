@@ -31,8 +31,6 @@ struct GetNextSpeechIndexTests {
 		ctx.speech?.append(CapturedUtterance(text: "background chatter"))
 		let mark = try index(ctx)
 		#expect(mark == 2)
-		// The whole point: reading from the mark cannot return what was said
-		// before it, which is what makes an assertion race-free.
 		ctx.speech?.append(CapturedUtterance(text: "the answer"))
 		#expect(ctx.speech?.entriesSince(mark).entries.map(\.utterance.text) == ["the answer"])
 	}

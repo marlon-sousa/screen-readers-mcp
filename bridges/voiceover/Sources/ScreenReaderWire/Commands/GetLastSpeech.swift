@@ -1,12 +1,5 @@
-// ROLE: entity -- `getLastSpeech`'s result. The command has no params.
-//
-// Pure. Built by the GetLastSpeech handler (entry 13.5).
-//
-// AN EMPTY BUFFER IS AN EMPTY TEXT, NOT AN ERROR: a session that has not made
-// the reader say anything yet asks a legitimate question and gets a legitimate
-// answer. The type is flat rather than a SpeechEntry because the contract
-// defines it that way -- `logPosition` and `emittedAt` default, so a reader with
-// no log or no clock can still answer.
+// ROLE: entity, `getLastSpeech`'s result; the command has no params.
+// An empty buffer answers an empty text, not an error.
 
 public struct LastSpeechResult: Codable, Equatable, Sendable {
 	public var text: String

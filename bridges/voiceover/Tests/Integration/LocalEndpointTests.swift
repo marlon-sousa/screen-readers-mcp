@@ -1,16 +1,4 @@
-// HEADLESS INTEGRATION -- the bridge LISTENING, on a real endpoint, dialled by a
-// real client socket. No VoiceOver, no MCP server, no second process.
-//
-// THIS IS THE ENTRY'S HEADLINE CLAIM, and it is the one thing no unit test in
-// this package can make: 13.4 is the first point at which something outside this
-// machine's Swift code can establish a session with this bridge. The listener's
-// obligations are unit-tested against a fake binder because their ORDER is the
-// contract; here the kernel is the judge instead -- the socket really appears at
-// the derived path, a stale one really is replaced, and a restart really works.
-//
-// The path is derived by the same rule the Go server uses (protocol.md §1), from
-// a home directory this test invents, so it exercises the derivation without
-// touching the developer's own endpoint.
+// Headless integration: the bridge listening on a real local endpoint, dialled by a raw client socket.
 
 import Darwin
 import Fakes
@@ -23,10 +11,7 @@ import Testing
 
 @Suite("the local endpoint")
 struct LocalEndpointTests {
-	/// A client that dials a unix socket and speaks JSON lines, standing in for
-	/// the Go server. Deliberately built from the raw socket API rather than from
-	/// this package's own transport: a round trip proven with our own code on both
-	/// ends would not prove the endpoint is dialable.
+	/// A raw-socket client standing in for the Go server; built on this package's own transport it would prove nothing about the endpoint.
 	private final class Client {
 		private var descriptor: Int32 = -1
 		private var buffered = Data()
@@ -93,9 +78,7 @@ struct LocalEndpointTests {
 		}
 	}
 
-	/// A home directory of this test's own, in /tmp because the temporary
-	/// directory macOS hands a process is ~49 bytes before the first meaningful
-	/// character -- half the 103-byte budget, spent on nothing.
+	/// In /tmp because the macOS per-process temporary directory spends about 49 of the 103-byte socket path budget.
 	private func temporaryHome() -> String {
 		"/tmp/voiceover-endpoint-\(UUID().uuidString.prefix(8))"
 	}
@@ -176,9 +159,6 @@ struct LocalEndpointTests {
 
 	@Test("a socket file left behind by a crash does not stop the bridge starting")
 	func aStaleSocketIsReplaced() throws {
-		// Without the unlink-before-bind obligation this is not an edge case: it is
-		// every restart after a crash, and the failure says "address already in
-		// use" about a socket nothing is listening on.
 		let home = temporaryHome()
 		defer { try? FileManager.default.removeItem(atPath: home) }
 		let (bridge, path) = server(home: home)
@@ -209,9 +189,6 @@ struct LocalEndpointTests {
 
 	@Test("the bridge accepts a SECOND session after the first has ended")
 	func itKeepsAccepting() throws {
-		// One session at a time, but not one session ever: an agent that
-		// disconnects and reconnects is the ordinary case, and lane 1's accept loop
-		// exists precisely so a finished session returns the server to listening.
 		let home = temporaryHome()
 		defer { try? FileManager.default.removeItem(atPath: home) }
 		let (bridge, path) = server(home: home)
@@ -228,8 +205,6 @@ struct LocalEndpointTests {
 			try client.send(id: round + 10, cmd: "bye")
 			#expect(try client.reply().id == round + 10)
 			client.close()
-			// The server must be back to listening before the next dial, which is
-			// the state transition BridgeServer's own test asserts in isolation.
 			let deadline = Date().addingTimeInterval(5)
 			while bridge.status.state != .listening, Date() < deadline {
 				usleep(2000)

@@ -1,9 +1,4 @@
-// ROLE: entity -- `setConfig`'s params. It answers with ConfigResult, which
-// lives with `getConfig` in GetConfig.swift because that is the command named
-// after it.
-//
-// Pure. The result is the value AFTER the write, read back rather than echoed,
-// so a reader that coerced or rejected what it was given says so in the answer.
+// ROLE: entity, `setConfig`'s params; it answers with ConfigResult, the value read back after the write.
 
 public struct SetConfigParams: Codable, Equatable, Sendable {
 	public var keyPath: [String]

@@ -1,42 +1,13 @@
-// ROLE: adapter -- IMPLEMENTS the BridgeConfig domain port over the Defaults
-// seam. It owns the key names, the defaults, and what to do with a stored value
-// that no longer makes sense.
-//
-// BUILT BY: Wiring, once per process. USED BY: the launcher, which starts from
-// these values and lets this run's flags override them; Wiring itself (which
-// listener to build); the Hello handler (the attended flag); and the audible cues
-// (their own switch). The control dialog will be the first thing that WRITES
-// them.
-//
-// EVERY READ IS FROM THE STORE, AND EVERY WRITE GOES STRAIGHT TO IT. There is no
-// cached copy, deliberately: something writes a value and the next thing that
-// reads it -- possibly the accept loop, on another thread -- must see it. A cache
-// here would be a second source of truth for a handful of scalars.
-//
-// A STORED VALUE THAT NO LONGER PARSES FALLS BACK TO THE DEFAULT, and is not
-// repaired in place. A connection mode this build does not have, a port outside
-// the legal range, an endpoint name that is empty: each is a machine that was
-// configured by an older build or edited by hand, and the safe answer is the
-// shipped default -- which is also what an unconfigured machine gets, so there is
-// one behaviour to reason about rather than two. Rewriting the store on a READ
-// would mean that merely LOOKING at somebody's settings edited them.
-//
-// THE ENDPOINT NAME IS A STORED SETTING, NOT ONLY A KIND, and that is board entry
-// 11.37 arriving cheaply here: lane 1 builds its listener from a CONSTANT, so the
-// override that exists on the dialing side is, in practice, a way to make the two
-// halves disagree silently. The board says lane 3 gets the field cheaply if it is
-// designed in and expensively if it is added, so it is designed in at the layer
-// that holds it -- and on POSIX the same value accepts an absolute socket path,
-// which the listener already honours because `LocalSocketPath` treats anything
-// with a separator in it as a path the user meant literally. What is still owed
-// is a way for a human to EDIT it without a `defaults` command, and that belongs
-// to the control dialog.
+// ROLE: adapter implementing the BridgeConfig port over the Defaults seam; it owns the key names, the defaults and the fallback for a stored value that no longer parses.
+// BUILT BY: Wiring, once per process.
+// USED BY: the launcher, Wiring, the Hello handler and the audible cues.
+// No cached copy: the accept loop, on another thread, must see a write at once.
+// A stored value that no longer parses reads as the default and is never repaired on read, so looking at settings never edits them.
 
 import VoiceOverBridgeDomain
 
 public final class UserDefaultsBridgeConfig: BridgeConfig {
-	/// The stored keys, spelled once. Prefixed because `UserDefaults.standard` is
-	/// shared with everything else this application will ever store.
+	/// Prefixed because `UserDefaults.standard` is shared with everything else this application stores.
 	enum Key {
 		static let connectionMode = "bridge.connectionMode"
 		static let endpointName = "bridge.endpointName"
@@ -74,10 +45,7 @@ public final class UserDefaultsBridgeConfig: BridgeConfig {
 
 	public var loopbackPort: Int {
 		get {
-			// A PORT OUTSIDE THE LEGAL RANGE IS THE DEFAULT, not a bind that fails
-			// with `invalid argument` at the moment somebody presses Start. 0 is
-			// excluded on purpose: it means "any free port" to the kernel, which is
-			// useless for an endpoint a server has to dial by number.
+			// Out of range reads as the default; 0 is excluded because it means any free port, which a server cannot dial.
 			guard let port = defaults.integer(Key.loopbackPort), (1...65535).contains(port) else {
 				return defaultLoopbackPort
 			}
@@ -87,8 +55,7 @@ public final class UserDefaultsBridgeConfig: BridgeConfig {
 	}
 
 	public var attended: Bool {
-		// DEFAULTS TO TRUE, and the costs are not symmetric: a machine nobody has
-		// configured is not a machine we may assume is empty (spec 0035).
+		// Defaults to true: an unconfigured machine may not be assumed empty.
 		get { defaults.boolean(Key.attended) ?? true }
 		set { defaults.set(Key.attended, newValue) }
 	}

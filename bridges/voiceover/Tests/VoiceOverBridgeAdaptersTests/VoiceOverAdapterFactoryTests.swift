@@ -1,15 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/VoiceOverAdapterFactory.swift.
-//
-// THE REFUSAL USED TO BE THE TEST, AND 13.6 DELETED IT. Until this entry a
-// silent session was refused here, with a named test that said so -- and the
-// rule was that whoever made the promise keepable had to delete it in the same
-// commit. This file is that deletion.
-//
-// WHAT REPLACES IT is not "nothing": the refusal MOVED to the handshake, which
-// is the only place that can ask whether this machine can actually deliver
-// silence. `HelloTests` carries it, named there, and this suite now asserts the
-// property that makes the move safe -- both modes get the SAME collaborators, so
-// nothing about a mode is decided by which fields happen to be filled in.
 
 import Fakes
 import ScreenReaderWire
@@ -28,22 +17,12 @@ struct VoiceOverAdapterFactoryTests {
 
 	@Test("A SILENT SESSION IS BUILT NOW: the marker file is what makes the promise keepable")
 	func silentIsBuilt() throws {
-		// `silent` is a promise about a human's ears -- the reader keeps talking,
-		// the human hears nothing, the agent reads what was said. 13.5 could keep
-		// only the last clause, so a silent session was refused outright. What
-		// changed is the marker this factory now builds: the capture voice reads it
-		// once per utterance and renders silence instead of audio, and the lease on
-		// it means a dead bridge un-mutes the machine without running any code.
 		let set = try testAdapterFactory().build(mode: .silent)
 		#expect(set.mode == .silent)
 	}
 
 	@Test("both modes get the same collaborators, because capture is identical in both")
 	func bothModesGetTheSameEdge() throws {
-		// Only RENDERING differs on this route, and the extension does the
-		// rendering. A factory that handed a silent session a different set would
-		// be inventing a difference the mechanism does not have -- and would put
-		// the question "which mode am I?" into every handler.
 		let factory = testAdapterFactory()
 		let live = try factory.build(mode: .live)
 		let silent = try factory.build(mode: .silent)
@@ -55,12 +34,6 @@ struct VoiceOverAdapterFactoryTests {
 
 	@Test("both modes get a liveness probe, for the same reason")
 	func bothModesGetTheInputEdge() throws {
-		// A gesture reaches the reader identically whether or not the human can
-		// hear the result -- rendering is the extension's business and the only
-		// thing a mode changes on this route. A `gestureSender` was asserted beside
-		// this until 13.31, which deleted the command-name route; what presses a
-		// gesture now is the key presser, checked below with the rest of the event
-		// path.
 		let factory = testAdapterFactory()
 		for mode in [CaptureMode.live, .silent] {
 			let set = try factory.build(mode: mode)
@@ -70,11 +43,6 @@ struct VoiceOverAdapterFactoryTests {
 
 	@Test("both modes get a text typer, and the SAME permission broker")
 	func bothModesGetTheTypingEdge() throws {
-		// The typer is per session and stateless, like the gesture sender. The
-		// BROKER is shared, because it describes this PROCESS's standing with the
-		// system rather than anything about a session -- and because the point of
-		// 13.8 is that only a COMMAND HANDLER can ask for the Accessibility grant,
-		// never a thing that gets built at every handshake.
 		let permissions = FakePermissionBroker()
 		let factory = testAdapterFactory(permissions: permissions)
 		for mode in [CaptureMode.live, .silent] {
@@ -86,12 +54,6 @@ struct VoiceOverAdapterFactoryTests {
 
 	@Test("both modes get the SAME announcer and prompter, and a silent one is not special")
 	func bothModesGetTheHumanChannel() throws {
-		// The channel goes around the reader entirely -- the bridge's own
-		// synthesizer, and a window of its own -- so the mode that mutes the reader
-		// changes nothing about it. That is exactly why `announce` is audible in a
-		// silent session, which is the one mode where it is the human's only
-		// channel. Both are SHARED, like the broker: one process has one
-		// loudspeaker and one screen.
 		let announcer = FakeAnnouncer()
 		let prompter = FakeUserPrompter()
 		let factory = testAdapterFactory(announcer: announcer, prompter: prompter)
@@ -104,11 +66,6 @@ struct VoiceOverAdapterFactoryTests {
 
 	@Test("BUILDING A SESSION ASKS FOR NO PERMISSION -- the request belongs to a COMMAND")
 	func buildingAsksForNothing() throws {
-		// The structural half of "a session that presses only the reader's COMMAND
-		// NAMES and reads speech never triggers an Accessibility request": the
-		// factory runs at every handshake, so a status read or a request here would
-		// happen for every session ever established, whether or not it ever posted
-		// an event.
 		let permissions = FakePermissionBroker()
 		_ = try testAdapterFactory(permissions: permissions).build(mode: .live)
 		#expect(permissions.requests.isEmpty)

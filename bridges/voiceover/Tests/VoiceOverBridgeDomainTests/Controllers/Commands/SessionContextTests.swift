@@ -21,10 +21,6 @@ struct SessionContextTests {
 
 	@Test("the speech buffer is a readable failure before hello, and the buffer after it")
 	func theSpeechBufferAccessor() throws {
-		// Unreachable through the dispatch loop -- every speech handler runs after
-		// hello, and hello always installs a buffer -- which is exactly why it
-		// throws rather than crashing: an unreachable case that turns out to be
-		// wrong costs one command here and the user's screen reader there.
 		let context = SessionContext(
 			clock: FakeClock(), transcript: FakeTranscript(), attended: true, close: { _ in }
 		)
@@ -43,9 +39,6 @@ struct SessionContextTests {
 		)
 		context.close(.external)
 		context.close(.clientBye)
-		// It passes both on: deciding that the first request wins is the SESSION's
-		// rule, and a context that quietly dropped the second would be making a
-		// lifecycle decision it has no business making.
 		#expect(seen == [.external, .clientBye])
 	}
 

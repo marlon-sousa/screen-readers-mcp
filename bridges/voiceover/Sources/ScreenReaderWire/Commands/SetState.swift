@@ -1,13 +1,7 @@
-// ROLE: entity -- `setState`'s params and result.
-//
-// Pure. The result carries the WHOLE state after the change plus the list of
-// fields that actually moved, so a caller never has to ask again to find out
-// what happened -- and an empty `changed` is the honest answer for a request
-// that asked for what was already true.
+// ROLE: entity, `setState`'s params and result.
 
 public struct SetStateParams: Codable, Equatable, Sendable {
-	/// nil means "leave it alone", which is different from `.none`, the browse
-	/// mode a reader reports when the concept does not apply.
+	/// nil means leave it alone, which differs from `.none`.
 	public var browseMode: BrowseMode?
 
 	public init(browseMode: BrowseMode? = nil) {

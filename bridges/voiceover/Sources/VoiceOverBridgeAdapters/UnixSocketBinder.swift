@@ -1,16 +1,6 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the LocalSocketBinder seam with the real
-// socket and filesystem calls, and decides nothing.
-//
-// USED BY: LocalSocketListener, through the seam, never directly.
-//
-// NO TEST FILE. Which obligations must be honoured and in what order is
-// protocol.md §1's rule, and it lives one layer up in the listener where it is
-// tested against a fake of this seam. Everything here is the call the manual
-// page describes.
-//
-// `listen(1)` IS ONE SESSION AT A TIME, matching the accept loop above: a second
-// client waits in the backlog rather than being refused, which is what a server
-// that reconnects expects to find.
+// ROLE: leaf adapter implementing the LocalSocketBinder seam with the real socket and filesystem calls.
+// USED BY: LocalSocketListener, through the seam.
+// `listen(1)` serves one session at a time; a second client waits in the backlog rather than being refused.
 
 import Darwin
 import Foundation
@@ -45,10 +35,7 @@ public final class UnixSocketBinder: LocalSocketBinder {
 		var address = sockaddr_un()
 		address.sun_family = sa_family_t(AF_UNIX)
 		let bytes = Array(path.utf8)
-		// The length was already checked where the endpoint was configured, which
-		// is where a name can be reported back to whoever wrote it; this is the
-		// belt to that braces, because writing past sun_path would be memory
-		// damage rather than a bad configuration.
+		// Checked again although configuration already did: writing past `sun_path` would corrupt memory.
 		guard bytes.count < MemoryLayout.size(ofValue: address.sun_path) else {
 			Darwin.close(socketDescriptor)
 			throw SocketError(call: "bind", code: ENAMETOOLONG)

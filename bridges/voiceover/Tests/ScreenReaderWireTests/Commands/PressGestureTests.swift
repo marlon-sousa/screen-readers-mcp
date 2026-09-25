@@ -40,8 +40,6 @@ struct PressGestureTests {
 
 	@Test("a reader that cannot report its state simply omits it")
 	func stateIsAbsentWhenUnreadable() throws {
-		// This bridge's own answer: VoiceOver's toggles are drivable and not
-		// readable, so `state` stays nil rather than carrying a guess.
 		let json = #"{"pressed":[],"speech":[],"speechFrom":0,"speechTo":0}"#
 		#expect(try WireJSON.decode(GestureResult.self, json).state == nil)
 	}

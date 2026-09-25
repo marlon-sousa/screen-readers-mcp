@@ -1,12 +1,4 @@
-// ROLE: entity -- `waitForSpeechToFinish`'s params and result.
-//
-// Pure. Built by the WaitForSpeechToFinish handler (entry 13.5), which waits for
-// the buffer to stop growing rather than for the audio to stop: on the macOS
-// capture route the utterance reaches the bridge before any audio exists, and in
-// silent mode there is no audio at all.
-//
-// The type names are the contract's -- WaitToFinishParams, not
-// WaitForSpeechToFinishParams -- so the binding and the schema compare by name.
+// ROLE: entity, `waitForSpeechToFinish`'s params and result.
 
 public struct WaitToFinishParams: Codable, Equatable, Sendable {
 	public var timeout: Double = 5.0

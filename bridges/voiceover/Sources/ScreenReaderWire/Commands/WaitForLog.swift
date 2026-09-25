@@ -1,8 +1,5 @@
-// ROLE: entity -- `waitForLog`'s params and result.
-//
-// Pure. `found == false` on timeout is a normal answer, as with every wait in
-// this contract; `position` is where to resume reading either way, so a failed
-// wait still tells the caller where it got to.
+// ROLE: entity, `waitForLog`'s params and result.
+// `found == false` on timeout is a normal answer, and `position` says where to resume either way.
 
 public struct WaitForLogParams: Codable, Equatable, Sendable {
 	public var timeout: Double = 5.0

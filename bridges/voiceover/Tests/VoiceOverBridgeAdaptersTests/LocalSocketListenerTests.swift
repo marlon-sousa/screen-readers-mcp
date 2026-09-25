@@ -1,11 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/LocalSocketListener.swift.
-//
-// EVERY TEST HERE IS ONE OF protocol.md §1's LISTENER OBLIGATIONS, which is why
-// they are assertions about the ORDER of calls -- unusually for this repo. The
-// effects live in a filesystem this test does not have; the sequence IS the
-// contract, and getting it wrong fails in ways that look like something else
-// entirely (a bridge that cannot restart, a socket nobody may connect to, a
-// stale file that makes a dial fail on a machine where the bridge is running).
 
 import Fakes
 import Testing
@@ -46,9 +39,6 @@ struct LocalSocketListenerTests {
 			Issue.record("expected the directory to be created first")
 			return
 		}
-		// Owner-only. It is where "reachable only by this user" comes from: a
-		// socket in a world-writable directory is a bridge anybody on the machine
-		// can drive.
 		#expect(mode == 0o700)
 	}
 

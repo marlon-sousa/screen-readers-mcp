@@ -1,10 +1,5 @@
-// ROLE: entity -- `getSpeech`'s params and result.
-//
-// Pure. Built by the GetSpeech handler (entry 13.5), reading the SpeechBuffer.
-//
-// THE RANGE IS HALF-OPEN, `fromIndex` INCLUSIVE AND `toIndex` EXCLUSIVE, so the
-// next call passes the previous `toIndex` as `sinceIndex` and nothing is read
-// twice or skipped. That is the property the whole speech family is built on.
+// ROLE: entity, `getSpeech`'s params and result.
+// The range is half-open, so the next call passes the previous `toIndex` as `sinceIndex`.
 
 public struct GetSpeechParams: Codable, Equatable, Sendable {
 	public var sinceIndex: Int

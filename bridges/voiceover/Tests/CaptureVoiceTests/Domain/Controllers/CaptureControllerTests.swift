@@ -1,10 +1,3 @@
-// Mirrors Sources/CaptureVoice/Domain/Controllers/CaptureController.swift.
-//
-// The whole point of the decomposition: this runs headlessly, with no audio
-// device, no extension and no VoiceOver. Every assertion here was a comment in
-// the spike's one audio-unit class, provable only by pointing the maintainer's
-// only screen reader at an untested voice.
-
 import Testing
 
 @testable import CaptureVoice
@@ -19,9 +12,6 @@ struct CaptureControllerTests {
 	static let arabic = AvailableVoice(
 		identifier: "com.apple.voice.compact.ar-001.Maged", name: "Maged", language: "ar-001")
 
-	/// A builder rather than a fixture: every test varies the mode, the catalogue
-	/// or what the synthesizer reports, which is the case AGENTS.md names as a
-	/// builder's and not a fixture's.
 	struct Subject {
 		let controller: CaptureController
 		let sink: FakeUtteranceSink
@@ -61,8 +51,6 @@ struct CaptureControllerTests {
 		)
 	}
 
-	// -- the text half, which happens whatever the audio half does ------------
-
 	@Test("silent: the text still goes out, and no audio is produced")
 	func silentEmitsTextAndNoAudio() {
 		let subject = makeSubject(silent: true)
@@ -72,8 +60,7 @@ struct CaptureControllerTests {
 		#expect(subject.sink.field("text", ofKind: .synthesize) == .text("um dois"))
 		#expect(subject.sink.field("silent", ofKind: .synthesize) == .flag(true))
 		#expect(subject.synthesizer.spoken.isEmpty)
-		// Closed rather than left open, so the render block reports the utterance
-		// complete instead of waiting for samples that will never come.
+		// Closed so the render block reports the utterance complete instead of waiting for samples.
 		#expect(subject.ring.isFinished)
 	}
 
@@ -117,8 +104,7 @@ struct CaptureControllerTests {
 
 	@Test("sequence numbers count up, so two identical utterances are two events")
 	func sequenceNumbersDistinguishRepeats() {
-		// Six of 62 measured utterances were byte-identical to the one before.
-		// Polling cannot tell those from silence; this can.
+		// Six of 62 measured VoiceOver utterances were byte-identical to the one before; polling cannot tell those from silence.
 		let subject = makeSubject()
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
@@ -128,8 +114,7 @@ struct CaptureControllerTests {
 
 	@Test("the mode is asked ONCE PER UTTERANCE, never cached")
 	func silenceIsReReadEveryTime() {
-		// The bridge lifts silence between two utterances and the lift has to take
-		// effect on the next one.
+		// The bridge lifts silence between two utterances, and the lift must take effect on the next one.
 		let subject = makeSubject(silent: true)
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		subject.mode.silent = false
@@ -137,8 +122,6 @@ struct CaptureControllerTests {
 		#expect(subject.mode.reads == 2)
 		#expect(subject.synthesizer.spoken.count == 1)
 	}
-
-	// -- the choice, end to end through the ports -----------------------------
 
 	@Test("with no language in the SSML the SYSTEM's language decides")
 	func systemLanguageDecidesWhenSsmlIsSilent() {
@@ -152,10 +135,7 @@ struct CaptureControllerTests {
 
 	@Test("the full voice list is NOT enumerated when the language's default already wins")
 	func theCommonPathDoesNotEnumerateEveryVoice() {
-		// Measured, not guessed: enumerating 191 voices per utterance cost 0.380 s
-		// to the first sample against the spike's 0.218 s. The rule stays in
-		// VoiceChoice; what this asserts is that the controller does not pay for it
-		// before VoiceChoice decides whether it is needed.
+		// Enumerating 191 voices per utterance cost 0.380 s to the first sample against 0.218 s without; the controller must not pay it before VoiceChoice needs it.
 		let subject = makeSubject()
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		#expect(subject.catalogue.allVoicesReads == 0)
@@ -196,9 +176,7 @@ struct CaptureControllerTests {
 
 	@Test("warming up touches the catalogue and says nothing")
 	func warmUpCostsOneLookupAndEmitsNothing() {
-		// The point is a framework side effect -- the first voice lookup in a
-		// process costs ~150 ms -- so what is asserted is that it happens, and that
-		// it is not mistaken for an utterance by anything reading the feed.
+		// The first voice lookup in a process costs about 150 ms; it must happen, and must not be mistaken for an utterance.
 		let subject = makeSubject()
 		subject.controller.warmUp()
 		#expect(subject.catalogue.defaultLookups == ["pt-BR"])
@@ -206,12 +184,9 @@ struct CaptureControllerTests {
 		#expect(subject.synthesizer.spoken.isEmpty)
 	}
 
-	// -- cancellation, which is the ordinary path -----------------------------
-
 	@Test("a cancel is an ordinary event, not a fault")
 	func cancelIsOrdinary() {
-		// VoiceOver cancels before EVERY new utterance, so this runs at least as
-		// often as capture does.
+		// VoiceOver cancels before every new utterance.
 		let subject = makeSubject()
 		subject.controller.capture(ssml: "<speak>um</speak>", requestedBy: "ours")
 		subject.controller.cancel()
@@ -221,8 +196,7 @@ struct CaptureControllerTests {
 
 	@Test("the counters are read BEFORE the synthesizer is stopped")
 	func statisticsPrecedeTheTruncation() {
-		// Stopping truncates the ring, so reading afterwards would report the state
-		// after the cut rather than the one that caused it.
+		// Stopping truncates the ring, so reading afterwards would report the state after the cut.
 		let subject = makeSubject()
 		subject.controller.cancel()
 		#expect(subject.synthesizer.calls == ["statistics", "cancel"])
@@ -268,14 +242,11 @@ struct CaptureControllerTests {
 		#expect(subject.sink.events(ofKind: .audioUnitCreated).count == 1)
 	}
 
-	// -- Rule 0: the voice the bridge named (13.6) -----------------------------
-
 	@Test("the voice the bridge named on the marker is the one that speaks")
 	func preferredVoiceIsUsed() {
 		let subject = makeSubject(preferredVoice: CaptureControllerTests.arabic.identifier)
 		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
-		// Named in the feed rather than inferred from the audio, which is spec
-		// 0047 finding 18's whole point: the ear cannot tell these apart.
+		// Named in the feed rather than inferred from the audio: the ear cannot tell these voices apart.
 		#expect(
 			subject.sink.field("passthrough_voice_requested", ofKind: .synthesize)
 				== .text(CaptureControllerTests.arabic.identifier))
@@ -301,9 +272,7 @@ struct CaptureControllerTests {
 
 	@Test("the marker is read ONCE per utterance, however many questions are asked of it")
 	func oneReadPerUtterance() {
-		// Both halves of the directive come from one read, so a marker refreshed
-		// mid-utterance cannot answer one half about this session and the other
-		// about the next.
+		// Both halves of the directive come from one read, so a marker refreshed mid-utterance cannot split them across sessions.
 		let subject = makeSubject(preferredVoice: CaptureControllerTests.arabic.identifier)
 		subject.controller.capture(ssml: "<speak>oi</speak>", requestedBy: "any")
 		#expect(subject.mode.reads == 1)

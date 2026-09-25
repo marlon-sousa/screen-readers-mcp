@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Commands/GetFocusInfo.swift.
-//
-// The suite that earns its keep here is the required-and-nullable one: Swift's
-// synthesized decoder folds "sent as null" and "not sent at all" into the same
-// nil, and the contract distinguishes them.
 
 import Testing
 
@@ -41,9 +37,6 @@ struct GetFocusInfoTests {
 
 	@Test("a thin answer is still a valid one, and says nothing about why it is thin")
 	func thinAnswerIsValid() throws {
-		// Without the Accessibility grant this bridge answers with empty role and
-		// states, and the shape has nowhere to say which route answered -- the
-		// guidance document carries that.
 		let json = #"{"name":"","role":"","states":[],"value":null,"appModule":null}"#
 		#expect(try WireJSON.decode(FocusInfoResult.self, json).states.isEmpty)
 	}

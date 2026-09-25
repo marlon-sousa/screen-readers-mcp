@@ -1,13 +1,3 @@
-// A hand-written stateful fake for the Defaults adapter seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/Defaults.swift.
-//
-// An in-memory store, so the settings adapter is tested without writing a
-// preference on the developer's machine. It keeps values as `Any` and hands them
-// back through the typed readers, which is what lets a test store a value of the
-// WRONG type -- an older build's connection mode, a hand-edited port -- and
-// assert that the adapter falls back to the shipped default rather than
-// propagating it.
-
 import VoiceOverBridgeAdapters
 
 public final class FakeDefaults: Defaults {

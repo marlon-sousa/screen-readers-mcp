@@ -1,29 +1,11 @@
-// ROLE: entity -- AUDIO OUTPUT. A single-producer, single-consumer ring of float
-// samples between the thread that re-synthesizes audio and the realtime thread
-// that has to hand samples to the system.
-//
-// Pure: it does no IO and knows nothing about AVFoundation. Owned by
-// CaptureController, written by AVFoundationSynthesizer, and read by
-// CaptureAudioUnit's render block -- which captures it CONCRETELY, outside the
-// closure, so the call is statically dispatched. That is the one binding
-// decision the realtime constraint actually makes (spec 0046, part 3); every
-// other collaborator in this module is free to be a protocol.
-//
-// `final`, and it must stay final.
-//
-// THE CONSUMER NEVER WAITS. It uses os_unfair_lock_trylock: if the producer holds
-// the lock at that instant, the render block emits silence for that one block
-// rather than blocking the audio thread. A dropout is a glitch; a blocked audio
-// thread stalls everything the machine is saying.
-//
-// AND THE PRODUCER MUST NOT HOLD THE LOCK LONG, which is the same rule read from
-// the other side. A per-sample copy loop held it for thousands of iterations per
-// buffer and cost 449 dropped render blocks in eight seconds of live VoiceOver
-// speech -- audible. `append` copies in at most two bulk runs for exactly that
-// reason, and the measurement is why this is a rule rather than a preference.
-//
-// `os` is imported for the LOCK PRIMITIVE only. There is no logging in the
-// domain: that is an adapter behind UtteranceSink.
+// ROLE: entity, a single-producer, single-consumer ring of float samples between the re-synthesis thread
+// and the realtime audio thread.
+// USED BY: CaptureController, which owns it; AVFoundationSynthesizer writes it and CaptureAudioUnit's
+// render block drains it.
+// It must stay final, so the render block's calls are statically dispatched.
+// `drain` only tries the lock and returns nothing on contention, because a blocked audio thread stalls speech.
+// The producer must hold the lock briefly: on VoiceOver on macOS 15 a per-sample copy loop cost 449 dropped
+// render blocks in eight seconds of speech, so `append` copies in at most two bulk runs.
 
 import Foundation
 import os
@@ -36,21 +18,10 @@ public final class AudioRing {
 	private var readIndex = 0
 	private var producerFinished = false
 
-	/// Counted so a dropout is reportable rather than merely audible.
-	///
-	/// Incremented on the failed-trylock path, which is by definition outside the
-	/// lock, so this one counter races with `resetCounters`. Deliberate: it is a
-	/// diagnostic, and making it exact would mean an atomic on the audio thread to
-	/// improve a number nobody acts on to single-digit precision.
+	/// Incremented outside the lock, so it races with `resetCounters`; it is a diagnostic.
 	public private(set) var contentionDrops = 0
-	/// Render blocks that wanted samples, were not finished, and got fewer than
-	/// asked. This is glitching, measured at its source.
 	public private(set) var underruns = 0
-	/// Samples the producer could not fit -- the other way audio goes missing.
 	public private(set) var overflowDrops = 0
-	/// Total samples actually handed to the audio thread. Compared against what
-	/// the synthesizer produced, this separates "the audio never arrived" from
-	/// "the audio played and we simply never said it was over".
 	public private(set) var drainedTotal = 0
 
 	public init(capacity: Int) {
@@ -66,8 +37,6 @@ public final class AudioRing {
 		lock.deallocate()
 	}
 
-	/// Producer side. Blocking is fine here -- this is not the audio thread -- but
-	/// how LONG it blocks is not, because the consumer only ever TRIES the lock.
 	public func append(_ samples: UnsafePointer<Float>, count: Int) {
 		os_unfair_lock_lock(lock)
 		defer { os_unfair_lock_unlock(lock) }
@@ -92,7 +61,6 @@ public final class AudioRing {
 		os_unfair_lock_unlock(lock)
 	}
 
-	/// Samples queued and not yet rendered.
 	public var available: Int {
 		os_unfair_lock_lock(lock)
 		defer { os_unfair_lock_unlock(lock) }
@@ -105,13 +73,6 @@ public final class AudioRing {
 		return producerFinished
 	}
 
-	/// Ramps the most recently written samples down to zero.
-	///
-	/// Speech does not end at a zero crossing, and an utterance that simply stops
-	/// mid-waveform is heard as a click. In an ATTENDED session -- a person
-	/// listening while an agent drives -- those clicks are the product, not a
-	/// cosmetic detail, so the ramp belongs here rather than in a "nice to have"
-	/// list.
 	public func fadeOutTail(_ count: Int) {
 		os_unfair_lock_lock(lock)
 		defer { os_unfair_lock_unlock(lock) }
@@ -124,10 +85,6 @@ public final class AudioRing {
 		}
 	}
 
-	/// Cancellation, without the click. Keeps a short ramp of what is queued,
-	/// fades it to zero and declares the utterance over, instead of cutting the
-	/// waveform off where it happens to be. Cancellation is EVERY utterance here,
-	/// so this path is the common one.
 	public func truncateWithFade(_ count: Int) {
 		os_unfair_lock_lock(lock)
 		defer { os_unfair_lock_unlock(lock) }
@@ -157,8 +114,6 @@ public final class AudioRing {
 		os_unfair_lock_unlock(lock)
 	}
 
-	/// Consumer side, called from the render block. Returns how many samples were
-	/// filled and whether the utterance is over.
 	public func drain(into destination: UnsafeMutablePointer<Float>, count: Int) -> (filled: Int, done: Bool) {
 		guard os_unfair_lock_trylock(lock) else {
 			contentionDrops += 1

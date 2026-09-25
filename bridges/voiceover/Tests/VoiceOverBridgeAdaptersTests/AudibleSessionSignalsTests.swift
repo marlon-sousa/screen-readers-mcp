@@ -1,16 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/AudibleSessionSignals.swift.
-//
-// THREE PROPERTIES, AND EACH IS ABOUT THE PERSON AT THE MACHINE:
-//
-//  1. TAKING CONTROL RISES AND RELEASING IT FALLS. That is the whole of what a
-//     listener has to learn, and two pairs that were not each other's opposite
-//     would be four sounds to memorise instead.
-//  2. THE START CUE CARRIES WORDS. Tones cannot say what a session is standing in
-//     for, and the person sitting there deserves to know which (spec 0029).
-//  3. THE SWITCH IS READ ON EVERY CUE, so a human who turns the cues off while a
-//     session is running means now.
-//
-// NO TEST HERE MAKES A SOUND OR SPEAKS: both seams are fakes.
 
 import Fakes
 import Testing
@@ -66,8 +54,6 @@ struct AudibleSessionSignalsTests {
 
 	@Test("the silence-cap WARNING is spoken, because a tone cannot say what is about to happen")
 	func theWarningIsSpoken() throws {
-		// protocol.md §6.1 asks for a warning to the human, and "your machine is
-		// about to speak again" is not a thing two tones can convey.
 		let announcer = FakeAnnouncer()
 		let tones = FakeTones()
 		try signals(tones: tones, announcer: announcer).silenceWarning()
@@ -84,11 +70,6 @@ struct AudibleSessionSignalsTests {
 
 	@Test("THE RE-ARM IS THE LIFT'S CUE PLAYED BACKWARDS, and it carries words")
 	func theReArmIsMarkedAndSpoken() throws {
-		// §6.1 rule 4 asks for each re-suppression to be audibly marked, and this
-		// is the cue whose absence is worst: the machine is being taken away from
-		// the human a second time, and two tones cannot say why their reader has
-		// just gone quiet. The pair is the lift's, reversed -- one shape to learn,
-		// and which way it runs says which of the two just happened.
 		let tones = FakeTones()
 		let announcer = FakeAnnouncer()
 		try signals(tones: tones, announcer: announcer).silenceResuppressed()
@@ -109,16 +90,12 @@ struct AudibleSessionSignalsTests {
 		try subject.silenceWarning()
 		try subject.silenceLifted()
 		try subject.silenceResuppressed()
-		// Only the first cue was made: a human who silences the cues mid-session
-		// means now, not next time.
 		#expect(tones.played.count == 1)
 		#expect(announcer.spoken.count == 1)
 	}
 
 	@Test("a cue that fails throws, because the session is what guards it")
 	func aFailureReachesTheSession() {
-		// A courtesy is never worth a session (see SessionSignals), and the Session
-		// guards exactly the calls that can fail -- so this must be one of them.
 		let tones = FakeTones()
 		tones.fails = true
 		#expect(throws: FakeTones.ToneFailed.self) { try signals(tones: tones).sessionEnded() }
@@ -126,15 +103,6 @@ struct AudibleSessionSignalsTests {
 
 	@Test("a cue is TWO beeps, at lane 1's own rhythm, not one sound that changes pitch")
 	func theCueRhythmMatchesLaneOne() throws {
-		// The property is that a listener can COUNT the beeps. Two tones played
-		// back to back are heard as one sound changing pitch halfway, which is what
-		// this bridge did until 13.11 and what the maintainer -- who uses the NVDA
-		// bridge daily -- described as "light" beside lane 1's "clear".
-		//
-		// The numbers are lane 1's, from nvda_session_signals.py: _TONE_MS = 180
-		// and _GAP_MS = 300 start-to-start, so 180 ms of tone and 120 ms of silence.
-		// Asserted rather than left to a constant, because the whole defect was a
-		// constant nobody had argued for.
 		let tones = FakeTones()
 		let signals = AudibleSessionSignals(
 			tones: tones, announcer: FakeAnnouncer(), config: FakeBridgeConfig())
@@ -143,7 +111,6 @@ struct AudibleSessionSignalsTests {
 		let rhythm = try #require(tones.rhythms.first)
 		#expect(rhythm.seconds == 0.18)
 		#expect(rhythm.gap == 0.12)
-		// 300 ms start to start, which is what makes the pair countable.
 		#expect(rhythm.seconds + rhythm.gap == 0.30)
 	}
 

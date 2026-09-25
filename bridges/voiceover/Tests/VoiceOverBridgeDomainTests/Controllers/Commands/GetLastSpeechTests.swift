@@ -41,8 +41,6 @@ struct GetLastSpeechTests {
 		let result = try result(context())
 		#expect(result.text.isEmpty)
 		#expect(result.index == 0)
-		// Nothing was emitted, so there is no instant to report -- and reporting
-		// one would claim something happened (spec 0028).
 		#expect(result.emittedAt.isEmpty)
 	}
 

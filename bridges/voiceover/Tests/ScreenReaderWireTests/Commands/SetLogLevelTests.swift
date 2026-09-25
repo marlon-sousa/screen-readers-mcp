@@ -8,7 +8,6 @@ import Testing
 struct SetLogLevelTests {
 	@Test("the answer names the previous level as well as the new one")
 	func previousIsReported() throws {
-		// The session has to put it back at teardown.
 		let result = try WireJSON.decode(LogLevelResult.self, #"{"level":"debug","previous":"info"}"#)
 		#expect(result.level == .debug)
 		#expect(result.previous == .info)

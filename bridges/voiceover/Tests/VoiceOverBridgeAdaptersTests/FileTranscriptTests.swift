@@ -1,8 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/FileTranscript.swift.
-//
-// It asserts the exact lines, because the format is the only thing this adapter
-// decides -- and because the file is the only record a silent run leaves, so a
-// changed shape is a changed record with nothing to compare it against.
 
 import Fakes
 import Testing
@@ -32,9 +28,6 @@ struct FileTranscriptTests {
 
 	@Test("a dispatched command is one QUOTED line, for the reason speech is")
 	func gesturesAreQuoted() {
-		// Same quoting as speech and for the same reason: a gesture id is opaque
-		// text off the wire, and the record is a line-oriented file somebody reads
-		// afterwards to work out what a run did to their machine.
 		let writer = FakeFileWriter()
 		let record = transcript(writer)
 		record.open()
@@ -44,10 +37,6 @@ struct FileTranscriptTests {
 
 	@Test("typed text is recorded as a LENGTH, and the words are nowhere in the file")
 	func typingIsRecordedAsALengthOnly() {
-		// The obligation protocol.md §5 puts on this adapter: `typeText` is exactly
-		// how a secret is entered, and a transcript is a file a human reads
-		// afterwards -- so a password written here is a password on disk, outliving
-		// the session that typed it. The line shape is lane 1's.
 		let writer = FakeFileWriter()
 		let record = transcript(writer)
 		record.open()
@@ -74,8 +63,6 @@ struct FileTranscriptTests {
 		#expect(
 			writer.lines == [
 				"2026-08-30 10:00:00.000 SPEECH \"Documents, folder\"",
-				// The newline is escaped rather than written: the words come from
-				// another process, and one utterance must stay one line.
 				"2026-08-30 10:00:00.000 SPEECH \"a line\\nand another\"",
 			]
 		)
@@ -92,8 +79,6 @@ struct FileTranscriptTests {
 
 	@Test("speech outside an open session is dropped, like every other event")
 	func speechBeforeOpen() {
-		// There is no session for a reader of the file to attach it to, so it is
-		// dropped rather than buffered -- the same rule the other verbs follow.
 		let writer = FakeFileWriter()
 		transcript(writer).speech("said")
 		#expect(writer.lines.isEmpty)
@@ -112,8 +97,6 @@ struct FileTranscriptTests {
 	func nothingIsWrittenBeforeOpen() {
 		let writer = FakeFileWriter()
 		let record = transcript(writer)
-		// There is no session for a reader of the file to attach them to, and a
-		// line whose session is a guess is worse than no line.
 		record.note("before")
 		record.open()
 		record.note("during")

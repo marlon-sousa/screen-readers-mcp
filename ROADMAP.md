@@ -4211,9 +4211,11 @@ the ceiling, so the area cannot drift back. Counts are from
     `shared/`; the addon's copy of `protocol.py` regenerates from `shared/`.
     Before: 7,569 comment, 12,901 code, 0.59.
 
-14.2. **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
+14.2. **Done** -- **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
     every Swift file under `bridges/voiceover/`, except those an open PR
     touches, which go in `pending`. Before: 12,941 comment, 18,436 code, 0.70.
+    After, without the 11 files PR #101 touches: 1,429 comment, 16,388 code,
+    0.09; its ceiling is 0.10. Those 11 files wait in `pending` for #101.
 
 14.3. **Done** -- **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
     file under `server/` except the generated `wire.gen.go`. Before: 7,734

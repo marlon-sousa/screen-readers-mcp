@@ -1,21 +1,4 @@
-// HEADLESS INTEGRATION -- the capture feed end to end, with no extension and no
-// VoiceOver: a real file, the real FileLineTailer, the real
-// ContainerFileSpeechSource, the real SpeechBuffer and the real handlers, driven
-// over the wire exactly as the server drives them.
-//
-// WHAT THIS CATCHES THAT NO UNIT TEST CAN. Every unit above runs against a graph
-// its own test assembled, so a factory that built a source nobody started, a
-// handshake that started capture into a buffer the context does not hold, or a
-// result that does not encode would pass all of them and answer nothing here.
-// This is the one tier where a line appended by another writer becomes an
-// `emittedAt` an agent can read.
-//
-// THE FILE STANDS IN FOR THE EXTENSION, and that substitution is the whole
-// premise of the route: the capture voice is a sandboxed process whose only door
-// out is appending JSON lines to a file in its container (spec 0041, B1/B2), and
-// a bridge that reads any file the same way is reading the real one the same
-// way. What this cannot prove is that VoiceOver reaches the extension at all --
-// that is the live checklist at 13.11.
+// Headless integration: the capture feed end to end, a real file through the real tailer, source, buffer and handlers.
 
 import Fakes
 import Foundation
@@ -27,7 +10,6 @@ import Testing
 
 @Suite("the capture feed")
 struct SpeechFeedTests {
-	/// A session driven from the outside, over a feed file this test owns.
 	private final class Peer {
 		let client: LoopbackTransport
 		let transcript = FakeTranscript()
@@ -45,9 +27,6 @@ struct SpeechFeedTests {
 			client = clientEnd
 			let session = Wiring.session(
 				over: bridgeEnd,
-				// A REAL clock, because this tier is about the real stack: the wait
-				// loops sleep for real, in 30 ms polls, and the assertions below
-				// still finish in a fraction of a second.
 				clock: RealClock(),
 				transcript: transcript,
 				signals: FakeSessionSignals(),
@@ -62,7 +41,6 @@ struct SpeechFeedTests {
 			thread.start()
 		}
 
-		/// Append one line, as the capture voice's container-file sink does.
 		func emit(_ line: String) {
 			if let handle = FileHandle(forWritingAtPath: feedPath) {
 				defer { try? handle.close() }
@@ -73,7 +51,6 @@ struct SpeechFeedTests {
 			}
 		}
 
-		/// One `synthesize` line in the shape `CaptureEventLine` renders.
 		func speak(_ text: String, at instant: Double) {
 			emit(
 				"""
@@ -111,17 +88,7 @@ struct SpeechFeedTests {
 		}
 	}
 
-	/// What every session's buffer already holds when the handshake returns.
-	///
-	/// SINCE 13.20 A SESSION IS SET UP RATHER THAN ASSUMED: the last rung of the
-	/// handshake presses `describe item in voiceover cursor` and requires the
-	/// utterance to ARRIVE, which is the only evidence that this feed works at all
-	/// -- everything below it is inference. So index 1 is real speech the reader
-	/// really produced, and a session's own speech starts at 2.
-	///
-	/// The tests below say that out loud instead of reading from a fresh mark,
-	/// because "everything this session captured" is exactly what several of them
-	/// are about, and a mark would quietly hide the very line that proves the feed.
+	/// Index 1 of every session's buffer is the handshake's capture probe, so a session's own speech starts at 2.
 	private let handshakeSpeech = [captureProbeUtterance]
 
 	@Test("a line appended after the handshake is readable as speech, with its own stamp")
@@ -137,8 +104,6 @@ struct SpeechFeedTests {
 		#expect(waited.found)
 		#expect(waited.text == "Documents, folder")
 		#expect(waited.index == 2)
-		// The producer's own instant, rendered in the contract's shape -- the
-		// number that makes "X happened promptly after Y" answerable (spec 0028).
 		#expect(waited.emittedAt == Wallclock.format(1_700_000_000.5))
 
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
@@ -148,9 +113,6 @@ struct SpeechFeedTests {
 
 	@Test("the bookmark, the action and the read tile the way an agent uses them")
 	func theBookmarkPattern() throws {
-		// The documented pattern, over the wire: mark, act, read from the mark.
-		// Speech that arrived BEFORE the mark must not come back, or an assertion
-		// about what an action caused would be answered with background chatter.
 		let peer = Peer()
 		defer { peer.finish() }
 		try peer.handshake()
@@ -170,8 +132,6 @@ struct SpeechFeedTests {
 
 	@Test("the whole session's speech is still there at the end -- the ring is unbounded")
 	func nothingAgesOut() throws {
-		// protocol.md §7: nothing ages out of the speech ring while the session
-		// lives, so `sinceIndex: 0` answers with everything at the end of a run.
 		let peer = Peer()
 		defer { peer.finish() }
 		try peer.handshake()
@@ -203,8 +163,6 @@ struct SpeechFeedTests {
 
 	@Test("cancels and the provider's own observations never reach the buffer")
 	func onlySpeechIsSpeech() throws {
-		// A cancel arrives before EVERY utterance on this route (spec 0041, A3),
-		// so this is the ordinary traffic of the feed rather than an odd case.
 		let peer = Peer()
 		defer { peer.finish() }
 		try peer.handshake()
@@ -235,9 +193,6 @@ struct SpeechFeedTests {
 
 	@Test("history already in the file is NOT replayed into a new session")
 	func theFeedIsTailedFromTheEnd() throws {
-		// The capture voice appends across every launch of the reader. A session
-		// that read from the top would answer its first getSpeech with speech
-		// from yesterday, indistinguishable from what it had just caused.
 		let peer = Peer()
 		defer { peer.finish() }
 		peer.speak("said before this session existed", at: 1_699_000_000)
@@ -246,9 +201,6 @@ struct SpeechFeedTests {
 		peer.speak("said during it", at: 1_700_000_000)
 		_ = try peer.value(2, "waitForSpeech", ["text": .string("during"), "timeout": .double(5)])
 		let read = try peer.value(3, "getSpeech", ["sinceIndex": .int(0)]).decoded(as: SpeechResult.self)
-		// The line from before the session is still absent, which is what this test
-		// is about; what is present is the handshake's own proof and then the
-		// session's speech.
 		#expect(read.entries.map(\.text) == handshakeSpeech + ["said during it"])
 	}
 }

@@ -1,8 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/UnheardSpeech.swift.
-//
-// The property under test is a distinction: "the reader did not say it" and "we
-// were never listening to the reader" are the same empty answer, and only one of
-// them is about the software under test.
 
 import Fakes
 import ScreenReaderWire
@@ -29,18 +25,12 @@ struct UnheardSpeechTests {
 
 	@Test("a healthy, capturing session says nothing: the miss is the honest answer")
 	func aRealMissIsLeftAlone() throws {
-		// Anything captured at all proves the provider is capturing (spec 0047,
-		// finding 18), so a later miss is a genuine miss -- and the probe is not
-		// even paid for.
 		try UnheardSpeech.explain(
 			context(selected: "org.screen-readers-mcp.capture.voice", captured: ["olá"]))
 	}
 
 	@Test("a session that has heard NOTHING, with the voice selected, names both possibilities")
 	func nothingHeardNamesBoth() {
-		// The undecidable case: the provider may have died, or VoiceOver may never
-		// have offered the voice. Nothing outside the reader separates them, so
-		// both are named with both recoveries rather than one being guessed at.
 		do {
 			try UnheardSpeech.explain(context(selected: "org.screen-readers-mcp.capture.voice"))
 			Issue.record("expected the silence to be explained")
@@ -59,8 +49,6 @@ struct UnheardSpeechTests {
 			Issue.record("expected the silence to be explained")
 		} catch let error as CommandError {
 			#expect(error.description.contains(ReaderCondition.captureVoiceNotSelected.rawValue))
-			// The one step left to a human: the bridge re-registers the extension at
-			// every handshake now, so what it cannot do is restart the reader.
 			#expect(error.description.contains(readerRestartCommand))
 		} catch {
 			Issue.record("unexpected error: \(error)")

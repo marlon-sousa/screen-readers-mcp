@@ -1,21 +1,6 @@
-// ROLE: adapter -- IMPLEMENTS the MessageChannel domain port, as newline
-// delimited JSON over a byte transport.
-//
-// DEPENDS ON: the Transport seam, never on a concrete transport. That is what
-// keeps it testable against scripted bytes while the socket underneath stays a
-// decision-free leaf.
+// ROLE: adapter implementing the MessageChannel port as newline-delimited JSON over a byte transport.
 // BUILT BY: Wiring, which pairs it with whatever transport the accept produced.
-//
-// EVERY WIRE CONCERN THE DOMAIN MUST NOT KNOW ABOUT LIVES HERE: reassembling
-// chunks into frames, splitting on newlines, encoding and decoding. Framing is
-// pure code and is still not domain -- which is the example AGENTS.md uses to
-// say that "pure" is not the test for where something belongs.
-//
-// A BUFFERED LINE IS DRAINED BEFORE THE TRANSPORT IS TOUCHED, and protocol.md §1
-// requires exactly that: two frames can arrive in one read, and a reader that
-// polled the socket first would sit on the second one until something else
-// happened to arrive -- a message lost to an idle timeout that had already been
-// delivered.
+// Drain a buffered line before reading the transport: two frames can arrive in one read, and the second would otherwise wait out an idle timeout.
 
 import Foundation
 import ScreenReaderWire
@@ -57,12 +42,7 @@ public final class JsonLinesChannel: MessageChannel {
 		transport.close()
 	}
 
-	/// One line into the object the session dispatches on.
-	///
-	/// A LINE THAT IS NOT A JSON OBJECT IS A PROTOCOL FAULT (protocol.md §1), and
-	/// it is rejected here rather than being handed up as something the session
-	/// would have to re-check: an array or a bare scalar has no `id` to answer
-	/// with, so there is no useful error frame to send about it.
+	/// A line that is not a JSON object has no `id` to answer, so it is rejected here as a protocol fault.
 	private func decode(_ line: Data) throws -> [String: JSONValue] {
 		let value: JSONValue
 		do {
@@ -77,11 +57,6 @@ public final class JsonLinesChannel: MessageChannel {
 	}
 }
 
-/// Private to this adapter: reassembles chunks into complete lines.
-///
-/// A class rather than a struct because the channel mutates it from a method
-/// that is not itself mutating, and because there is exactly one of it per
-/// connection -- it is a buffer, not a value.
 final class LineReader {
 	private var buffer = Data()
 

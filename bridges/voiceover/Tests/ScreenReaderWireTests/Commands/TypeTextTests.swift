@@ -8,8 +8,6 @@ import Testing
 struct TypeTextTests {
 	@Test("typing's grace window defaults to 0, unlike a gesture's 100")
 	func graceDefaultsToZero() throws {
-		// Not an oversight in either direction: typing produces its speech as the
-		// keys land, a gesture produces it afterwards.
 		let params = try WireJSON.decode(TypeParams.self, #"{"text":"hello"}"#)
 		#expect(params.graceMs == 0)
 		#expect(PressGestureParams(gestures: []).graceMs == 100)

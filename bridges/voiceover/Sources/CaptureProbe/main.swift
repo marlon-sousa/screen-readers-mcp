@@ -1,27 +1,9 @@
-// ROLE: diagnostic executable -- KEPT, per spec 0046's amendment to board 13.2.
-//
-// A standalone client that exercises the provider WITHOUT involving VoiceOver, so
-// "the extension never ran" and "VoiceOver did not pick our voice" stay separable
-// failures. That makes it a live-checklist DEPENDENCY -- it is what answers "is
-// the capture voice published?" without a human squinting at a settings pane --
-// and a checklist's dependencies are versioned rather than improvised.
-//
-//   probe list          -- is our voice visible to AVSpeechSynthesisVoice?
-//   probe speak <text>  -- speak it through our voice and wait
-//   probe components    -- raw AudioComponent enumeration for type 'ausp'
-//   probe refresh       -- ask the system to re-read provider voices
-//   probe passthrough   -- run the REAL capture path, outside the extension
-//
-// It prints, and that is its whole purpose: a human runs it from a terminal and
-// reads the answer. Nothing inside CaptureVoice prints -- see that module's
-// headers for why.
+// ROLE: diagnostic executable that exercises the capture voice provider without involving VoiceOver.
 import AVFoundation
 import CaptureVoice
 import Foundation
 
-// The system does NOT publish the identifier the extension declares: it prefixes
-// the extension's bundle id. Resolve by suffix rather than hard-coding either
-// form -- and take the suffix from the module, so there is one spelling of it.
+// Match by suffix; see ourVoiceIdentifier in CaptureAudioUnit.swift.
 let ourSuffix = ourVoiceIdentifier
 
 func ourVoice() -> AVSpeechSynthesisVoice? {
@@ -72,18 +54,14 @@ case "speak":
 		RunLoop.current.run(until: Date().addingTimeInterval(0.1))
 	}
 	print(delegate.finished ? "completed" : "TIMED OUT after 10s")
-// Handled below, each in its own block, because each was appended as its own
-// question during the spike. Named here so that a good subcommand does not print
-// a usage banner above its own output -- which reads exactly like a failure.
+// Named here so that a good subcommand does not print the usage banner above its own output.
 case "components", "refresh", "passthrough":
 	break
 default:
 	print("usage: probe [list|speak <text>|components|refresh|passthrough]")
 }
 
-// Raw AudioComponent enumeration for type 'ausp'. If our provider is absent HERE,
-// the audio component registrar never saw the appex -- a different failure from
-// "VoiceOver ignored it".
+// If our provider is absent here, the audio component registrar never saw the appex.
 func fourCC(_ value: OSType) -> String {
 	let bytes = [UInt8((value >> 24) & 0xff), UInt8((value >> 16) & 0xff), UInt8((value >> 8) & 0xff), UInt8(value & 0xff)]
 	return String(bytes: bytes, encoding: .ascii) ?? "????"
@@ -107,9 +85,7 @@ if args.first == "components" {
 	print("speech-synthesizer components: \(count)")
 }
 
-// The step the voice list will not happen without. A provider's voices do not
-// appear merely because the extension registered -- something has to ask the
-// system to re-read them, and that is this class method.
+// A provider's voices appear only after something calls updateSpeechVoices().
 if args.first == "refresh" {
 	AVSpeechSynthesisProviderVoice.updateSpeechVoices()
 	print("requested updateSpeechVoices(); waiting 3s")
@@ -117,24 +93,16 @@ if args.first == "refresh" {
 	listVoices()
 }
 
-/// Prints what the controller emitted. The probe is the one place a CaptureEvent
-/// is meant to reach a human directly.
 final class PrintingSink: UtteranceSink {
 	func emit(_ event: CaptureEvent) {
 		print("  event \(event.kind.rawValue): \(event.fields.sorted { $0.key < $1.key })")
 	}
 }
 
-/// The probe never renders silence: it is asking whether re-synthesis WORKS.
 struct AlwaysSpeaking: CaptureModeSource {
 	var directive: CaptureDirective { .passThrough }
 }
 
-// Exercise the re-synthesis path OUTSIDE the extension, through the REAL
-// controller and the real adapters. This is how the capture path is checked
-// without asking the maintainer to point his only screen reader at an untested
-// voice -- if the audio is wrong here, it would be wrong there, and the machine
-// would go quiet.
 if args.first == "passthrough" {
 	let text = args.count > 1 ? args[1] : "um dois tres"
 	let language = args.count > 2 ? args[2] : "pt-BR"
@@ -152,37 +120,16 @@ if args.first == "passthrough" {
 	)
 	print("ssml: \(ssml)")
 
-	// WARM THE CATALOGUE FIRST, and the reason is the trap this line exists to
-	// close. The first AVSpeechSynthesisVoice(language:) in a process costs about
-	// 150 ms and every one after it costs 0.4 ms, so a stopwatch started before it
-	// reports a PROCESS START-UP cost as though it were per-utterance latency --
-	// 0.35 s where the same code measured 0.21 s. Spec 0041's C4 numbers were
-	// taken after the lookup, so this keeps the probe comparable to them, and the
-	// extension pays this cost at construction (CaptureController.warmUp) rather
-	// than on its first utterance.
+	// Warm the catalogue before starting the stopwatch; see CaptureController.warmUp.
 	controller.warmUp()
 
 	let started = Date()
-	// OFF THE MAIN THREAD, and this is not a detail -- it is the difference
-	// between a measurement and a constant.
-	//
-	// `speak` waits for the first samples before returning, because the render
-	// block has no way to say "not ready yet" and somebody has to wait. In the
-	// extension that wait happens on the system's request thread, which is not a
-	// run loop thread, and the synthesizer's buffer callbacks arrive regardless.
-	// In a command-line tool the main thread IS the run loop, so waiting on it
-	// starves the very callbacks it is waiting for: every measurement came back
-	// as the 2.0 s prebuffer budget plus overhead, whatever the utterance.
-	//
-	// So the probe calls the controller the way the extension does, and pumps the
-	// run loop here while draining -- which is also what the spike's probe did,
-	// by not calling the prebuffer wait at all.
+	// Off the main thread: `speak` waits for the first samples, and in a command-line tool the main thread
+	// is the run loop that delivers them, so waiting there starves the callbacks it waits for.
 	DispatchQueue.global(qos: .userInitiated).async {
 		controller.capture(ssml: ssml, requestedBy: ourVoiceIdentifier)
 	}
 
-	// The ADDED LATENCY is the wait before the first sample exists -- an agent
-	// driving a reader feels this on every utterance.
 	var firstSampleAt: Date?
 	var samples: [Float] = []
 	let chunk = 1024

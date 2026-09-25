@@ -1,27 +1,7 @@
 // ROLE: controller -- `waitForSpeech`: block until the reader says something.
-//
-// BUILT BY: Registry. READS: the session's SpeechBuffer, whose wait loop sleeps
-// the injected Clock.
-//
-// IT BLOCKS THE SESSION THREAD, ON PURPOSE AND SAFELY. The request's own timeout
-// is well below both watchdog windows, and dispatching this command already
-// reset the inactivity mark, so a wait cannot trip a deadline it is itself the
-// evidence against.
-//
-// A MISS IS A RESULT, NOT AN ERROR. `found == false` means the reader did not
-// say it, which is frequently the assertion a test is making; an error frame
-// would force every caller to catch in order to learn a fact. The index that
-// comes back on a miss is a fresh bookmark, so the caller can carry on from
-// there -- but `emittedAt` is EMPTY, deliberately, because nothing was emitted
-// and reporting "now" would read as a match that happened (spec 0028).
-//
-// UNLESS NOTHING HAS EVER BEEN CAPTURED, WHICH IS A DIFFERENT ANSWER WEARING THE
-// SAME CLOTHES (13.6). "The reader did not say it" and "we were never listening
-// to the reader" are the same empty result, and only one of them is about the
-// software under test. So a miss on a session that has captured NOTHING asks the
-// reader edge to account for itself, and reports a named condition with its
-// recovery instead -- see UnheardSpeech, which holds the whole argument and the
-// reason its three neighbours do not do this.
+// BUILT BY: Registry. READS: the session's SpeechBuffer.
+// A miss is a result, not an error: the index is a fresh bookmark and `emittedAt` is empty.
+// A miss on a session that has captured nothing throws a named condition instead; see UnheardSpeech.
 
 import ScreenReaderWire
 
@@ -40,7 +20,7 @@ public final class WaitForSpeechHandler: CommandHandler {
 			found: outcome.found,
 			index: outcome.index,
 			text: outcome.utterance.text,
-			// No journal to position into; see GetSpeech.
+			// VoiceOver has no log journal to position into; see Observation.
 			logPosition: 0,
 			emittedAt: outcome.found ? Wallclock.format(outcome.utterance.emittedAt) : ""
 		)

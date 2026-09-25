@@ -1,28 +1,10 @@
-// ROLE: adapter -- implements UtteranceSink by appending JSON lines to a file in
-// the extension's own container.
-//
-// THIS IS THE ONLY DOOR OUT OF THE EXTENSION, and not for want of trying. A
-// speech provider holding `com.apple.security.network.client` is not rejected
-// with an error: macOS registers it, launches it, constructs its audio unit, and
-// then never asks it for its voices, logging "Skipping network entitled
-// extension" where nobody looks. So there is no socket, no port and no XPC here
-// -- there is a file (spec 0041, B1 and B2).
-//
-// Measured: the sandboxed extension's appends land at
-// ~/Library/Containers/<extension bundle id>/Data/<name>.jsonl, mode 644, owned
-// by the user, and an ordinary unsandboxed process reads them with no
-// entitlement and no App Group. The App Group was requested in the entitlements
-// and turned out to be unnecessary for this direction.
-//
-// WRITES HAPPEN ON A SERIAL QUEUE, off the caller's thread. The caller is the
-// thread that must promptly start synthesis inside the user's screen reader, and
-// a file open/seek/write is the one blocking thing this class does. Serial, so
-// the lines keep their order -- which is the whole point of the feed.
-//
-// A FAILED WRITE IS REPORTED, not swallowed: it is logged rather than thrown,
-// because throwing out of here would fault an extension inside VoiceOver, and a
-// feed that goes quiet with no explanation is the failure mode this route is
-// least able to diagnose.
+// ROLE: adapter that implements UtteranceSink by appending JSON lines to a file in the extension's container.
+// On macOS 15 a speech provider holding `com.apple.security.network.client` is registered but never asked
+// for its voices (it logs "Skipping network entitled extension"), so a file is the only way out.
+// The appends land at ~/Library/Containers/<extension bundle id>/Data/<name>.jsonl, mode 644, and an
+// unsandboxed process reads them with no entitlement and no App Group.
+// Writes run on a serial queue: the caller must start synthesis promptly, and the lines must keep their order.
+// A failed write is logged, never thrown: throwing would fault an extension running inside VoiceOver.
 
 import Foundation
 import os
@@ -48,8 +30,6 @@ public final class ContainerFileUtteranceSink: UtteranceSink {
 		}
 	}
 
-	/// Returns the failure reason rather than throwing, so a sandbox denial is
-	/// data instead of a crash inside the extension.
 	private static func append(_ line: String, to path: String) -> String? {
 		guard let data = (line + "\n").data(using: .utf8) else { return "utf8" }
 		let url = URL(fileURLWithPath: path)

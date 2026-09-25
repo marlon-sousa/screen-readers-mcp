@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Envelope.swift.
-//
-// Two of these are interop assertions rather than Swift ones: an unknown command
-// must survive decoding, and an error frame from the PYTHON bridge carries both
-// `result: null` and `error`, because its to_dict renders every field.
 
 import Testing
 
@@ -58,8 +54,7 @@ struct EnvelopeTests {
 
 	@Test("the Python bridge's error frame -- both keys present -- reads as a failure")
 	func pythonErrorFrameCarriesBothKeys() throws {
-		// Measured, not assumed: dataclasses.asdict renders every field, so an
-		// NVDA-bridge failure arrives with an explicit null result beside it.
+		// The NVDA bridge renders every dataclass field, so its error frames carry an explicit null result.
 		let response = try WireJSON.decode(Response.self, #"{"id":7,"result":null,"error":{"message":"nope"}}"#)
 		#expect(try response.outcome() == .failure(ErrorInfo(message: "nope")))
 	}
