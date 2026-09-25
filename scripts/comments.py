@@ -167,6 +167,10 @@ def check() -> int:
 	areas = config["tool"]["screen-readers-mcp"]["comments"]
 	files = tracked()
 	failures: list[str] = []
+	covered = [p.rstrip("/") + "/" for area in areas.values() for p in area["paths"]]
+	for path in files:
+		if not path.startswith(tuple(covered)):
+			failures.append(f"{path}: in no comment area; add its directory to one in pyproject.toml")
 	for name, area in areas.items():
 		if not area.get("enforced", False):
 			print(f"SKIP {name}: not stripped yet")

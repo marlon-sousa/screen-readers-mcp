@@ -4220,8 +4220,10 @@ the ceiling, so the area cannot drift back. Counts are from
     comment, 18,166 code, 0.43. After: 1,395 comment, 18,166 code, 0.08; its ceiling is
     0.10.
 
-Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has no
-area in the gate yet.
+Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has an
+area in the gate, not yet enforced; stripping it would be entry 14.4. Every Go,
+Python and Swift file must belong to some area, so a new directory cannot slip
+past the gate unnoticed.
 
 ## Out-of-band work (not board entries)
 

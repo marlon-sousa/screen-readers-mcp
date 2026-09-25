@@ -312,8 +312,10 @@ keep one sentence stating the fact and delete the rest.
 (`scripts/comments.py --check`, part of `poe gates` and the `shared` CI job)
 fails on a comment that cites a spec, board, lane, milestone or decision,
 carries a date, or uses bold. It also fails when an area's comment lines per
-code line rise above that area's `ceiling` in the root `pyproject.toml`. Lower
-a ceiling freely; raising one needs Marlon's approval in conversation. The
+code line rise above that area's `ceiling` in the root `pyproject.toml`, and
+when a Go, Python or Swift file belongs to no area at all — so a new directory,
+a new bridge included, needs an area before it can merge. Lower a ceiling
+freely; raising one needs Marlon's approval in conversation. The
 judgement half — history, rationale and narration without a citation — is on
 the author and the reviewer. `python scripts/comments.py <files>` prints the
 counts for any set of files.

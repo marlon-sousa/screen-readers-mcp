@@ -1,6 +1,6 @@
 ---
 name: strip-comments
-description: Strip comments from this repo's Go, Python or Swift under the "comments say what the code cannot" rule in AGENTS.md. Use for a lane 4 board entry (14.1 NVDA bridge, 14.2 VoiceOver bridge, 14.3 server), when asked to strip or reduce comments in a file or area, when `poe gate-comments` fails, or when reviewing a diff whose comments cite specs, dates or history.
+description: Strip comments from this repo's Go, Python or Swift under the "comments say what the code cannot" rule in AGENTS.md. Use for a lane 4 board entry (14.1 NVDA bridge, 14.2 VoiceOver bridge, 14.3 server, 14.4 scripts), when adding a new code directory (it needs a comment area), when asked to strip or reduce comments in a file or area, when `poe gate-comments` fails, or when reviewing a diff whose comments cite specs, dates or history.
 ---
 
 # Stripping comments

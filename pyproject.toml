@@ -453,7 +453,8 @@ ignore_fail = false
 # The comment gate, scripts/comments.py --check. An area is enforced once it has been stripped, and
 # its ceiling is the ratio it was stripped to. Lower a ceiling freely; raising one needs Marlon's
 # approval. `pending` lists files left unstripped because an open PR touches them; the gate skips
-# them entirely, and whoever strips them removes them from the list.
+# them entirely, and whoever strips them removes them from the list. Every tracked Go, Python and
+# Swift file must fall under some area's paths, or the gate fails.
 
 [tool.screen-readers-mcp.comments.server]
 paths = ["server"]
@@ -469,6 +470,12 @@ pending = []
 
 [tool.screen-readers-mcp.comments.voiceover]
 paths = ["bridges/voiceover"]
+enforced = false
+ceiling = 1.0
+pending = []
+
+[tool.screen-readers-mcp.comments.scripts]
+paths = ["scripts"]
 enforced = false
 ceiling = 1.0
 pending = []
