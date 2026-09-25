@@ -2,25 +2,10 @@
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 #     python scripts/bridge_task.py test          # every selected bridge's tests
-#     python scripts/bridge_task.py live --require # ...and FAIL if none can
+#     python scripts/bridge_task.py live --require # ...and fail if none can
 #
-# ROLE: the dispatcher behind `poe bridge`, `bridge-types`, `bridge-lint`,
-# `sync`, `build-bridge`, `live` and `live-slow`. Each of those used to name
-# `bridges/nvda` in its command string, which made "the NVDA bridge" and "a
-# bridge" the same thing -- so on a host where NVDA's work cannot be done, the
-# task ran anyway and reported on nothing.
-#
-# WHAT A TASK IS, IS THE BRIDGE'S TO SAY. The commands live in the bridge's own
-# pyproject.toml, per tier, because a bridge is not necessarily a uv project: the
-# NVDA bridge tests with pytest under uv, and a VoiceOver bridge written in Go or
-# Swift will not. This file knows how to SELECT and how to REPORT; it knows
-# nothing about pytest.
-#
-# WHY --require EXISTS, and why it is not the default: `poe live` must REFUSE on
-# a host with no live tier, because silently doing nothing there reads exactly
-# like a pass. `poe bridge-types` must NOT refuse -- if you are not working that
-# bridge on this machine, there is nothing to type-check and that is a success,
-# not a failure. Spec 0042.
+# ROLE: the dispatcher behind `poe bridge`, `bridge-types`, `bridge-lint`, `sync`, `build-bridge`,
+# `live` and `live-slow`, running the commands each bridge declares in its own pyproject.toml.
 
 from __future__ import annotations
 
@@ -45,12 +30,6 @@ def _tier_with(bridge: Bridge, task: str) -> Tier | None:
 
 
 def _run(command: str) -> int:
-	"""One declared command, from the repo root, with its output left alone.
-
-	Not through a shell: these are plain argument vectors, and a shell would make
-	the declaration's meaning depend on which shell the host has. `shlex` keeps
-	the quoting that a pytest `-m 'live_nvda and not slow'` needs.
-	"""
 	print(f"  $ {command}", flush=True)
 	try:
 		return subprocess.call(shlex.split(command), cwd=ROOT)
@@ -85,13 +64,6 @@ def main() -> int:
 			why = tier.reason or f"its {tier.name} tier is declared for {', '.join(tier.hosts) or 'no host'}"
 			print(f"  SKIP {bridge.name}: {why}")
 			continue
-		# A TIER WHOSE DECLARED TOOLS ARE ABSENT SKIPS, exactly as one on the wrong
-		# host does. Before 13.11 the `tools` list was printed by `poe bridges`,
-		# checked by `poe doctor` and IGNORED here -- so the first CI job to run a
-		# build task tried `scons` on a runner without it and failed the whole run
-		# with a raw `[Errno 2] No such file or directory`. A missing dependency is
-		# a thing this machine cannot do, not a thing that is broken; the doctor is
-		# where you go to find out you are missing one.
 		if missing := tier.missing_tools():
 			print(
 				f"  SKIP {bridge.name}: its {tier.name} tier needs "

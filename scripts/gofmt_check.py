@@ -3,25 +3,8 @@
 #
 #     uv run poe go-fmt
 #
-# WHY A SCRIPT AND NOT ONE COMMAND. `gofmt -l` prints the offending file names
-# and then exits 0, so a bare `gofmt -l ./...` in a task list is a gate that can
-# never fail. The usual shell workaround (`test -z "$(gofmt -l .)"`) needs a
-# POSIX shell, which is not what a poe `cmd` task gets on Windows.
-#
-# WHY IT EXISTS AT ALL. Nothing in this repo checked Go formatting -- not `go
-# vet`, not staticcheck, neither of which has an opinion about layout. The
-# Python half grew a `ruff format --check` gate after PR #46 added a dozen
-# space-indented files to a tab repo; the Go half had the same hole and nobody
-# had looked. It was holding two files when this landed, both the same shape:
-# a struct field and a map entry added without re-aligning the block around
-# them, which is precisely what gofmt is for and precisely what review misses.
-#
-# A NOTE ON LINE ENDINGS. Run this against a working copy checked out before
-# .gitattributes pinned the tree to LF and gofmt reports every file, because a
-# CRLF line is not the byte sequence it would write. That is a false alarm about
-# the checkout, not a real finding -- and it is loud enough (100+ files) to
-# train someone to ignore this gate entirely. `git add --renormalize .` followed
-# by a fresh checkout fixes the working copy; CI checks out LF and never sees it.
+# `gofmt -l` exits 0 even when it lists files, so this script turns its output into the exit code.
+# A CRLF working copy makes gofmt list every file; renormalise and check out again to fix it.
 
 from __future__ import annotations
 
@@ -57,8 +40,6 @@ def main() -> int:
 	for path in offenders:
 		print(f"           {Path(path).relative_to(ROOT) if Path(path).is_relative_to(ROOT) else path}")
 	print("        -> gofmt -w server")
-	# Named explicitly, because the first time this fires on a stale working copy
-	# the list is enormous and the cause is not the code.
 	if len(offenders) > 20:
 		print("        (that many at once usually means a CRLF working copy, not real")
 		print("         drift -- see this script's header)")

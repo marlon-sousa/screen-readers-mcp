@@ -489,6 +489,7 @@ pending = [
 
 [tool.screen-readers-mcp.comments.scripts]
 paths = ["scripts"]
-enforced = false
-ceiling = 1.0
-pending = []
+enforced = true
+ceiling = 0.10
+# Open PR #101 touches this one; strip it once that merges.
+pending = ["scripts/voiceover_restore.py"]

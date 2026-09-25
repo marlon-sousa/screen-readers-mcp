@@ -1,60 +1,14 @@
 #!/usr/bin/env python3
 # Live test driver: stand in for an MCP client and drive the real
-# screenreader-mcp binary over stdio against a REAL, running NVDA bridge.
+# screenreader-mcp binary over stdio against a real, running NVDA bridge.
 #
-# This is the contributor's hands-on equivalent of the automated tiers. The Go
-# unit/integration tests put a FAKE bridge behind the server; the conformance
-# tier puts the real Python bridge behind it but fakes NVDA. Only here is
-# *everything* real -- the server binary, the wire, the add-on, and NVDA itself
-# -- which is the one thing no automated tier can be: it needs a human who can
-# hear the speech. See CONTRIBUTING.md, "Setting up to test against a live NVDA".
-#
-# It is written to be EASY to run. Each named scenario is self-contained: it
-# connects, walks its steps, checks what it can by itself (tool gating, index
-# arithmetic, error shapes), tells you when to focus a window, asks you to
-# confirm what you heard, and prints PASS / FAIL / EAR (needs your ear) per check
-# with a summary. You never assemble commands or reason about indices by hand.
-#
-# Framing is MCP's stdio transport: newline-delimited JSON-RPC 2.0. The server
-# logs to stderr, so stdout stays a clean JSON stream.
+# Everything is real here, so it needs a human who can hear the speech; see CONTRIBUTING.md,
+# "Setting up to test against a live NVDA".
 #
 # Usage:
 #   py -3.13 scripts/live_test.py <binary> <scenario> [--live|--silent] [--auto]
 #
-# Scenarios (each maps to one checklist item group in the PR):
-#   smoke      connect, prove tool gating, read screenreader://info, ANNOUNCE
-#              (you should hear it). No window focus needed.
-#   persona    spec 0029: connect as each of user/validator/expert; the
-#              declaration reaches status, info and the bridge's transcript, and
-#              you HEAR the two tones then the persona. No window focus needed.
-#   guidance   spec 0029 part 4: screenreader://reader-guidance serves the
-#              INSTALLED add-on's own document for each persona. Proves the .md
-#              files were packaged, which nothing headless can. No focus needed.
-#   capture    a gesture's speech is captured cleanly: bookmark, open the
-#              Elements List, read back only the new speech, prove the ranges
-#              join and that a wait for absent text times out (not disconnects).
-#              Needs a browse-mode document focused.
-#   braille    read the braille display and show its indices are their own.
-#   finddialog drive EnhancedFindDialog end to end. Needs a browse-mode document.
-#   lifecycle  disconnect retracts the tools and a gated call then errors;
-#              reconnect works; status is proven on the wire. No focus needed.
-#   log        spec 0021 items 1-7: command spans hold what the command CAUSED,
-#              positions mark/re-read without consuming, polling neither repeats
-#              nor skips, lastSeconds, wait_for_log. Connects at debug.
-#   logerror   spec 0021 item 6's other half: the agent CAUSES a real NVDA error
-#              (via the Python console) and its own wait wakes on it.
-#   logwatch   the same item with the human causing it instead, in a 60 s window.
-#   logsilent  spec 0021 items 8-9: the suppression marker PAIR in NVDA's own
-#              log, and a suppressed utterance's journal coordinate. Silent.
-#
-#   run        ADVANCED: hold a session open and execute one command per line
-#              from stdin (announce/press/bookmark/speech/braille/waitspeech/
-#              status/sleep/disconnect). For ad-hoc probing, not the checklist.
-#
-# --auto skips the "press Enter" setup pauses and cannot judge audio, so it marks
-# audible checks as EAR for you to confirm by hand. It is the default when stdin
-# is not a terminal (e.g. driven by another tool). Run it yourself in a terminal
-# for the guided, interactive experience.
+# Run it with no arguments for the list of scenarios.
 
 from __future__ import annotations
 
@@ -149,9 +103,6 @@ def main(argv: list[str]) -> int:
 		server.close()
 
 
-# -- scenarios -----------------------------------------------------------------
-
-
 def scenario_smoke(server, console, checks, mode):
 	before = server.tool_names()
 	console.note(f"tools before connect: {', '.join(before)}")
@@ -221,8 +172,7 @@ def scenario_capture(server, console, checks, mode):
 
 	got = server.tool("get_speech", {"since_index": bookmark})
 	console.note(f"captured since {bookmark}: {json.dumps(got, ensure_ascii=False)}")
-	# `entries`, not a joined `text`: spec 0021 gave each utterance its own
-	# logPosition, which a single concatenated string had nowhere to put.
+	# Each utterance is its own entry so it can carry its own logPosition.
 	checks.check(
 		"capture: speech since the bookmark is non-empty",
 		bool(got.get("entries")),
@@ -241,8 +191,6 @@ def scenario_capture(server, console, checks, mode):
 		console.confirm("Did the Elements List open and get announced?"),
 	)
 
-	# Half-open ranges join with no gap or overlap: read the same span in two
-	# slices and prove the seam matches.
 	first = server.tool("get_speech", {"since_index": bookmark})
 	second = server.tool("get_speech", {"since_index": first["toIndex"]})
 	checks.check(
@@ -251,8 +199,7 @@ def scenario_capture(server, console, checks, mode):
 		detail=f"{first['toIndex']} vs {second['fromIndex']}",
 	)
 
-	# A wait for text that will never appear must time out cleanly and leave the
-	# session working -- not tear the connection down.
+	# A wait for absent text must time out and leave the session working.
 	console.step("waiting 2s for text that is not there (should time out, not disconnect)")
 	missing = server.tool("wait_for_speech", {"text": "zzz-not-spoken-zzz", "timeout": 2})
 	checks.check(
@@ -302,10 +249,7 @@ def scenario_finddialog(server, console, checks, mode):
 	checks.check(
 		"finddialog: opening it produced speech", bool(opened.get("entries")), detail=json.dumps(opened)
 	)
-	# Read back WHERE focus landed before typing into it. Without this, a dialog
-	# that never opened is typed into the document instead, and the only thing
-	# that fails is a later check about the search result -- which then reads as
-	# "the search is broken" rather than "the dialog did not open".
+	# Unless focus is confirmed, a dialog that never opened gets typed into the document.
 	focus = server.tool("get_focus_info")
 	console.note(f"focus after opening: {json.dumps(focus, ensure_ascii=False)}")
 	in_field = focus.get("role") == "EDITABLETEXT"
@@ -321,9 +265,7 @@ def scenario_finddialog(server, console, checks, mode):
 
 	term = console.ask("Type a search term the page contains", default="the")
 	console.step(f'typing "{term}" and searching')
-	# The field remembers the last search, so an unguarded run searches for
-	# "previousthe". Clear it, then prove it is clear -- the same trap the Python
-	# console sprang in scenario_logerror.
+	# The field remembers the last search, so clear it and prove it is clear.
 	server.tool("press_gesture", {"gestures": ["kb:control+a", "kb:delete"]})
 	time.sleep(0.3)
 	cleared = server.tool("get_focus_info").get("value")
@@ -346,8 +288,6 @@ def scenario_finddialog(server, console, checks, mode):
 	checks.check(
 		"finddialog: submitting the search produced speech", bool(result.get("entries")), detail=str(result)
 	)
-	# Still an ear: that the speech is the RIGHT match -- the text the term
-	# actually occurs in -- is a judgement no assertion here can make.
 	checks.ear(
 		"the search moved to a match and NVDA read it",
 		console.confirm("Did it jump to a match and announce it?"),
@@ -392,22 +332,14 @@ def scenario_lifecycle(server, console, checks, mode):
 
 
 def scenario_log(server, console, checks, mode):
-	"""Spec 0021's checklist items 1-7: spans, positions, polling, waiting.
-
-	Runs at `debug`, because item 1 is precisely the claim that a gesture's span
-	holds NVDA's own speech and event records, and at INFO those records were
-	never created. The session's log level is restored when it ends.
-	"""
+	"""Runs at `debug`: at INFO, NVDA never creates the records a gesture's span should hold."""
 	_connect(server, console, mode, log_level="debug")
 	console.note(f"journal ring holds {JOURNAL_MAX_RECORDS} records or 4 MiB, whichever comes first")
 
-	# -- item 1: a command's span holds what the command CAUSED -----------------
 	console.step("item 1: pressing NVDA+t (report title), then reading that command's span alone")
 	server.tool("announce", {"text": "Item one. Reading a gesture's own log span."})
 	server.tool("press_gesture", {"gestures": ["kb:NVDA+t"]})
-	# The span reaches the NEXT command, so the work the gesture caused lands
-	# inside it only once something else is dispatched. Give NVDA a moment to do
-	# that work first, or we close the span before the speech happens.
+	# A span closes at the next command, so give NVDA time to finish the gesture's work first.
 	time.sleep(1.5)
 	span = server.tool("get_log", {"maxEntries": 400})
 	console.note(
@@ -432,7 +364,6 @@ def scenario_log(server, console, checks, mode):
 		detail=f"modules seen: {sorted(_modules(text))}",
 	)
 
-	# -- item 2: mark, let time pass, read exactly that ------------------------
 	console.step("item 2: marking the journal, then ten seconds of activity")
 	server.tool("announce", {"text": "Item two. Marking the log, then ten seconds of activity."})
 	mark = server.tool("get_log_position")
@@ -457,7 +388,6 @@ def scenario_log(server, console, checks, mode):
 		detail=f"{since.get('fromCommandId')}..{since.get('toCommandId')}",
 	)
 
-	# -- item 3: three polls: nothing twice, nothing missed --------------------
 	console.step("item 3: polling three times, each from the previous nextPosition")
 	server.tool("announce", {"text": "Item three. Polling the log three times."})
 	start = server.tool("get_log_position")["position"]
@@ -473,8 +403,6 @@ def scenario_log(server, console, checks, mode):
 		all(polls[i]["nextPosition"] <= polls[i + 1]["nextPosition"] for i in range(len(polls) - 1)),
 		detail=str([p["nextPosition"] for p in polls]),
 	)
-	# The real proof: one read covering the whole stretch must begin with exactly
-	# the three slices, in order, line for line.
 	whole = server.tool("get_log", {"sincePosition": start, "maxEntries": 2000})
 	stitched = [line for p in polls for line in str(p.get("text", "")).splitlines()]
 	whole_lines = str(whole.get("text", "")).splitlines()
@@ -484,7 +412,6 @@ def scenario_log(server, console, checks, mode):
 		detail=f"stitched {len(stitched)} lines, whole read {len(whole_lines)}",
 	)
 
-	# -- item 4: a read consumes nothing ---------------------------------------
 	console.step("item 4: the same sincePosition twice, with a different exclude in between")
 	server.tool("announce", {"text": "Item four. Proving a read consumes nothing."})
 	first = server.tool("get_log", {"sincePosition": start, "maxEntries": 20})
@@ -502,7 +429,6 @@ def scenario_log(server, console, checks, mode):
 		detail=f"{first.get('entries')} unfiltered vs {filtered.get('entries')} excluding 'input'",
 	)
 
-	# -- item 5: "that just happened", with no mark taken ----------------------
 	console.step("item 5: lastSeconds:10 right after something audible, with no prior mark")
 	server.tool("announce", {"text": "Item five. Reading the last ten seconds with no mark."})
 	server.tool("press_gesture", {"gestures": ["kb:NVDA+t"]})
@@ -519,8 +445,6 @@ def scenario_log(server, console, checks, mode):
 		recent.get("fromCommandId") is None,
 		detail=str(recent.get("fromCommandId")),
 	)
-	# A tiny window must be a SUBSET of a large one: this is the arithmetic no
-	# headless test can check, since it needs a real clock.
 	wide = server.tool("get_log", {"lastSeconds": 120, "maxEntries": 2000})
 	checks.check(
 		"item 5: a 10 s window is a strict subset of a 120 s one (the clock arithmetic is real)",
@@ -528,7 +452,6 @@ def scenario_log(server, console, checks, mode):
 		detail=f"10s matched {recent.get('matched')}, 120s matched {wide.get('matched')}",
 	)
 
-	# -- item 6: waiting, and waking at the moment ------------------------------
 	console.step("item 6: wait_for_log wakes at the moment a matching record lands")
 	server.tool("announce", {"text": "Item six. Waiting for a log record to arrive."})
 	try:
@@ -540,9 +463,7 @@ def scenario_log(server, console, checks, mode):
 			"filter" in str(exc).lower() or "contains" in str(exc).lower(),
 			detail=str(exc),
 		)
-	# The session thread is BLOCKED for the whole wait, so whatever we are
-	# waiting for cannot be sent through the bridge -- it has to come from
-	# outside, exactly as a real "watch while I reproduce it" would.
+	# wait_for_log blocks the session thread, so what it waits for must come from outside the bridge.
 	threading.Timer(3.0, _tap_f13, kwargs={"count": 1}).start()
 	began = time.monotonic()
 	woke = server.tool("wait_for_log", {"contains": ["f13"], "timeout": 20}, timeout=40)
@@ -564,9 +485,7 @@ def scenario_log(server, console, checks, mode):
 		around.get("entries", 0) > 0,
 		detail=str(around.get("entries")),
 	)
-	# The error-level wait, which is what the item is really for. A healthy
-	# session logs no errors, so the honest check here is that it waits and
-	# reports a clean miss rather than waking on ordinary traffic.
+	# A healthy session logs no errors, so this wait must end in a clean miss.
 	quiet = server.tool("wait_for_log", {"min_level": "error", "timeout": 5}, timeout=25)
 	checks.check(
 		"item 6: an error-level wait is not woken by ordinary debug traffic",
@@ -575,15 +494,11 @@ def scenario_log(server, console, checks, mode):
 	)
 	console.note("   (a REAL error waking the wait is the `logerror` and `logwatch` scenarios)")
 
-	# -- item 7: falling behind the ring is reported, not silent ---------------
 	console.step("item 7: trying to out-run the ring, to see truncated:true rather than a gap")
 	server.tool("announce", {"text": "Item seven. Trying to overflow the log ring."})
 	behind = server.tool("get_log_position")["position"]
 	advanced = _flood(console, server, budget=120.0)
-	# maxEntries ABOVE what the ring can hold, so the cap cannot be what makes
-	# this truncated. The two causes are different bugs for the agent -- "I asked
-	# for too few" is fixed by asking again, "I read too late" is not -- and a
-	# check that cannot tell them apart proves neither.
+	# maxEntries is above the ring's capacity, so the cap cannot be what truncates this.
 	stale = server.tool("get_log", {"sincePosition": behind, "maxEntries": JOURNAL_MAX_RECORDS * 2})
 	console.note(
 		f"journal advanced {advanced} positions past the mark; reading from it: "
@@ -596,8 +511,6 @@ def scenario_log(server, console, checks, mode):
 			detail=str({k: stale.get(k) for k in ("truncated", "entries", "matched", "nextPosition")}),
 		)
 	else:
-		# Honest outcome: the ring did not turn over inside the budget. Say so
-		# rather than passing a check that never ran.
 		checks.ear(
 			f"item 7: the ring did not turn over ({advanced} records vs {JOURNAL_MAX_RECORDS} capacity) "
 			f"-- eviction stays covered headlessly",
@@ -615,37 +528,11 @@ def scenario_log(server, console, checks, mode):
 
 
 def scenario_logerror(server, console, checks, mode):
-	"""Spec 0021 item 6's other half: a REAL error wakes a waiting agent, with
-	the agent causing the error itself.
+	"""The agent causes a real NVDA error and its own wait wakes on it.
 
-	Two obstacles, and the way round each is the point of the scenario.
-
-	FIRST, the driver cannot type into NVDA -- use `type_text`, which types from
-	INSIDE NVDA, rather than injecting keystrokes at it. An earlier attempt
-	hand-rolled SendInput instead and failed for TWO separate reasons, which is
-	worth writing down because the first one masqueraded as the second:
-
-	The INPUT struct was 32 bytes, not 40. SendInput validates cbSize against the
-	real sizeof(INPUT), which MOUSEINPUT sizes -- a union declaring only
-	KEYBDINPUT measures 32. Every call returned 0 / ERROR_INVALID_PARAMETER and
-	reached no window at all, NVDA's or anyone's.
-
-	Corrected, SendInput succeeds (returns 1, no error) and the character STILL
-	never appears in NVDA's console, while the identical call types fine into an
-	ordinary window. THAT is UIPI: NVDA runs with UIAccess, and MSDN notes that a
-	SendInput blocked this way reports success anyway -- "neither GetLastError
-	nor the return value will indicate the failure".
-
-	So UIPI is a genuine wall, but it was NOT what the first failure hit, and
-	diagnosing it from the symptom alone got the answer wrong. The F13 taps
-	elsewhere in this file are unaffected by either problem: NVDA's low-level
-	keyboard hook sees all input regardless of which window it was aimed at.
-
-	SECOND, wait_for_log blocks the session thread, so the error cannot be caused
-	while waiting. The way round is spec 0021's own central insight -- work a
-	command causes lands AFTER the handler returns. So the console is asked to
-	schedule the error a few seconds out; the Enter that starts it returns
-	immediately, and the error fires comfortably inside the wait that follows.
+	Keystrokes are typed with `type_text` from inside NVDA: SendInput into NVDA's console is blocked by
+	UIPI, because NVDA runs with UIAccess, and the call still reports success. wait_for_log blocks the
+	session thread, so the console schedules the error a few seconds out.
 	"""
 	_connect(server, console, mode, log_level="debug")
 	server.tool("announce", {"text": "Item six. Causing a real error to wake a waiting agent."})
@@ -655,10 +542,7 @@ def scenario_logerror(server, console, checks, mode):
 	time.sleep(1.5)
 	focus = server.tool("get_focus_info")
 	console.note(f"focus after opening: {json.dumps(focus, ensure_ascii=False)}")
-	# The console's input is an editable text NAMED ">>>" -- the prompt -- inside
-	# NVDA's own process. All three conditions together: any one alone would also
-	# match an ordinary text field the tester happens to have focused, and this
-	# types a line of Python into whatever it finds.
+	# All three conditions, since any one alone also matches an ordinary text field.
 	on_console = (
 		focus.get("appModule") == "nvda"
 		and focus.get("role") == "EDITABLETEXT"
@@ -677,16 +561,11 @@ def scenario_logerror(server, console, checks, mode):
 
 	marker = "nvdaMcpBridge 0021 live error check"
 	delay = 3
-	# `log` is already in the console's namespace (NVDA source/pythonConsole.py),
-	# so this is NVDA's own logger raising a genuine ERROR -- not a record
-	# smuggled into the journal behind the reader's back.
+	# `log` is already in the console's namespace (NVDA source/pythonConsole.py).
 	line = f"import threading; threading.Timer({delay}, lambda: log.error({marker!r})).start()"
 	console.step(f"typing a line that logs an error {delay}s from now, then waiting for it")
-	# Clear whatever is on the prompt first. The console keeps its input across
-	# openings, so a half-typed line left by a previous run (or by the tester)
-	# would be PREPENDED to ours, making it invalid Python -- and a SyntaxError
-	# goes to the console's own output, not to the log, so the wait would simply
-	# time out with nothing to explain why.
+	# The console keeps its input across openings, and a SyntaxError goes to the console's output,
+	# not the log, so the wait would time out with nothing saying why.
 	server.tool("press_gesture", {"gestures": ["kb:control+a", "kb:delete"]})
 	time.sleep(0.4)
 	cleared = server.tool("get_focus_info").get("value")
@@ -697,11 +576,6 @@ def scenario_logerror(server, console, checks, mode):
 	time.sleep(0.4)
 	on_prompt = server.tool("get_focus_info").get("value")
 	console.note(f"typed {typed.get('typed')} characters; prompt now: {on_prompt!r}")
-	# Read back what is REALLY on the prompt before committing it. Everything
-	# after this depends on the console executing exactly this line, and a
-	# mistyped or half-cleared prompt fails as a SyntaxError -- which goes to the
-	# console's own output, never to the log, so the wait would just time out
-	# with nothing anywhere saying why.
 	checks.check(
 		"item 6: type_text put the line on the prompt intact",
 		on_prompt == line,
@@ -746,17 +620,9 @@ def scenario_logerror(server, console, checks, mode):
 
 
 def scenario_logwatch(server, console, checks, mode):
-	"""Spec 0021 item 6 as it was actually written for: the human provokes, the
-	agent watches.
+	"""The human provokes an error inside a 60 s window while the agent waits.
 
-	It asks rather than causes. `logerror` is the version that causes; this one
-	exists because asking is the truer reproduction of the case the command was
-	written for -- "watch what I do, a bug is about to appear", where nothing the
-	agent issues is what gets logged -- and because it holds whatever the
-	tester's keymap and privileges happen to be.
-
-	Provoke an error any way you like inside the window. The Python console
-	(NVDA menu -> Tools) with `log.error("anything")` is the reliable one.
+	The Python console (NVDA menu, Tools) with `log.error("anything")` is the reliable way.
 	"""
 	_connect(server, console, mode, log_level="debug")
 	window = 60
@@ -781,8 +647,6 @@ def scenario_logwatch(server, console, checks, mode):
 			elapsed < window - 2,
 			detail=f"{elapsed:.1f}s of a {window}s window",
 		)
-		# The point of the position: widen around it without having marked
-		# anything beforehand.
 		around = server.tool(
 			"get_log", {"sincePosition": max(0, woke.get("position", 1) - 1), "maxEntries": 20}
 		)
@@ -798,12 +662,7 @@ def scenario_logwatch(server, console, checks, mode):
 
 
 def scenario_logsilent(server, console, checks, mode):
-	"""Spec 0021's items 8 and 9, which only mean anything under suppression.
-
-	Forces silent regardless of the flag: item 8 IS the suppression markers, and
-	item 9 is the claim that a speech entry's logPosition still lands you in the
-	journal when the utterance itself was never spoken.
-	"""
+	"""Forced silent: the suppression markers and a suppressed utterance's logPosition exist only then."""
 	del mode  # this scenario is about silent capture; the flag cannot apply
 	nvda_log = _nvda_log_path()
 	before = _read_text(nvda_log)
@@ -836,12 +695,7 @@ def scenario_logsilent(server, console, checks, mode):
 		around.get("entries", 0) > 0 and _has_beyond_input_core(body),
 		detail=f"modules seen: {sorted(_modules(body))}",
 	)
-	# The coordinate earns its keep precisely BECAUSE the utterance is missing
-	# from the journal: suppressing speech before the synthesizer also stops NVDA
-	# reaching its own "Speaking [...]" line, so the entry's logPosition is the
-	# only thing tying what was said to what the reader was doing. Run the `log`
-	# scenario live and the same NVDA+t does log speech -- that contrast is the
-	# silent/live trade-off connect_reader describes, observed rather than argued.
+	# Suppressing speech also stops NVDA's own "Speaking" line, so logPosition is the only link.
 	checks.check(
 		"item 9: and the utterance's OWN record is absent -- which is why the coordinate exists",
 		not any("speech" in module for module in _modules(body)),
@@ -856,7 +710,6 @@ def scenario_logsilent(server, console, checks, mode):
 	_disconnect(server, console)
 	time.sleep(1.0)
 
-	# -- item 8: exactly one marker pair, and nothing per utterance ------------
 	after = _read_text(nvda_log)
 	added = after[len(before) :] if after.startswith(before[: min(len(before), 4096)]) else after
 	suppressed = added.count(SUPPRESSED_MARKER)
@@ -883,10 +736,7 @@ def scenario_logsilent(server, console, checks, mode):
 	)
 
 
-# -- the bits the log scenarios lean on ----------------------------------------
-
-#: Mirrors domain/entities/log_journal.py. Only used to decide whether a flood
-#: could plausibly have turned the ring over, never to assert behaviour.
+#: Mirrors domain/entities/log_journal.py; used only to judge whether a flood could turn the ring over.
 JOURNAL_MAX_RECORDS = 10_000
 
 SUPPRESSED_MARKER = "nvdaMcpBridge: speech suppressed for this session"
@@ -896,15 +746,7 @@ VK_F13 = 0x7C
 
 
 def _tap_f13(count: int = 1) -> None:
-	"""Press F13 at the OS level, NOT through the bridge.
-
-	Two reasons it has to be F13 and it has to be external. External, because
-	wait_for_log blocks the session thread, so nothing can be sent through the
-	bridge while we wait -- which is exactly the situation the command exists
-	for. F13, because no application binds it, so injecting it into whatever
-	the tester has focused cannot do anything to their machine, while NVDA
-	still journals the gesture.
-	"""
+	"""F13 at the OS level: no application binds it, and NVDA still journals the gesture."""
 	import ctypes
 
 	user32 = ctypes.windll.user32  # type: ignore[attr-defined]
@@ -915,15 +757,7 @@ def _tap_f13(count: int = 1) -> None:
 
 
 def _type_externally(text: str) -> None:
-	"""Type text at the OS level, character by character, bypassing the bridge.
-
-	SendInput with KEYEVENTF_UNICODE rather than virtual key codes: it delivers
-	the character itself, so it does not depend on the tester's keyboard layout
-	-- a VK-based version would type something else entirely on a non-US layout,
-	into a Python console, which is a poor place to be approximate.
-
-	"\\r" is sent as Return, since Unicode carriage return does not submit a line.
-	"""
+	"""KEYEVENTF_UNICODE delivers the character itself, independent of the keyboard layout."""
 	import ctypes
 	from ctypes import wintypes
 
@@ -962,7 +796,6 @@ def _type_externally(text: str) -> None:
 
 
 def _busy_for(console, seconds: float, quiet: bool = False) -> None:
-	"""Generate ordinary reader traffic for a while, without touching the bridge."""
 	if not quiet:
 		console.note(f"   generating {seconds:.0f}s of activity")
 	deadline = time.monotonic() + seconds
@@ -972,13 +805,7 @@ def _busy_for(console, seconds: float, quiet: bool = False) -> None:
 
 
 def _flood(console, server, budget: float) -> int:
-	"""Hammer the journal until it has turned over, and report how far it moved.
-
-	Adaptive rather than a fixed duration: the record rate depends on the
-	machine, on what has focus and on how much NVDA has to say about it, and a
-	fixed 20 s that happens to fall short turns item 7 into a check that silently
-	never ran.
-	"""
+	"""Adaptive, because the record rate depends on the machine and what has focus."""
 	start = server.tool("get_log_position")["position"]
 	began = time.monotonic()
 	advanced = 0
@@ -993,7 +820,6 @@ def _flood(console, server, budget: float) -> int:
 
 
 def _modules(text: str) -> set[str]:
-	"""The module column of a formatted slice, for reporting what a span held."""
 	found = set()
 	for line in text.splitlines():
 		parts = line.split(" - ", 2)
@@ -1003,12 +829,7 @@ def _modules(text: str) -> set[str]:
 
 
 def _has_beyond_input_core(text: str) -> bool:
-	"""True when a span holds more than the keypress record itself.
-
-	The 11.4 failure was a span containing ONLY inputCore.executeGesture: the
-	window closed when the handler returned, before NVDA had done any of the
-	work the keypress asked for.
-	"""
+	"""A span holding only inputCore.executeGesture closed before NVDA did the work."""
 	return bool({m for m in _modules(text) if m and not m.startswith("inputCore")})
 
 
@@ -1025,12 +846,6 @@ def _read_text(path: str) -> str:
 
 
 def scenario_persona(server, console, checks, mode):
-	"""Spec 0029: the session declares what it stands for, and says so out loud.
-
-	Everything here is cheap and there is no window to focus -- what it proves is
-	that the declaration survives every hop: the tool boundary, the wire, the
-	bridge's transcript on disk, and the reader's own voice.
-	"""
 	console.step("connecting as each persona in turn")
 
 	for persona in ("user", "validator", "expert"):
@@ -1043,8 +858,6 @@ def scenario_persona(server, console, checks, mode):
 			session.get("persona") == persona,
 			detail=f"persona={session.get('persona')!r}",
 		)
-		# The instruction, not merely the label -- this is the whole reason the
-		# stance rides in the result rather than only in a resource.
 		stance = session.get("stance") or ""
 		checks.check(
 			f"connect as {persona}: the stance rides along, in full",
@@ -1066,9 +879,6 @@ def scenario_persona(server, console, checks, mode):
 			detail=f"info said {info.get('persona')!r}",
 		)
 
-		# The bridge's own artifact, on the reader's disk. This is the hop no
-		# unit test can prove: the value went over the wire, through the real
-		# Python validator, into the hello handler and out to a file.
 		log_path = session.get("logPath") or ""
 		wrote_it = False
 		try:
@@ -1102,13 +912,7 @@ def scenario_persona(server, console, checks, mode):
 
 
 def _gesture_for(document, command):
-	"""The first gesture the resolved tables bind to *command*, or None.
-
-	Keyed on the COMMAND ID column rather than the description, because the
-	description is NVDA's own string and arrives in NVDA's language -- matching
-	"Report the window title" would pass on an English install and fail on this
-	one, which runs in Portuguese.
-	"""
+	"""Keyed on the command id, because the description arrives in NVDA's language."""
 	for line in document.splitlines():
 		cells = [cell.strip() for cell in line.split("|")]
 		if len(cells) < 5 or cells[2] != f"`{command}`":
@@ -1121,18 +925,7 @@ def _gesture_for(document, command):
 
 
 def scenario_guidance(server, console, checks, mode):
-	"""Spec 0029 Part 4: the INSTALLED add-on hands over its own persona document.
-
-	Every assertion below is also made headlessly, and one thing is not: that the
-	documents are inside the .nvda-addon THIS NVDA has installed. They are read
-	from disk at run time rather than compiled in, so a build that forgot them --
-	or a scons run that decided it was up to date over an edited one -- fails only
-	here. That is the whole reason this scenario exists rather than being left to
-	the conformance tier.
-
-	No window to focus and nothing audible: it is quick, and it is the first thing
-	to run after installing a new build.
-	"""
+	"""The persona documents are read from disk at run time, so only this proves they were packaged."""
 	console.step("the reader's own guidance, per persona")
 
 	seen = {}
@@ -1163,18 +956,11 @@ def scenario_guidance(server, console, checks, mode):
 			f"{persona}: the precedence rule is in the frame",
 			"the stance wins" in document,
 		)
-		# The packaging check, stated as the thing it proves: this text lives in a
-		# .md file inside the installed add-on and nowhere else.
 		checks.check(
 			f"{persona}: the INSTALLED add-on's common section arrived",
 			"The ordinary vocabulary on this reader" in document,
 		)
-		# RESOLVED, not asserted. The document no longer carries NVDA's published
-		# defaults -- it prints what this machine has bound, read out of NVDA at
-		# the moment the document was asked for. So the check is that a table
-		# arrived and that no placeholder survived, not that a particular key did:
-		# asserting "NVDA+numpad6" would pass on a stock machine and fail on a
-		# remapped one, which is precisely the assumption this design removed.
+		# The document prints this machine's own bindings, so no particular key is asserted.
 		checks.check(
 			f"{persona}: the gesture tables were filled in from the reader",
 			"| What it does | Command | Press |" in document,
@@ -1188,22 +974,9 @@ def scenario_guidance(server, console, checks, mode):
 			"could not be asked what is bound here" not in document,
 		)
 
-		# THE CHECK THAT CLOSES THE LOOP, and the only one that can. Everything
-		# above proves a table arrived; this proves the table is TRUE, by taking
-		# the gesture the document says reports the window title, pressing it,
-		# and listening. Nothing headless can do this: the fake resolver answers
-		# with synthetic keys precisely so it cannot.
-		#
-		# Read-only by design: `title` only re-reads what is already there, so it
-		# is safe on a machine somebody is using. The boundary commands are NOT
-		# pressed -- a simulated click would land wherever the pointer happens to
-		# be.
-		# `speakForeground` and not `title`, deliberately. NVDA stores its
-		# identifiers alphabetically sorted, so this one comes out of the gesture
-		# map as `b+nvda` -- and `fromName` reads the LAST token as the key, so
-		# pressing it unreordered presses NVDA with B held and reads nothing.
-		# `title` sorts as `nvda+t` and is therefore right by accident, which is
-		# exactly why it is the wrong command to prove this with.
+		# Press the gesture the document names and listen, proving the table is true.
+		# `speakForeground` first: NVDA sorts identifiers, so it comes out as `b+nvda`, and `fromName` reads
+		# the last token as the key; `title` sorts as `nvda+t` and would pass by accident.
 		for command in ("speakForeground", "title"):
 			gesture = _gesture_for(document, command)
 			checks.check(
@@ -1232,8 +1005,6 @@ def scenario_guidance(server, console, checks, mode):
 			f"Holding the `{persona}` stance on NVDA" in document,
 		)
 
-		# A second read must not change the answer. It also must not cost a round
-		# trip, which is provable headlessly and not from here.
 		again = server.resource("screenreader://reader-guidance").get("text", "")
 		checks.check(
 			f"{persona}: reading it twice gives the same document",
@@ -1257,26 +1028,16 @@ def scenario_guidance(server, console, checks, mode):
 	)
 
 
-# -- board entry 11.25: what the silence cap can and cannot hear ---------------
-
-#: The three cue pitches, from adapters/nvda_announcer.py and nvda_cue.py. They
-#: are what makes this scenario judgeable WITHOUT an ear: NVDA logs every tone it
-#: plays with its pitch, and the cap speaks on its own 880 Hz, so "the cap said
-#: something" is a fact in the log rather than a question for the tester.
+#: NVDA logs every tone with its pitch, so the cap's own 880 Hz cue is judgeable without an ear.
 CAP_CUE_HZ = 880
 
-#: Two beeps closer together than this are one notice, not two.
 _CUE_PAIR_S = 0.6
 
 _BEEP_LINE = re.compile(r"tones\.beep \((\d\d):(\d\d):(\d\d\.\d+)\)[^\n]*\n\s*Beep at pitch (\d+)")
 
 
 def _cue_seconds(log_slice: str, hz: int) -> list[float]:
-	"""When each cue at *hz* sounded, as seconds since midnight, one per NOTICE.
-
-	Every notice is a PAIR of tones, so the second beep of a pair is dropped --
-	otherwise "the cap spoke twice" and "the cap spoke once" look the same.
-	"""
+	"""One time per notice: every notice is a pair of tones, so the second is dropped."""
 	times = [
 		int(h) * 3600 + int(m) * 60 + float(sec)
 		for h, m, sec, pitch in _BEEP_LINE.findall(log_slice)
@@ -1290,14 +1051,7 @@ def _cue_seconds(log_slice: str, hz: int) -> list[float]:
 
 
 def _hold(server, seconds: float, ping_every: float = 15.0) -> None:
-	"""Keep the SESSION alive for *seconds* without telling the human anything.
-
-	`status` makes a real ping round trip, which refreshes the 30 s heartbeat --
-	a client that goes quiet for longer than that is torn down before the cap has
-	anything to say, which is exactly what happened the first time this was driven
-	by hand. It deliberately does NOT reset the cap: a ping proves the agent is
-	alive, which is the reading spec 0032 says is not the human's.
-	"""
+	"""`status` refreshes the 30 s heartbeat but must not reset the silence cap."""
 	deadline = time.monotonic() + seconds
 	while True:
 		remaining = deadline - time.monotonic()
@@ -1308,29 +1062,17 @@ def _hold(server, seconds: float, ping_every: float = 15.0) -> None:
 
 
 def scenario_silence(server, console, checks, mode):
-	"""Board entry 11.25: the cap's clock is restarted by everything the human hears.
-
-	Forced silent, like `logsilent`: in live mode nothing is suppressed, so there
-	is no silence to bound and the clock never starts.
-
-	Phase 1 narrates every 30 s against a 45 s warning, cycling through the THREE
-	commands that speak to the human while acting -- and any one of them failing to
-	restart the clock opens a 60 s gap, which is over the threshold, so a single
-	broken kind still shows up as a warning here. Phase 2 then says nothing at all
-	and proves the cap still fires, so a green phase 1 cannot be a cap that has
-	simply stopped working.
+	"""Phase 1 narrates every 30 s against a 45 s warning through each command that speaks while acting;
+	phase 2 says nothing and proves the cap still fires.
 	"""
 	del mode  # a live session suppresses nothing; there is no silence to bound
 	nvda_log = _nvda_log_path()
 
 	console.pause("focus a BLANK Notepad tab -- phase 1 types one character into whatever has focus")
-	# Marked BEFORE the connect, not after: the session's FIRST suppression marker
-	# is written by the handshake itself, so a slice taken any later counts one
-	# restore more than it counts suppressions and reads a balanced session as a leak.
+	# Marked before the connect: the handshake writes the first suppression marker.
 	session_from = len(_read_text(nvda_log))
 	_connect(server, console, "silent")
 
-	# -- phase 1: narration carried on the commands that act ------------------
 	narrations = (
 		(
 			"pressGesture",
@@ -1377,7 +1119,6 @@ def scenario_silence(server, console, checks, mode):
 			),
 		)
 
-	# -- phase 2: no narration at all, which must still be capped -------------
 	console.step("phase 2: saying nothing for 100 s -- the warning and the lift are due (45/90)")
 	server.tool(
 		"announce",
@@ -1436,7 +1177,6 @@ def scenario_silence(server, console, checks, mode):
 
 
 def _seconds_since_midnight(stamp: float) -> float:
-	"""Wall clock as NVDA's log writes it, for subtracting from a cue time."""
 	local = time.localtime(stamp)
 	return local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec + (stamp % 1)
 
@@ -1457,19 +1197,8 @@ SCENARIOS = {
 }
 
 
-# -- shared scenario steps -----------------------------------------------------
-
-
 def _connect(server, console, mode, log_level=None, persona="expert"):
-	# log_level raises the READER's own verbosity for the session and is restored
-	# when it ends. The log scenarios need it: a level cannot be raised
-	# retroactively, so records not created at INFO are gone for good.
-	#
-	# `expert` is the honest default for THIS driver (spec 0029). These scenarios
-	# read NVDA's log, change its configuration and drive its own commands to
-	# prove the MCP works -- the reader is the subject here, not the instrument,
-	# which is exactly what that persona means. A scenario standing in for an
-	# ordinary user says so explicitly.
+	# A log level cannot be raised retroactively: records not created at INFO are gone.
 	arguments = {"reader": "nvda", "mode": mode, "persona": persona}
 	if log_level is not None:
 		arguments["log_level"] = log_level
@@ -1484,9 +1213,6 @@ def _connect(server, console, mode, log_level=None, persona="expert"):
 
 def _disconnect(server, console):
 	console.step(f"disconnecting: {server.tool('disconnect_reader')}")
-
-
-# -- advanced ad-hoc mode ------------------------------------------------------
 
 
 def scenario_run(server, mode):
@@ -1532,12 +1258,7 @@ def _run_command(server, verb, arg):
 	return None
 
 
-# -- console: guidance, confirmation, results ----------------------------------
-
-
 class Console:
-	"""The tester's side: setup pauses, audible confirmations, notes."""
-
 	def __init__(self, auto: bool) -> None:
 		self.auto = auto
 		if auto:
@@ -1571,8 +1292,6 @@ class Console:
 
 
 class Checklist:
-	"""Records PASS / FAIL / EAR per check and prints a summary."""
-
 	def __init__(self) -> None:
 		self._rows: list[tuple[str, str, str]] = []
 
@@ -1602,12 +1321,7 @@ class Checklist:
 		return 1 if failed else 0
 
 
-# -- the MCP-over-stdio client -------------------------------------------------
-
-
 class Server:
-	"""The screenreader-mcp binary, spoken to as an MCP client would."""
-
 	def __init__(self, binary: str) -> None:
 		self._proc = subprocess.Popen(
 			[binary],
@@ -1638,11 +1352,7 @@ class Server:
 		return sorted(t["name"] for t in self._call("tools/list")["tools"])
 
 	def tool(self, name: str, arguments: dict | None = None, timeout: float = 30.0) -> dict:
-		# `timeout` is the RPC deadline, not the tool's own. A BLOCKING tool
-		# (wait_for_speech, wait_for_log) must be given more than it will spend
-		# waiting, or this client gives up on a call the server is still
-		# honestly serving -- which reads as a hang rather than as our own
-		# impatience.
+		# The RPC deadline must exceed a blocking tool's own wait, or a served call reads as a hang.
 		result = self._call("tools/call", {"name": name, "arguments": arguments or {}}, timeout=timeout)
 		if result.get("isError"):
 			raise RuntimeError("".join(c.get("text", "") for c in result.get("content", [])) or "tool failed")

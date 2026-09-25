@@ -4224,10 +4224,14 @@ the ceiling, so the area cannot drift back. Counts are from
     comment, 18,166 code, 0.43. After: 1,395 comment, 18,166 code, 0.08; its ceiling is
     0.10.
 
-Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has an
-area in the gate, not yet enforced; stripping it would be entry 14.4. Every Go,
-Python and Swift file must belong to some area, so a new directory cannot slip
-past the gate unnoticed.
+14.4. **Done** -- **The dev scripts** (lane 4). Spec: none, see the lane rule.
+    Files: every Python and Swift file under `scripts/` except
+    `voiceover_restore.py`, which an open PR touches and which waits in
+    `pending`. Before: 1,364 comment, 3,263 code, 0.42. After: 265 comment,
+    3,289 code, 0.08; its ceiling is 0.10.
+
+Every Go, Python and Swift file must belong to some area, so a new directory
+cannot slip past the gate unnoticed.
 
 ## Out-of-band work (not board entries)
 

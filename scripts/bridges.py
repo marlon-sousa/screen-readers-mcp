@@ -4,21 +4,9 @@
 #     uv run poe bridges                      what runs where, on this machine
 #     BRIDGES=nvda uv run poe doctor          narrow to one bridge deliberately
 #
-# ROLE: reads the declaration each bridge writes in its OWN pyproject.toml and
-# answers two questions -- which bridges are in play on this machine, and which
-# of their tiers can actually run here. It is consulted by doctor.py, and run as
-# a CLI by the `bridges` task and by the guards on `live` / `live-slow`.
-#
-# WHY THE DECLARATION LIVES WITH THE BRIDGE. NVDA is Windows, JAWS is Windows,
-# VoiceOver is macOS, TalkBack is Android behind a host SDK: what a bridge needs
-# is a fact about that reader, and the bridge is the only place that fact is not
-# a guess. A central list here would have to be edited by every bridge that
-# lands, which is how such a list goes stale.
-#
-# WHAT THIS IS NOT. It says nothing about the SERVER. The server is built and
-# tested on every host, unconditionally, and no bridge has an opinion about it
-# (spec 0042, decision 1). It is also not a dispatcher: no task is generated
-# from these declarations while there is exactly one bridge to design against.
+# ROLE: reads the declaration each bridge writes in its own pyproject.toml and says which bridges
+# and tiers can run on this machine.
+# USED BY: doctor.py, bridge_task.py, and the `bridges` task as a CLI.
 
 from __future__ import annotations
 
@@ -35,12 +23,8 @@ from platforms import HOST, supports
 ROOT = Path(__file__).resolve().parent.parent
 BRIDGES_DIR = ROOT / "bridges"
 
-#: Where a bridge writes its declaration, inside its own pyproject.toml.
 DECLARATION = ("tool", "screen-readers-mcp", "bridge")
 
-#: The three tiers, in the order a report should show them, each with the
-#: question it answers. A bridge declares the ones it has; anything else it
-#: writes is reported as declared but unknown, rather than silently ignored.
 TIERS: dict[str, str] = {
 	"headless": "run its tests",
 	"package": "build its shippable artifact",
@@ -50,38 +34,17 @@ TIERS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class Tier:
-	"""One kind of work on one bridge, and where it can be done."""
-
 	name: str
 	hosts: tuple[str, ...]
 	tools: tuple[str, ...]
-	#: Why the hosts are limited, in the bridge's own words. Printed verbatim
-	#: when the tier is skipped, so a developer on the wrong host is told the
-	#: reason rather than shown a gap.
+	#: Printed verbatim when the tier is skipped.
 	reason: str
-	#: task name -> the commands that ARE that task for this bridge. Declared by
-	#: the bridge because a bridge is not necessarily a uv project: an NVDA
-	#: bridge tests with pytest, and a VoiceOver bridge in Go or Swift will not.
-	#: Run by scripts/bridge_task.py.
 	tasks: dict[str, tuple[str, ...]]
 
 	def runs_here(self) -> bool:
 		return supports(self.hosts)
 
 	def missing_tools(self) -> tuple[str, ...]:
-		"""Which of this tier's declared tools are not on PATH here.
-
-		DECLARED TOOLS USED TO BE REPORTED AND NEVER CHECKED, and 13.11 is where
-		that cost something. `poe doctor` asked whether each tool was present;
-		`bridge_task.py` asked only about the HOST, so a tier whose tools were
-		missing ran anyway -- and the first CI job to run a build task tried `scons`
-		on a runner without it, got `[Errno 2] No such file or directory: 'scons'`,
-		and failed the whole run. That is the wrong answer twice over: the message
-		names a Python exception rather than a missing dependency, and a machine
-		that cannot do a bridge's packaging should SKIP it exactly as a machine on
-		the wrong host does. The declaration already said `tools = ["scons", ...]`;
-		nothing was reading it.
-		"""
 		return tuple(tool for tool in self.tools if shutil.which(tool) is None)
 
 	@property
@@ -91,11 +54,7 @@ class Tier:
 
 @dataclass(frozen=True)
 class Bridge:
-	"""One reader's bridge, as it describes itself."""
-
-	#: The directory name under bridges/, which is how it is named everywhere.
 	name: str
-	#: The reader it drives, as a person would say it ("NVDA").
 	reader: str
 	tiers: tuple[Tier, ...]
 	path: Path
@@ -107,17 +66,10 @@ class Bridge:
 		return None
 
 	def runs_here(self) -> bool:
-		"""Is there anything at all to do with this bridge on this machine?"""
 		return any(tier.runs_here() for tier in self.tiers)
 
 
 def _tasks_of(raw: object) -> dict[str, tuple[str, ...]]:
-	"""A tier's `tasks` table, each value normalised to a tuple of commands.
-
-	A task is one command or several -- linting is two, check and format-check --
-	so a bare string and a list mean the same thing and the caller never has to
-	ask which it got.
-	"""
 	if not isinstance(raw, dict):
 		return {}
 	out: dict[str, tuple[str, ...]] = {}
@@ -149,8 +101,6 @@ def _tiers_of(declared: dict[str, object]) -> tuple[Tier, ...]:
 				tasks=_tasks_of(body.get("tasks")),
 			)
 		)
-	# Canonical order for anything known, declaration order for the rest, so two
-	# bridges always print their tiers in the same sequence.
 	order = list(TIERS)
 	return tuple(sorted(out, key=lambda tier: order.index(tier.name) if tier.name in order else len(order)))
 
@@ -168,7 +118,6 @@ def _declaration_in(pyproject: Path) -> dict[str, object] | None:
 
 
 def discover() -> list[Bridge]:
-	"""Every bridge under bridges/ that declares itself, by directory name."""
 	found: list[Bridge] = []
 	for directory in sorted(p for p in BRIDGES_DIR.glob("*") if p.is_dir()):
 		declared = _declaration_in(directory / "pyproject.toml")
@@ -187,12 +136,6 @@ def discover() -> list[Bridge]:
 
 
 def undeclared() -> list[str]:
-	"""Directories under bridges/ with no declaration -- invisible to every check.
-
-	Reported by the doctor rather than ignored: a bridge nobody declared is a
-	bridge whose tools are never checked and whose tiers are never skipped with
-	a reason, which looks exactly like a bridge that needs nothing.
-	"""
 	declared = {bridge.name for bridge in discover()}
 	return sorted(
 		p.name
@@ -206,14 +149,7 @@ class UnknownBridge(Exception):
 
 
 def selected() -> list[Bridge]:
-	"""The bridges this run is about.
-
-	`BRIDGES=nvda,voiceover` selects exactly those and RAISES on a name that
-	does not exist -- a typo that silently selected nothing would report a clean
-	machine while checking none of it. With the variable unset, a bridge is
-	selected when it can do ANY of its work here, which is what makes a fresh
-	macOS checkout pick up a macOS bridge with nothing configured.
-	"""
+	"""Raises on an unknown name in BRIDGES; with it unset, every bridge with a tier that runs here."""
 	every = discover()
 	wanted = os.environ.get("BRIDGES", "").strip()
 	if not wanted:
@@ -228,9 +164,6 @@ def selected() -> list[Bridge]:
 			raise UnknownBridge(f"BRIDGES names {name!r}, which is not a bridge in this repo (have: {known})")
 		chosen.append(by_name[name])
 	return chosen
-
-
-# -- CLI ----------------------------------------------------------------------
 
 
 def _print_table() -> None:

@@ -4,21 +4,7 @@
 #     uv run poe doctor        report
 #     uv run poe fix           report, and repair what can be repaired
 #
-# WHY THIS EXISTS. Every check below corresponds to something that has already
-# cost real time -- an agent or a contributor chasing a symptom whose cause was
-# environmental, not a bug in the code:
-#
-#   * pyright with no venv configured reports ~140 phantom "Import could not be
-#     resolved" errors, and you cannot tell them from real ones.
-#   * A stale console-script trampoline fails with "uv trampoline failed to
-#     canonicalize script path", which names neither the tool nor the fix.
-#   * Without ripgrep, a search falls back to `grep -r`, which does NOT honour
-#     .gitignore and so reads .venv and __pycache__ -- thousands of irrelevant
-#     lines, and for an agent, thousands of wasted tokens.
-#   * `python` on this machine points at a Python that is not installed.
-#
-# A check earns its place here by having burned someone once. Add to it when
-# something new does.
+# ROLE: checks that this machine and checkout can work the repo; every task runs its `--quick` subset first.
 
 from __future__ import annotations
 
@@ -40,32 +26,19 @@ from bridges import UnknownBridge, selected, undeclared
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: The MCP server binary an MCP client spawns. Named once, here, because
-#: redeploy.py imports the staleness check below rather than restating it. The
-#: FILENAME comes from platforms.py -- `.exe` on Windows, bare elsewhere -- so
-#: that the doctor, the build and the redeploy can never disagree about which
-#: file they are talking about.
+#: redeploy.py imports this and the staleness check rather than restating them.
 BINARY = ROOT / "server" / SERVER_BINARY_NAME
 
-#: The Python projects, and the dev tools each must be able to run.
 PY_PROJECTS = ("shared", "bridges/nvda")
 PY_TOOLS = ("pytest", "pyright", "ruff")
 
 
 def on_ci() -> bool:
-	"""Is this a CI runner rather than somebody's desktop?
-
-	Set by GitHub Actions on every runner, and by every other CI host worth the
-	name. Export ``CI=1`` locally to rehearse what CI will do.
-	"""
+	"""Export ``CI=1`` locally to rehearse what CI will do."""
 	return bool(os.environ.get("CI"))
 
 
-# SKIP is a fourth outcome, and it exists because SILENCE WAS THE ALTERNATIVE.
-# A doctor that simply omits the checks that do not apply to this host cannot be
-# read as a statement about the machine -- and the first question anyone has on a
-# new host is precisely "what is NOT being checked here?". A skip prints, with
-# its reason, and never affects the exit code. Only FAIL does.
+# A skip prints with its reason and never affects the exit code; only FAIL does.
 OK, WARN, FAIL, SKIP = "ok", "warn", "fail", "skip"
 
 
@@ -91,31 +64,14 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 	return done.returncode, (done.stdout + done.stderr).strip()
 
 
-# -- checks -------------------------------------------------------------------
-
-
-#: How to check one external binary, wherever it is wanted.
-#:
-#: The version floor and the advice live in ONE table, because the same tool can
-#: be wanted by the repo itself and by a bridge's tier -- and a floor that
-#: differed between the two would be a floor nobody could state. A bridge
-#: declares the NAME of a tool it needs; what "new enough" means stays here.
+#: One floor per tool, whether the repo or a bridge's tier wants it; a bridge declares only the name.
 @dataclass(frozen=True)
 class Tool:
-	#: None means "presence is all we can check" -- gettext's Windows builds
-	#: report version strings that do not order sensibly against the GNU ones,
-	#: and a comparison that gives wrong answers is worse than no comparison.
+	#: None: the banner does not order sensibly (gettext's Windows builds), so only presence is checked.
 	minimum: tuple[int, ...] | None
 	why: str
 	fix: str
-	#: How this tool is asked its version -- `("--version",)` for almost
-	#: everything, `("version",)` for go. **None means it cannot be asked at
-	#: all**, and that is not the same as `minimum = None`: msgfmt answers with a
-	#: banner nobody can order, while `codesign --version` is an unrecognised
-	#: option that exits 2 and prints a usage screen. Without this distinction the
-	#: doctor reported a perfectly good codesign as "present, but would not report
-	#: a version" -- a warning about the doctor, dressed as a warning about the
-	#: machine.
+	#: None means the tool cannot be asked its version at all, unlike `minimum = None`.
 	version_argv: tuple[str, ...] | None = ("--version",)
 
 
@@ -164,10 +120,7 @@ TOOLS: dict[str, Tool] = {
 	),
 	"xgettext": Tool(None, "gettext: extracts a bridge's translatable strings", "same as msgfmt"),
 	"swift": Tool(
-		# 6.0 is where swift-testing ships with the toolchain and where
-		# `swiftLanguageModes` exists in a manifest -- both of which the VoiceOver
-		# bridge's Package.swift uses, so an older toolchain fails at manifest
-		# parsing rather than at a line anyone could read.
+		# The VoiceOver bridge's manifest uses swift-testing and `swiftLanguageModes`, both new in 6.0.
 		(6, 0),
 		"builds and tests a Swift bridge; `swift --version` reports the toolchain",
 		"install Xcode 16 or later, then `xcode-select --install`",
@@ -177,24 +130,12 @@ TOOLS: dict[str, Tool] = {
 		"signs a bridge's bundle; a speech provider that is not signed and "
 		"sandboxed is not rejected -- it registers and never appears",
 		"comes with the macOS command line tools",
-		# It has no version flag AT ALL: `codesign --version` is an unrecognised
-		# option, exits 2, and prints usage. Presence is the whole check.
+		# `codesign --version` is an unrecognised option: it exits 2 and prints usage.
 		version_argv=None,
 	),
 }
 
-#: (tool, required, hosts) -- what the REPO needs, whatever bridge you work on.
-#:
-#: "Required" means you cannot work the repo without it; everything else degrades
-#: one named task and is reported as a warning.
-#:
-#: `hosts` is ANY_HOST unless the tool is only meaningful somewhere, and a tool
-#: that is not meaningful here is SKIPPED rather than warned about: `pwsh` exists
-#: to replace a shell only Windows has, so warning a macOS box about it is noise
-#: -- and noise trains people to ignore the whole report.
-#:
-#: A BRIDGE's build tools are deliberately not here. They are declared by the
-#: bridge, per tier, and checked in check_bridges(). See spec 0042, decision 2.
+#: (tool, required, hosts): a tool not required only warns, and one not meant for this host is skipped.
 CORE_TOOLS: tuple[tuple[str, bool, tuple[str, ...]], ...] = (
 	("uv", True, (ANY_HOST,)),
 	("go", True, (ANY_HOST,)),
@@ -206,12 +147,7 @@ CORE_TOOLS: tuple[tuple[str, bool, tuple[str, ...]], ...] = (
 
 
 def _version_of(text: str) -> tuple[int, ...] | None:
-	"""First dotted-number run in a --version banner, as a comparable tuple.
-
-	Deliberately loose: these banners have no common shape (`go version go1.26.5
-	windows/amd64`, `git version 2.47.0.windows.2`, `uv 0.11.17 (hash date)`),
-	and the leading number is the one that means something in all of them.
-	"""
+	"""The first dotted-number run, since the banners share no other shape."""
 	match = re.search(r"(\d+(?:\.\d+)+)", text)
 	if not match:
 		return None
@@ -219,7 +155,6 @@ def _version_of(text: str) -> tuple[int, ...] | None:
 
 
 def _check_tool(name: str, required: bool, label: str | None = None) -> Result:
-	"""Is this binary present, and new enough? Shared by the core and bridge checks."""
 	spec = TOOLS[name]
 	shown = label or name
 	if shutil.which(name) is None:
@@ -232,10 +167,7 @@ def _check_tool(name: str, required: bool, label: str | None = None) -> Result:
 	first = banner.splitlines()[0].strip()
 	found = _version_of(banner)
 	minimum = spec.minimum
-	# A FLOOR, never a pin: anything at or above the minimum passes, so a newer
-	# toolchain is always fine. Pad the found version to the minimum's length
-	# first, or a two-part 1.25 would compare as older than a three-part 1.25.0
-	# and fail a version that satisfies it.
+	# A floor, not a pin; padded so 1.25 is not older than 1.25.0.
 	padded = (found + (0,) * len(minimum))[: len(minimum)] if (minimum and found) else None
 	if padded and minimum and padded < minimum:
 		want = ".".join(str(part) for part in minimum)
@@ -249,7 +181,6 @@ def _check_tool(name: str, required: bool, label: str | None = None) -> Result:
 
 
 def check_core_tools() -> list[Result]:
-	"""Everything the workspace shells out to, whatever bridge you are working on."""
 	out: list[Result] = []
 	for name, required, hosts in CORE_TOOLS:
 		if not supports(hosts):
@@ -261,19 +192,11 @@ def check_core_tools() -> list[Result]:
 
 
 def _scons_interpreter() -> Path | None:
-	"""The Python that owns `scons`, which is NOT the one running this script.
-
-	scons is invoked as a standalone tool from whichever interpreter it was
-	installed into, so its imports must be checked there. Checking them against
-	`sys.executable` -- the poe devtools venv -- reports a missing `markdown`
-	on a machine that builds addons perfectly well, which is a false alarm, and
-	a false alarm trains people to ignore the whole report.
-	"""
+	"""The Python that owns `scons`, whose imports are what the build uses, not `sys.executable`'s."""
 	found = shutil.which("scons")
 	if not found:
 		return None
-	# Both a venv and a CPython install put console scripts in Scripts/ (or
-	# bin/) with the interpreter one level up.
+	# Both a venv and a CPython install put the interpreter one level above Scripts/ or bin/.
 	scripts = Path(found).resolve().parent
 	for candidate in (
 		scripts.parent / "python.exe",
@@ -286,7 +209,6 @@ def _scons_interpreter() -> Path | None:
 
 
 def check_addon_build_deps() -> list[Result]:
-	"""scons imports these from ITS interpreter, not from a project venv."""
 	interpreter = _scons_interpreter()
 	if interpreter is None:
 		return [
@@ -317,18 +239,7 @@ def check_addon_build_deps() -> list[Result]:
 
 
 def check_bridges() -> list[Result]:
-	"""Each selected bridge: which of its tiers run here, and what those tiers need.
-
-	The SERVER is deliberately absent from this section and always will be. It is
-	built and tested on every host with no guard, and no bridge has an opinion
-	about it (spec 0042, decision 1). What genuinely varies per machine is what you
-	can do with a BRIDGE, because that follows the reader: NVDA and JAWS are
-	Windows, VoiceOver is macOS, TalkBack is Android behind a host SDK.
-
-	A tier's tools are checked as WARNINGS even when the tier runs here. The FAIL
-	bar in this file is "believing any other result would be a mistake", and a
-	missing packaging tool does not make a test lie -- it stops you packaging.
-	"""
+	"""A tier's tools only warn: a missing packaging tool stops packaging but makes no other result lie."""
 	out: list[Result] = []
 	for name in undeclared():
 		out.append(
@@ -355,8 +266,6 @@ def check_bridges() -> list[Result]:
 		)
 		return out
 
-	#: tool -> the first tier that asked for it, so one missing binary is reported
-	#: once with a name that says who wanted it.
 	wanted: dict[str, str] = {}
 	for bridge in chosen:
 		for tier in bridge.tiers:
@@ -380,20 +289,12 @@ def check_bridges() -> list[Result]:
 			)
 			continue
 		out.append(_check_tool(tool, required=False, label=f"{wanted_by}: {tool}"))
-	# The scons INTERPRETER's imports are only a question once something wants
-	# scons at all, so the check rides along rather than being asked everywhere.
 	if "scons" in wanted:
 		out += check_addon_build_deps()
 	return out
 
 
 def check_bare_python() -> Result:
-	"""`python` is documented as broken here; confirm, so the doc stays true.
-
-	This is a WARN, never a FAIL: nothing in the task list calls bare `python`
-	from a shell. It is here so that if someone fixes their launcher, the
-	AGENTS.md warning can be retired instead of being cargo-culted forever.
-	"""
 	if shutil.which("python") is None:
 		return Result(WARN, "bare python", "not on PATH (fine -- tasks use uv)")
 	code, out = _run(["python", "--version"])
@@ -408,20 +309,7 @@ def check_bare_python() -> Result:
 
 
 def check_pyright_venv_config() -> list[Result]:
-	"""pyright must be told which venv to analyse against, or it lies.
-
-	With no ``venvPath``/``venv``, pyright resolves imports against whatever
-	environment it inherits. Run one way it is correct; run another it reports
-	every test import as unresolved and buries the real diagnostics.
-
-	Each project's settings live in its own ``pyrightconfig.json``, never in a
-	``[tool.pyright]`` section. Pyright walks UP the tree for a
-	``pyrightconfig.json``, and an ancestor one outranks a local
-	``[tool.pyright]`` -- so the repo-root config written for editors and LSP
-	clients would silently retype these projects if they relied on pyproject.toml.
-	A local ``pyrightconfig.json`` does outrank the ancestor, which is why each
-	project carries one.
-	"""
+	"""An ancestor pyrightconfig.json outranks a local ``[tool.pyright]``, so each project has its own."""
 	out: list[Result] = []
 	for project in PY_PROJECTS:
 		path = ROOT / project / "pyrightconfig.json"
@@ -452,8 +340,6 @@ def check_pyright_venv_config() -> list[Result]:
 				)
 			)
 
-		# A [tool.pyright] section here is DEAD config: pyrightconfig.json wins.
-		# Left in place it drifts, and the drift is invisible.
 		pyproject = ROOT / project / "pyproject.toml"
 		if pyproject.is_file():
 			with pyproject.open("rb") as handle:
@@ -470,7 +356,6 @@ def check_pyright_venv_config() -> list[Result]:
 
 
 def _venv_root(path: str) -> Path | None:
-	"""The `.venv` directory an extraPath points inside, if it names one."""
 	parts = Path(path).parts
 	if ".venv" not in parts:
 		return None
@@ -478,13 +363,7 @@ def _venv_root(path: str) -> Path | None:
 
 
 def _check_root_pyright_config() -> list[Result]:
-	"""The repo-root pyrightconfig.json is what an LSP at the root reads.
-
-	It exists so an editor or agent launched at the repo root sees what the gates
-	see. It is NOT what the gates read -- each project's own pyrightconfig.json is.
-	If a Python project is missing an execution environment here, files under it
-	resolve against the wrong interpreter and the root view goes back to lying.
-	"""
+	"""The root config is what an editor or LSP at the root reads; the gates read each project's own."""
 	path = ROOT / "pyrightconfig.json"
 	if not path.is_file():
 		return [
@@ -512,30 +391,13 @@ def _check_root_pyright_config() -> list[Result]:
 			)
 		]
 
-	# An execution environment cannot carry its own `venv`, only `extraPaths`, so
-	# each one names a venv's site-packages BY PATH -- and that path is
-	# host-shaped: `.venv/Lib/site-packages` on Windows,
-	# `.venv/lib/python3.13/site-packages` on POSIX. Both are listed, since
-	# pyright ignores an extraPath that does not exist.
-	#
-	# WHICH IS EXACTLY WHY THIS CHECK EXISTS. "Ignores what is missing" means a
-	# wrong path costs nothing at parse time and everything at analysis time: on
-	# macOS, before spec 0042, all three environments named only the Windows
-	# layout and a root run reported 331 errors where the gates report none. A
-	# silent extraPath needs a loud check, or the config drifts again the next
-	# time a layout does.
+	# Pyright silently ignores an extraPath that does not exist, and the venv layout differs per host.
 	blind: list[str] = []
 	for env in environments:
 		listed = [path for path in env.get("extraPaths", []) if "site-packages" in path]
 		venvs = {venv for venv in (_venv_root(path) for path in listed) if venv is not None}
 		if not any(venv.is_dir() for venv in venvs):
-			# A venv that has not been CREATED yet is not a config error, and
-			# calling it one makes this check fire on every CI runner: each job
-			# builds only the project environments its own task needs, so
-			# `shared/.venv` does not exist while the bridge job runs. (It fired
-			# on both new jobs the first time this shipped.) check_dev_tools owns
-			# "your venv is missing"; this check owns "your paths name the wrong
-			# LAYOUT", which can only be asked where there is a venv to name.
+			# An uncreated venv is check_dev_tools' finding; CI jobs build only the venvs they need.
 			continue
 		if listed and not any((ROOT / path).is_dir() for path in listed):
 			blind.append(f"{env.get('root')} ({', '.join(listed)})")
@@ -552,7 +414,6 @@ def _check_root_pyright_config() -> list[Result]:
 
 
 def check_dev_tools() -> list[Result]:
-	"""Each Python project must be able to actually run its declared tooling."""
 	out: list[Result] = []
 	for project in PY_PROJECTS:
 		directory = ROOT / project
@@ -589,12 +450,7 @@ def check_dev_tools() -> list[Result]:
 
 
 def check_trampolines() -> list[Result]:
-	"""Console scripts are what CI uses; a stale one is a confusing failure.
-
-	WARN, not FAIL: every poe task uses `python -m`, so a broken trampoline
-	cannot break the task list. It still matters, because CI invokes the console
-	scripts, and because the error message it produces names nothing useful.
-	"""
+	"""Only a warning: every poe task uses `python -m`, but CI invokes the console scripts."""
 	out: list[Result] = []
 	for project in PY_PROJECTS:
 		code, detail = _run(
@@ -615,19 +471,7 @@ def check_trampolines() -> list[Result]:
 
 
 def check_conformance_python() -> Result:
-	"""The conformance tier spawns a real Python 3.13 to host the bridge.
-
-	This MIRRORS the Go test's own search -- `pythonInterpreter` and `probePython`
-	in server/tests/conformance/python_bridge_test.go: CONFORMANCE_PYTHON first as
-	a space-separated command, then `python`, `python3.13`, `python3`, and the `py`
-	launcher only on Windows; the floor is `sys.version_info >= (3, 13)`.
-
-	It has to mirror it, because it speaks FOR it. This check used to look for the
-	Windows `py` launcher and nothing else, so on macOS it warned that the tier
-	would fail while the tier itself passed -- `poe` puts the workspace venv's 3.13
-	on PATH and the Go probe finds it. A doctor that is wrong about a passing tier
-	is worse than one that says nothing about it.
-	"""
+	"""Must mirror `pythonInterpreter` and `probePython` in server/tests/conformance/python_bridge_test.go."""
 	probe = "import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)"
 	override = os.environ.get("CONFORMANCE_PYTHON")
 	if override and override.strip():
@@ -660,13 +504,7 @@ def check_conformance_python() -> Result:
 
 
 def stale_server_binary() -> str | None:
-	"""Why the MCP server binary is out of date, or None if it is current.
-
-	Factored out of the check below because `scripts/redeploy.py --if-stale` asks
-	the same question, and two implementations of "is this binary stale" is one
-	more than the number of answers the repo can afford: they would drift, and the
-	symptom would be `poe dev` disagreeing with `poe doctor` about a binary.
-	"""
+	"""Why the MCP server binary is out of date, or None if it is current; redeploy.py asks it too."""
 	if not BINARY.is_file():
 		return "not built"
 	built = BINARY.stat().st_mtime
@@ -681,57 +519,19 @@ def stale_server_binary() -> str | None:
 
 
 def _server_build_inputs() -> Iterator[Path]:
-	"""Every file whose contents end up INSIDE the server binary.
+	"""Every file whose contents end up inside the server binary.
 
-	The .go sources, and the markdown documents they pull in with ``//go:embed``.
-
-	THE DOCUMENTS ARE NOT OPTIONAL HERE, and leaving them out is a trap that hides
-	perfectly: ``//go:embed`` copies a file's bytes at COMPILE time, so editing
-	``guidance-preamble.md`` changes nothing at all until the binary is rebuilt.
-	Without this, the doctor would rglob only ``*.go``, see nothing newer than the
-	binary, and pronounce it current -- while the running server served the
-	previous wording of a document to every agent that read it. Nothing would say
-	so, in the one check whose whole job is to say so.
-
-	Scoped to ``documents/`` rather than every .md under server/, so that editing
-	``server/README.md`` -- which no build consumes -- does not manufacture a
-	rebuild.
-
-	AND ``_test.go`` IS EXCLUDED, for the same reason from the other direction: a
-	test file's bytes never enter ``cmd/screenreader-mcp``, so counting one made
-	this check report a binary as stale after a change that could not possibly
-	have altered it. That is not a safe conservatism -- it is a false alarm on the
-	one check whose entire value is that it is believed, and the fix it prescribes
-	(``poe redeploy``) kills every attached agent's MCP session to rebuild a
-	binary that was already current. Found by 13.11, which added a conformance
-	scenario and was told to redeploy for it.
+	``//go:embed`` documents count, since an edited one changes nothing until a rebuild; test files do not,
+	since a false stale prescribes a redeploy that drops every attached agent.
 	"""
 	yield from (path for path in (ROOT / "server").rglob("*.go") if not path.name.endswith("_test.go"))
 	yield from (ROOT / "server").rglob("documents/*.md")
 
 
 def check_server_binary() -> Result:
-	"""The MCP server BINARY must be newer than the Go source it was built from.
+	"""An agent driving a stale binary sees a missing result field, which reads as the bridge's fault.
 
-	This is the one staleness that hides best. The binary in .mcp.json is what
-	the MCP client actually spawns, so an agent editing server/ and then driving
-	the tools is testing the OLD server against the NEW bridge -- and the
-	symptom is a field that is simply absent from a result, which reads as "the
-	bridge did not send it" rather than "your server predates it". That happened:
-	`bridgeVersion` was added, the bridge sent it, the whole live checklist ran,
-	and nobody noticed the server could not carry it because the binary was four
-	days old.
-
-	Rebuilding is not enough on its own -- the client spawned the old process at
-	startup and keeps it, so the MCP connection has to be restarted too. The fix
-	text says so, because a rebuild that appears to change nothing is its own
-	rabbit hole.
-
-	`poe dev` no longer reaches this failure: it redeploys first when the binary
-	is stale (see redeploy.py --if-stale), so the check is satisfied by the time
-	the doctor runs. The check stays because dev is not the only way in -- a bare
-	`poe doctor`, `poe bridge` or `poe live` still gets told, and those are
-	exactly the runs where an agent is about to drive the MCP tools.
+	The client keeps the process it spawned, so the MCP connection must be restarted after a rebuild.
 	"""
 	if not BINARY.is_file():
 		return Result(
@@ -752,15 +552,7 @@ def check_server_binary() -> Result:
 
 
 def check_shared_synced() -> Result:
-	"""The addon carries a COPY of the wire module; a stale copy is invisible.
-
-	The comparison mirrors what sync_shared.py actually writes -- the source
-	with a generated header prepended -- rather than comparing raw bytes. It
-	also normalises newlines, because the two files are checked out through
-	different .gitattributes rules and a CRLF/LF difference is invisible to
-	every consumer. Getting either wrong turns this check into a false alarm,
-	which is worse than no check: it trains people to ignore it.
-	"""
+	"""Compares newline-normalised text, because the copy carries a generated header."""
 	source = ROOT / "shared" / "screenreader_wire" / "protocol.py"
 	copy = ROOT / "bridges" / "nvda" / "addon" / "globalPlugins" / "nvdaMcpBridge" / "protocol.py"
 	if not source.is_file() or not copy.is_file():
@@ -769,9 +561,7 @@ def check_shared_synced() -> Result:
 	def _norm(text: str) -> str:
 		return text.replace("\r\n", "\n").strip()
 
-	# sync_shared.py writes exactly `_HEADER + SOURCE`, so the copy must END
-	# WITH the source. Testing the suffix rather than stripping a guessed number
-	# of header lines means the check cannot over-strip and mask a real change.
+	# sync_shared.py writes exactly `_HEADER + SOURCE`, so the copy must end with the source.
 	if _norm(copy.read_text(encoding="utf-8")).endswith(_norm(source.read_text(encoding="utf-8"))):
 		return Result(OK, "shared module synced", "addon copy matches shared/")
 	return Result(
@@ -780,9 +570,6 @@ def check_shared_synced() -> Result:
 		"the addon's protocol.py differs from shared/ -- the bridge is on an old contract",
 		"py -3.13 bridges/nvda/sync_shared.py",
 	)
-
-
-# -- repair -------------------------------------------------------------------
 
 
 def repair() -> None:
@@ -794,9 +581,6 @@ def repair() -> None:
 		if code != 0:
 			print(f"    FAILED: {out.splitlines()[-1] if out else code}")
 	print()
-
-
-# -- main ---------------------------------------------------------------------
 
 
 def main() -> int:
@@ -813,17 +597,7 @@ def main() -> int:
 		repair()
 
 	results: list[Result] = []
-	# The MACHINE checks -- "is this workstation set up to work the repo". On CI
-	# they are the wrong question, and asking it is what kept `poe` out of the
-	# workflow: the `shared` job installs uv and nothing else, so the required
-	# `go`/`rg` would abort it before a single test ran. CI does not need them.
-	# Its environment is DECLARED, in ci.yml's setup steps, and when something is
-	# missing the step that wanted it fails immediately naming the tool -- there
-	# is no mystery for a doctor to diagnose. The doctor's value is on a desktop
-	# that drifted, which a fresh runner cannot have done.
-	#
-	# The REPO checks below the guard are asked everywhere, because they are
-	# facts about the checkout rather than about the machine.
+	# Machine checks are skipped on CI, whose environment is declared in ci.yml; repo checks run everywhere.
 	if not on_ci():
 		results += check_core_tools()
 		results.append(check_bare_python())
@@ -832,24 +606,16 @@ def main() -> int:
 	results += check_pyright_venv_config()
 	results.append(check_shared_synced())
 	if not args.quick and not on_ci():
-		# These spawn a uv environment per tool per project -- a few seconds,
-		# which is fine for `poe doctor` and far too slow to sit in front of
-		# every `poe bridge`. The quick set still catches the failures that
-		# make OTHER results untrustworthy: a missing tool, an unconfigured
-		# pyright, an addon on a stale wire contract.
+		# Each spawns a uv environment per tool per project: too slow for the pre-task gate.
 		results += check_dev_tools()
 		results += check_trampolines()
 		results.append(check_conformance_python())
 
 	failures = [r for r in results if r.status == FAIL]
 	if args.quick and not failures:
-		# Nothing to say: the gate passed and the real task is what matters.
 		return 0
 
 	marks = {OK: "PASS", WARN: "WARN", FAIL: "FAIL", SKIP: "SKIP"}
-	# The host is printed even when nothing is wrong, because every SKIP below
-	# is only readable against it: "not applicable on macos" means nothing if
-	# you cannot see which machine answered.
 	print(f"host: {HOST}\n")
 	width = max(len(r.check) for r in results)
 	for result in results:

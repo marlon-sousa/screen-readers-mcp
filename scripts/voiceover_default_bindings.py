@@ -5,43 +5,13 @@
 #     python3 scripts/voiceover_default_bindings.py --all          # every binding
 #     python3 scripts/voiceover_default_bindings.py --grep "menu"  # by command name
 #
-# ROLE: the versioned instrument behind board entry 13.25's guidance document. It
-# reads the KEYS a VoiceOver user presses out of the machine, so that every
-# keystroke this repo's guidance names is a measurement rather than something an
-# author remembered from Apple's documentation.
+# ROLE: prints the factory VoiceOver key bindings shipped with macOS, so the guidance names measured keys.
+# It only reads two files and needs no grant.
 #
-# IT PRESSES NOTHING, CHANGES NOTHING AND NEEDS NO GRANT. It reads two files that
-# ship with macOS and prints a table. Safe to run on any Mac, at any time, with
-# the reader running or not.
-#
-# WHY IT EXISTS. Board entry 13.7 wrote, correctly for what was known then, that
-# this document must carry "no table of key combinations for reader commands"
-# because a binding is the user's own and unknowable from here. The second half
-# turned out to be false: macOS ships the factory bindings in a keyed archive
-# beside the command vocabulary, and the two join on the command identifier.
-#
-#   * SCRStringsToCommandsMap.scrconfig -- 415 English command names, each mapped
-#     to an internal identifier ("go to menu bar" -> "SCRWorkspace.goToMenuBar").
-#     This is the file the bridge's gesture route already talks to, by name.
-#   * ScreenReaderConfiguration.archived-scrconfig -- an NSKeyedArchiver archive
-#     whose SCRCConfigurationKeyboardKeyToCommands maps a key SPECIFICATION to the
-#     identifiers it runs. The specification is a dictionary, and its fields are
-#     the whole notation: `characters`, `commanded` (the VoiceOver modifier is
-#     held), `shifted`, `fned`, `function` (the character is a function key), and
-#     `pressCount` (2 means a double press).
-#
-# WHAT IT IS NOT. These are the FACTORY bindings, on this macOS release. A person
-# who has rebound a command in VoiceOver Utility's Commanders pane gets their own
-# binding, recorded as a deviation in their own preferences, and this script does
-# not read that. So a keystroke printed here is what an ordinary machine presses
-# and not a promise about a particular one -- which is exactly why the reader's
-# own command name stays the diagnosis when a key does nothing.
-#
-# THE VO MODIFIER IS NOT SPELLED OUT HERE EITHER, and that is deliberate: what
-# `commanded` means on a given machine is Control-Option or Caps Lock, read from
-# that machine's own preferences. The bridge resolves it (spec 0052); this script
-# prints `VO` and leaves it symbolic, which is the same thing the wire notation
-# does.
+# SCRStringsToCommandsMap.scrconfig maps English command names to identifiers, and the NSKeyedArchiver
+# archive ScreenReaderConfiguration.archived-scrconfig maps key specifications to those identifiers.
+# A user's own rebindings live in their preferences and are not read, and the VoiceOver modifier is
+# printed as the symbolic `vo` because the bridge resolves it per machine.
 
 from __future__ import annotations
 
@@ -56,15 +26,9 @@ RESOURCES = Path("/System/Library/PrivateFrameworks/ScreenReader.framework/Versi
 VOCABULARY = RESOURCES / "SCRStringsToCommandsMap.scrconfig"
 CONFIGURATION = RESOURCES / "ScreenReaderConfiguration.archived-scrconfig"
 
-#: The key holding the key-specification to command-identifier map.
 BINDINGS_KEY = "SCRCConfigurationKeyboardKeyToCommands"
 
-#: macOS spells the non-typing keys as characters in the Unicode PRIVATE USE
-#: area, and these are Apple's own `NSEvent` function-key constants -- the same
-#: numbers `AppKit/NSEvent.h` publishes, written as code points rather than as
-#: literal characters no editor can show. The names on the right are the bridge's
-#: own spellings (spec 0049 §2.3), so a row of this table can be pasted into
-#: `press_gesture` as it stands.
+#: AppKit's NSEvent function-key code points, named in the bridge's own gesture spelling.
 SPECIAL_CHARACTERS = {
 	chr(0xF700): "upArrow",
 	chr(0xF701): "downArrow",
@@ -94,12 +58,6 @@ CONTROL_CHARACTERS = {
 
 
 def unarchive(archive: dict[str, Any]) -> Any:
-	"""Resolve an NSKeyedArchiver archive into plain Python values.
-
-	Only as much of the format as this file needs: dictionaries and arrays carry
-	their contents under `NS.keys` / `NS.objects`, and every other reference is a
-	`UID` into the `$objects` table.
-	"""
 	objects = archive["$objects"]
 
 	def resolve(value: Any) -> Any:
@@ -107,10 +65,7 @@ def unarchive(archive: dict[str, Any]) -> Any:
 			return resolve(objects[value.data])
 		if isinstance(value, dict):
 			if "NS.keys" in value:
-				# INDEXED RATHER THAN ZIPPED, on purpose: this script is run with
-				# whatever `python3` is on the machine -- which on macOS is the
-				# system one -- and `zip(strict=)` is 3.10 and later. The two lists
-				# are the same length by the format's own definition.
+				# Indexed, not zipped: the macOS system python3 may predate `zip(strict=)`.
 				items = value["NS.objects"]
 				return {
 					_hashable(resolve(key)): resolve(items[index])
@@ -125,33 +80,16 @@ def unarchive(archive: dict[str, Any]) -> Any:
 
 
 def _hashable(value: Any) -> Any:
-	"""A dictionary key that can itself be a dictionary, made usable as one."""
 	if isinstance(value, dict):
 		return tuple(sorted((key, _hashable(item)) for key, item in value.items()))
 	return value
 
 
 def described(specification: dict[str, object]) -> str:
-	"""One key specification, written the way this repository writes a keystroke.
+	"""Read against Apple's published commands, the format has three traps.
 
-	THE THREE THINGS THIS FORMAT GETS WRONG IF YOU READ IT LITERALLY, each
-	established by joining known bindings against Apple's published commands
-	rather than by guessing at the field names:
-
-	* **`vo` is implicit.** Every entry in this table belongs to the VoiceOver
-	commander, so the modifier is held for all of them and is written on every
-	line. Nothing in the dictionary says so; "go to menu bar" is stored as the
-	bare character `m` and is VO-M.
-	* **`commanded` is the COMMAND key**, not the commander. `Global.findPreviousList`
-	is stored commanded with the character `X`, and Apple documents it as
-	VO-Command-Shift-X.
-	* **Shift is spelled two ways.** A letter or digit carries it in its own CASE
-	(`X` is Shift-X); a key with no case -- a function key, an arrow -- carries it
-	in the `shifted` flag. Both are written `shift` here.
-
-	`vo` stays symbolic for the reason in the header. The modifier order is the
-	bridge's own canonical one, so a line of this table can be pasted into
-	`press_gesture` as it stands.
+	The VoiceOver modifier is implicit in every entry; `commanded` means the Command key; and Shift is
+	either the case of a letter or, for a key with no case, the `shifted` flag.
 	"""
 	name = key_name(specification)
 	shifted = bool(specification.get("shifted")) or _is_shifted_character(specification)
@@ -172,7 +110,6 @@ def described(specification: dict[str, object]) -> str:
 
 
 def _is_shifted_character(specification: dict[str, object]) -> bool:
-	"""Whether the character itself carries the Shift, which is how a LETTER does."""
 	characters = str(specification.get("characters") or "")
 	return len(characters) == 1 and characters.isupper()
 
@@ -189,7 +126,6 @@ def key_name(specification: dict[str, Any]) -> str:
 
 
 def bindings() -> dict[str, list[str]]:
-	"""Command identifier -> the keystrokes bound to it, factory settings."""
 	archive = plistlib.loads(CONFIGURATION.read_bytes())
 	top = unarchive(archive)
 	table = _find(top, BINDINGS_KEY)
@@ -204,7 +140,6 @@ def bindings() -> dict[str, list[str]]:
 
 
 def _find(value: Any, key: str) -> Any:
-	"""The first value stored under `key` anywhere in a resolved archive."""
 	if isinstance(value, dict):
 		if key in value:
 			return value[key]

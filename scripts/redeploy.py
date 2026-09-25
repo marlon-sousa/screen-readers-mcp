@@ -1,31 +1,10 @@
 # Redeploy the MCP server binary: kill every running copy, then rebuild.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
-# WHY THIS EXISTS: rebuilding the server fails while the binary is running --
-# Windows locks a loaded image against being overwritten --
-# and with stdio MCP there is no single server to ask nicely. Each CLIENT spawns
-# its OWN process, so a session with two agents attached has two copies of the
-# same exe holding the same file, and no shared endpoint to shut down. An HTTP
-# transport would have one; stdio does not. Killing by image path is the only
-# thing that reaches all of them.
-#
-# WHY KILLING IS SAFE, which is not obvious for a tool that drives a screen
-# reader: the bridge treats a dropped connection as teardown, and teardown
-# unregisters the speech filter. So a killed server leaves the tester HEARING,
-# not mute -- the invariant spec 0016 is arranged around, asserted headlessly by
-# test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on and live by
-# test_a_session_that_dies_with_a_window_open_recovers. A killed server also
-# ends any silent-mode session, so speech comes back within one read timeout.
-#
-# The cost is real and deliberate (Marlon's call): EVERY agent's connection to
-# this binary dies, not just the one asking. That is why the run reports each pid
-# it killed, and why --dry-run exists to check the targeting first.
-#
-# ON POSIX the file-locking half of the argument does not apply -- a running
-# executable can be replaced, and `go build` writes a new file and renames it
-# anyway -- but the KILLING half still does, and it is the half that matters:
-# clients respawn their own servers, so a copy left running is a copy still
-# serving the code this task exists to replace.
+# Every MCP client spawns its own copy over stdio, and Windows refuses to overwrite a loaded image,
+# so every copy of this checkout's binary is killed, other agents' included.
+# Killing is safe for the tester: the bridge treats a dropped connection as teardown, which
+# unregisters the speech filter.
 
 from __future__ import annotations
 
@@ -37,12 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-# The doctor owns both the binary's path and the definition of "stale".
-# Importing them rather than restating them is what keeps `poe dev` and
-# `poe doctor` from ever disagreeing about whether this binary is current -- a
-# disagreement whose symptom would be dev passing and the doctor failing on the
-# same unchanged tree. scripts/ is sys.path[0] when either file is run directly,
-# so this is a plain sibling import needing no package.
+# The doctor owns the binary's path and the definition of stale, so `poe dev` and `poe doctor` agree.
 from build_server import build
 from doctor import BINARY, stale_server_binary
 from platforms import HOST, Host
@@ -59,17 +33,11 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 
 
 def running_copies() -> list[tuple[int, str]]:
-	"""Every process running THIS repo's server binary, as (pid, path).
-
-	Matched on the executable's PATH, not merely its name: another checkout of
-	this project, or an installed copy elsewhere, is somebody else's server and
-	must not be killed because it happens to share a filename.
-	"""
+	"""Matched on the full path, so another checkout's server is never killed."""
 	return _windows_copies() if HOST is Host.WINDOWS else _posix_copies()
 
 
 def _windows_copies() -> list[tuple[int, str]]:
-	"""CIM rather than the deprecated wmic."""
 	script = (
 		f"Get-CimInstance Win32_Process -Filter \"Name='{BINARY.name}'\" | "
 		'ForEach-Object { "$($_.ProcessId)|$($_.ExecutablePath)" }'
@@ -90,14 +58,7 @@ def _windows_copies() -> list[tuple[int, str]]:
 
 
 def _executable_of(pid: int, reported: str) -> str:
-	"""The real path behind a pid, as well as this host can answer it.
-
-	Linux answers exactly, through /proc/<pid>/exe. macOS has no /proc, but its
-	`ps -o comm` already prints the full path, so the reported value IS the
-	answer there. The weaker case -- a `ps` that reports only a basename -- falls
-	back to that basename and will therefore not match BINARY's full path, so it
-	kills nothing rather than killing the wrong thing.
-	"""
+	"""A `ps` that reports only a basename never matches BINARY, so it kills nothing."""
 	try:
 		return os.readlink(f"/proc/{pid}/exe")
 	except OSError:
@@ -105,13 +66,6 @@ def _executable_of(pid: int, reported: str) -> str:
 
 
 def _posix_copies() -> list[tuple[int, str]]:
-	"""`ps` across every user's processes, then narrowed to this exact file.
-
-	Matched by resolved path, like the Windows branch. It is a weaker match than
-	Win32's ExecutablePath -- a process that rewrote its own argv or exec'd
-	through a symlink could evade it -- and that is accepted rather than papered
-	over: this is a dev tool killing dev servers.
-	"""
 	code, out = _run(["ps", "-Ao", "pid=,comm="])
 	if code != 0:
 		print(f"  could not enumerate processes: {out}", file=sys.stderr)
@@ -134,14 +88,6 @@ def _posix_copies() -> list[tuple[int, str]]:
 
 
 def _posix_kill(pid: int, grace: float = 5.0) -> str:
-	"""SIGTERM, then SIGKILL if it is still there.
-
-	SIGTERM first because the server's exit is what the bridge reads as teardown,
-	and teardown is what unregisters the speech filter -- the invariant this whole
-	tool is arranged around. SIGKILL only after the grace period, because a
-	server that will not leave is worse than an abrupt one: the bridge treats a
-	dropped connection as teardown either way.
-	"""
 	try:
 		os.kill(pid, signal.SIGTERM)
 	except OSError as exc:
@@ -161,17 +107,7 @@ def _posix_kill(pid: int, grace: float = 5.0) -> str:
 
 
 def _is_replaceable() -> bool:
-	"""Whether the binary can be overwritten right now.
-
-	Opening a loaded image for writing raises PermissionError on Windows, which
-	makes this a direct test of the thing we actually care about -- rather than
-	inferring it from a process list that may be a moment out of date, since a
-	handle is released slightly after the process disappears.
-
-	On POSIX it is essentially always true, and deliberately still asked: the
-	answer is the same shape, the wait loop below simply returns immediately, and
-	there is no second code path to keep honest.
-	"""
+	"""Opening a loaded image for writing raises PermissionError on Windows."""
 	if not BINARY.exists():
 		return True
 	try:
@@ -202,7 +138,7 @@ def kill_all(dry_run: bool) -> int:
 
 
 def wait_until_replaceable(timeout: float = 10.0) -> bool:
-	"""Wait for the file handle to be released, not merely for the pid to go."""
+	"""A handle is released slightly after its process disappears."""
 	deadline = time.monotonic() + timeout
 	while time.monotonic() < deadline:
 		if _is_replaceable():
@@ -212,17 +148,7 @@ def wait_until_replaceable(timeout: float = 10.0) -> bool:
 
 
 def remove_binary(timeout: float = 10.0) -> bool:
-	"""Delete the binary, so a respawn cannot resurrect the OLD code.
-
-	Killing alone is not enough: the image stays on disk, and the clients demonstrably
-	respawn their servers on their own, so between the kill and the end of the build
-	somebody can load exactly the code this task exists to replace. With the file gone
-	a respawn simply fails to start -- noisier for that client, and the point: it
-	reports a missing binary instead of quietly serving stale behaviour.
-
-	Retried because deletion, like overwriting, is refused while any process still has
-	the image loaded.
-	"""
+	"""Deleted so a client that respawns before the build fails to start instead of serving old code."""
 	deadline = time.monotonic() + timeout
 	while time.monotonic() < deadline:
 		if not BINARY.exists():
@@ -253,12 +179,6 @@ def main() -> int:
 	)
 	args = parser.parse_args()
 
-	# What `poe dev` calls. The whole point is that it is a NO-OP in the common
-	# case: no kill, no build, no other agent's session dropped -- because the
-	# expensive side effects are only warranted when there is actually new Go code
-	# to deploy. When there is, dev deploys it up front rather than doing a
-	# minute's work and then failing the doctor on it, which cost two full runs
-	# every time and is the reason this flag exists.
 	if args.if_stale and not args.dry_run:
 		reason = stale_server_binary()
 		if reason is None:
@@ -273,12 +193,7 @@ def main() -> int:
 		print(f"\nDry run: {killed} process(es) would be killed, nothing was built.")
 		return 0
 
-	# Retried, because a client can respawn its server between the kill and the
-	# build and lock the file again -- observed: the pids seen at the start of a
-	# session were not the ones seen an hour later, so respawning is what clients
-	# actually do rather than a theoretical worry. A copy that respawns AFTER the
-	# build is harmless; it loads the new binary. Only the window in between
-	# matters, so the fix is to close it by trying again rather than to fail.
+	# A client can respawn its server and lock the file again between the kill and the build.
 	attempts = 3
 	for attempt in range(1, attempts + 1):
 		if attempt > 1:
@@ -286,9 +201,6 @@ def main() -> int:
 		killed = kill_all(dry_run=False)
 		if killed and not wait_until_replaceable():
 			continue
-		# Delete before building, not merely overwrite: while the old image is on
-		# disk a respawning client can load it, and the whole point is that nobody
-		# ends up on the code being replaced.
 		if not remove_binary():
 			continue
 		if build():
