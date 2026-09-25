@@ -1,11 +1,5 @@
 // screenreader-mcp domain -- ToolContext's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// These are acceptance criterion 10's second clause at the unit level: a tool
-// asking for a capability the live reader did not announce gets a STRUCTURED
-// error, and one asking with nothing connected gets a different one. The two
-// situations have entirely different remedies, so an agent that could not tell
-// them apart would be stuck guessing.
 package tools_test
 
 import (
@@ -18,8 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// context builds a ToolContext for a reader announcing exactly these
-// capabilities, as the real handshake would have.
 func context(t *testing.T, announced ...entities.Capability) tools.ToolContext {
 	t.Helper()
 	built := testsupport.NewConnection("nvda", announced...)
@@ -38,8 +30,6 @@ func TestAnAnnouncedCapabilityYieldsItsPort(t *testing.T) {
 	}
 }
 
-// The gate, structurally: a reader that announced speech but not braille hands
-// over no BrailleReader, so the accessor has nothing to return.
 func TestAnUnannouncedCapabilityIsAStructuredError(t *testing.T) {
 	ctx := context(t, entities.CapabilitySpeech)
 
@@ -63,8 +53,6 @@ func TestAnUnannouncedCapabilityIsAStructuredError(t *testing.T) {
 	}
 }
 
-// The other situation, and the reason the two are distinguished: "connect first"
-// and "this reader cannot do that" need different actions from the agent.
 func TestNoSessionAtAllSaysToConnectFirst(t *testing.T) {
 	ctx := tools.ToolContext{Tool: "get_braille"}
 
@@ -82,9 +70,7 @@ func TestNoSessionAtAllSaysToConnectFirst(t *testing.T) {
 	}
 }
 
-// Every accessor must gate, not just the one that is easy to remember. A table,
-// because the failure this guards against is a single accessor added later that
-// returns its field directly.
+// A table, because the failure guarded against is one accessor added later that returns its field directly.
 func TestEveryCapabilityAccessorGates(t *testing.T) {
 	ctx := context(t) // a reader announcing nothing at all
 
@@ -115,8 +101,6 @@ func TestEveryCapabilityAccessorGates(t *testing.T) {
 	}
 }
 
-// A reader announcing everything hands over every port, which is the other half
-// of the same proof: the accessors gate, they do not simply refuse.
 func TestAReaderAnnouncingEverythingYieldsEveryPort(t *testing.T) {
 	ctx := context(t, testsupport.EveryCapability()...)
 

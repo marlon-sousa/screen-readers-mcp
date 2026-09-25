@@ -1,10 +1,5 @@
 // screenreader-mcp adapters -- tests for json_lines_client.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package bridge_test): the client is driven through the capability
-// ports, which is exactly how production reaches it. Everything under it is a
-// fake Transport and a fake Clock, so no socket, no pipe and no real second of
-// waiting is involved -- a 15-second timeout is proven in microseconds.
 package bridge_test
 
 import (
@@ -20,9 +15,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/fakes"
 )
 
-// newClient builds a client over a scripted transport, with the responder a
-// test wants. The responder sees each request and returns the result to answer
-// it with, so ids and ordering are exercised rather than assumed.
+// newClient builds a client over a scripted transport whose responder answers each request.
 func newClient(t testing.TB, respond func(request wire.Request) (any, error)) (*bridge.JSONLinesClient, *fakes.FakeTransport) {
 	t.Helper()
 	clock := fakes.NewFakeClock()
@@ -81,8 +74,6 @@ func TestSpeechSinceMapsTheWireResultIntoDomainVocabulary(t *testing.T) {
 		t.Fatalf("SpeechSince: %v", err)
 	}
 
-	// The coordinate rides all the way through (spec 0021): one entry per
-	// utterance, each keeping its own index and journal position.
 	want := ports.SpeechRange{
 		Entries:   []ports.SpeechEntry{{Text: "button", Index: 8, LogPosition: 41}},
 		FromIndex: 7,
@@ -96,8 +87,6 @@ func TestSpeechSinceMapsTheWireResultIntoDomainVocabulary(t *testing.T) {
 	}
 }
 
-// Each request is exactly one line, terminated by exactly one newline
-// (protocol.md §1). If this regressed the bridge would see two frames or none.
 func TestEachRequestIsOneNewlineTerminatedLine(t *testing.T) {
 	client, transport := newClient(t, func(wire.Request) (any, error) {
 		return wire.NextIndexResult{Index: 3}, nil
@@ -125,8 +114,6 @@ func TestEachRequestIsOneNewlineTerminatedLine(t *testing.T) {
 	}
 }
 
-// Correlation ids must advance, so a response can only belong to the request
-// that is waiting for it.
 func TestCorrelationIDsAdvancePerRequest(t *testing.T) {
 	var seen []int
 	client, _ := newClient(t, func(request wire.Request) (any, error) {
@@ -145,9 +132,6 @@ func TestCorrelationIDsAdvancePerRequest(t *testing.T) {
 	}
 }
 
-// protocol.md §3: an established session is TOLERANT. A command that fails comes
-// back as an error response, and the connection must survive it -- otherwise one
-// bad gesture id would cost the agent its whole session.
 func TestABridgeErrorFailsTheCommandButNotTheConnection(t *testing.T) {
 	client, transport := newClient(t, func(request wire.Request) (any, error) {
 		if wire.Command(request.Cmd) == wire.CommandPressGesture {
@@ -187,10 +171,6 @@ func TestAPeerThatClosesIsReportedAsConnectionLost(t *testing.T) {
 	}
 }
 
-// A client that is killed resets the connection rather than closing it, so the
-// transport reports an error rather than EOF. Both are the same event to us, and
-// the bridge learned this the hard way in the other direction: an unmapped
-// socket error must not escape as something else.
 func TestAResetIsTreatedAsAnAbruptEOF(t *testing.T) {
 	clock := fakes.NewFakeClock()
 	reset := fakes.NewFakeTransport(clock)
@@ -202,9 +182,6 @@ func TestAResetIsTreatedAsAnAbruptEOF(t *testing.T) {
 	}
 }
 
-// A bridge that never answers must not hang the agent forever. The fake clock
-// advances one poll interval per idle read, so this runs in microseconds while
-// proving the full 15-second budget.
 func TestACommandThatIsNeverAnsweredTimesOut(t *testing.T) {
 	client, _ := newClient(t, nil)
 
@@ -222,9 +199,6 @@ func TestACommandThatIsNeverAnsweredTimesOut(t *testing.T) {
 	}
 }
 
-// A waiting command must outlive the timeout the CALLER asked for, so the
-// bridge's own timeout fires first and the agent gets `found: false` instead of
-// a lost connection.
 func TestAWaitingCommandOutlivesItsOwnTimeout(t *testing.T) {
 	client, _ := newClient(t, nil)
 
@@ -239,15 +213,6 @@ func TestAWaitingCommandOutlivesItsOwnTimeout(t *testing.T) {
 	}
 }
 
-// The same invariant for `waitForUserReply`, which is the first waiting command
-// whose contract default is NOT the 5 s the speech commands share -- protocol.py
-// defaults it to 30. Sizing an omitted timeout from the shared default gave a
-// 10 s budget against a 30 s wait, so the client gave up first and left the
-// bridge's late reply in the stream for the next call to read as a mismatched id
-// and treat as a lost connection: a broken session, one command after the cause.
-//
-// The fake clock makes the full budget cost microseconds, which is the only
-// reason this is provable here rather than in a 30-second conformance run.
 func TestWaitForUserReplyOutlivesTheBridgesOwnDefault(t *testing.T) {
 	client, _ := newClient(t, nil)
 
@@ -264,10 +229,6 @@ func TestWaitForUserReplyOutlivesTheBridgesOwnDefault(t *testing.T) {
 	}
 }
 
-// ...and the other half of that contract: the field stays OFF the wire when the
-// caller did not ask for a timeout, so the bridge applies its own default and
-// stays the single authority on the value. The budget above is sized to match it,
-// not to replace it.
 func TestWaitForUserReplyOmitsAnUnaskedTimeout(t *testing.T) {
 	client, _ := newClient(t, func(request wire.Request) (any, error) {
 		var params wire.WaitForUserReplyParams
@@ -290,7 +251,6 @@ func TestWaitForUserReplyOmitsAnUnaskedTimeout(t *testing.T) {
 	}
 }
 
-// An explicit timeout, by contrast, is sent -- and the budget still exceeds it.
 func TestWaitForUserReplySendsAnExplicitTimeout(t *testing.T) {
 	client, _ := newClient(t, func(request wire.Request) (any, error) {
 		var params wire.WaitForUserReplyParams
@@ -311,8 +271,6 @@ func TestWaitForUserReplySendsAnExplicitTimeout(t *testing.T) {
 	}
 }
 
-// Frames do not arrive aligned to transport reads. Reassembly is the whole
-// reason the client owns framing rather than the leaf.
 func TestAFrameSplitAcrossReadsIsReassembled(t *testing.T) {
 	clock := fakes.NewFakeClock()
 	transport := fakes.NewFakeTransport(clock)
@@ -346,9 +304,6 @@ func TestAFrameSplitAcrossReadsIsReassembled(t *testing.T) {
 	}
 }
 
-// Two frames delivered in one read must both be usable: the client drains what
-// it already has before touching the transport again, so a message that already
-// arrived is never lost to a poll timeout.
 func TestBufferedFramesAreDrainedBeforeReadingAgain(t *testing.T) {
 	clock := fakes.NewFakeClock()
 	transport := fakes.NewFakeTransport(clock)
@@ -378,9 +333,6 @@ func TestBufferedFramesAreDrainedBeforeReadingAgain(t *testing.T) {
 	}
 }
 
-// An id nobody is waiting for cannot happen while calls are serialised, so it
-// means the peer is not speaking this contract. Skipping the frame and hoping
-// would leave a client talking to something it does not understand.
 func TestAnUnmatchedResponseIDEndsTheConnection(t *testing.T) {
 	clock := fakes.NewFakeClock()
 	transport := fakes.NewFakeTransport(clock)
@@ -395,8 +347,6 @@ func TestAnUnmatchedResponseIDEndsTheConnection(t *testing.T) {
 	}
 }
 
-// A line that is not a JSON object is a protocol fault (protocol.md §2), unlike
-// a command failure, which is not.
 func TestAnUnreadableLineEndsTheConnection(t *testing.T) {
 	clock := fakes.NewFakeClock()
 	transport := fakes.NewFakeTransport(clock)
@@ -417,8 +367,6 @@ func TestConfigValuesRideThroughAsOpaqueJSON(t *testing.T) {
 		if err := json.Unmarshal(request.Params, &params); err != nil {
 			t.Fatalf("params: %v", err)
 		}
-		// The value is echoed back untouched: this server never decides what
-		// type a reader's config value is.
 		return wire.ConfigResult{Value: params.Value}, nil
 	})
 
@@ -431,9 +379,6 @@ func TestConfigValuesRideThroughAsOpaqueJSON(t *testing.T) {
 	}
 }
 
-// Bye's goal is "this session is over", and a peer that has already vanished has
-// achieved it. Reporting that as a failure would make an ordinary disconnect
-// look broken to the agent.
 func TestByeOnAConnectionThatIsAlreadyGoneSucceeds(t *testing.T) {
 	client, transport := newClient(t, nil)
 	transport.QueueEOF()
@@ -446,8 +391,6 @@ func TestByeOnAConnectionThatIsAlreadyGoneSucceeds(t *testing.T) {
 	}
 }
 
-// Every teardown path may call Close without first working out whether another
-// already did.
 func TestCloseIsIdempotent(t *testing.T) {
 	client, _ := newClient(t, nil)
 

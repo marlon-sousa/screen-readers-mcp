@@ -1,27 +1,6 @@
 // screenreader-mcp domain -- the output schemas, against the results themselves.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// WHITE-BOX (package tools), which the repo's default rule allows where an
-// unexported thing deserves direct coverage and the header says why. This is
-// that case, and it is the whole point of the file: the result structs are
-// PRIVATE and stay private (spec 0031, 5.1), so the only place they can be
-// compared against the hand-written schemas is inside the package that declares
-// them.
-//
-// THIS IS THE TEST THAT MAKES HAND-WRITING SAFE. Spec 0031, 3.2 rejected
-// reflecting the schema out of the result -- Execute returns `any`, so there is
-// no type to reflect until a call has already happened, and a reflected schema
-// would drop the prose that is most of the value. The cost of that decision is
-// exactly one thing: a schema can disagree with its struct. So the schema stays
-// hand-written and the FIELD NAMES are checked mechanically, all the way down,
-// including through the embedded observation and through arrays of entries.
-//
-// It also checks the OTHER half of the shape an agent depends on: a field is
-// declared required exactly when it is not `omitempty`. That is what makes
-// "absent" mean something -- absent state is a reader with no state capability,
-// absent emittedAt is a reader that supplied no instant -- and a struct that
-// gains an omitempty without the schema following would quietly promise a field
-// that is not always there.
+// White-box: the result structs are unexported, so only this package can compare them with the hand-written schemas.
 package tools
 
 import (
@@ -33,16 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// resultOf names the value each tool's Execute returns on success.
-//
-// Hand-written, and covered by TestEveryToolDeclaresItsResultType below: a new
-// tool that does not appear here fails that test, which is the point at which
-// somebody is asked what their tool returns.
-//
-// Two entries are port types rather than local structs -- get_log and
-// set_log_level forward the port's answer unchanged -- which is not an
-// inconsistency to tidy away: what the agent receives is what the schema must
-// describe, wherever the struct happens to live.
 var resultOf = map[string]any{
 	"list_readers":      listReadersResult{},
 	"connect_reader":    connectResult{},
@@ -81,8 +50,6 @@ var resultOf = map[string]any{
 	"set_log_level":    ports.LogLevelResult{},
 }
 
-// The table is only a guard if it covers everything, and only honest if it
-// covers nothing else.
 func TestEveryToolDeclaresItsResultType(t *testing.T) {
 	registered := map[string]bool{}
 	for _, tool := range BuildRegistry().All() {
@@ -99,8 +66,6 @@ func TestEveryToolDeclaresItsResultType(t *testing.T) {
 	}
 }
 
-// The assertion the spec's "honest limits" section is about: a hand-written
-// output schema can be wrong, and this is the window being kept narrow.
 func TestEveryOutputSchemaMatchesItsResultStruct(t *testing.T) {
 	for _, tool := range BuildRegistry().All() {
 		result, named := resultOf[tool.Name()]
@@ -120,7 +85,6 @@ func TestEveryOutputSchemaMatchesItsResultStruct(t *testing.T) {
 	}
 }
 
-// compareSchema walks the declared schema and the Go type together.
 func compareSchema(t *testing.T, schema map[string]any, typ reflect.Type, path string) {
 	t.Helper()
 
@@ -129,9 +93,7 @@ func compareSchema(t *testing.T, schema map[string]any, typ reflect.Type, path s
 	}
 	switch {
 	case typ == reflect.TypeOf(json.RawMessage{}):
-		// Opaque by design: the reader owns the shape of its own settings, so
-		// there is nothing here to compare. Descending would compare a schema
-		// against []byte and demand a field per element.
+		// Opaque: the reader owns the shape of its own settings.
 		return
 	case typ.Kind() == reflect.Slice:
 		items, described := schema["items"].(map[string]any)
@@ -185,17 +147,11 @@ func compareSchema(t *testing.T, schema map[string]any, typ reflect.Type, path s
 	}
 }
 
-// field is one marshalled member: the type behind it, and whether it can be
-// absent.
 type field struct {
 	typ       reflect.Type
 	omitEmpty bool
 }
 
-// marshalledFields is what encoding/json would actually emit for typ, with
-// embedded structs flattened the way the encoder flattens them -- which is how
-// press_gesture and type_text come to publish the observation's four fields as
-// their own.
 func marshalledFields(typ reflect.Type) map[string]field {
 	fields := map[string]field{}
 	for i := range typ.NumField() {
@@ -223,7 +179,6 @@ func marshalledFields(typ reflect.Type) map[string]field {
 	return fields
 }
 
-// stringsIn reads a decoded JSON array of strings, tolerating its absence.
 func stringsIn(value any) []string {
 	list, isList := value.([]any)
 	if !isList {

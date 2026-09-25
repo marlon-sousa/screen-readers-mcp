@@ -1,22 +1,9 @@
 // screenreader-mcp domain -- the get_log tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `log`.
+// ROLE: controller, gated on log.
 // USES: ports.LogReader, through ToolContext.ReaderLog().
 // LISTED BY: registry.go.
-//
-// Returns a filtered, formatted slice of the reader's diagnostic log, anchored
-// one of three mutually exclusive ways (spec 0021): since_position (a cursor the
-// caller holds, so reads never consume), last_seconds (relative to now, for "it
-// just happened" with no mark taken beforehand), or command_id/windows (0020's
-// command-span anchor, still the default). The agent can filter by level, by
-// message content, and by module/message exclusion, and can project which fields
-// to render.
-//
-// The capture level reported is the floor that was in force for the span; an
-// empty slice with capturedAtLevel above the requested minLevel tells the agent
-// that the records it wants were never emitted, rather than that none exist --
-// the two have entirely different remedies.
+// An empty slice with capturedAtLevel above minLevel means the records were never emitted, not that none exist.
 
 package tools
 
@@ -27,7 +14,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// GetLog reads and filters the reader's diagnostic log.
 type GetLog struct{}
 
 var _ Tool = (*GetLog)(nil)
@@ -161,9 +147,7 @@ func (t *GetLog) OutputSchema() json.RawMessage {
 }
 
 type getLogRequest struct {
-	// Pointers, so "not asked for" is distinguishable from position 0 or zero
-	// seconds -- the anchors are mutually exclusive, and a zero value that read
-	// as "asked for" would silently collide with the default anchor.
+	// Pointers, so an anchor not asked for is distinct from position 0 or zero seconds.
 	SincePosition *int     `json:"sincePosition"`
 	LastSeconds   *float64 `json:"lastSeconds"`
 	CommandID     *int     `json:"commandId"`
@@ -184,9 +168,7 @@ func (t *GetLog) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
 	if err := decodeParams(params, &request); err != nil {
 		return nil, err
 	}
-	// The anchors are forwarded as given. The bridge owns the "at most one"
-	// rule and refuses the rest; deciding it here as well would put the same
-	// judgement in two places, and they would eventually disagree.
+	// The bridge owns the at-most-one-anchor rule, so the anchors are forwarded as given.
 	return logPort.GetLog(ports.GetLogParams{
 		SincePosition: request.SincePosition,
 		LastSeconds:   request.LastSeconds,

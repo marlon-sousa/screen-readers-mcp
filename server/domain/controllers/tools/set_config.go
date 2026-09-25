@@ -1,13 +1,9 @@
 // screenreader-mcp domain -- the set_config tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `config`.
+// ROLE: controller, gated on config.
 // USES: ports.ConfigAccessor, through ToolContext.Config().
 // LISTED BY: registry.go.
-//
-// It returns WHAT THE READER NOW HOLDS, which is not always what was sent: a
-// reader may normalise, clamp or reject part of a value. Echoing the request
-// instead would let a silently-adjusted setting look like a successful write.
+// Returns what the reader now holds, which may differ from what was sent.
 package tools
 
 import (
@@ -17,7 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// SetConfig writes one reader configuration value.
 type SetConfig struct{}
 
 var _ Tool = (*SetConfig)(nil)
@@ -79,9 +74,7 @@ func (t *SetConfig) Execute(ctx ToolContext, params json.RawMessage) (any, error
 		return nil, errors.New("key_path is required, and must name at least one key")
 	}
 	if len(request.Value) == 0 {
-		// Distinguished from a JSON null, which IS a value a reader may
-		// legitimately be asked to store: an absent `value` is a malformed
-		// call, and writing null in its place would be this server guessing.
+		// An absent value is a malformed call, whereas JSON null is a value a reader may store.
 		return nil, errors.New("value is required; pass null explicitly to write a null")
 	}
 

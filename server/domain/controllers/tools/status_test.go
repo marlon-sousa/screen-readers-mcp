@@ -1,11 +1,5 @@
 // screenreader-mcp domain -- the status tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The point of these is the round trip. `status` must answer with what the WIRE
-// says rather than with what this process remembers, because a bridge can die
-// unnoticed and because an idle agent loses its session by design (protocol.md
-// §6). A status that reported cached state would be confidently wrong exactly
-// when it mattered.
 package tools_test
 
 import (
@@ -48,8 +42,6 @@ func runStatus(t *testing.T, call *testsupport.ToolCall) statusAnswer {
 	return answer
 }
 
-// Acceptance criterion 3: a fresh server says Disconnected and has dialed
-// nothing.
 func TestAFreshServerReportsDisconnectedAndDialedNothing(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
 
@@ -66,9 +58,6 @@ func TestAFreshServerReportsDisconnectedAndDialedNothing(t *testing.T) {
 	}
 }
 
-// With no session there is nothing to ping, so `live` is absent rather than
-// false: "there is no connection" and "the connection did not answer" are
-// different answers.
 func TestWithNoSessionThereIsNoRoundTripToReport(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
 
@@ -114,10 +103,6 @@ func TestALiveSessionIsProvedByARealRoundTrip(t *testing.T) {
 	}
 }
 
-// The case the round trip exists for: this process still believes it has a
-// session, and the wire disagrees. The tool must report the truth rather than
-// the belief -- and must not fail, because "the connection is gone" is the
-// answer status was asked for.
 func TestARoundTripThatFailsReportsTheLossRatherThanFailing(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
 	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
@@ -133,8 +118,6 @@ func TestARoundTripThatFailsReportsTheLossRatherThanFailing(t *testing.T) {
 	if answer.LiveError == "" {
 		t.Error("liveError is empty; the agent needs to know why the round trip failed")
 	}
-	// Verify records the loss, so the state read AFTERWARDS is the corrected
-	// one and there is no session left to describe.
 	if answer.State != "disconnected" {
 		t.Errorf("state = %q, want the state Verify corrected it to", answer.State)
 	}
@@ -143,9 +126,6 @@ func TestARoundTripThatFailsReportsTheLossRatherThanFailing(t *testing.T) {
 	}
 }
 
-// A protocol mismatch keeps the process up and `status` keeps saying why
-// (acceptance criterion 8). Nothing is connected, so there is no round trip --
-// the reason is the whole answer.
 func TestAnIncompatibleBridgeKeepsBeingReported(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
 	mismatch := &ports.ProtocolMismatchError{BridgeVersion: 2, ServerVersions: []int{1}}
@@ -171,8 +151,6 @@ func TestStatusTakesNoParameters(t *testing.T) {
 	}
 }
 
-// A refusal is not a loss: a bridge that ANSWERED, however unhappily, is still
-// there, so the session survives and status says so.
 func TestARefusedPingStillLeavesTheSessionDescribed(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
@@ -189,13 +167,6 @@ func TestARefusedPingStillLeavesTheSessionDescribed(t *testing.T) {
 		t.Errorf("live = %v, want false -- the round trip did not succeed", answer.Live)
 	}
 }
-
-// -- the silence cap (spec 0032) ---------------------------------------------
-//
-// A LIFT happens on the reader, asynchronously, and nothing is pushed. So the
-// only honest way for an agent to learn the room got loud is to ask -- and this
-// is where it asks. The answer must come off the SAME round trip that proves the
-// session live, or it is exactly the cached guess `status` exists not to be.
 
 func TestStatusReportsSuppressionOffTheRoundTrip(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.Status{})
@@ -216,8 +187,7 @@ func TestStatusIsHowALiftIsDiscovered(t *testing.T) {
 	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
 	call.WithConnection(built.Connection)
 	call.Control.SetStatus(entities.ConnectionStatus{State: entities.Connected})
-	// The cap has restored speech: the session is still live and still
-	// capturing, and the human can hear their machine again.
+	// The cap has restored speech, and the session is still live.
 	call.Control.ReportSuppressing(false)
 
 	answer := runStatus(t, call)
@@ -231,8 +201,7 @@ func TestStatusIsHowALiftIsDiscovered(t *testing.T) {
 }
 
 func TestABridgeThatDoesNotSaySuppressesNothingIntoTheAnswer(t *testing.T) {
-	// Absent, not false: an older bridge has said nothing, and reporting that as
-	// "not suppressing" would tell an agent the human can hear when nobody knows.
+	// Absent, not false: an older bridge has said nothing.
 	call := testsupport.NewToolCall(&tools.Status{})
 	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
 	call.WithConnection(built.Connection)
@@ -246,8 +215,6 @@ func TestABridgeThatDoesNotSaySuppressesNothingIntoTheAnswer(t *testing.T) {
 }
 
 func TestAFailedRoundTripReportsNoSuppressionState(t *testing.T) {
-	// A probe that did not answer describes nothing. Reporting the report anyway
-	// would be guessing, in the one tool built not to.
 	call := testsupport.NewToolCall(&tools.Status{})
 	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
 	call.WithConnection(built.Connection)

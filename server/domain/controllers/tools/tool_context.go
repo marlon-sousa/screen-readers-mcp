@@ -1,19 +1,8 @@
 // screenreader-mcp domain -- ToolContext and ConnectionControl.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: parameter object (ToolContext) plus the narrow interface it exposes the
-// connection lifecycle through (ConnectionControl). NOT an adapter -- it does no
-// IO; it is the per-call bundle a tool is handed, exactly as the bridge's
-// SessionContext is.
+// ROLE: parameter object (ToolContext) plus the narrow interface to the connection lifecycle (ConnectionControl); it does no IO.
 // BUILT BY: dispatcher.go, freshly per call.
 // USED BY: every tool in this directory.
-//
-// ConnectionControl is declared HERE, in the consumer, rather than exported from
-// the connection controller: the four ungated tools need precisely these six
-// operations and nothing else, and declaring the interface where it is used is
-// what stops "the tools can reach the controller" from becoming "the tools can
-// reach anything the controller can". It is the same instinct as the bridge's
-// SessionContext exposing exactly one lifecycle capability, `close(reason)`.
 package tools
 
 import (
@@ -21,60 +10,38 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// ConnectionControl is the connection lifecycle, as the four ungated tools need
-// it. Satisfied by domain/controllers/connection.go.
+// ConnectionControl is satisfied by domain/controllers/connection.go.
 type ConnectionControl interface {
-	// List joins the configured readers with what the probe could learn
-	// about their endpoints, without dialing anything.
+	// List learns what it can about each endpoint without dialing anything.
 	List() entities.ReaderListing
 
-	// Connect tries the named reader's endpoints in declared order and
-	// completes the handshake.
-	// Errors -- it never retries and never falls back to a different reader.
+	// Connect tries the named reader's endpoints in declared order, never retrying or falling back to another reader.
 	Connect(readerName string, opts ports.SessionOptions) (*ports.ReaderConnection, error)
 
-	// Disconnect sends `bye` and ends the session.
 	Disconnect() error
 
-	// Status is the recorded state and why it holds.
 	Status() entities.ConnectionStatus
 
 	// Current is the live connection, or nil when there is none.
 	Current() *ports.ReaderConnection
 
-	// Verify makes a real `ping` round trip, and RECORDS a loss it finds,
-	// updating the state. That is what lets `status` answer with what the
-	// wire says rather than with what this process remembers. Nil error
-	// means the connection is real right now; nil is also the answer when
-	// there is no session to verify.
+	// Verify pings and records any loss it finds; it also returns nil when there is no session to verify.
 	Verify() (ports.PingReport, error)
 }
 
-// ToolContext is everything one tool call may touch.
-//
-// The capability ports are reached through the accessor METHODS below rather
-// than as fields. That is deliverable 16's "every tool still checks and returns
-// a structured error", rendered so that forgetting is not expressible: a gated
-// tool has no other way to obtain its collaborator, so the check happens on
-// every path by construction.
+// Capability ports are reachable only through the accessor methods, so a gated tool cannot skip the capability check.
 type ToolContext struct {
-	// Tool is the name of the tool being run, so an error can say which one.
 	Tool string
 
-	// Control is the connection lifecycle, for the four ungated tools.
 	Control ConnectionControl
 
-	// Connection is the live session, or nil when none. Read directly by the
-	// tools that report ON a session (status) rather than act through one.
+	// Connection is nil when no session is live.
 	Connection *ports.ReaderConnection
 
-	// Clock and Log are the ambient collaborators.
 	Clock ports.Clock
 	Log   ports.Log
 }
 
-// Session is the live ReaderSession, or a CapabilityError when nothing is
-// connected. For tools that need the reader's identity rather than a capability.
 func (c ToolContext) Session() (entities.ReaderSession, error) {
 	if c.Connection == nil {
 		return entities.ReaderSession{}, c.missing("")
@@ -82,7 +49,6 @@ func (c ToolContext) Session() (entities.ReaderSession, error) {
 	return c.Connection.Session, nil
 }
 
-// Speech is the `speech` capability, or a structured error.
 func (c ToolContext) Speech() (ports.SpeechReader, error) {
 	if c.Connection == nil || c.Connection.Speech == nil {
 		return nil, c.missing(entities.CapabilitySpeech)
@@ -90,7 +56,6 @@ func (c ToolContext) Speech() (ports.SpeechReader, error) {
 	return c.Connection.Speech, nil
 }
 
-// Braille is the `braille` capability, or a structured error.
 func (c ToolContext) Braille() (ports.BrailleReader, error) {
 	if c.Connection == nil || c.Connection.Braille == nil {
 		return nil, c.missing(entities.CapabilityBraille)
@@ -98,7 +63,6 @@ func (c ToolContext) Braille() (ports.BrailleReader, error) {
 	return c.Connection.Braille, nil
 }
 
-// Gestures is the `gestures` capability, or a structured error.
 func (c ToolContext) Gestures() (ports.GestureSender, error) {
 	if c.Connection == nil || c.Connection.Gestures == nil {
 		return nil, c.missing(entities.CapabilityGestures)
@@ -106,7 +70,6 @@ func (c ToolContext) Gestures() (ports.GestureSender, error) {
 	return c.Connection.Gestures, nil
 }
 
-// Focus is the `focus` capability, or a structured error.
 func (c ToolContext) Focus() (ports.FocusInspector, error) {
 	if c.Connection == nil || c.Connection.Focus == nil {
 		return nil, c.missing(entities.CapabilityFocus)
@@ -114,7 +77,6 @@ func (c ToolContext) Focus() (ports.FocusInspector, error) {
 	return c.Connection.Focus, nil
 }
 
-// State is the `state` capability, or a structured error.
 func (c ToolContext) State() (ports.StateInspector, error) {
 	if c.Connection == nil || c.Connection.State == nil {
 		return nil, c.missing(entities.CapabilityState)
@@ -122,9 +84,6 @@ func (c ToolContext) State() (ports.StateInspector, error) {
 	return c.Connection.State, nil
 }
 
-// Document is the `document` capability, or a structured error. A reader that
-// renders no flat document never announces the group, and the agent is told so
-// by name rather than by the tool quietly returning nothing.
 func (c ToolContext) Document() (ports.DocumentReader, error) {
 	if c.Connection == nil || c.Connection.Document == nil {
 		return nil, c.missing(entities.CapabilityDocument)
@@ -132,10 +91,7 @@ func (c ToolContext) Document() (ports.DocumentReader, error) {
 	return c.Connection.Document, nil
 }
 
-// StateWriter is the write half of the `state` capability, or a structured
-// error. Gated on the same capability as State: a reader that announces `state`
-// announces both, and the limits on what may be SET are per-field and live at
-// the bridge (spec 0033).
+// StateWriter shares the state capability; what may be set is limited per field at the bridge.
 func (c ToolContext) StateWriter() (ports.StateWriter, error) {
 	if c.Connection == nil || c.Connection.StateWrite == nil {
 		return nil, c.missing(entities.CapabilityState)
@@ -143,7 +99,6 @@ func (c ToolContext) StateWriter() (ports.StateWriter, error) {
 	return c.Connection.StateWrite, nil
 }
 
-// Config is the `config` capability, or a structured error.
 func (c ToolContext) Config() (ports.ConfigAccessor, error) {
 	if c.Connection == nil || c.Connection.Config == nil {
 		return nil, c.missing(entities.CapabilityConfig)
@@ -151,7 +106,6 @@ func (c ToolContext) Config() (ports.ConfigAccessor, error) {
 	return c.Connection.Config, nil
 }
 
-// Interact is the `interact` capability, or a structured error.
 func (c ToolContext) Interact() (ports.Interact, error) {
 	if c.Connection == nil || c.Connection.Interact == nil {
 		return nil, c.missing(entities.CapabilityInteract)
@@ -159,7 +113,6 @@ func (c ToolContext) Interact() (ports.Interact, error) {
 	return c.Connection.Interact, nil
 }
 
-// Text is the `typing` capability, or a structured error.
 func (c ToolContext) Text() (ports.TextTyper, error) {
 	if c.Connection == nil || c.Connection.Text == nil {
 		return nil, c.missing(entities.CapabilityTyping)
@@ -167,8 +120,6 @@ func (c ToolContext) Text() (ports.TextTyper, error) {
 	return c.Connection.Text, nil
 }
 
-// ReaderLog is the `log` capability, or a structured error.
-// Named ReaderLog because ToolContext already has a Log field (the server log).
 func (c ToolContext) ReaderLog() (ports.LogReader, error) {
 	if c.Connection == nil || c.Connection.ReaderLog == nil {
 		return nil, c.missing(entities.CapabilityLog)
@@ -176,9 +127,6 @@ func (c ToolContext) ReaderLog() (ports.LogReader, error) {
 	return c.Connection.ReaderLog, nil
 }
 
-// missing builds the error, naming the connected reader when there is one --
-// which is what tells "nothing is connected" apart from "this reader cannot do
-// that", two situations with entirely different remedies.
 func (c ToolContext) missing(capability entities.Capability) *CapabilityError {
 	failure := &CapabilityError{Tool: c.Tool, Capability: capability}
 	if c.Connection != nil {

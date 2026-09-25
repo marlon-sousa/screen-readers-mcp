@@ -1,11 +1,5 @@
 // screenreader-mcp domain -- the announce tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Its own file rather than a sixth case in reader_tools_test.go: those are
-// grouped around one shared property (reader vocabulary passes through
-// opaquely), and this tool has a different subject entirely -- it addresses a
-// human, and the thing worth protecting is that nothing but real text ever
-// reaches them.
 package tools_test
 
 import (
@@ -39,8 +33,6 @@ func TestAnnounceSpeaksTheTextAndEchoesIt(t *testing.T) {
 	}
 }
 
-// An empty announcement is two cue beeps and then silence, which a tester reads
-// as the one channel they are relying on having broken. It must not reach them.
 func TestAnnounceRefusesEmptyAndWhitespaceText(t *testing.T) {
 	for _, params := range []string{`{"text":""}`, `{"text":"   "}`, `{"text":"\n\t"}`} {
 		built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
@@ -55,8 +47,6 @@ func TestAnnounceRefusesEmptyAndWhitespaceText(t *testing.T) {
 	}
 }
 
-// The gate, structurally: a bridge that cannot speak to a human never announces
-// the capability, so the port was never handed over.
 func TestAnnounceIsRefusedWhenTheReaderDidNotAnnounceIt(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	call := testsupport.NewToolCall(&tools.Announce{}).WithConnection(built.Connection)
@@ -89,8 +79,6 @@ func TestAnnounceWithNothingConnectedSaysToConnectFirst(t *testing.T) {
 	}
 }
 
-// A bridge whose synth had gone would fail the command; the session survives it
-// (protocol.md §3), so the tool must surface the error rather than swallow it.
 func TestAnnounceSurfacesABridgeFailure(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.Announce{}).WithConnection(built.Connection)

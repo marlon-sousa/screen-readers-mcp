@@ -1,13 +1,6 @@
 // screenreader-mcp domain -- the braille, gesture, focus, state and config
 // tools' tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Grouped like their speech siblings, and for the same reason: each of these is
-// a thin controller over one port, and what is worth asserting is the group's
-// shared property -- that reader vocabulary passes through OPAQUELY, and that
-// the gate refuses when the capability was not announced. Split per file, the
-// opacity argument would be five near-identical tests with the point lost
-// between them.
 package tools_test
 
 import (
@@ -20,8 +13,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// asCapabilityError is errors.As with the awkwardness in one place. Shared with
-// speech_tools_test.go.
+// asCapabilityError is shared with speech_tools_test.go.
 func asCapabilityError(err error, into **tools.CapabilityError) bool {
 	return errors.As(err, into)
 }
@@ -44,16 +36,12 @@ func TestGetBrailleReturnsAHalfOpenWindow(t *testing.T) {
 	if window.FromIndex != 1 || window.ToIndex != 2 {
 		t.Errorf("range = [%d,%d), want [1,2)", window.FromIndex, window.ToIndex)
 	}
-	// get_braille is the ONLY braille fetch -- there is no get_last_braille -- so
-	// this is the sole route to a braille update's journal coordinate (spec 0021).
 	if window.Entries[0].Index != 1 || window.Entries[0].LogPosition == 0 {
 		t.Errorf("entry = index %d at logPosition %d, want its own ring index and a real coordinate",
 			window.Entries[0].Index, window.Entries[0].LogPosition)
 	}
 }
 
-// Gesture ids are the READER's syntax and this server routes them without
-// interpreting them -- which is what keeps the chassis reader-agnostic.
 func TestPressGesturePassesOpaqueIdsThroughInOrder(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
@@ -86,9 +74,6 @@ func TestPressGesturePassesOpaqueIdsThroughInOrder(t *testing.T) {
 	}
 }
 
-// Spec 0025: the agent asks for a window, the reader waits it out, and the
-// server carries the number through without an opinion about it. What it DOES
-// own is the default, so an agent that says nothing still gets the collapse.
 func TestPressGestureCarriesTheGraceAndTheAnnouncementToTheReader(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
@@ -108,8 +93,6 @@ func TestPressGestureCarriesTheGraceAndTheAnnouncementToTheReader(t *testing.T) 
 	}
 }
 
-// An explicit 0 is an opt-out and must reach the reader as 0 -- if it were read
-// as "absent" the agent could never turn the window off.
 func TestPressGestureTreatsAnExplicitZeroGraceAsAnOptOut(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
@@ -123,9 +106,6 @@ func TestPressGestureTreatsAnExplicitZeroGraceAsAnOptOut(t *testing.T) {
 	}
 }
 
-// The whole point of the entry, at the server's edge: one call, and what the
-// key said is already in the result -- with the silent key visible as an empty
-// span rather than missing from the list.
 func TestPressGestureReportsWhatWasSaidAndWhichKeySaidIt(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	built.Gestures.AnswerWith(ports.GestureOutcome{
@@ -177,9 +157,6 @@ func TestPressGestureReportsWhatWasSaidAndWhichKeySaidIt(t *testing.T) {
 	}
 }
 
-// The contract a result may never exceed (protocol.md §7.3): it reports what had
-// arrived by an instant and where to resume, and says nothing about whether more
-// is coming. A completeness flag is the one field that must never appear.
 func TestAQuietPressReportsAnEmptyListAndNoClaimOfCompleteness(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
@@ -214,8 +191,6 @@ func TestPressGestureRefusesAnEmptyList(t *testing.T) {
 	}
 }
 
-// A reader that rejects an id reports it, and the tool does not dress that up as
-// success.
 func TestPressGestureReportsARejectedId(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)
@@ -226,8 +201,6 @@ func TestPressGestureReportsARejectedId(t *testing.T) {
 	}
 }
 
-// Role and state strings are the reader's own vocabulary; the pointers preserve
-// the wire's distinction between "no value" and "the empty string".
 func TestGetFocusInfoPassesReaderVocabularyThrough(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityFocus)
 	call := testsupport.NewToolCall(&tools.GetFocusInfo{}).WithConnection(built.Connection)
@@ -258,7 +231,7 @@ func TestGetFocusInfoPassesReaderVocabularyThrough(t *testing.T) {
 	if focus.Role != "editableText" || len(focus.States) != 3 {
 		t.Errorf("focus = %+v, want the reader's own role and states unchanged", focus)
 	}
-	// The empty string is a VALUE and must survive as one, distinct from null.
+	// The empty string is a value and must survive as one, distinct from null.
 	if focus.Value == nil || *focus.Value != "" {
 		t.Errorf("value = %v, want the empty string preserved rather than nulled", focus.Value)
 	}
@@ -267,8 +240,6 @@ func TestGetFocusInfoPassesReaderVocabularyThrough(t *testing.T) {
 	}
 }
 
-// A focus object with no states reports an empty list rather than null, so an
-// agent can iterate without a special case.
 func TestGetFocusInfoReportsNoStatesAsAnEmptyList(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityFocus)
 	call := testsupport.NewToolCall(&tools.GetFocusInfo{}).WithConnection(built.Connection)
@@ -291,8 +262,6 @@ func TestGetFocusInfoReportsNoStatesAsAnEmptyList(t *testing.T) {
 	}
 }
 
-// The use case this capability exists for: some actions are signalled by a beep,
-// so a test diffs two state snapshots across a gesture.
 func TestGetStateSnapshotsCanBeDiffedAcrossAnAction(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityState)
 	call := testsupport.NewToolCall(&tools.GetState{}).WithConnection(built.Connection)
@@ -327,10 +296,6 @@ func TestGetStateSnapshotsCanBeDiffedAcrossAnAction(t *testing.T) {
 	}
 }
 
-// A reader with no browsable document reports the string "none" -- a real
-// answer in the tri-state, not null and not an empty name (spec 0015). This is
-// what stops `if not browseMode` from conflating "focus mode" with "no such
-// concept", the ambiguity the nullable shape used to carry.
 func TestGetStateReportsAnAbsentBrowseModeAsNone(t *testing.T) {
 	built := testsupport.NewConnection("jaws", entities.CapabilityState)
 	call := testsupport.NewToolCall(&tools.GetState{}).WithConnection(built.Connection)
@@ -350,8 +315,6 @@ func TestGetStateReportsAnAbsentBrowseModeAsNone(t *testing.T) {
 	}
 }
 
-// Config values are opaque JSON and must round-trip byte for byte: this server
-// never decides what type a reader's setting is.
 func TestConfigValuesRoundTripAsOpaqueJSON(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityConfig)
 	built.Config.Put([]string{"speech", "symbolLevel"}, "100")
@@ -369,8 +332,7 @@ func TestConfigValuesRoundTripAsOpaqueJSON(t *testing.T) {
 		t.Errorf("value = %v, want the reader's own 100", got.Value)
 	}
 
-	// A write returns what the reader NOW holds, which is not always what was
-	// sent -- so the assertion is on reading it back, not on the echo.
+	// A write returns what the reader now holds, so the assertion reads it back.
 	write := testsupport.NewToolCall(&tools.SetConfig{}).WithConnection(built.Connection)
 	if _, err := write.Run(`{"key_path":["speech","symbolLevel"],"value":{"nested":[1,2]}}`); err != nil {
 		t.Fatalf("set_config: %v", err)
@@ -402,9 +364,6 @@ func TestConfigToolsRequireAKeyPath(t *testing.T) {
 	}
 }
 
-// An ABSENT value is a malformed call; an explicit JSON null is a value a reader
-// may legitimately be asked to store. Writing null in place of the first would
-// be this server guessing.
 func TestSetConfigDistinguishesAnAbsentValueFromAnExplicitNull(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityConfig)
 	call := testsupport.NewToolCall(&tools.SetConfig{}).WithConnection(built.Connection)
@@ -417,8 +376,6 @@ func TestSetConfigDistinguishesAnAbsentValueFromAnExplicitNull(t *testing.T) {
 	}
 }
 
-// The gate, for every remaining tool: the capability it names is the one the
-// error reports, so an agent is told exactly what the reader is missing.
 func TestEveryGatedToolNamesTheCapabilityItNeeds(t *testing.T) {
 	// A reader that announced nothing at all.
 	built := testsupport.NewConnection("nvda")
@@ -457,8 +414,6 @@ func TestEveryGatedToolNamesTheCapabilityItNeeds(t *testing.T) {
 	}
 }
 
-// The capability check comes FIRST, before the arguments are even read: a tool
-// the reader cannot serve should say so, not complain about a parameter.
 func TestTheCapabilityCheckPrecedesArgumentValidation(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	call := testsupport.NewToolCall(&tools.PressGesture{}).WithConnection(built.Connection)

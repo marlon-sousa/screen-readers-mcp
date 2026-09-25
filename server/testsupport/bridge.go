@@ -1,19 +1,7 @@
 // screenreader-mcp testsupport -- FakeBridge: a bridge speaking real wire frames.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: test scaffolding. A whole fake BRIDGE -- not a port double -- serving
-// the real JSON-lines contract over an in-memory net.Pipe, so a test can drive
-// the real client, the real framing and the real handshake with no socket, no
-// named pipe and no NVDA.
-// USED BY: the headless integration tier (server/tests/), which is the tier that
-// runs on every platform in CI.
-//
-// WHAT THIS TIER STRUCTURALLY CANNOT CATCH, and why 10c exists: this bridge
-// encodes frames with the SAME adapters/wire package the server decodes them
-// with, so a bug in the binding itself is invisible here -- both sides would be
-// wrong together, in agreement. Only the real Python bridge can catch that. It
-// is AGENTS.md's point about a fake never proving the real adapter behaves like
-// it, one level up.
+// ROLE: test scaffolding: a whole fake bridge serving the real JSON-lines contract over an in-memory net.Pipe.
+// USED BY: the headless integration tier, server/tests/.
 package testsupport
 
 import (
@@ -29,54 +17,32 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/adapters/wire"
 )
 
-// BridgeOptions describe the bridge a test wants to face.
 type BridgeOptions struct {
-	// Reader is the identity `hello` announces. Zero value announces a
-	// generic reader, so a test that is not about identity need not say.
+	// Zero value announces a generic reader.
 	Reader wire.ReaderInfo
 
-	// Capabilities is what `hello` announces. Nil announces every group; an
-	// EMPTY non-nil slice announces none, which is how "a reader without
-	// braille" is expressed.
+	// Nil announces every group; an empty non-nil slice announces none.
 	Capabilities []wire.Capability
 
-	// ProtocolVersion is what `hello` answers with. Zero means this
-	// server's own version; anything else is the protocol-mismatch
-	// scenario.
+	// Zero means this server's own version.
 	ProtocolVersion int
 
-	// Synth and LogPath fill out the `hello` reply.
 	Synth   string
 	LogPath string
 
-	// SilenceCap is what `hello` announces about this MACHINE's bound on
-	// silence (spec 0032). Nil announces no field at all, the way a bridge
-	// built before the field does -- which the server must report as "did not
-	// say" rather than as "uncapped".
+	// Nil announces no field, as an older bridge does; the server must report "did not say", not "uncapped".
 	SilenceCap *wire.SilenceCapInfo
 
-	// Attended is what `hello` DECLARES about whether a human is at this
-	// machine (spec 0035). Nil declares no field at all, the way a bridge built
-	// before the field does -- which is the server's cue to fall back on
-	// inferring attendance from SilenceCap above, and the only way to exercise
-	// that compatibility path.
+	// Nil declares no field, as an older bridge does, so the server infers attendance from SilenceCap.
 	Attended *bool
 
-	// Suppressing is what `ping` reports about speech right now. Nil says
-	// nothing, again like an older bridge.
+	// Nil says nothing, like an older bridge.
 	Suppressing *bool
 
-	// OmitHandshakeGuidance makes `hello` answer WITHOUT the guidance
-	// document, the way a bridge built before spec 0022 A.5 does.
-	//
-	// It exists so the fallback is exercised rather than assumed: the server
-	// must still serve screenreader://reader-guidance for such a bridge, by
-	// making the `getGuidance` round trip this field's absence implies. A
-	// forward-compatibility promise nothing tests is a promise.
+	// Answers `hello` without the guidance document, as an older bridge does, so the `getGuidance` fallback runs.
 	OmitHandshakeGuidance bool
 }
 
-// FakeBridge serves the wire contract over one connection.
 type FakeBridge struct {
 	opts BridgeOptions
 
@@ -88,13 +54,6 @@ type FakeBridge struct {
 	conn     net.Conn
 }
 
-// EveryWireCapability is every group protocol.md §4 defines, for the tests whose
-// subject is not the gate.
-//
-// It includes `announce`, which the REAL NVDA bridge has advertised since entry
-// 9c. A fake that announced less than the bridge it stands in for would model a
-// reader this project does not ship, and the tool behind that capability would
-// go unexercised in every tier whose bridge is this fake.
 func EveryWireCapability() []wire.Capability {
 	return []wire.Capability{
 		wire.CapabilitySpeech, wire.CapabilityBraille, wire.CapabilityGestures,
@@ -104,17 +63,9 @@ func EveryWireCapability() []wire.Capability {
 	}
 }
 
-// DefaultGuidanceText is what this bridge answers getGuidance with unless a test
-// registers its own handler.
-//
-// It is deliberately UNLIKE anything the server writes: every degraded document
-// and every frame is the server's own prose, so a test asserting that the
-// bridge's text reached the agent needs a phrase that could only have come from
-// the far side of the wire.
+// DefaultGuidanceText is unlike anything the server writes, so it could only have come from the bridge.
 const DefaultGuidanceText = "# fakereader's own guidance\n\nPress the fake key to do the fake thing.\n"
 
-// NewFakeBridge builds a bridge that answers the lifecycle commands, plus
-// whatever handlers a test adds.
 func NewFakeBridge(opts BridgeOptions) *FakeBridge {
 	if opts.Reader.Name == "" {
 		opts.Reader = wire.ReaderInfo{Name: "fakereader", Version: "1.0"}
@@ -134,56 +85,34 @@ func NewFakeBridge(opts BridgeOptions) *FakeBridge {
 	return &FakeBridge{opts: opts, handlers: map[wire.Command]func(json.RawMessage) (any, error){}}
 }
 
-// Handle registers the answer to one command. The result is marshalled as the
-// command's `result`; an error becomes an error response, which the contract
-// says an established session survives.
+// An error becomes an error response, which an established session survives.
 func (b *FakeBridge) Handle(cmd wire.Command, fn func(params json.RawMessage) (any, error)) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.handlers[cmd] = fn
 }
 
-// Received is every command the bridge was sent, in order.
 func (b *FakeBridge) Received() []wire.Command {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]wire.Command(nil), b.received...)
 }
 
-// SawBye reports whether the session was ended politely rather than dropped.
 func (b *FakeBridge) SawBye() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.byeSeen
 }
 
-// Connect returns a transport wired to this bridge over an in-memory pipe, and
-// the bridge starts serving on the other end.
-//
-// net.Pipe rather than a loopback socket: no port to allocate, no firewall
-// prompt, no flake, and it still supports the read deadlines the Transport seam
-// requires -- so what is exercised is the real framing, not a shortcut around
-// it.
 func (b *FakeBridge) Connect() adapterports.Transport {
 	client, server := net.Pipe()
 	go b.serve(server)
 	return &connTransport{conn: client}
 }
 
-// Serve runs the session loop on a connection the caller accepted.
-//
-// Exported for the real-transport tier: those tests put this same bridge behind
-// a genuine loopback listener or named pipe, so the only thing that changes
-// between tiers is the bytes' route, never the peer's behaviour.
 func (b *FakeBridge) Serve(conn net.Conn) { b.serve(conn) }
 
-// DropConnection closes the connection underneath the session, without a `bye`
-// and without warning.
-//
-// This is what a CRASHED reader looks like from the server's side, and it is the
-// only way to produce that scenario honestly: a bridge that died does not say
-// goodbye, so the server has to discover it by speaking into a socket that is no
-// longer there. Safe to call from inside a handler.
+// DropConnection closes the connection without a `bye`, as a crashed reader does. Safe to call from inside a handler.
 func (b *FakeBridge) DropConnection() {
 	b.mu.Lock()
 	conn := b.conn
@@ -193,8 +122,6 @@ func (b *FakeBridge) DropConnection() {
 	}
 }
 
-// serve is the bridge's session loop: one JSON object per line, one response
-// per request, in order.
 func (b *FakeBridge) serve(conn net.Conn) {
 	defer conn.Close()
 	b.mu.Lock()
@@ -231,11 +158,6 @@ func (b *FakeBridge) serve(conn net.Conn) {
 			ok := true
 			result = wire.AckResult{OK: &ok}
 		case command == wire.CommandGetGuidance && !hasHandler:
-			// Answered like `hello` rather than left to each test, because the
-			// real NVDA bridge announces `guidance` and every test facing this
-			// fake would otherwise have to script a command it does not care
-			// about. A test that IS about the guidance registers its own
-			// handler and takes this branch out of play.
 			result = wire.GetGuidanceResult{
 				Persona:    b.lastPersona(),
 				Recognised: true,
@@ -244,8 +166,7 @@ func (b *FakeBridge) serve(conn net.Conn) {
 		case hasHandler:
 			result, err = handler(request.Params)
 		default:
-			// An unknown command is an error RESPONSE, not a framing fault:
-			// the session continues (protocol.md §2).
+			// An unknown command is an error response, not a framing fault; the session continues.
 			err = errors.New("unknown command " + request.Cmd)
 		}
 
@@ -258,10 +179,6 @@ func (b *FakeBridge) serve(conn net.Conn) {
 	}
 }
 
-// Persona is what `hello` declared this session stands for, empty if it declared
-// nothing (spec 0029). A real bridge records it; so does this one, which is what
-// lets a test assert the declaration crossed the wire rather than only that the
-// server remembered it.
 func (b *FakeBridge) Persona() string { return b.lastPersona() }
 
 func (b *FakeBridge) lastPersona() string {
@@ -270,11 +187,6 @@ func (b *FakeBridge) lastPersona() string {
 	return b.persona
 }
 
-// recordPersona reads the declaration out of `hello`'s params.
-//
-// A params blob that will not decode is IGNORED rather than fatal: this is a
-// fake bridge, and the tests that send a malformed handshake are testing the
-// server's behaviour on one, not this bookkeeping.
 func (b *FakeBridge) recordPersona(params json.RawMessage) {
 	var hello wire.HelloParams
 	if err := json.Unmarshal(params, &hello); err != nil || hello.Persona == nil {
@@ -296,22 +208,13 @@ func (b *FakeBridge) helloResult() wire.HelloResult {
 		SilenceCap:      b.opts.SilenceCap,
 		Attended:        b.opts.Attended,
 	}
-	// The guidance document rides back in the handshake (spec 0022 A.5), as
-	// the real bridge does -- and only when this bridge announced `guidance`,
-	// so "a reader that publishes none" stays expressible.
 	if !b.opts.OmitHandshakeGuidance && b.announces(wire.CapabilityGuidance) {
 		result.Guidance = b.guidanceDocument()
 	}
 	return result
 }
 
-// guidanceDocument is what this bridge says about the session's stance.
-//
-// COMPOSED THROUGH THE SAME PATH BOTH ROUTES USE, including a handler a test
-// registered for `getGuidance`. The real bridge builds the handshake copy and
-// the on-demand copy from one function; a fake that answered the handshake with
-// a fixed document while `getGuidance` answered a scripted one would let a test
-// pass against a disagreement the real bridge cannot produce.
+// The handshake copy and `getGuidance` both come from here, as in the real bridge, so the two cannot disagree.
 func (b *FakeBridge) guidanceDocument() *wire.GetGuidanceResult {
 	if handler := b.handlerFor(wire.CommandGetGuidance); handler != nil {
 		scripted, err := handler(nil)
@@ -330,14 +233,12 @@ func (b *FakeBridge) guidanceDocument() *wire.GetGuidanceResult {
 	}
 }
 
-// handlerFor is the handler a test registered for a command, or nil.
 func (b *FakeBridge) handlerFor(command wire.Command) func(json.RawMessage) (any, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.handlers[command]
 }
 
-// announces reports whether this bridge's `hello` claims a capability.
 func (b *FakeBridge) announces(capability wire.Capability) bool {
 	for _, announced := range b.opts.Capabilities {
 		if announced == capability {
@@ -366,12 +267,7 @@ func (b *FakeBridge) respond(conn net.Conn, id int, result any, failure error) e
 	return err
 }
 
-// connTransport adapts a net.Conn to the Transport seam, applying the seam's
-// poll deadline exactly as the production leaves do.
-//
-// It mirrors adapters/bridge's leaves rather than reusing them because those are
-// unexported: they are leaves precisely so that nobody depends on them, and a
-// six-line mirror here is cheaper than exporting them for a test.
+// connTransport applies the seam's poll deadline exactly as the production leaves do.
 type connTransport struct {
 	conn net.Conn
 }

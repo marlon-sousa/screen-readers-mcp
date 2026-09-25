@@ -1,7 +1,6 @@
 // screenreader-mcp domain -- the get_last_speech tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `speech`.
+// ROLE: controller, gated on speech.
 // USES: ports.SpeechReader, through ToolContext.Speech().
 // LISTED BY: registry.go.
 package tools
@@ -12,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetLastSpeech reads the most recent utterance.
 type GetLastSpeech struct{}
 
 var _ Tool = (*GetLastSpeech)(nil)
@@ -46,13 +44,10 @@ func (t *GetLastSpeech) OutputSchema() json.RawMessage {
 }
 
 type lastSpeechResult struct {
-	Text  string `json:"text"`
-	Index int    `json:"index"`
-	// LogPosition places this utterance on the log journal's timeline; hand it to
-	// get_log as since_position to see what the reader was doing around it.
-	LogPosition int `json:"logPosition"`
-	// EmittedAt is when the reader emitted it; empty for the sentinel returned
-	// when nothing has been said yet (spec 0028).
+	Text        string `json:"text"`
+	Index       int    `json:"index"`
+	LogPosition int    `json:"logPosition"`
+	// EmittedAt is empty for the sentinel returned when nothing has been said yet.
 	EmittedAt string `json:"emittedAt,omitempty"`
 }
 

@@ -1,18 +1,11 @@
 // screenreader-mcp adapters -- StderrLog: the Log leaf.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: LEAF adapter. IMPLEMENTS the Log domain port by writing to stderr, and
-// nothing else.
+// ROLE: leaf adapter implementing the Log port by writing to stderr.
 // BUILT BY: wiring/wiring.go.
 // USED BY: everything that logs, through the port.
 //
-// STDERR, NEVER STDOUT. stdout carries MCP JSON-RPC frames and nothing else, so
-// a single line written to the wrong stream corrupts the protocol the agent is
-// speaking. That is the reason this adapter exists at all rather than the domain
-// calling fmt.Println: the destination is decided once, here, where it can be
-// seen.
-//
-// No test file beside it: it makes no decisions beyond the level prefix.
+// Never stdout: it carries MCP frames, and one stray line corrupts the protocol.
 package adapters
 
 import (
@@ -23,7 +16,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// StderrLog writes levelled lines to stderr.
 type StderrLog struct {
 	out     io.Writer
 	verbose bool
@@ -31,8 +23,7 @@ type StderrLog struct {
 
 var _ ports.Log = (*StderrLog)(nil)
 
-// NewStderrLog builds the production log. Debug lines are suppressed unless
-// verbose, so an ordinary run stays quiet enough to read.
+// NewStderrLog suppresses debug lines unless verbose.
 func NewStderrLog(verbose bool) *StderrLog {
 	return &StderrLog{out: os.Stderr, verbose: verbose}
 }

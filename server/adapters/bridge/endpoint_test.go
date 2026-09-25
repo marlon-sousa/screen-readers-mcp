@@ -1,9 +1,5 @@
 // screenreader-mcp adapters -- tests for endpoint.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Nothing here dials: DialerFor decides WHETHER an endpoint may be reached and
-// returns how, so the decisions are testable with no OS involved. That the leaf
-// underneath then works is the real-transport tier's job, not this one's.
 package bridge_test
 
 import (
@@ -30,10 +26,6 @@ func TestDialerForAcceptsLoopbackTCP(t *testing.T) {
 	}
 }
 
-// The wire contract says the connection is always local-machine-only, and remote
-// TCP is deferred behind its own security spec. Enforcing it here means a config
-// file cannot quietly turn this server into something that reaches across a
-// network.
 func TestDialerForRefusesNonLoopbackTCP(t *testing.T) {
 	for _, spec := range []string{"tcp:192.168.1.10:8765", "tcp:example.com:8765", "tcp:0.0.0.0:8765"} {
 		t.Run(spec, func(t *testing.T) {
@@ -48,10 +40,6 @@ func TestDialerForRefusesNonLoopbackTCP(t *testing.T) {
 	}
 }
 
-// The local endpoint resolves on EVERY platform now (spec 0044): a named pipe on
-// Windows, a Unix domain socket on POSIX. Until then this test asserted the
-// opposite -- that a non-Windows host refused and pointed at TCP -- which is
-// what a bridge for a reader that does not run on Windows would have hit.
 func TestDialerForResolvesTheLocalEndpointOnEveryPlatform(t *testing.T) {
 	dial, err := bridge.DialerFor(testsupport.Endpoint(t, "local:nvdaMcpBridge"))
 	if err != nil {
@@ -62,9 +50,7 @@ func TestDialerForResolvesTheLocalEndpointOnEveryPlatform(t *testing.T) {
 	}
 }
 
-// `pipe:` is the spelling the local endpoint had until spec 0044, and it is
-// kept forever because it is in shipped defaults, in help text, in the published
-// contract and in config files people already have.
+// `pipe:` is an alias kept because it appears in shipped defaults and existing config files.
 func TestDialerForAcceptsThePipeAlias(t *testing.T) {
 	dial, err := bridge.DialerFor(testsupport.Endpoint(t, "pipe:nvdaMcpBridge"))
 	if err != nil {
@@ -75,14 +61,7 @@ func TestDialerForAcceptsThePipeAlias(t *testing.T) {
 	}
 }
 
-// A socket path that cannot fit in a sockaddr_un is reported where the
-// configuration is READ, naming the endpoint the user wrote -- not at the moment
-// an agent asks to connect, where the OS answers `connect: invalid argument` and
-// names neither the limit nor the fix.
-//
-// Windows has no such limit, so the case is POSIX-only. The RULE is tested on
-// every host in domain/entities/local_socket_test.go; what this asserts is that
-// DialerFor surfaces it at build time rather than swallowing it.
+// Windows has no sockaddr_un length limit, so the case is POSIX-only.
 func TestDialerForRefusesAnOverlongSocketPath(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("sockaddr_un has no counterpart in the named-pipe namespace")

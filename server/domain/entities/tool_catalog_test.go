@@ -1,17 +1,5 @@
 // screenreader-mcp domain -- ToolCatalog's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package entities_test), exercising the catalog through the surface
-// the MCP adapter uses.
-//
-// WHAT THESE STOPPED PROVING, and where it went. Spec 0013's acceptance
-// criterion 10 had a first clause -- "a tool whose capability is absent is NOT
-// advertised" -- and this file was its proof. Spec 0022 (option (c), agreed
-// 2026-08-19) withdrew that clause: every tool is advertised, and what a reader
-// cannot do is enforced per CALL rather than per LIST, by ToolContext. So the
-// gate tests below became All() and the enforcement proof lives in
-// controllers/tools' context tests and in the integration tier's no-braille
-// scenario, which asserts on the ERROR rather than on an absence.
 package entities_test
 
 import (
@@ -21,8 +9,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// A catalog shaped like the real one: four ungated tools plus a few gated ones
-// spanning three capabilities, one of which has two tools.
 func catalog() entities.ToolCatalog {
 	return entities.NewToolCatalog([]entities.ToolGate{
 		{Name: "list_readers"},
@@ -36,7 +22,6 @@ func catalog() entities.ToolCatalog {
 	})
 }
 
-// The whole publication answer: every tool, in the order the table was built.
 func TestAllIsEveryToolInRegistryOrder(t *testing.T) {
 	want := []string{
 		"list_readers", "connect_reader", "disconnect_reader", "status",
@@ -47,9 +32,6 @@ func TestAllIsEveryToolInRegistryOrder(t *testing.T) {
 	}
 }
 
-// The point of option (c), stated as a test: nothing a reader announced can
-// change what is advertised, so a client holding a stale list holds a correct
-// one. There is no argument to pass -- and that IS the property.
 func TestAllTakesNoAnnouncedCapabilitiesAtAll(t *testing.T) {
 	first := catalog().All()
 	second := catalog().All()
@@ -57,14 +39,11 @@ func TestAllTakesNoAnnouncedCapabilitiesAtAll(t *testing.T) {
 	if !slices.Equal(first, second) {
 		t.Errorf("All() = %v then %v; the advertised list must be a constant", first, second)
 	}
-	// A gated tool is present whether or not any reader could serve it. What
-	// stops the call is ToolContext, not this table.
 	if !slices.Contains(first, "get_braille") {
 		t.Error("All() omitted get_braille; every tool is advertised regardless of capability")
 	}
 }
 
-// Still asked, by the tools resource: what gates this tool?
 func TestCapabilityOfDistinguishesOurToolsFromStrangers(t *testing.T) {
 	capability, known := catalog().CapabilityOf("get_braille")
 	if !known || capability != entities.CapabilityBraille {
@@ -90,8 +69,6 @@ func TestCapabilitiesAreTheDistinctGatesSorted(t *testing.T) {
 	}
 }
 
-// The catalog must not be a window onto its caller's slice: a table that could
-// be edited after it was built is not a decision table.
 func TestTheCatalogCopiesTheGatesItWasGiven(t *testing.T) {
 	gates := []entities.ToolGate{{Name: "get_braille", Capability: entities.CapabilityBraille}}
 	built := entities.NewToolCatalog(gates)

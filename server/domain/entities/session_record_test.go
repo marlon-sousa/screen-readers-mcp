@@ -1,10 +1,5 @@
 // screenreader-mcp domain -- SessionRecord's own tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Spec 0021's item 15, entity half: the record has to stay bounded without
-// lying about it, and it must not become a second copy of the data that passed
-// through it. The "covers a whole session from its traffic alone" half is
-// exercised through the dispatcher, in dispatcher_test.go.
 
 package entities_test
 
@@ -40,8 +35,6 @@ func TestAnEmptyRecordHasNothingAndAdmitsNothingWasDropped(t *testing.T) {
 	}
 }
 
-// Bounded for the same reason the log journal is: a session can run for hours,
-// and an unbounded list in a long-lived process is a leak with a good excuse.
 func TestTheOldestCallsAgeOutOnceTheCapIsReached(t *testing.T) {
 	record := entities.NewSessionRecord()
 	for i := 0; i < entities.MaxRecordedCalls+50; i++ {
@@ -53,8 +46,6 @@ func TestTheOldestCallsAgeOutOnceTheCapIsReached(t *testing.T) {
 	}
 }
 
-// A tail presented as a whole history is worse than no history: an agent
-// summarising "everything I tried" would silently omit the start of the session.
 func TestAgedOutCallsAreCountedRatherThanForgotten(t *testing.T) {
 	record := entities.NewSessionRecord()
 	for i := 0; i < entities.MaxRecordedCalls+50; i++ {
@@ -66,9 +57,6 @@ func TestAgedOutCallsAreCountedRatherThanForgotten(t *testing.T) {
 	}
 }
 
-// The record says WHAT HAPPENED; it is not a second copy of the data. A
-// type_text payload or a whole speech ring would otherwise make the record
-// larger than everything it describes.
 func TestAnOversizedFieldIsCappedAndSaysSo(t *testing.T) {
 	record := entities.NewSessionRecord()
 	record.Add(entities.RecordedCall{
@@ -81,7 +69,6 @@ func TestAnOversizedFieldIsCappedAndSaysSo(t *testing.T) {
 		t.Errorf("stored %d characters, want it capped near %d",
 			len(stored), entities.MaxRecordedText)
 	}
-	// Marked rather than silently cut, so nobody reads a truncated value as real.
 	if !strings.Contains(stored, "truncated") {
 		t.Errorf("params = %q, want the truncation said out loud", stored)
 	}
@@ -96,8 +83,6 @@ func TestAFieldWithinTheCapIsStoredUntouched(t *testing.T) {
 	}
 }
 
-// Capping must not split a UTF-8 rune, or the record grows a mojibake character
-// exactly where a reader is looking to see what was typed.
 func TestCappingCutsOnARuneBoundary(t *testing.T) {
 	record := entities.NewSessionRecord()
 	record.Add(entities.RecordedCall{Tool: "type_text", Params: strings.Repeat("é", entities.MaxRecordedText)})
@@ -116,9 +101,6 @@ func isValidUTF8(s string) bool {
 	return true
 }
 
-// Calls arrive on the MCP server's goroutines while the resource that renders
-// them is served on another, so a race here is an ordinary Tuesday rather than
-// a theoretical concern.
 func TestTheRecordSurvivesConcurrentWritersAndReaders(t *testing.T) {
 	record := entities.NewSessionRecord()
 	var wait sync.WaitGroup
@@ -145,8 +127,6 @@ func TestTheRecordSurvivesConcurrentWritersAndReaders(t *testing.T) {
 	}
 }
 
-// Calls() hands out a copy, so a caller mutating what it got cannot corrupt the
-// record the next reader sees.
 func TestCallsHandsOutACopy(t *testing.T) {
 	record := entities.NewSessionRecord()
 	record.Add(entities.RecordedCall{Tool: "status"})

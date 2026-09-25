@@ -1,22 +1,8 @@
 // screenreader-mcp adapters -- the screenreader://session-record resource.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. Serves `screenreader://session-record` from the dispatcher's
-// own account of the session.
-// BUILT BY: sdk_server.go's Bind, beside the info resource.
-// DEPENDS ON: a RecordSource, satisfied by domain/entities.SessionRecord.
-//
-// Spec 0021's server-side record. A RESOURCE rather than a file on disk, for the
-// same reason the info document is one: it is read when the agent wants it,
-// needs no filesystem agreement with anybody, and cannot be half-written. The
-// server already runs on the agent's side, so nothing is transmitted that was
-// not already here.
-//
-// It is NOT the bridge's session transcript and must not be confused with it --
-// see domain/entities/session_record.go for the two audiences and why neither
-// artifact can replace the other. In one line: the transcript records what the
-// READER said to a human, at capture time; this records what the AGENT asked and
-// was told.
+// ROLE: adapter serving `screenreader://session-record`, what the agent asked and was told, from the dispatcher's record.
+// BUILT BY: sdk_server.go's Bind.
 
 package mcp
 
@@ -29,41 +15,20 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// SessionRecordURI is the resource's address.
 const SessionRecordURI = "screenreader://session-record"
 
-// RecordSource is what the resource reads.
-//
-// Declared here, in the consumer, and narrow -- this adapter may read the record
-// and may not add to it.
 type RecordSource interface {
 	Calls() []entities.RecordedCall
 	Dropped() int
 }
 
-// sessionRecord is the resource's document.
 type sessionRecord struct {
-	// Persona is what the live session declared it stands for (spec 0029).
-	//
-	// ON THE DOCUMENT, not left to be recovered from the recorded connect_reader
-	// call, and the reason is easy to miss: this record is BOUNDED and evicts
-	// oldest-first, so in a long session the very call carrying the declaration
-	// ages out of the record that exists to preserve it. Reading it from the
-	// live session instead means the stance outlives the call that set it.
-	//
-	// Empty when nothing is connected -- a record read after a disconnect says
-	// what was done, and can no longer say who was doing it.
-	Persona string `json:"persona,omitempty"`
-	// Calls is every tool call this server dispatched, oldest first.
-	Calls []entities.RecordedCall `json:"calls"`
-	// Dropped is how many older calls aged out of the bounded record. Non-zero
-	// means this is a tail rather than the whole session, said out loud so it is
-	// never mistaken for a complete history.
-	Dropped int `json:"dropped,omitempty"`
-	// Note explains, in the document itself, what this record is not -- because
-	// an agent reading it has no other way to learn that the reader-side
-	// transcript exists and holds different things.
-	Note string `json:"note"`
+	// Persona is read from the live session because the bounded record may have evicted the connect_reader call; empty when disconnected.
+	Persona string                  `json:"persona,omitempty"`
+	Calls   []entities.RecordedCall `json:"calls"`
+	// Dropped is how many older calls aged out; non-zero means this is a tail.
+	Dropped int    `json:"dropped,omitempty"`
+	Note    string `json:"note"`
 }
 
 const recordNote = "This is what THIS server saw: the tool calls you made and the answers you " +
@@ -72,9 +37,7 @@ const recordNote = "This is what THIS server saw: the tool calls you made and th
 	"every utterance, including speech you never fetched. For a complete record of what " +
 	"was said, call get_speech with since_index 0 before disconnecting."
 
-// addSessionRecordResource registers the resource. Always present, like the info
-// resource: an agent asking what it has done so far deserves an empty list
-// rather than a missing resource.
+// addSessionRecordResource registers the resource even before any call, so the agent finds an empty list.
 func (s *Server) addSessionRecordResource(record RecordSource, sessions SessionSource) {
 	s.sdk.AddResource(
 		&sdk.Resource{
@@ -99,12 +62,10 @@ func (s *Server) addSessionRecordResource(record RecordSource, sessions SessionS
 	)
 }
 
-// describeRecord builds the document from whatever has been recorded so far.
 func describeRecord(record RecordSource, sessions SessionSource) sessionRecord {
 	calls := record.Calls()
 	if calls == nil {
-		// Never null: an agent reading `calls` should find an empty list before
-		// it has done anything, not JSON null.
+		// Never null, so an agent finds an empty list before it has done anything.
 		calls = []entities.RecordedCall{}
 	}
 

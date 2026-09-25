@@ -1,11 +1,5 @@
 // screenreader-mcp adapters -- tests for local_probe.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Runs on every platform, because the OS is behind the LocalDirectory seam: what
-// is tested here is the DECISION about a listing, which is the only thing in the
-// discovery adapter worth testing. The listing is bare endpoint names whichever
-// namespace produced it -- a pipe namespace on Windows, socket files on POSIX --
-// so these cases are the same cases on every host.
 package discovery_test
 
 import (
@@ -39,11 +33,6 @@ func TestLiveOmitsAConfiguredEndpointThatIsAbsent(t *testing.T) {
 	}
 }
 
-// The rule the whole file exists for: the probe answers about CANDIDATES. A name
-// in the namespace that nobody configured can never come back from it, so it can
-// never become something an agent connects to -- which is what keeps the reader
-// set from depending on whatever happens to be running, on a name any same-user
-// process could have chosen.
 func TestLiveNeverInventsAnEndpointFromTheNamespace(t *testing.T) {
 	probe := discovery.NewLocalProbe(fakes.NewFakeLocalDirectory("jawsMcpBridge", "nvdaMcpBridge"))
 
@@ -54,9 +43,6 @@ func TestLiveNeverInventsAnEndpointFromTheNamespace(t *testing.T) {
 	}
 }
 
-// Windows pipe names are case-insensitive. A user who wrote the name with a
-// different capitalisation in a config file must not be told nothing is
-// listening while their bridge is running.
 func TestLiveMatchesEndpointNamesCaseInsensitively(t *testing.T) {
 	probe := discovery.NewLocalProbe(fakes.NewFakeLocalDirectory("nvdaMcpBridge"))
 
@@ -67,9 +53,6 @@ func TestLiveMatchesEndpointNamesCaseInsensitively(t *testing.T) {
 	}
 }
 
-// TCP liveness cannot be known without connecting, and connecting would take the
-// bridge's one session slot. The probe therefore says nothing about sockets, and
-// the listing turns that silence into "unknown".
 func TestLiveIgnoresTCPEndpoints(t *testing.T) {
 	probe := discovery.NewLocalProbe(fakes.NewFakeLocalDirectory("nvdaMcpBridge"))
 
@@ -80,10 +63,6 @@ func TestLiveIgnoresTCPEndpoints(t *testing.T) {
 	}
 }
 
-// An address that is a PATH rather than a name -- the override spec 0044 keeps --
-// cannot be looked up in a listing of names, so the probe says nothing about it
-// and the listing reports it unknown. The alternative is worse than silence: it
-// would be reported NOT LISTENING while its bridge was running.
 func TestLiveIgnoresAnEndpointAddressedByPath(t *testing.T) {
 	probe := discovery.NewLocalProbe(fakes.NewFakeLocalDirectory("nvdaMcpBridge"))
 

@@ -1,9 +1,5 @@
 // screenreader-mcp config -- tests for loader.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package config_test), and no test here touches disk: the file
-// reader is a seam, so the layering rules are exercised as the pure decisions
-// they are. These cases are acceptance criterion 4b.
 package config_test
 
 import (
@@ -27,8 +23,6 @@ func files(contents map[string]string) config.FileReader {
 	}
 }
 
-// specs is the endpoint spelling of a reader's endpoints, which is what these
-// assertions are really about.
 func specs(reader entities.ConfiguredReader) []string {
 	out := make([]string, 0, len(reader.Endpoints))
 	for _, endpoint := range reader.Endpoints {
@@ -37,20 +31,9 @@ func specs(reader entities.ConfiguredReader) []string {
 	return out
 }
 
-// shippedReaders is what the embedded defaults carry, named once so that the
-// layering tests below can say "the shipped set, plus mine" instead of counting.
-//
-// THEY USED TO COUNT, AND 13.11 IS WHERE THAT COST SOMETHING. Three tests
-// asserted `len(readers) != 1` -- a statement about how many bridges this repo
-// happened to have rather than about layering -- so shipping the VoiceOver reader
-// turned them red for a reason none of them was testing. The property each one
-// actually cares about is that a config file or a flag EXTENDS the shipped set
-// and does not replace it, which is what they say now.
+// shippedReaders lets layering tests assert that a layer extends the shipped set, without counting readers.
 var shippedReaders = []string{"nvda", "voiceover"}
 
-// A freshly started server with NO arguments knows where our bridges listen:
-// the zero-configuration install works because the default is a constant in the
-// binary, not an inference from anything running.
 func TestEmbeddedDefaultsShipEveryBridgeEndpointInOrder(t *testing.T) {
 	loader, err := config.Load(config.Options{})
 	if err != nil {
@@ -66,11 +49,6 @@ func TestEmbeddedDefaultsShipEveryBridgeEndpointInOrder(t *testing.T) {
 		t.Fatalf("shipped readers (-want +got):\n%s", diff)
 	}
 
-	// The LOCAL endpoint first, then loopback TCP: spec 0011's dialog lets the
-	// user switch between them, and this is the order connect_reader tries. The
-	// local name follows protocol.md §1's `<reader>McpBridge` convention against
-	// each bridge's own reader.name, which is what lets one shipped default reach
-	// a local bridge on every host (spec 0044).
 	want := map[string][]string{
 		"nvda":      {"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"},
 		"voiceover": {"local:voiceoverMcpBridge", "tcp:127.0.0.1:8765"},
@@ -82,8 +60,6 @@ func TestEmbeddedDefaultsShipEveryBridgeEndpointInOrder(t *testing.T) {
 	}
 }
 
-// --print-default-config must emit exactly the embedded bytes, since its whole
-// purpose is to give the user a file they can edit and pass back as --config.
 func TestDefaultsJSONIsValidAndParsesBackToTheSameSet(t *testing.T) {
 	raw := config.DefaultsJSON()
 
@@ -122,10 +98,6 @@ func TestAConfigFileAddsAReaderTheDefaultsDoNotKnow(t *testing.T) {
 	}
 }
 
-// Per-reader REPLACEMENT rather than a merge of endpoint lists. A merge would
-// make it impossible to remove a shipped default -- a user who moved their
-// bridge would still have the old endpoint tried first, with no way to say
-// otherwise.
 func TestAConfigFileReplacesAReaderItNames(t *testing.T) {
 	loader, err := config.Load(config.Options{
 		ConfigPath: "readers.json",
@@ -159,8 +131,6 @@ func TestReaderFlagsWinOverBothLayers(t *testing.T) {
 	}
 }
 
-// Repeating a name adds an endpoint to that reader, in flag order, so a one-off
-// override can still name both a pipe and a socket.
 func TestRepeatingAReaderFlagAddsEndpointsInOrder(t *testing.T) {
 	loader, err := config.Load(config.Options{
 		ReaderFlags: []string{"nvda=tcp:127.0.0.1:9999", "nvda=local:someOtherBridge"},
@@ -187,8 +157,6 @@ func TestANewReaderFromAFlagIsAppended(t *testing.T) {
 	}
 }
 
-// A bad configuration must fail while the process is starting, not when an agent
-// finally asks to connect.
 func TestBadInputFailsAtLoadTime(t *testing.T) {
 	cases := []struct {
 		name string
@@ -220,8 +188,6 @@ func TestBadInputFailsAtLoadTime(t *testing.T) {
 	}
 }
 
-// The order endpoints are declared in is the order they are dialed in, so a
-// caller must not be able to reorder the loader's own slice underneath it.
 func TestReadersReturnsACopy(t *testing.T) {
 	loader, err := config.Load(config.Options{})
 	if err != nil {
@@ -235,9 +201,6 @@ func TestReadersReturnsACopy(t *testing.T) {
 	}
 }
 
-// A config file written before spec 0044 says `pipe:`, and must keep working:
-// the alias parses and normalises, so what the loader hands on -- and what
-// list_readers therefore shows -- is the canonical spelling.
 func TestLoadAcceptsThePipeAliasInAConfigFile(t *testing.T) {
 	loader, err := config.Load(config.Options{
 		ConfigPath: "readers.json",

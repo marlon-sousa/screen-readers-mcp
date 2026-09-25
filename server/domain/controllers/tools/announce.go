@@ -1,24 +1,8 @@
 // screenreader-mcp domain -- the announce tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: controller, one per tool. GATED on `interact`.
-// USES: ports.Interact, through ToolContext.Interact().
+// ROLE: controller for one tool, gated on `interact`.
 // LISTED BY: registry.go.
-//
-// One of the three tools that address a HUMAN. Everything else here observes or
-// drives a screen reader; this speaks to the person in front of it, through the
-// reader's real synthesizer and UNDERNEATH whatever suppression the capture mode
-// has in place -- which is the whole point, because the mode where the agent
-// most needs to say something is the mode where the tester can hear nothing
-// else.
-//
-// The description below carries the operational warning, and has to: in `silent`
-// mode the tester hears this announcement and then nothing further, and cannot
-// navigate. Since 11.2 there IS a reply channel -- `ask_user` opens a window in
-// which the human hears normally and can answer -- so the division of labour is
-// the thing to get across: announce TELLS, ask_user ASKS. An agent that reads
-// this tool as a chat channel will strand somebody, which is why the description
-// names ask_user rather than leaving the agent to find it.
 package tools
 
 import (
@@ -29,7 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// Announce speaks a message to the human operating the reader.
 type Announce struct{}
 
 var _ Tool = (*Announce)(nil)
@@ -100,9 +83,7 @@ func (t *Announce) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if err := decodeParams(params, &request); err != nil {
 		return nil, err
 	}
-	// Rejected before the port is touched: an empty announcement is two cue
-	// beeps followed by silence, which a tester reads as a malfunction of the
-	// one channel they are relying on.
+	// An empty announcement is two cue beeps then silence, which a tester reads as a malfunction.
 	if strings.TrimSpace(request.Text) == "" {
 		return nil, errors.New("text is required, and must not be empty or whitespace")
 	}
@@ -110,8 +91,6 @@ func (t *Announce) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if err := interact.Announce(request.Text); err != nil {
 		return nil, err
 	}
-	// Echo what was spoken, as press_gesture echoes its ids: the reader returns
-	// only an acknowledgement, so the useful confirmation is that this exact
-	// text reached it.
+	// The reader returns only an acknowledgement, so echoing the text is the useful confirmation.
 	return announceResult{Announced: request.Text}, nil
 }

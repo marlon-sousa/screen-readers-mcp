@@ -1,13 +1,8 @@
 // screenreader-mcp fakes -- FakeEndpointProbe: the EndpointProbe double.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: test double. MIRRORS domain/ports/endpoint_probe.go.
-// USED BY: 10b's connection controller tests.
-//
-// It intersects what a test declared live with the candidates it is handed,
-// rather than returning the declared set outright. That keeps the fake honest
-// about the port's contract -- the probe answers about CANDIDATES, and can never
-// hand back an endpoint nobody asked about.
+// ROLE: test double for domain/ports/endpoint_probe.go.
+// USED BY: the connection controller tests.
 package fakes
 
 import (
@@ -15,14 +10,12 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// FakeEndpointProbe reports a fixed set of endpoints as live.
 type FakeEndpointProbe struct {
 	live map[entities.Endpoint]struct{}
 }
 
 var _ ports.EndpointProbe = (*FakeEndpointProbe)(nil)
 
-// NewFakeEndpointProbe declares which endpoints have a bridge listening.
 func NewFakeEndpointProbe(live ...entities.Endpoint) *FakeEndpointProbe {
 	set := make(map[entities.Endpoint]struct{}, len(live))
 	for _, endpoint := range live {

@@ -1,13 +1,8 @@
 // screenreader-mcp domain -- the get_next_speech_index tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `speech`.
+// ROLE: controller, gated on speech.
 // USES: ports.SpeechReader, through ToolContext.Speech().
 // LISTED BY: registry.go.
-//
-// This is the tool that makes speech assertions precise rather than hopeful:
-// note "now", act, then read only what the action produced. Without it a caller
-// has to guess how much of the log predates its own gesture.
 package tools
 
 import (
@@ -16,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetNextSpeechIndex reports where the next utterance will land.
 type GetNextSpeechIndex struct{}
 
 var _ Tool = (*GetNextSpeechIndex)(nil)

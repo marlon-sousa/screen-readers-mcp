@@ -1,20 +1,8 @@
 // screenreader-mcp domain -- the connect_reader tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. UNGATED. The ONLY thing in this server that
-// causes a connection attempt: no auto-connect, no retry loop, no backoff, so
-// every dial is one an agent asked for (acceptance criterion 9).
+// ROLE: controller, ungated; the only thing in this server that causes a connection attempt.
 // USES: ConnectionControl.Connect, via ToolContext.
 // LISTED BY: registry.go.
-//
-// `mode`, `persona` and `log_level` are parameters HERE and not CLI flags
-// precisely because the wire contract fixes them at `hello` for the session's
-// whole lifetime (protocol.md §3, §4). As flags they would be chosen by whoever
-// wrote the MCP host configuration, before anyone knew what the session was for;
-// as parameters they are chosen per session by the party that knows what it is
-// about to do. `persona` (spec 0029) is the sharpest case of that: it decides
-// what a finding from the session MEANS, and a host-level default would attribute
-// a stance nobody chose.
 package tools
 
 import (
@@ -25,19 +13,9 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// readerGuidanceURI is where the connected reader's own persona document is
-// served, repeated here because the DOMAIN MAY NOT IMPORT THE ADAPTER that
-// publishes it (the architecture test enforces that, and it is the rule that
-// keeps a future wire v2 out of the domain).
-//
-// One integration test asserts this equals adapters/mcp.ReaderGuidanceURI and
-// that the URI is really published, which is what keeps the repetition honest --
-// a dangling pointer in a connect result is invisible to everything else: the
-// call succeeds, and the agent gets resource-not-found at the moment it takes
-// our advice.
+// readerGuidanceURI repeats adapters/mcp.ReaderGuidanceURI because the domain may not import the adapter; an integration test keeps them equal.
 const readerGuidanceURI = "screenreader://reader-guidance"
 
-// ConnectReader opens the one session.
 type ConnectReader struct{}
 
 var _ Tool = (*ConnectReader)(nil)
@@ -176,108 +154,33 @@ func (t *ConnectReader) OutputSchema() json.RawMessage {
 }`)
 }
 
-// connectParams is what the agent sent.
 type connectParams struct {
 	Reader   string `json:"reader"`
 	Mode     string `json:"mode"`
 	Persona  string `json:"persona"`
 	LogLevel string `json:"log_level"`
-	// A POINTER so that "not sent" stays distinct from "sent false": the
-	// reader's default differs by capture mode, and only an absent field can
-	// mean "use it" (spec 0024).
+	// Normalize is a pointer so that absent means the reader's default, which differs by capture mode.
 	Normalize *bool `json:"normalize"`
 }
 
-// connectResult is what an agent needs to know a session began: who answered,
-// where, what it can do, and under which session-fixed settings.
 type connectResult struct {
 	Reader        string   `json:"reader"`
 	ReaderVersion string   `json:"readerVersion"`
 	Endpoint      string   `json:"endpoint"`
 	Capabilities  []string `json:"capabilities"`
 	Mode          string   `json:"mode"`
-	// Persona is what this session declared it stands for, echoed so the
-	// declaration appears in the session record beside everything it produced.
-	Persona string `json:"persona"`
-	// Stance is the persona's instruction, in full. A persona an agent declares
-	// but never reads is a label rather than an instruction, and connect is the
-	// one moment an agent is guaranteed to be reading -- the first external run
-	// (spec 0027) never read screenreader://guidance at all and dropped to
-	// PowerShell for something it would have been told.
-	Stance string `json:"stance"`
-	// ReaderGuidance is where THIS reader's own account of that stance can be
-	// read -- which of its commands make up the ordinary vocabulary, and which
-	// reach past focus and are therefore outside it (spec 0029 Part 4).
-	//
-	// PRESENT ONLY WHEN THE BRIDGE ANNOUNCED `guidance`, so an absent field is
-	// the honest answer "this reader publishes none" rather than a pointer at a
-	// document that would explain nothing.
-	//
-	// It is named here because this is the earliest instant it exists: the
-	// persona is chosen BEFORE connecting and can only be instantiated on a
-	// particular reader AFTER, and an agent left to discover that would not.
+	Persona       string   `json:"persona"`
+	Stance        string   `json:"stance"`
+	// ReaderGuidance is present only when the bridge announced guidance.
 	ReaderGuidance string `json:"readerGuidance,omitempty"`
-	// ReaderGuidanceText is that document IN FULL, when the bridge delivered it
-	// in the handshake (spec 0022 A.5).
-	//
-	// INLINED RATHER THAN POINTED AT, for the reason `stance` above is: connect
-	// is the one moment an agent is guaranteed to be reading, and a URI is an
-	// invitation to a second call that agents demonstrably decline. Two external
-	// runs (specs 0027 and 0030) each held a pointer to a document that would
-	// have told them what they went looking for elsewhere -- one to PowerShell,
-	// one to this server's source.
-	//
-	// It matters more now than it did under spec 0013's gate. Every tool is
-	// advertised from startup, so the advertised list no longer narrows itself
-	// to what this reader can do; THIS is where an agent learns that, and it
-	// arrives without being asked for.
-	//
-	// Absent when the bridge publishes no guidance, or predates the handshake
-	// field -- in which case `readerGuidance` above still names the resource,
-	// and reading it makes the round trip this saved.
+	// ReaderGuidanceText is absent when the bridge publishes no guidance or predates the handshake field.
 	ReaderGuidanceText string `json:"readerGuidanceText,omitempty"`
 	Synth              string `json:"synth"`
-	// LogPath names the READER-SIDE session transcript, and it is a convenience
-	// rather than a contract to depend on (spec 0021): the artifact is written
-	// for the human at the reader, on the reader's disk, so for a remote bridge
-	// it names a file this agent cannot open. An agent wanting its own complete
-	// record calls get_speech with since_index 0 -- the ring is unbounded within
-	// a session -- or reads screenreader://session-record, which this server
-	// keeps from its own traffic.
-	LogPath string `json:"logPath"`
-	// The BRIDGE build answering, distinct from the reader version above. A
-	// live run talks to whatever add-on build is installed, so an agent that
-	// sees odd behaviour can check this before blaming the code.
+	// LogPath is on the reader's disk, so for a remote bridge it names a file this agent cannot open.
+	LogPath       string `json:"logPath"`
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
-	// SilenceCap is what this MACHINE does about a silence, in one sentence
-	// (spec 0032) -- including whether anyone is at it to be kept from hearing,
-	// which the bridge declares in its own right (spec 0035).
-	//
-	// ONE SENTENCE AND NOT TWO FIELDS, even though it is now composed from two
-	// facts. The agent's job did not change and neither should its reading:
-	// what changed is that the sentence is true for reasons that will still hold
-	// when a second bridge exists.
-	//
-	// Here for the reason `stance` and `readerGuidanceText` are here: connect is
-	// the one moment an agent is guaranteed to be reading, and this is the
-	// earliest instant the fact exists -- it is a property of the machine that
-	// just answered, so nothing before the handshake could have told anyone.
-	//
-	// It is prose rather than a struct because there is exactly one thing to do
-	// with it, and a number an agent has to interpret is a number it will not.
-	SilenceCap string `json:"silenceCap"`
-	// Normalized is every reader setting this session moved between output
-	// channels so that a capture reading only speech can see it (spec 0024).
-	//
-	// OMITTED WHEN EMPTY, and the absence is the useful answer: it means this
-	// session is driving the reader exactly as its user left it. When it is
-	// present, a finding from this session carries an asterisk, and this is
-	// where it is written down rather than left implied -- which is the whole
-	// of 0024 Part 3.2 and the reason the field exists at all.
-	//
-	// Here rather than behind a resource for the reason `stance` is here:
-	// connect is the one moment an agent is guaranteed to be reading, and a
-	// disclosure an agent has to go and fetch is a disclosure it will not read.
+	SilenceCap    string `json:"silenceCap"`
+	// Normalized is every reader setting this session moved between output channels; omitted when nothing was moved.
 	Normalized []normalizedSetting `json:"normalized,omitempty"`
 }
 
@@ -287,12 +190,6 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		return nil, err
 	}
 
-	// `reader` is REQUIRED and never defaulted (spec 0013). Defaulting to the
-	// single live reader would make one call mean different things minute to
-	// minute; defaulting to the single KNOWN reader is deterministic only
-	// until a second bridge ships, at which point every agent habit built on
-	// the omitted argument starts failing over a release the agent knows
-	// nothing about.
 	if request.Reader == "" {
 		return nil, fmt.Errorf("reader is required: %s", knownReaders(ctx))
 	}
@@ -302,11 +199,6 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		return nil, err
 	}
 
-	// REQUIRED, and never defaulted (spec 0029). A default would silently
-	// attribute a stance nobody chose, and a claim resting on a defaulted
-	// `user` session is one nobody can withdraw, because nobody knows it was
-	// made. The parse error names all three with the question each asks, so a
-	// wrong guess self-corrects in this turn.
 	persona, err := entities.ParsePersona(request.Persona)
 	if err != nil {
 		return nil, err
@@ -327,16 +219,11 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 	}
 
 	session := connection.Session
-	// The capability gate, read structurally: the port is nil exactly when the
-	// bridge did not announce `guidance`, so there is no boolean anyone has to
-	// remember to check.
+	// The port is nil exactly when the bridge did not announce guidance.
 	readerGuidance := ""
 	if connection.Guidance != nil {
 		readerGuidance = readerGuidanceURI
 	}
-	// And the document ITSELF when the handshake carried it (spec 0022 A.5).
-	// The URI above stays beside it: an agent re-reading mid-session should not
-	// have to scroll back through its own transcript to find this.
 	readerGuidanceText := ""
 	if connection.GuidanceDocument != nil {
 		readerGuidanceText = connection.GuidanceDocument.Text
@@ -349,12 +236,8 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		ReaderVersion: session.Reader.Version,
 		Endpoint:      connection.Endpoint.String(),
 		Capabilities:  session.Capabilities.Strings(),
-		// The mode the BRIDGE confirmed, not the one that was asked for.
-		// They agree in practice, and reporting the confirmed one is what
-		// makes acceptance criterion 5 checkable rather than tautological.
-		Mode: session.Mode.String(),
-		// From the session rather than from the request, so this reports what
-		// was actually recorded against the run.
+		// The mode the bridge confirmed, not the one that was asked for.
+		Mode:               session.Mode.String(),
 		Persona:            session.Persona.String(),
 		Stance:             session.Persona.Stance(),
 		ReaderGuidance:     readerGuidance,
@@ -362,18 +245,12 @@ func (t *ConnectReader) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		Synth:              session.Synth,
 		LogPath:            session.LogPath,
 		BridgeVersion:      session.BridgeVersion,
-		// Both facts, both nil-safe by design, and both nils meaning "this bridge
-		// did not say" rather than either answer. Attendance is passed rather
-		// than left to be inferred (spec 0035): the entity infers it from the cap
-		// only when it arrives nil, and that path is a compatibility route for an
-		// older bridge instead of how the sentence is normally reached.
+		// A nil in either means this bridge did not say.
 		SilenceCap: session.SilenceCap.Sentence(session.Attended),
 		Normalized: normalizedFrom(session.Normalized),
 	}, nil
 }
 
-// knownReaders lists what the agent could have asked for, so a wrong guess
-// self-corrects in the same turn instead of costing a round trip to list_readers.
 func knownReaders(ctx ToolContext) string {
 	listing := ctx.Control.List()
 	if len(listing.Readers) == 0 {
@@ -386,8 +263,6 @@ func knownReaders(ctx ToolContext) string {
 	return fmt.Sprintf("known readers are %v", names)
 }
 
-// normalizedSetting is one disclosed channel shift, in the shape the agent
-// reads it (spec 0024 Part 3.2).
 type normalizedSetting struct {
 	KeyPath  []string        `json:"keyPath"`
 	Previous json.RawMessage `json:"previous"`
@@ -395,9 +270,7 @@ type normalizedSetting struct {
 	Why      string          `json:"why"`
 }
 
-// normalizedFrom returns nil for an empty list rather than an empty slice, so
-// the field is OMITTED instead of arriving as `[]`. Both would be truthful, and
-// omission is the one that reads as "nothing was changed" at a glance.
+// normalizedFrom returns nil for an empty list, so the field is omitted rather than sent as [].
 func normalizedFrom(settings []entities.NormalizedSetting) []normalizedSetting {
 	if len(settings) == 0 {
 		return nil

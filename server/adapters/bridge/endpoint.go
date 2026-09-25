@@ -1,17 +1,9 @@
 // screenreader-mcp adapters -- endpoint dialing decisions.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. Turns a domain Endpoint into a Dialer over the right leaf, and
-// refuses the endpoints we will not dial.
-// BUILT BY: adapters/bridge/handshake.go, once per endpoint it tries.
-// USED BY: the leaves it selects -- tcp_transport.go and
-// local_transport_{windows,posix}.go.
-//
-// The decisions live here rather than in a leaf, which is the whole layering
-// rule: WHICH host is acceptable is a judgement, so it is unit-tested here
-// against no OS at all, while the leaves below make no judgement and do nothing
-// but spell the local endpoint the way their platform does -- a named pipe on
-// Windows, a Unix domain socket on POSIX (spec 0044).
+// ROLE: adapter that turns a domain Endpoint into a Dialer over the right leaf, refusing non-loopback hosts.
+// BUILT BY: wiring.go, which hands DialerFor to the handshake as its dialer factory.
+// USED BY: handshake.go, once per endpoint it tries.
 package bridge
 
 import (
@@ -23,18 +15,10 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// DefaultConnectTimeout bounds a single dial attempt.
-//
-// Short on purpose: these are local endpoints, so a bridge that is listening
-// answers immediately, and a reader whose first endpoint is dead should fall
-// through to its second quickly rather than making the agent wait.
+// DefaultConnectTimeout bounds a single dial attempt; short because a listening local bridge answers at once.
 const DefaultConnectTimeout = 2 * time.Second
 
 // DialerFor returns how to reach one endpoint, or explains why we will not.
-//
-// The error is returned at BUILD time rather than at dial time so that a
-// misconfigured endpoint is reported before anything is attempted, and so the
-// message can name the endpoint the user actually wrote.
 func DialerFor(endpoint entities.Endpoint) (adapterports.Dialer, error) {
 	switch endpoint.Kind {
 	case entities.TransportLocal:
@@ -54,14 +38,7 @@ func DialerFor(endpoint entities.Endpoint) (adapterports.Dialer, error) {
 	}
 }
 
-// requireLoopback refuses anything but the local machine.
-//
-// The wire contract says the connection is always local-machine-only and never
-// a routable interface (protocol.md §1), and remote TCP is deferred on the
-// bridge side behind its own security spec. Enforcing it on the dialing side
-// too means a config file cannot quietly turn this server into something that
-// reaches across a network -- and the failure is a clear message rather than a
-// connection that half works.
+// requireLoopback refuses anything but the local machine, so a config file cannot make this server dial across a network.
 func requireLoopback(address string) error {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
