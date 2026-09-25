@@ -347,9 +347,14 @@ help = "The hand-written Swift wire binding still matches the schema"
 deps = ["check"]
 cmd = "python scripts/drift.py --swift"
 
+[tool.poe.tasks.gate-comments]
+help = "Comments say what the code cannot: no citations, dates or bold, and each area under its ceiling"
+deps = ["check"]
+cmd = "python scripts/comments.py --check"
+
 [tool.poe.tasks.gates]
-help = "Schema and wire-binding drift gates, all three bindings"
-sequence = ["gate-schema", "gate-binding", "gate-swift"]
+help = "Schema and wire-binding drift gates, all three bindings, and the comment gate"
+sequence = ["gate-schema", "gate-binding", "gate-swift", "gate-comments"]
 
 [tool.poe.tasks.conformance]
 help = "Cross-language tier: the real Go binary against the real Python bridge (slow)"
@@ -369,8 +374,8 @@ cmd = "go -C server test -tags conformance -count=1 ./tests/conformance/"
 # `ci-server` has Go and no uv.
 
 [tool.poe.tasks.ci-shared]
-help = "The `shared` CI job: wire-contract tests, types, lint, schema and Swift gates"
-sequence = ["shared", "shared-types", "shared-lint", "gate-schema", "gate-swift"]
+help = "The `shared` CI job: wire-contract tests, types, lint, schema, Swift and comment gates"
+sequence = ["shared", "shared-types", "shared-lint", "gate-schema", "gate-swift", "gate-comments"]
 
 [tool.poe.tasks.ci-server]
 help = "The `server` CI job: build, vet, tests, gofmt, staticcheck, binding gate, Linux build"
@@ -444,3 +449,33 @@ ignore_fail = false
 help = "What to run before saying something works: the doctor, then everything CI runs."
 sequence = [{ ref = "redeploy --if-stale" }, "doctor", "ci"]
 ignore_fail = false
+
+# The comment gate, scripts/comments.py --check. An area is enforced once it has been stripped, and
+# its ceiling is the ratio it was stripped to. Lower a ceiling freely; raising one needs Marlon's
+# approval. `pending` lists files left unstripped because an open PR touches them; the gate skips
+# them entirely, and whoever strips them removes them from the list. Every tracked Go, Python and
+# Swift file must fall under some area's paths, or the gate fails.
+
+[tool.screen-readers-mcp.comments.server]
+paths = ["server"]
+enforced = false
+ceiling = 1.0
+pending = []
+
+[tool.screen-readers-mcp.comments.nvda]
+paths = ["bridges/nvda", "shared"]
+enforced = false
+ceiling = 1.0
+pending = []
+
+[tool.screen-readers-mcp.comments.voiceover]
+paths = ["bridges/voiceover"]
+enforced = false
+ceiling = 1.0
+pending = []
+
+[tool.screen-readers-mcp.comments.scripts]
+paths = ["scripts"]
+enforced = false
+ceiling = 1.0
+pending = []
