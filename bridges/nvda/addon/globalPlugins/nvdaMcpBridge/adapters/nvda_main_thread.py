@@ -1,14 +1,9 @@
 # nvdaMcpBridge adapters -- run_on_main: marshal a call onto NVDA's wx main thread.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: a tiny shared edge helper (imports wx), on pyright's ignore list.
-# USED BY: the NVDA adapters that mutate NVDA (tones, the synth) from the bridge's
-#          server thread -- NVDA does that work on its main thread, so touching it
-#          off-thread races NVDA (the silent-mode mute bug was exactly this).
-#
-# Fire-and-forget by default (the caller does not need a result and must never
-# deadlock a main-thread caller); `block=True` waits for the result when the
-# caller needs it and is known to be off the main thread with the main thread free.
+# ROLE: shared edge helper that marshals a call onto NVDA's wx main thread.
+# USED BY: the NVDA adapters; touching NVDA off its main thread races NVDA.
+# Fire-and-forget by default, so a main-thread caller never deadlocks; block=True only off the main thread
+# with the main thread free.
 
 from __future__ import annotations
 
@@ -22,7 +17,6 @@ _MAIN_THREAD_TIMEOUT: float = 10.0
 
 
 def run_on_main[T](func: Callable[[], T], *, block: bool = False) -> T | None:
-	"""Run ``func`` on NVDA's main thread; return its result when ``block``."""
 	if wx.IsMainThread():
 		return func()
 	if not block:

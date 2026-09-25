@@ -1,21 +1,7 @@
 # nvdaMcpBridge -- the NVDA global plugin (the NVDA edge).
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# This file imports NVDA and is therefore in pyright's ``ignore`` list (see
-# pyproject.toml): it is the thin edge, kept deliberately small, with all real
-# logic living in the strict-checked ``domain/`` and the adapters. It is
-# validated by the live-NVDA checklist (spec 0007, 9c, 11.2), not by the type
-# checker.
-#
-# ROLE: the composition root's NVDA end. On load it reads persisted config,
-# builds the matching Listener (named pipe by default; spec 0010 / 0011) and
-# starts the bridge if auto-start is enabled.
-# On unload, or on the panic gesture, it stops the server -- which tears down
-# any active session and thereby restores the user's synth.
-#
-# The per-connection wiring itself lives in wiring.build_session; this file
-# only chooses the real adapters and owns the NVDA lifecycle (init / terminate
-# / scripts).
+# ROLE: the NVDA edge; loads the persisted config, builds the listener, starts the bridge, and stops it
+# on unload or the panic gesture.
 
 from __future__ import annotations
 
@@ -49,16 +35,7 @@ from .wiring import build_session
 
 
 def _addon_version() -> str:
-	"""This add-on's own version, as NVDA records it in the installed manifest.
-
-	Reported in `hello` so a live-NVDA run can tell which BUILD it is talking
-	to. The add-on is installed separately from the checkout under test, so
-	without this a stale install surfaces as an inexplicable capability or
-	behaviour mismatch instead of "you are running an old build".
-
-	Never raises: an unknown version is a worse diagnostic than none, but a
-	bridge that fails to start is worse than both.
-	"""
+	"""Never raises: a bridge that fails to start is worse than an unknown version."""
 	try:
 		import addonHandler
 
@@ -68,32 +45,15 @@ def _addon_version() -> str:
 
 
 def _bridge_logs_dir() -> str:
-	"""Where session transcripts and NVDA-log captures land: ``<configPath>/nvdaMcpBridge``.
-
-	One directory, two file-prefix families (``session-*.log``,
-	``nvda-log-*.log``) -- each stack's own pruning only ever touches its own.
-	The ``config/`` subdirectory (config.ini) lives here too (spec 0011).
-	"""
 	return os.path.join(globalVars.appArgs.configPath, "nvdaMcpBridge")
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
-	"""Entry point NVDA instantiates when the addon loads.
-
-	Builds and starts the bridge server on the persisted connection mode
-	(named pipe by default -- spec 0010 / 0011). One session at a time. The
-	synth is never swapped -- silent mode just suppresses NVDA's speech at the
-	speak() filter -- so ending a session (bye, panic gesture, or NVDA shutdown)
-	simply unregisters that filter and speech resumes at once.
-	"""
-
-	# The default Input Gestures category for this plugin's scripts.
 	scriptCategory = _("NVDA MCP Bridge")
 
 	def __init__(self) -> None:
 		super().__init__()
 
-		# Config lives under the same parent directory as the logs (spec 0011).
 		config_path = os.path.join(_bridge_logs_dir(), "config", "config.ini")
 		self._log = NvdaLog()
 		self._config = IniBridgeConfig(TextConfigFile(config_path), self._log)
@@ -111,16 +71,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._event_bus = SimpleEventBus()
 
 		def make_session(transport):
-			# Re-read on every connection rather than once at load, so a change in
-			# the control dialog takes effect on the NEXT session instead of at the
-			# next NVDA restart. It is three ini reads against a session that is
-			# about to do real work.
-			# Read ONCE and used twice, side by side. Whether a human is at this
-			# machine and whether the machine caps its silences are two facts, and
-			# spec 0035 is about them travelling as two: the cap policy derives
-			# from this setting today, and `attended` must not be reconstructed at
-			# the far end by inverting the derivation back. Both come off the same
-			# local, so nothing downstream can drift them apart.
+			# Re-read on every connection, so a dialog change takes effect on the next session.
+			# attended and silence_cap come from one read so they cannot drift apart.
 			unattended = self._config.get_unattended()
 			silence_cap = SilenceCapPolicy.from_settings(
 				unattended=unattended,
@@ -152,25 +104,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 				self._server.start()
 				log.info(f"nvdaMcpBridge: listening on {self._server.status.endpoint}")
 			except Exception:
-				# A bind failure (e.g. another NVDA already holds the pipe name) must
-				# not break addon load: log it and stay stopped. The control dialog
-				# (PR C) lets the user retry.
+				# A bind failure must not break add-on load.
 				log.error("nvdaMcpBridge: could not start the bridge server", exc_info=True)
 
-	# -- menu -----------------------------------------------------------------
-
 	def _register_tools_menu_item(self) -> None:
-		"""Add "NVDA MCP Bridge…" to NVDA's Tools menu.
-
-		Guarded so reloads don't double-add. On systems where the NVDA GUI is
-		not available (e.g. secure mode, no display) this is a no-op.
-		"""
 		if self._tools_menu_item is not None:
 			return  # already registered (reload)
 		try:
 			tools_menu = gui.mainFrame.sysTrayIcon.toolsMenu
 		except Exception:
-			# No GUI available; the addon still works, just without the dialog.
 			return
 		# Translators: Menu item in NVDA's Tools menu to open the NVDA MCP Bridge dialog.
 		self._tools_menu_item = tools_menu.Append(
@@ -182,7 +124,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		)
 
 	def _remove_tools_menu_item(self) -> None:
-		"""Remove the Tools menu item; called from terminate()."""
 		item = self._tools_menu_item
 		if item is None:
 			return
@@ -194,26 +135,15 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		self._tools_menu_item = None
 
 	def _show_bridge_dialog(self) -> None:
-		"""Open the bridge control dialog, injecting real dependencies."""
-		# The dialog is modal (consistent with NVDA's own Tools-menu dialogs like
-		# the Log Viewer).
 		dlg = BridgeDialog(gui.mainFrame, self._server, self._config, self._event_bus)
 		dlg.set_plugin(self)
 		dlg.ShowModal()
 		dlg.Destroy()
 
-	# -- server lifecycle ------------------------------------------------------
-
 	def start_server(self, mode: ConnectionMode) -> None:
-		"""Persist *mode* and start the server with the matching listener.
-
-		Called by BridgeDialog (PR C) when the user presses Start. Start is only
-		enabled when the server is STOPPED, so there is nothing to tear down.
-		"""
+		"""Called only while the server is stopped, so there is nothing to tear down."""
 		self._config.set_connection_mode(mode)
 		self._server.start(build_listener(mode))
-
-	# -- panic gesture ---------------------------------------------------------
 
 	@script(
 		# Translators: Input help message for the NVDA MCP bridge panic command.
@@ -221,30 +151,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 		gesture="kb:NVDA+control+shift+b",
 	)
 	def script_panic(self, gesture) -> None:
-		# stop() joins the server thread, whose teardown unregisters the speech
-		# filter -- so speech is already flowing again by the time this returns.
+		# stop() joins the server thread, so speech flows again before the confirmation is queued.
 		self._server.stop()
-		# Queue the confirmation after the session-end beep (also queued during
-		# teardown), so it is spoken through the now-unsuppressed synth.
 		# Translators: Announced after the panic gesture stops the bridge.
 		wx.CallAfter(ui.message, _("NVDA MCP bridge stopped"))
-
-	# -- acknowledgement gesture -----------------------------------------------
 
 	@script(
 		# Translators: Input help message for the NVDA MCP bridge acknowledgement command.
 		description=_(
 			"Acknowledge a prompt from the NVDA MCP bridge: tell the agent you are done and hand control back"
 		),
-		# The prompter speaks this same combination as the instruction, so it is
-		# named in one place only (adapters/nvda_user_prompter.py).
 		gesture=f"kb:{ACK_GESTURE}",
 	)
 	def script_acknowledge(self, gesture) -> None:
-		# Find the active session's outstanding prompt and answer it.
-		# This runs on NVDA's main thread (it is an NVDA gesture), so it
-		# can safely write to the UserPrompt entity while the session
-		# thread polls it.
+		# Runs on NVDA's main thread, while the session thread polls the UserPrompt entity.
 		session = self._server.current_session_context()
 		if session is None:
 			# Translators: Announced when the acknowledgement gesture is pressed
@@ -258,10 +178,6 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 			wx.CallAfter(ui.message, _("No prompt to acknowledge"))
 			return
 		prompt.answer()
-		# Confirm out loud. Silence would be indistinguishable from a keypress
-		# that never landed, and the agent's next poll is what actually resumes
-		# suppression -- up to its own timeout away -- so this message is the only
-		# feedback the tester gets at the moment they act.
 		# Translators: Announced when the acknowledgement gesture answers a prompt.
 		wx.CallAfter(ui.message, _("Acknowledged"))
 

@@ -1,15 +1,9 @@
 # nvdaMcpBridge tests -- FakeGestureResolver: the GestureResolver double.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
+# ROLE: test double for the GestureResolver port.
+# USED BY: the get_guidance handler tests and every SessionContext builder.
 #
-# ROLE: test double. MIRRORS domain/ports/gesture_resolver.py.
-# USED BY: the get_guidance handler tests, and every builder that assembles a
-#          SessionContext.
-#
-# The DEFAULT bindings here are deliberately NOT NVDA's real ones. A fake that
-# answered "nvda+numpad6" would let an assertion pass against a document that had
-# hard-coded the same string and never asked the reader at all -- which is the
-# exact bug this port was built to remove. These are obviously synthetic, so a
-# test that finds them in the document has proved the value travelled.
+# The default bindings are deliberately synthetic, so finding them in a document proves the value travelled.
 
 from __future__ import annotations
 
@@ -40,8 +34,7 @@ def _default_groups() -> dict[str, list[ResolvedCommand]]:
 				script="navigatorObject_next",
 				gestures=["fake+next"],
 			),
-			# One command with NOTHING bound, because that is a real state a
-			# machine can be in and the document has to render it.
+			# Nothing bound is a real state the document must render.
 			ResolvedCommand(
 				name="Toggle simple review mode",
 				script="toggleSimpleReviewMode",
@@ -62,13 +55,9 @@ def _default_groups() -> dict[str, list[ResolvedCommand]]:
 
 
 class FakeGestureResolver(GestureResolver):
-	"""Answers with scripted bindings and counts the asking."""
-
 	def __init__(self, groups: dict[str, list[ResolvedCommand]] | None = None) -> None:
 		self.groups = _default_groups() if groups is None else groups
-		#: How many times the document asked. The entity must ask ONCE per
-		#: document however many markers it holds, or two markers could straddle
-		#: a configuration change and print inconsistent halves of one page.
+		#: The entity must ask once per document, or two markers could straddle a configuration change.
 		self.calls = 0
 
 	def resolve(self) -> dict[str, list[ResolvedCommand]]:

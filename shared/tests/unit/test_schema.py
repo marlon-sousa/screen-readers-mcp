@@ -12,16 +12,12 @@ import pytest
 from screenreader_wire import protocol as p
 from screenreader_wire import schema as s
 
-#: The committed artifact, relative to this test file (repo/shared/tests/unit).
 _COMMITTED = Path(__file__).resolve().parents[3] / "specs" / "wire" / "v1" / "schema.json"
 
 
 def _defs(doc: dict[str, Any]) -> dict[str, Any]:
 	defs: dict[str, Any] = doc["$defs"]
 	return defs
-
-
-# --- top-level shape ---------------------------------------------------------
 
 
 def test_declares_the_2020_12_dialect_and_version() -> None:
@@ -36,7 +32,6 @@ def test_every_command_appears_with_params_and_result() -> None:
 	assert set(commands) == {c.value for c in p.Command}
 	for name, entry in commands.items():
 		assert "params" in entry and "result" in entry, name
-		# Result is always a concrete shape (a $ref); params is a $ref or null.
 		assert entry["result"].get("$ref"), name
 
 
@@ -50,12 +45,7 @@ def test_params_are_null_exactly_for_the_paramless_commands() -> None:
 		"getNextSpeechIndex",
 		"getFocusInfo",
 		"getState",
-		# getLogPosition deliberately takes no params: it marks the present and
-		# returns no records, so there is nothing to filter or anchor (spec 0021).
 		"getLogPosition",
-		# getGuidance deliberately takes no params either: the persona was fixed
-		# at hello, and a `persona` argument would let a session consult a stance
-		# it is not standing in (spec 0029 4.3).
 		"getGuidance",
 		"bye",
 	}
@@ -65,9 +55,6 @@ def test_envelope_references_request_and_response() -> None:
 	doc = s.build_wire_schema()
 	assert doc["envelope"]["request"] == {"$ref": "#/$defs/Request"}
 	assert doc["envelope"]["response"] == {"$ref": "#/$defs/Response"}
-
-
-# --- per-shape correctness ---------------------------------------------------
 
 
 def test_closed_enum_becomes_a_string_enum() -> None:
@@ -90,23 +77,13 @@ def test_optional_field_is_nullable_and_not_required() -> None:
 		"anyOf": [{"type": "integer"}, {"type": "null"}],
 		"default": None,
 	}
-	# afterIndex and timeout have defaults; only text is required.
 	assert wait["required"] == ["text"]
 
 
 def test_required_lists_only_fields_without_defaults() -> None:
-	# AckResult.ok has a default -> no required list at all.
 	ack = _defs(s.build_wire_schema())["AckResult"]
 	assert "required" not in ack
-	# ReaderInfo's two fields have no defaults -> both required.
 	assert _defs(s.build_wire_schema())["ReaderInfo"]["required"] == ["name", "version"]
-
-
-# --- defaults, which are the half of a shape `required` cannot state ---------
-#
-# Board 13.3. A binding author reading only this document has to reproduce
-# `graceMs == 100`, and until these tests existed the document did not say so
-# while protocol.md §7.4 claimed it did.
 
 
 def test_a_field_with_a_default_publishes_it() -> None:
@@ -121,8 +98,7 @@ def test_a_required_field_publishes_no_default() -> None:
 
 
 def test_a_none_default_is_published_as_null_rather_than_omitted() -> None:
-	# The distinction the sentinel exists for: `afterIndex` HAS a default and it
-	# is None, which is not the same as having none.
+	# afterIndex has a default and it is None, which is not the same as having none.
 	wait = _defs(s.build_wire_schema())["WaitForSpeechParams"]["properties"]
 	assert wait["afterIndex"]["default"] is None
 
@@ -148,16 +124,12 @@ def test_a_default_the_schema_cannot_render_raises_rather_than_vanishing() -> No
 
 
 def test_any_field_maps_to_the_empty_schema() -> None:
-	# EchoParams.payload is Any -> accept anything.
 	assert _defs(s.build_wire_schema())["EchoParams"]["properties"]["payload"] == {}
 
 
 def test_objects_allow_additional_properties_for_forward_compat() -> None:
-	# Mirrors from_dict ignoring extra keys: a newer peer's added field is fine.
+	# Mirrors from_dict ignoring extra keys.
 	assert _defs(s.build_wire_schema())["HelloResult"]["additionalProperties"] is True
-
-
-# --- determinism + the committed artifact ------------------------------------
 
 
 def test_generation_is_deterministic() -> None:
@@ -170,9 +142,7 @@ def test_defs_keys_are_sorted() -> None:
 
 
 def test_committed_schema_is_up_to_date() -> None:
-	# The drift gate, as a test: regenerate and compare to the committed file.
-	# read_text normalizes newlines on read, so this is EOL-agnostic; the CI
-	# `git diff` step is the byte-level authority.
+	# read_text normalizes newlines; the CI `git diff` step is the byte-level check.
 	generated = s.to_json(s.build_wire_schema())
 	assert _COMMITTED.read_text(encoding="utf-8") == generated, (
 		"specs/wire/v1/schema.json is stale; regenerate with "

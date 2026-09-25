@@ -1,34 +1,9 @@
 # Unit tests for what silent mode must NOT swallow along with the words.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
-# Found live on 2026-08-18 (board entry 11.13): say all read two chunks in a
-# silent session and stopped. The cause was ours. A speech sequence is not only
-# words -- NVDA clocks some of its own machinery on the BaseCallbackCommands
-# inside it, and say all is the clearest case: speech/sayAll.py inserts a
-# CallbackCommand at position 0 of every chunk, and that callback is what moves
-# the caret and asks for the next chunk. Emptying the sequence deleted it, and
-# speech.speak() then returns early on the empty sequence, so the speech manager
-# -- the thing that would have turned the callback into an index -- never saw it.
-# Say all sat waiting for a lineReached that could not arrive.
-#
-# So these tests guard three properties, and the second is not decoration:
-#
-#   1. callbacks still run, or a silent session cannot read a document at all;
-#   2. they run QUEUED, never inline -- lineReached calls nextLine calls speak,
-#      which lands straight back in the filter, so inline is unbounded recursion
-#      on NVDA's main thread. A test that only checked "the callback ran" passes
-#      against the version that crashes NVDA;
-#   3. beeps and wave files stay silent, because they are callbacks too and
-#      running those would break the one promise a silent session makes.
-#
-# Why not pass the callbacks through to the synth instead, and let NVDA's own
-# index machinery run them? Because that makes correctness depend on how the
-# tester's synth treats a text-free utterance, and the drivers disagree: espeak,
-# oneCore, RHVoice and ibmeci all report indexes from an audio callback, so no
-# audio can mean no index, and NVDA's own manager names oneCore as a synth that
-# skips indexes with no text between them. NVDA's "No speech" driver notifies
-# nobody at all. Running them here is the only mechanism independent of that
-# choice -- which is what makes it testable here, without a synth.
+# A speech sequence carries NVDA's own callbacks (say all's CallbackCommand moves the caret and asks
+# for the next chunk), so silent mode must still run them, queued and never inline: inline recurses
+# through speak() back into the filter on NVDA's main thread. Beeps and wave files stay silent.
 
 from __future__ import annotations
 
@@ -52,18 +27,14 @@ def clean_extension_points() -> Iterator[None]:
 	nvda_stubs.reset()
 
 
-#: What NVDA calls: a sequence in, the sequence it may speak out.
 SpeechFilter = Callable[[list[Any]], list[Any]]
 
 
 @pytest.fixture
 def filter_handler(clock: FakeClock) -> Iterator[SpeechFilter]:
-	"""A started silent source, handed back as the filter NVDA would call."""
 	source = NvdaSilentSpeechSource()
 	source.start(SpeechBuffer(clock, exact_finish=False), lambda: 0)
-	# NVDA holds filter handlers by WEAK reference, so the source has to outlive
-	# the fixture or the handler dies before the test runs; the generator's own
-	# frame is what keeps it alive.
+	# NVDA holds filter handlers by weak reference; the generator's frame keeps the source alive.
 	yield nvda_stubs.filter_speechSequence.handlers[0]
 	source.stop()
 
@@ -89,7 +60,6 @@ def test_the_callback_is_queued_rather_than_run_inline(filter_handler: SpeechFil
 
 
 def test_a_say_all_style_chain_advances_one_chunk_per_turn(filter_handler: SpeechFilter) -> None:
-	"""The shape that broke: each callback speaks the next chunk, as say all does."""
 	spoken: list[str] = []
 	remaining = ["second", "third"]
 
@@ -137,7 +107,7 @@ def test_a_failing_callback_does_not_escape_into_the_event_queue(filter_handler:
 		raise RuntimeError("a say-all callback went wrong")
 
 	filter_handler([nvda_stubs.StubCallbackCommand(explode)])
-	nvda_stubs.eventQueue.pump()  # must not raise; it runs on NVDA's main loop
+	nvda_stubs.eventQueue.pump()
 
 	assert any("callback failed" in message for message in nvda_stubs.log.messages), (
 		"the failure was swallowed without a trace in NVDA's own log"

@@ -1,10 +1,7 @@
 # nvdaMcpBridge domain -- ByeHandler: the client ends the session.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `bye`. Uses the SessionContext's one lifecycle
-# capability -- close(reason) -- to schedule teardown, then returns the ack. The
-# Session writes the ack Response before honouring the teardown at the next loop
-# check, so the client always sees its goodbye acknowledged.
+# ROLE: command handler for `bye`.
+# The Session writes the ack before it honours the teardown, so the client always sees it.
 
 from __future__ import annotations
 

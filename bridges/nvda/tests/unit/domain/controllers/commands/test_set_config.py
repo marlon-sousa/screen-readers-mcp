@@ -39,7 +39,5 @@ def test_first_write_records_prior(clock: FakeClock) -> None:
 	ctx = make_context(clock, adapters=adapters_from(factory))
 	SetConfigHandler().execute(ctx, request("setConfig", keyPath=["test"], value="first"))
 	SetConfigHandler().execute(ctx, request("setConfig", keyPath=["test"], value="second"))
-	# The prior value returned by the first write was "original";
-	# restore_all brings it back to original, not first.
 	factory.config_accessor.restore_all()
 	assert factory.config_accessor.get(["test"]) == "original"

@@ -1,11 +1,6 @@
 # nvdaMcpBridge domain -- GetSpeechHandler: speech captured since an index.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getSpeech`. Reads the indexed speech buffer from a
-# bookmark to now; the buffer's clamping means a stale index never raises. Each
-# utterance crosses the wire as its own entry, carrying the journal position it
-# was captured at (spec 0021) -- replacing the old newline-joined blob, which
-# had nowhere to put a per-utterance coordinate.
+# ROLE: command handler for `getSpeech`.
 
 from __future__ import annotations
 

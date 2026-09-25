@@ -1,10 +1,8 @@
 # nvdaMcpBridge adapters -- TextConfigFile: the ConfigFile leaf.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: LEAF adapter. IMPLEMENTS the ConfigFile seam with real open/read/write.
-#       No decisions -- no unit test file (the same rule as text_file_writer.py).
-# USED BY: adapters/ini_bridge_config.py, via the seam, never directly.
+# ROLE: leaf adapter implementing ConfigFile with real file IO.
 # BUILT BY: plugin.py.
+# USED BY: adapters/ini_bridge_config.py, through the ConfigFile seam.
 
 from __future__ import annotations
 
@@ -15,8 +13,6 @@ from .ports.config_file import ConfigFile
 
 
 class TextConfigFile(ConfigFile):
-	"""Real file backed by open/read/write. Parent directories created on write."""
-
 	def __init__(self, path: str | os.PathLike[str]) -> None:
 		self._path = Path(path)
 

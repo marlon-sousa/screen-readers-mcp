@@ -1,15 +1,5 @@
 # nvdaMcpBridge tests -- LoopbackTransport, a connected pair of Transport ends.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: adapters/ports/transport.py
-#
-# The last piece needed to run the REAL channel stack (JsonLinesChannel over a
-# Transport) end to end without a socket: two transports wired back to back over
-# thread-safe queues, so one end's sendall becomes the other end's recv. It
-# honours the Transport contract exactly -- recv raises TimeoutError when idle
-# (so the Session's poll loop keeps checking its deadlines) and returns b"" once
-# the peer has closed -- which is why the same session code runs over this and,
-# in session C, over a real socket.
 
 from __future__ import annotations
 
@@ -19,8 +9,6 @@ from nvdaMcpBridge.adapters.ports.transport import Transport
 
 
 class _Eof:
-	"""Sentinel put on the queue by close(), surfaced to the peer as EOF."""
-
 	__slots__ = ()
 
 
@@ -28,8 +16,6 @@ _EOF = _Eof()
 
 
 class LoopbackTransport(Transport):
-	"""One end of a back-to-back transport pair. Build pairs with :func:`loopback_pair`."""
-
 	def __init__(
 		self,
 		incoming: queue.Queue[bytes | _Eof],

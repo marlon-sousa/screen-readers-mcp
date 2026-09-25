@@ -1,33 +1,9 @@
 # nvdaMcpBridge domain -- LogJournal: the in-memory ring of NVDA log records.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: entity. A bounded ring of structured log records the journal handler feeds
-# and ``getLog`` reads. Pure: takes records as tuples, knows nothing about
-# ``logging``. Owns the caps, the window marks, the filters and the formatting.
-# USED BY: the NvdaLogCapture adapter (feeds records) and the GetLogHandler (reads
-# slices).
-# BUILT BY: NvdaLogCapture (one per process, cleared each session via reset()).
-#
-# Records are (level_no, level_name, module, message, timestamp, thread, thread_id,
-# created) tuples, ``created`` being epoch seconds alongside NVDA's own time-only
-# formatted timestamp -- lastSeconds needs something it can subtract (spec 0021).
-# The ring is bounded at 10 000 records; older ones age out, and a slice
-# that spans aged-out records reports ``truncated: true``. A 4 MB secondary cap is
-# tracked approximately via the cumulated length of each record's formatted line;
-# whichever cap fires first wins.
-#
-# Window marks are integer positions into the append stream. Because the ring
-# overwrites old records, a mark older than the oldest surviving record is
-# "expired" -- getLog reports truncated in that case, and the slice contains only
-# what survived.
-#
-# The rendered line reproduces NVDA's OWN log format (logHandler.Formatter):
-#
-#     LEVEL - module (time) - thread (thread_id):
-#     message
-#
-# so a slice pasted into an issue reads like nvda.log. Field projection drops
-# tokens out of that shape rather than switching to a different one.
+# ROLE: entity, a bounded ring of structured NVDA log records, with its window marks, filters and formatting.
+# USED BY: the NvdaLogCapture adapter, which feeds it, and the GetLogHandler, which reads slices.
+# BUILT BY: NvdaLogCapture, one per process, cleared each session via reset().
+# Positions count every append ever made, so a mark older than the oldest surviving record reports truncation.
 
 from __future__ import annotations
 
@@ -35,24 +11,16 @@ import logging
 from collections import deque
 from itertools import islice
 
-#: Maximum number of records held in the ring.
 MAX_RECORDS: int = 10_000
 
-#: Approximate maximum memory in bytes (the sum of formatted-line lengths).
 MAX_BYTES: int = 4 * 1024 * 1024
 
-#: The fields a slice renders by default, in order.
 DEFAULT_FIELDS: tuple[str, ...] = ("time", "level", "module", "message")
 
-#: Every field a slice may render. An unknown name is an error rather than a
-#: silent omission: a typo'd projection would otherwise return plausible-looking
-#: text with a column quietly missing.
+# An unknown field is an error: a typo would otherwise silently drop a column.
 FIELD_NAMES: frozenset[str] = frozenset({"time", "level", "module", "message", "thread", "thread_id"})
 
-#: Map wire log-level names to NVDA's own logger level numbers, for comparison.
-#: These are NVDA's numbers, not guesses: ``logHandler.Logger`` imports the
-#: standard levels and defines IO = 12 and DEBUGWARNING = 15 (source/logHandler.py).
-#: Note IO sits ABOVE DEBUG (10), not below it.
+# NVDA 2026.1's logHandler defines IO = 12 and DEBUGWARNING = 15, so IO sits above DEBUG.
 _LEVEL_ORDER: dict[str, int] = {
 	"debug": logging.DEBUG,  # 10
 	"io": 12,  # NVDA's custom IO level, between DEBUG (10) and DEBUGWARNING (15)
@@ -62,23 +30,12 @@ _LEVEL_ORDER: dict[str, int] = {
 	"error": logging.ERROR,  # 40
 }
 
-#: The levels that may be SET on NVDA's own logger, as opposed to merely filtered
-#: on. ``warning`` and ``error`` exist in the wire enum because they are the common
-#: case for ``minLevel``; setting NVDA's floor to either would silence the human's
-#: own nvda.log for the rest of the session, which is not ours to do. Mirrors the
-#: server's entities.ParseReaderLogLevel.
+# Setting NVDA's floor to warning or error would silence the user's own nvda.log.
 SETTABLE_LEVELS: frozenset[str] = frozenset({"debug", "io", "debugwarning", "info"})
 
 
 def wire_level_for(level_no: int) -> str:
-	"""The wire level name for one of NVDA's logger level numbers.
-
-	Used to report ``capturedAtLevel`` for a session that never asked for a level
-	and so is running at whatever floor the user's NVDA already had. Picks the
-	coarsest level whose threshold the floor still admits; a floor below DEBUG
-	(NOTSET, say) emits everything, so it reports the most verbose level rather
-	than inventing one below it.
-	"""
+	"""A floor below DEBUG reports the most verbose level rather than inventing one below it."""
 	best = "debug"
 	best_no = -1
 	for name, threshold in _LEVEL_ORDER.items():
@@ -88,26 +45,12 @@ def wire_level_for(level_no: int) -> str:
 
 
 class LogJournal:
-	"""Bounded in-memory ring of structured NVDA log records."""
-
 	def __init__(self) -> None:
-		# The ring: each entry is (level_no, level_name, module, message, timestamp,
-		# thread, thread_id, created). ``created`` is epoch seconds (Python
-		# logging's own LogRecord.created), kept alongside the formatted,
-		# time-only ``timestamp`` because lastSeconds needs something it can
-		# subtract (spec 0021).
+		# ``created`` is epoch seconds for lastSeconds; ``timestamp`` is NVDA's time-only text.
 		self._records: deque[tuple[int, str, str, str, str, str, int, float]] = deque()
-		# Monotonic append counter; every append increments it, even when the ring
-		# drops old records. This is the value mark() returns, and the coordinate
-		# space slice() uses.
 		self._next_position: int = 0
-		# The position of the oldest record still in the ring. When a mark is below
-		# this, the window has aged out.
 		self._oldest_position: int = 0
-		# Approximate memory tracking: sum of formatted-line lengths.
 		self._byte_size: int = 0
-
-	# -- feeding ---------------------------------------------------------------
 
 	def append(
 		self,
@@ -120,7 +63,6 @@ class LogJournal:
 		thread_id: int,
 		created: float = 0.0,
 	) -> None:
-		"""Add one record to the ring, evicting the oldest if at capacity."""
 		record = (level_no, level_name, module, message, timestamp, thread, thread_id, created)
 		self._records.append(record)
 		self._next_position += 1
@@ -130,13 +72,8 @@ class LogJournal:
 			self._oldest_position += 1
 			self._byte_size -= self._estimate_size(old)
 
-	# -- window marks ----------------------------------------------------------
-
 	def mark(self) -> int:
-		"""Return the current append position (for use as a window bound)."""
 		return self._next_position
-
-	# -- slicing ---------------------------------------------------------------
 
 	def slice(
 		self,
@@ -149,20 +86,12 @@ class LogJournal:
 		fields: list[str] | None = None,
 		max_entries: int = 200,
 	) -> tuple[str, int, int, bool]:
-		"""Return formatted text for records in ``[start, end)`` after applying filters.
-
-		Returns ``(text, entries, matched, truncated)``. Raises ``ValueError`` for an
-		unknown ``min_level`` or an unknown field name.
-		"""
+		"""Return ``(text, entries, matched, truncated)``; raises ``ValueError`` on an unknown name."""
 		min_level_no = self._level_number(min_level)
 		use_fields = self._validated_fields(fields)
 
-		# How many positions have aged out of the ring?  If the caller's start is
-		# before our oldest, the window is partially truncated.
 		truncated = self._oldest_position > start
 
-		# The surviving slice within the ring. islice walks the deque rather than
-		# copying all of it, which matters at the 10 000-record cap.
 		first = max(start, self._oldest_position)
 		offset = first - self._oldest_position
 		count = max(0, end - first)
@@ -204,11 +133,7 @@ class LogJournal:
 		fields: list[str] | None = None,
 		max_entries: int = 200,
 	) -> tuple[str, int, int, bool]:
-		"""``slice(position, mark())`` -- everything from *position* to now.
-
-		The ``sincePosition`` anchor (spec 0021): the caller holds the cursor, so
-		reading never consumes -- re-issuing the same *position* is idempotent.
-		"""
+		"""Reading never consumes, so re-issuing the same *position* is idempotent."""
 		return self.slice(
 			position,
 			self._next_position,
@@ -230,14 +155,7 @@ class LogJournal:
 		fields: list[str] | None = None,
 		max_entries: int = 200,
 	) -> tuple[str, int, int, bool]:
-		"""Everything recorded in the last *seconds*, relative to *now* (epoch).
-
-		The ``lastSeconds`` anchor (spec 0021): "it just happened" needs a
-		relative window, not a position the caller never took. Finds the first
-		surviving record at or after the cutoff and slices from there to now;
-		no surviving record after the cutoff slices an empty, valid range at the
-		ring's current position rather than raising.
-		"""
+		"""With no surviving record after the cutoff, slices an empty range at the current position."""
 		cutoff = now - seconds
 		start = self._next_position
 		for offset, rec in enumerate(self._records):
@@ -261,14 +179,7 @@ class LogJournal:
 		min_level: str | None = None,
 		contains: list[str] | None = None,
 	) -> tuple[int, str] | None:
-		"""The first record at/after *start* that matches, formatted; else ``None``.
-
-		Backs ``waitForLog``'s poll loop: unlike :meth:`slice`, which aggregates a
-		whole range, this returns exactly the one record that satisfied the
-		wait, at :data:`DEFAULT_FIELDS`. The returned position is one past the
-		match (mark()'s own convention: callable straight back in as the next
-		``sincePosition`` to continue reading after it).
-		"""
+		"""The returned position is one past the match, usable as the next ``sincePosition``."""
 		min_level_no = self._level_number(min_level)
 		contains_lower = [c.lower() for c in contains] if contains else None
 
@@ -284,10 +195,7 @@ class LogJournal:
 			return order + 1, self._format(rec, DEFAULT_FIELDS)
 		return None
 
-	# -- helpers ---------------------------------------------------------------
-
 	def reset(self) -> None:
-		"""Empty the ring (called when a session ends)."""
 		self._records.clear()
 		self._next_position = 0
 		self._oldest_position = 0
@@ -295,7 +203,6 @@ class LogJournal:
 
 	@staticmethod
 	def _level_number(min_level: str | None) -> int | None:
-		"""The threshold for *min_level*, or None when no level was asked for."""
 		if min_level is None:
 			return None
 		try:
@@ -306,7 +213,6 @@ class LogJournal:
 
 	@staticmethod
 	def _validated_fields(fields: list[str] | None) -> tuple[str, ...]:
-		"""The fields to render, defaulted and checked."""
 		if not fields:
 			return DEFAULT_FIELDS
 		unknown = [f for f in fields if f not in FIELD_NAMES]
@@ -320,13 +226,7 @@ class LogJournal:
 		rec: tuple[int, str, str, str, str, str, int, float],
 		fields: tuple[str, ...],
 	) -> str:
-		"""Render one record, in NVDA's own log shape, with the selected fields.
-
-		The tokens follow logHandler.Formatter's layout -- ``time`` rides in
-		parentheses after ``module``, ``thread_id`` after ``thread``, and
-		``message`` starts its own line -- so the full field set reproduces an
-		nvda.log line exactly and a projection is that line with tokens removed.
-		"""
+		"""With every field selected, this reproduces an nvda.log line exactly."""
 		_level_no, level_name, module, message, timestamp, thread, thread_id, _created = rec
 		selected = frozenset(fields)
 		head: list[str] = []
@@ -353,5 +253,4 @@ class LogJournal:
 	def _estimate_size(
 		rec: tuple[int, str, str, str, str, str, int, float],
 	) -> int:
-		"""Rough byte estimate: level name + module + message + timestamp + overhead."""
 		return len(rec[1]) + len(rec[2]) + len(rec[3]) + len(rec[4]) + len(rec[5]) + 100

@@ -31,14 +31,12 @@ def test_wait_returns_true_when_already_answered(clock: FakeClock) -> None:
 
 def test_poll_miss_returns_false_window_still_open(clock: FakeClock) -> None:
 	prompt = UserPrompt("do the thing", clock)
-	# The clock sleeps during wait; advance past the poll timeout.
 	clock.sleeps.clear()
 	assert prompt.wait(timeout=0.0) is False
 
 
 def test_wait_returns_true_after_answer(clock: FakeClock) -> None:
 	prompt = UserPrompt("do the thing", clock)
-	# Inject the answer as a side effect of the clock's sleep.
 	original_sleep = clock.sleep
 
 	def sleep_with_answer(seconds: float) -> None:
@@ -52,7 +50,6 @@ def test_wait_returns_true_after_answer(clock: FakeClock) -> None:
 
 def test_expired_prompt_raises_on_wait(clock: FakeClock) -> None:
 	prompt = UserPrompt("do the thing", clock)
-	# Advance the clock past the 300 s window.
 	clock.advance(301.0)
 	with pytest.raises(PromptExpired, match="deadline"):
 		prompt.wait(timeout=1.0)
@@ -63,7 +60,6 @@ def test_expired_prompt_is_marked_cancelled(clock: FakeClock) -> None:
 	clock.advance(301.0)
 	with pytest.raises(PromptExpired):
 		prompt.wait(timeout=1.0)
-	# Answering an expired prompt is a no-op.
 	prompt.answer()
 	assert not prompt.answered
 
@@ -84,6 +80,6 @@ def test_each_prompt_has_a_unique_ticket(clock: FakeClock) -> None:
 def test_cancel_is_idempotent(clock: FakeClock) -> None:
 	prompt = UserPrompt("do the thing", clock)
 	prompt.cancel()
-	prompt.cancel()  # does not raise
+	prompt.cancel()
 	with pytest.raises(PromptExpired):
 		prompt.wait(timeout=0.0)

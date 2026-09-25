@@ -1,25 +1,9 @@
 # nvdaMcpBridge adapters -- NamedPipeListener: the Listener leaf over a Windows
 # named pipe.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: LEAF adapter. IMPLEMENTS the Listener seam (adapters/ports/listener.py)
-#       via ctypes named-pipe calls, and nothing else.
-# USED BY: adapters/bridge_server.py, via the seam, never directly. Not yet
-#          built by plugin.py -- entry 9.1b (the control dialog) picks between
-#          this and TcpListener; spec 0010 only proves the seam works.
-# BUILT BY: tests/integration/test_named_pipe_session_roundtrip.py today; the
-#           9.1b composition root once the GUI/config lands.
-#
-# Local-machine-only by construction (spec 0010, security posture):
-# PIPE_REJECT_REMOTE_CLIENTS on every instance, plus an owner-only DACL built
-# once in open() and reused for every instance -- the pipe analogue of
-# TcpListener binding 127.0.0.1 only.
-#
-# Unlike the TCP leaf, this one is not decision-free -- overlapped I/O needs a
-# real state machine -- so it earns its correctness from
-# test_named_pipe_session_roundtrip.py (a real pipe, no NVDA), the same tier of
-# proof 9a's socket scenario gave TcpListener, rather than from being "too
-# simple to get wrong".
+# ROLE: leaf adapter implementing Listener over named pipes: remote clients rejected, owner-only DACL.
+# BUILT BY: adapters/build_listener.py.
+# USED BY: adapters/bridge_server.py, through the Listener seam.
 
 from __future__ import annotations
 
@@ -51,21 +35,12 @@ from .named_pipe_transport import DEFAULT_POLL_TIMEOUT as _DEFAULT_RECV_TIMEOUT
 from .ports.listener import Listener, ListenerClosed
 from .ports.transport import Transport
 
-#: Poll window for accept: how long it blocks before reporting TimeoutError, so
-#: the server thread can notice a stop request -- same meaning as
-#: tcp_listener.DEFAULT_ACCEPT_TIMEOUT.
+#: How long accept blocks before TimeoutError, so the server thread can notice a stop request.
 DEFAULT_ACCEPT_TIMEOUT: float = 0.5
 
 
 class _PendingInstance:
-	"""One armed-but-not-yet-connected pipe instance, plus the OVERLAPPED/event
-	pair its outstanding ConnectNamedPipe call is writing into.
-
-	A plain holder, not a dataclass -- it exists solely to keep the OVERLAPPED
-	struct and event alive for the lifetime of the outstanding async op (letting
-	either get garbage-collected while Windows still holds a pointer to the
-	OVERLAPPED would be a real memory-safety bug, not a Python exception).
-	"""
+	"""Keeps the OVERLAPPED struct and its event alive while Windows still holds a pointer to them."""
 
 	def __init__(self, handle: int, event: int, overlapped: OVERLAPPED) -> None:
 		self.handle = handle
@@ -74,8 +49,6 @@ class _PendingInstance:
 
 
 class NamedPipeListener(Listener):
-	"""A local-machine-only named-pipe listener yielding one connection at a time."""
-
 	def __init__(
 		self,
 		pipe_name: str,
@@ -110,8 +83,7 @@ class NamedPipeListener(Listener):
 		if wait == WAIT_TIMEOUT:
 			raise TimeoutError
 		if self._closed:
-			# close() ran concurrently and already cleaned up `pending` -- do
-			# not touch its handles again.
+			# close() ran concurrently and already closed pending's handles.
 			raise ListenerClosed
 		if wait != WAIT_OBJECT_0:
 			raise ctypes.WinError(ctypes.get_last_error())
@@ -130,9 +102,7 @@ class NamedPipeListener(Listener):
 			raise ctypes.WinError(err)
 
 		transport = NamedPipeTransport(pending.handle, poll_timeout=self._recv_timeout)
-		# Arm the next instance before returning, so one client may queue while
-		# this connection's session runs -- the pipe analogue of TCP's
-		# listen(1) backlog.
+		# Arm the next instance before returning, so one client may queue while this session runs.
 		self._pending = self._create_pending_instance()
 		return transport
 
@@ -152,8 +122,6 @@ class NamedPipeListener(Listener):
 			free_security_descriptor(self._security_attributes)
 			self._security_attributes = None
 
-	# -- internals ------------------------------------------------------------
-
 	def _create_pending_instance(self) -> _PendingInstance:
 		assert self._security_attributes is not None, "open() must run before accept()"
 		handle = KERNEL32.CreateNamedPipeW(
@@ -163,7 +131,7 @@ class NamedPipeListener(Listener):
 			PIPE_UNLIMITED_INSTANCES,
 			BUFFER_SIZE,
 			BUFFER_SIZE,
-			0,  # default timeout
+			0,
 			ctypes.byref(self._security_attributes),
 		)
 		if handle == INVALID_HANDLE_VALUE:
@@ -177,9 +145,7 @@ class NamedPipeListener(Listener):
 		if not ok:
 			err = ctypes.get_last_error()
 			if err == ERROR_PIPE_CONNECTED:
-				# A client already dialled in between CreateNamedPipeW and
-				# ConnectNamedPipe -- signal the event ourselves so the accept
-				# poll sees it as already-connected.
+				# A client connected before ConnectNamedPipe; signal the event so accept sees it.
 				KERNEL32.SetEvent(event)
 			elif err != ERROR_IO_PENDING:
 				KERNEL32.CloseHandle(handle)

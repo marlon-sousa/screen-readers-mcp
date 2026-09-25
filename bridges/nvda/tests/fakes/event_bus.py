@@ -1,9 +1,6 @@
 # nvdaMcpBridge test doubles -- FakeEventBus: the EventBus port in memory.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: fake (subclasses EventBus). Records emitted events and lets tests
-#       inject events to simulate external triggers. One handler list per
-#       event type.
+# ROLE: fake; an in-memory EventBus that records every emit.
 
 from __future__ import annotations
 
@@ -14,8 +11,6 @@ from nvdaMcpBridge.domain.ports.event_bus import EventBus, EventHandler, Subscri
 
 
 class FakeEventBus(EventBus):
-	"""In-memory event bus for tests. Records every emit in ``events``."""
-
 	def __init__(self) -> None:
 		self._next_token = 0
 		self._handlers: dict[BridgeEventType, list[EventHandler]] = defaultdict(list)
@@ -28,7 +23,7 @@ class FakeEventBus(EventBus):
 		return token
 
 	def unsubscribe(self, token: SubscriptionToken) -> None:
-		# Token-based unsubscribe is not needed for current tests; no-op.
+		# No-op: no test needs unsubscribe.
 		pass
 
 	def emit(self, event: BridgeEvent) -> None:

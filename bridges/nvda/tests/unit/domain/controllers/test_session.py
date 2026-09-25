@@ -1,16 +1,5 @@
-# Unit tests for domain/controllers/session.py -- the LIFECYCLE + dispatcher.
+# Unit tests for domain/controllers/session.py, the lifecycle and dispatcher.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# Since dispatch moved into command handlers, this module tests only what the
-# Session itself owns: the handshake, the two watchdogs, teardown's
-# restore-on-every-path invariant, and the dispatch MECHANICS (unknown command,
-# a handler raising, the pre-hello gate, the resets_inactivity policy). The
-# mechanics tests use FakeCommandHandler registries so they do not depend on what
-# any real command does; the lifecycle tests use the real registry (with a fake
-# AdapterFactory) because they exercise the real hello bootstrap and teardown.
-#
-# Per-command behaviour lives in tests/unit/domain/controllers/commands/. The
-# teardown reason is asserted through the transcript's SESSION CLOSE event.
 
 from __future__ import annotations
 
@@ -48,8 +37,6 @@ from nvdaMcpBridge.domain.entities.silence_cap import ATTENDED_DEFAULT, SilenceC
 from nvdaMcpBridge.domain.entities.user_prompt import PromptExpired, UserPrompt
 from nvdaMcpBridge.domain.ports.announcer import SilenceNotice
 
-# -- message builders --------------------------------------------------------
-
 
 def hello(
 	mode: str = "silent",
@@ -66,9 +53,6 @@ def hello(
 
 def command(cmd: str, id: int, **params: Any) -> dict[str, Any]:
 	return {"id": id, "cmd": cmd, "params": params}
-
-
-# -- builder helper ----------------------------------------------------------
 
 
 @dataclass
@@ -163,10 +147,7 @@ def _error(response: dict[str, Any]) -> str:
 
 
 def _fake_registry(**handlers: CommandHandler) -> dict[str, CommandHandler]:
-	"""A registry with a stand-in hello (so tests can reach ESTABLISHED) plus
-	whatever fake handlers a mechanics test wants."""
-	# marks_log=False mirrors the real HelloHandler: hello STARTS the journal, so
-	# it has nothing to bracket and never becomes a getLog anchor.
+	"""A registry with a stand-in hello plus whatever fake handlers a mechanics test wants."""
 	registry: dict[str, CommandHandler] = {
 		p.Command.HELLO: FakeCommandHandler(available_before_hello=True, marks_log=False)
 	}
@@ -174,28 +155,19 @@ def _fake_registry(**handlers: CommandHandler) -> dict[str, CommandHandler]:
 	return registry
 
 
-# -- handshake (real hello through the dispatcher) ---------------------------
-
-
 def test_silent_hello_establishes_and_reports() -> None:
 	run = run_session([hello("silent")])
 	assert run.factory.built_mode is p.CaptureMode.SILENT
-	assert run.signals.started == 1  # ascending cue on establish
+	assert run.signals.started == 1
 	result = _result(run.responses()[0])
 	assert result["mode"] == "silent"
-	assert result["synth"] == "espeak"  # the real synth, read via the announcer
+	assert result["synth"] == "espeak"
 	assert result["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert result["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 	assert result["logPath"] == run.transcript.path
 
 
 def test_the_start_cue_is_given_the_declared_persona() -> None:
-	"""Spec 0029: the tones say control was taken, the words say as what.
-
-	Asserted here rather than in the hello handler's tests because the cue is the
-	SESSION's, fired after the handler returns -- so this is the only tier where
-	"hello recorded it" and "the human was told" are proven to be the same value.
-	"""
 	run = run_session([hello("silent", persona="validator")])
 	assert run.signals.started == 1
 	assert run.signals.personas == ["validator"]
@@ -207,7 +179,6 @@ def test_the_start_cue_says_nothing_when_no_persona_was_declared() -> None:
 
 
 def test_a_failing_start_cue_leaves_the_session_established() -> None:
-	"""A courtesy utterance is not worth a session (the _guard around the cue)."""
 
 	class ExplodingSignals(FakeSessionSignals):
 		def session_started(self, persona: str) -> None:
@@ -218,7 +189,6 @@ def test_a_failing_start_cue_leaves_the_session_established() -> None:
 	run = run_session([hello("silent", persona="user"), command("ping", id=2)], signals=signals)
 
 	assert signals.personas == ["user"]
-	# The ping was answered, so the session survived the cue that raised.
 	assert _result(run.responses()[1]) == {"ok": True, "suppressing": True}
 
 
@@ -262,22 +232,14 @@ def test_silence_before_hello_times_out() -> None:
 	assert run.closed_with(TeardownReason.HANDSHAKE_FAILED)
 
 
-# -- watchdogs ---------------------------------------------------------------
-
-
 def test_heartbeat_fires_when_no_message_arrives() -> None:
 	run = run_session([hello()], on_empty="timeout", timeout_advance=5.0, heartbeat_timeout=30.0)
 	assert run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
 
 
 def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
-	# Regression (spec 0016 heartbeat fix): a handler that blocks past the
-	# heartbeat window (e.g. waitForSpeech with a caller-supplied timeout of
-	# 40 s) must NOT kill the session the instant it returns. The peer's
-	# silence while the handler ran was our doing, not evidence it died.
-	# The fix: _touch_heartbeat() now runs AFTER _dispatch() too.
-	# In this test the "long-running handler" advances the clock by 35 s,
-	# well past the 30 s heartbeat window.
+	# A handler blocking past the heartbeat window is our silence, not the peer's, so the heartbeat
+	# is refreshed after dispatch too.
 	clock = FakeClock()
 
 	def long_running(ctx: object, request: object) -> p.AckResult:
@@ -288,28 +250,18 @@ def test_handler_blocking_past_heartbeat_window_does_not_end_session() -> None:
 	handler.execute = long_running  # type: ignore[method-assign]
 	registry = _fake_registry(ping=handler)
 
-	# Start the session with a 30 s heartbeat; the handler blocks for 35 s.
-	# Before the fix this would tear down with HEARTBEAT_TIMEOUT at the
-	# first _check_deadline() after dispatch. With the fix, the
-	# post-dispatch heartbeat refresh saves it.
 	run = run_session(
 		[hello(), command("ping", 2), command("ping", 3)],
 		registry=registry,
 		clock=clock,
 		heartbeat_timeout=30.0,
 	)
-	# The session survived the long handler AND a follow-up command.
 	assert not run.closed_with(TeardownReason.HEARTBEAT_TIMEOUT)
 	assert _result(run.responses()[1]) == {"ok": True}
 	assert _result(run.responses()[2]) == {"ok": True}
 
 
 def test_a_long_wait_for_log_does_not_trip_the_watchdogs() -> None:
-	# Spec 0021's item 11, through the REAL handler: `waitForLog { timeout: 60 }`
-	# is a normal thing for an agent to ask while it provokes an error by hand, and
-	# it blocks the session thread for twice the heartbeat window. The peer's
-	# silence during it is our doing, not evidence it died -- the post-dispatch
-	# heartbeat refresh (spec 0016) is what keeps the session alive.
 	clock = FakeClock()
 	registry = _fake_registry(
 		waitForLog=WaitForLogHandler(),
@@ -330,8 +282,6 @@ def test_a_long_wait_for_log_does_not_trip_the_watchdogs() -> None:
 
 
 def test_pings_hold_the_heartbeat_but_not_inactivity() -> None:
-	# A ping every 10s keeps the 30s heartbeat alive, but pings do not reset the
-	# 120s inactivity clock, so inactivity is what eventually fires.
 	events: list[Any] = [hello()]
 	for i in range(12):
 		events.append(command("ping", 100 + i))
@@ -346,10 +296,7 @@ def test_pings_hold_the_heartbeat_but_not_inactivity() -> None:
 	assert run.closed_with(TeardownReason.INACTIVITY_TIMEOUT)
 
 
-# -- teardown: stop capture on every path (speech flows again) ---------------
-# There is no synth to restore now: stopping the speech source unregisters the
-# suppression filter, so NVDA speaks again. Each step is guarded, so a raise in
-# one never skips the channel close or the end cue.
+# Each teardown step is guarded, so a raise in one never skips the channel close or the end cue.
 
 
 def test_teardown_stops_capture_even_when_the_transcript_raises_on_close() -> None:
@@ -363,8 +310,6 @@ def test_teardown_finishes_even_when_a_source_stop_raises() -> None:
 	factory = FakeAdapterFactory()
 	factory.speech_source.fail_stop = True
 	run = run_session([hello("silent")], factory=factory)
-	# The speech source stop raised, but the guard let braille stop, the end cue
-	# fire, and the channel close still happen.
 	assert factory.braille_source.stopped == 1
 	assert run.signals.ended == 1
 	assert run.channel.closed is True
@@ -381,21 +326,14 @@ def test_teardown_is_idempotent_when_called_twice() -> None:
 def test_teardown_stops_log_capture_even_when_it_raises_on_stop() -> None:
 	log_capture = FakeLogCapture(fail_on={"stop"})
 	run = run_session([hello("silent")], log_capture=log_capture)
-	# The stop() raise is guarded, so the rest of teardown still completes.
 	assert run.factory.speech_source.stopped == 1
 	assert run.signals.ended == 1
 	assert run.channel.closed is True
 
 
 def test_teardown_with_an_open_window_leaves_the_tester_audible() -> None:
-	# The invariant the whole askUser design is arranged around: a session that
-	# dies with an interaction window open must leave the tester HEARING.
-	#
-	# So teardown must not call resume() on the way out. resume() re-registers the
-	# suppression filter -- it makes the tester silent -- and stop() is guarded, so
-	# a resume() followed by a raising stop() would strand the tester mute. A window
-	# that was open already left the filter unregistered, which is the state
-	# teardown wants; stop() then makes it permanent.
+	# Teardown must not call resume(): it re-registers the suppression filter, and a raising stop()
+	# after it would strand the tester mute.
 	prompter = FakeUserPrompter()
 	run = run_session(
 		[hello("silent"), command("askUser", 2, prompt="plug in the display")],
@@ -406,20 +344,12 @@ def test_teardown_with_an_open_window_leaves_the_tester_audible() -> None:
 	assert run.factory.speech_source.suspended == 1, "askUser did not suspend suppression"
 	assert run.factory.speech_source.resumed == 0, "teardown re-suppressed a dying session"
 	assert run.factory.speech_source.stopped == 1
-	# The prompter is told to drop whatever it put in front of the human, so
-	# stage 2's dialog cannot outlive the session that opened it.
 	assert prompter.cancelled == [ticket]
 
 
 def test_log_capture_stop_runs_even_when_hello_never_ran() -> None:
-	# A pre-hello handshake failure never dispatches hello, so start() never
-	# ran -- teardown's stop() call is unconditional regardless (the real
-	# adapter's contract is that stop() is then a no-op; see spec 0009).
 	run = run_session([command("ping", 1)])
 	assert run.log_capture.events == [("stop",)]
-
-
-# -- dispatch mechanics (fake handlers) --------------------------------------
 
 
 def test_unknown_command_errors_without_killing_the_session() -> None:
@@ -472,15 +402,8 @@ def test_unreadable_message_mid_session_is_noted_and_survives() -> None:
 	assert _result(run.responses()[1]) == {"ok": True}
 
 
-# -- command log spans (specs 0020, 0021) -------------------------------------
-#
-# The Session is the only place that knows when a command was dispatched, so it is
-# the only place that can mark one. Under spec 0021 it marks only the START: a
-# span runs to the NEXT marking command's start, or to the journal's current
-# position for the open one, so the timeline is fully partitioned and every record
-# belongs to exactly one command -- the one most recently issued when it was
-# logged. _windows reads the raw marks; _spans reads them the way getLog does,
-# with the ends computed.
+# A span runs from its command's dispatch to the next marking command's start, or to the journal's
+# current position for the open one.
 
 
 def _windows(run: Run) -> list[tuple[int, int, p.LogLevel]]:
@@ -488,14 +411,7 @@ def _windows(run: Run) -> list[tuple[int, int, p.LogLevel]]:
 
 
 class _SpanReader(FakeCommandHandler):
-	"""A non-marking handler that snapshots the spans the way getLog sees them.
-
-	Spans have to be read from INSIDE the session: teardown stops log capture,
-	which resets the journal, so an open span read afterwards would end at
-	position 0. Reading them through a marks_log=False command is also exactly
-	how getLog does it, which makes "a read does not close the span it reads"
-	part of what these tests exercise rather than something asserted separately.
-	"""
+	"""A non-marking handler that snapshots spans from inside the session; teardown resets the journal."""
 
 	def __init__(self) -> None:
 		super().__init__(marks_log=False, on_execute=self._snapshot)
@@ -505,8 +421,6 @@ class _SpanReader(FakeCommandHandler):
 		self.spans = ctx.command_windows_for(-1, MAX_COMMAND_WINDOWS)
 
 
-#: The request id the span-reading command is always sent with, well past any
-#: real one in these scripts so it never collides with a command under test.
 READ_SPANS = 99
 
 
@@ -535,14 +449,10 @@ def test_a_command_gets_a_span_holding_what_it_logged() -> None:
 	assert len(reader.spans) == 1
 	command_id, start, end, _level = reader.spans[0]
 	assert command_id == 2
-	assert end - start == 1  # exactly the one record logged since it was dispatched
+	assert end - start == 1
 
 
 def test_spans_are_contiguous_with_no_gaps() -> None:
-	# The core claim of the feature: "the log for command 2" is never contaminated
-	# by command 3, even when NVDA logs continuously through both -- and, under
-	# 0021, nothing falls BETWEEN them either. One span's end IS the next one's
-	# start, so the timeline is partitioned rather than sampled.
 	reader = _SpanReader()
 	registry = _fake_registry(
 		first=FakeCommandHandler(on_execute=_feeder("a", "b")),
@@ -563,12 +473,7 @@ def test_spans_are_contiguous_with_no_gaps() -> None:
 
 
 def test_a_span_extends_to_the_next_marking_command() -> None:
-	# What the command CAUSED arrives after its handler returned -- live, NVDA's
-	# `speech.speech.speak` landed a millisecond past the old end mark and was lost
-	# in the gap. Here a non-marking command (getLog's policy) runs in between and
-	# logs; because it opens no span of its own, its records are attributed to the
-	# command that was last dispatched. That is also the proof that a READ does not
-	# close the span it is reading.
+	# A non-marking command's records belong to the command last dispatched.
 	reader = _SpanReader()
 	registry = _fake_registry(
 		work=FakeCommandHandler(on_execute=_feeder("inside the command")),
@@ -595,11 +500,6 @@ def test_a_span_extends_to_the_next_marking_command() -> None:
 
 
 def test_a_failed_command_still_gets_its_span() -> None:
-	# "This command just failed, show me what NVDA logged while it ran" is the case
-	# spec 0020 exists for, so the failure path must still leave the span
-	# addressable by request id -- an error reply is not a reason to lose it. Under
-	# 0021 this falls out for free: the mark is taken BEFORE dispatch, so there is
-	# nothing left for the failure path to skip.
 	reader = _SpanReader()
 	registry = _fake_registry(
 		boom=FakeCommandHandler(on_execute=_feeder("the interesting line"), error=RuntimeError("kaboom")),
@@ -627,8 +527,6 @@ def test_a_command_error_also_gets_its_span() -> None:
 
 
 def test_a_handler_that_does_not_mark_gets_no_span() -> None:
-	# getLog sets marks_log False; otherwise the default anchor would always be the
-	# getLog that just ran, whose window is empty by construction.
 	capture = FakeLogCapture()
 	registry = _fake_registry(
 		peek=FakeCommandHandler(marks_log=False),
@@ -644,7 +542,6 @@ def test_a_handler_that_does_not_mark_gets_no_span() -> None:
 
 
 def test_hello_does_not_mark_its_own_span() -> None:
-	# hello STARTS the journal, so there is nothing to bracket before it runs.
 	run = run_session([hello()])
 	assert _windows(run) == []
 
@@ -665,20 +562,11 @@ def test_the_window_records_the_level_in_force_when_it_was_taken() -> None:
 		log_capture=capture,
 	)
 
-	# The fake hello in _fake_registry does not start capture, so the floor is the
-	# stand-in NVDA's own -- what matters is that SOMETHING truthful is recorded
-	# per window rather than a default invented at read time.
 	assert _windows(run)[0][2] is capture.current_level
 
 
 def _logs_speaks_and_logs(factory: FakeAdapterFactory, spoken: str, brailled: str) -> Any:
-	"""An on_execute that logs, then captures speech and braille, then logs again.
-
-	The realistic ordering: NVDA writes records around whatever it says, so the
-	utterance's coordinate has to land BETWEEN two journal positions inside the
-	command's own span -- not at either edge, where a stale or defaulted value
-	would coincidentally look right.
-	"""
+	"""An on_execute that logs, captures speech and braille, then logs again."""
 
 	def run(ctx: Any) -> None:
 		ctx.log_capture.feed("what the command started doing")
@@ -690,12 +578,6 @@ def _logs_speaks_and_logs(factory: FakeAdapterFactory, spoken: str, brailled: st
 
 
 def test_speech_and_braille_carry_a_position_inside_their_commands_span() -> None:
-	# Spec 0021's item 14, end to end through the real hello: hello hands each
-	# capture source the journal's position getter, the source reads it at capture,
-	# and the entry crosses the wire with a coordinate that actually places the
-	# utterance inside the span of the command that caused it. Before this, the
-	# ring and the journal had no shared coordinate at all and the join was
-	# eyeballed off wall-clock timestamps.
 	factory = FakeAdapterFactory()
 	reader = _SpanReader()
 	registry = dict(build_command_registry(factory, "2026.1.0"))
@@ -728,8 +610,6 @@ def test_speech_and_braille_carry_a_position_inside_their_commands_span() -> Non
 
 
 def test_only_the_last_fifty_windows_are_kept() -> None:
-	# Bounded because a session can run for hours; 50 is deep enough to reach the
-	# command that failed several commands ago.
 	capture = FakeLogCapture()
 	registry = _fake_registry(work=FakeCommandHandler())
 	events: list[Any] = [hello()]
@@ -738,13 +618,10 @@ def test_only_the_last_fifty_windows_are_kept() -> None:
 
 	windows = _windows(run)
 	assert len(windows) == MAX_COMMAND_WINDOWS
-	# The OLDEST are dropped, so the most recent command is always reachable.
 	assert windows[-1][0] == 1 + MAX_COMMAND_WINDOWS + 10
 
 
 def test_a_journal_that_cannot_be_read_costs_the_window_not_the_command() -> None:
-	# A broken capture must never turn a working command into a failed one: the
-	# window is a diagnostic, the command is the job.
 	class BrokenCapture(FakeLogCapture):
 		def position(self) -> int:
 			raise RuntimeError("journal is gone")
@@ -756,9 +633,6 @@ def test_a_journal_that_cannot_be_read_costs_the_window_not_the_command() -> Non
 	assert _windows(run) == []
 
 
-# -- lifecycle commands through dispatch -------------------------------------
-
-
 def test_bye_acks_then_tears_down() -> None:
 	run = run_session([hello(), command("bye", 2)])
 	assert _result(run.responses()[1]) == {"ok": True}
@@ -767,13 +641,11 @@ def test_bye_acks_then_tears_down() -> None:
 
 
 def test_channel_close_tears_down() -> None:
-	run = run_session([hello()])  # script runs out -> EOF -> ChannelClosed
+	run = run_session([hello()])
 	assert run.closed_with(TeardownReason.CHANNEL_CLOSED)
 
 
 def test_gesture_error_becomes_an_error_and_the_session_survives() -> None:
-	# The real press_gesture handler + a rejecting factory: GestureError is a
-	# caught type in dispatch, so this proves that path end to end.
 	factory = FakeAdapterFactory(reject=["bad"])
 	run = run_session(
 		[hello(), command("pressGesture", 2, gestures=["bad"]), command("ping", 3)],
@@ -781,9 +653,6 @@ def test_gesture_error_becomes_an_error_and_the_session_survives() -> None:
 	)
 	assert "bad" in _error(run.responses()[1])
 	assert _result(run.responses()[2]) == {"ok": True, "suppressing": True}
-
-
-# -- external teardown -------------------------------------------------------
 
 
 def test_request_teardown_from_another_thread_ends_the_loop() -> None:
@@ -818,52 +687,34 @@ def test_request_teardown_from_another_thread_ends_the_loop() -> None:
 	assert signals.ended == 1
 
 
-# -- teardown: config restoration (spec 0015) --------------------------------
-
-
 def test_teardown_restores_config_keys() -> None:
-	"""After a normal session, teardown calls config_accessor.restore_all."""
 	factory = FakeAdapterFactory()
 	factory.config_accessor.seed(["speech", "synth"], "espeak")
 	run_session([hello("silent")], factory=factory)
-	# restore_all was called during teardown.
 	assert factory.config_accessor.restore_calls >= 1
 
 
 def test_teardown_restores_config_even_when_earlier_step_raised() -> None:
-	"""Config restore still runs after a speech source stop raises."""
 	factory = FakeAdapterFactory()
 	factory.config_accessor.seed(["speech", "synth"], "espeak")
 	factory.speech_source.fail_stop = True
 	run = run_session([hello("silent")], factory=factory)
-	# Even though speech_source.stop raised, config restore still ran.
 	assert factory.config_accessor.restore_calls >= 1
 	assert run.channel.closed is True
 
 
 def test_config_restore_actually_restores_the_prior_value() -> None:
-	"""restore_all restores modified keys to their original values."""
-	# Test the fake directly, independent of session teardown.
 	store = FakeConfigAccessor()
 	store.seed(["speech", "synth"], "espeak")
-	# Write modifies the value in memory and records the prior.
 	store.set(["speech", "synth"], "sapi5")
 	assert store.get(["speech", "synth"]) == "sapi5"
-	# Restore brings it back.
 	store.restore_all()
 	assert store.get(["speech", "synth"]) == "espeak"
 
 
 def test_request_teardown_cancels_an_open_prompt_window() -> None:
-	# Found live, by pressing the panic gesture during an interaction window: NVDA
-	# went silent and stayed that way until the poll expired.
-	#
-	# Teardown is cooperative -- the loop honours it at its next wakeup -- and a
-	# handler sitting in waitForUserReply does not reach that wakeup for up to
-	# MAX_POLL_TIMEOUT. BridgeServer.stop() joins that thread, and the caller is
-	# NVDA's MAIN THREAD on the panic path, so the screen reader freezes for the
-	# rest of the poll. Cancelling the window as part of honouring the request is
-	# what lets the in-flight wait() return immediately.
+	# On the panic path the caller is NVDA's main thread, joined on the session thread, so an
+	# uncancelled window freezes the reader for the rest of the poll.
 	clock = FakeClock()
 	registry = _fake_registry()
 	transcript = FakeTranscript()
@@ -887,36 +738,24 @@ def test_request_teardown_cancels_an_open_prompt_window() -> None:
 
 	session.request_teardown(TeardownReason.EXTERNAL)
 
-	# The prompt is cancelled, so a poll blocked on it aborts at once rather than
-	# holding the loop -- and thus the joining main thread -- for its full timeout.
 	with pytest.raises(PromptExpired, match="cancelled"):
 		prompt.wait(timeout=1e9)
 	assert not prompt.answered
 
 
 def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
-	# The same failure from the other end, with a REAL thread and REAL sleeps,
-	# because the bug is about wall-clock time on NVDA's main thread and a fake
-	# clock cannot express it: FakeClock.sleep returns instantly, so a poll that
-	# would hang for a minute in production finishes before the test can look.
-	#
-	# The handler blocks on a window the way WaitForUserReplyHandler does, rather
-	# than going over the wire, because a scripted channel cannot know the ticket
-	# askUser has not issued yet.
+	# A real thread and real sleeps: FakeClock.sleep returns instantly, so it cannot express a hang.
 	clock = RealClock()
 
 	def block_on_the_window(ctx: Any, request: Any) -> p.AckResult:
 		prompt = UserPrompt("hold the session open", clock)
 		ctx.set_outstanding_prompt(prompt)
-		prompt.wait(60.0)  # a minute, unless teardown cuts it short
+		prompt.wait(60.0)
 		return p.AckResult()
 
 	handler = FakeCommandHandler()
 	handler.execute = block_on_the_window  # type: ignore[method-assign]
 	registry = _fake_registry(ping=handler)
-	# The channel gets a FakeClock because its clock only drives timeout advancing,
-	# which never happens here (on_empty="closed"); the SESSION and the prompt get
-	# the real one, because real sleeping is the whole point.
 	session = Session(
 		FakeChannel([hello(), command("ping", 2)], clock=FakeClock(), on_empty="closed"),
 		FakeTranscript(),
@@ -949,17 +788,6 @@ def test_a_session_blocked_on_a_prompt_still_ends_promptly() -> None:
 	)
 
 
-# -- the silence cap: the watchdog that measures the HUMAN (spec 0032) -------
-#
-# The other two watchdogs fire on ABSENCE, and on 2026-08-03 both stayed
-# correctly quiet while a blind developer sat unable to hear their own machine
-# and reached for the panic gesture. Twice. These tests drive the case that
-# produced it: an agent that is present and busy, and silent.
-#
-# Every one of them keeps the two OLD watchdogs wide open, because the point is
-# what happens when neither of them has anything to say.
-
-#: Small enough to read: warn at 10 s, restore speech at 20 s.
 TIGHT_CAP = SilenceCapPolicy(enabled=True, warn_after=10.0, lift_after=20.0)
 
 
@@ -972,12 +800,7 @@ def quiet_session(
 	interject: dict[float, Any] | None = None,
 	factory: FakeAdapterFactory | None = None,
 ) -> Run:
-	"""A session that establishes and then says nothing for *seconds*.
-
-	``interject`` schedules a command at an elapsed time, which is how a test
-	makes the agent narrate mid-silence. Both old watchdogs are set far out of
-	reach so that anything that happens here is the silence cap and nothing else.
-	"""
+	"""A session that establishes and says nothing for *seconds*, with both old watchdogs out of reach."""
 	events: list[Any] = [hello(mode)]
 	interject = interject or {}
 	elapsed = 0.0
@@ -1003,8 +826,6 @@ def test_a_silent_session_that_says_nothing_is_warned_and_then_un_muted() -> Non
 
 
 def test_the_lift_stops_suppressing_without_stopping_capture() -> None:
-	# The whole shape of the remedy: the human gets sound back, the agent keeps
-	# its evidence. `suspend` would have traded one for the other.
 	factory = FakeAdapterFactory()
 	quiet_session(factory=factory)
 	source = factory.speech_source
@@ -1019,8 +840,6 @@ def test_each_notice_is_spoken_once_however_long_the_silence_runs() -> None:
 
 
 def test_an_agent_that_narrates_never_hears_the_cap() -> None:
-	# `announce` every 5 s against a 10 s warning. This is the behaviour the whole
-	# entry exists to make structural rather than a rule an agent must remember.
 	run = quiet_session(
 		seconds=60.0,
 		interject={
@@ -1033,11 +852,6 @@ def test_an_agent_that_narrates_never_hears_the_cap() -> None:
 
 
 def test_an_announcement_carried_on_a_command_resets_the_clock_too() -> None:
-	# spec 0025 gave pressGesture and typeText an announcement of their own, spoken
-	# through the same synth line as `announce` -- so the human HEARS it, and the
-	# clock has to say so. It did not: on 2026-08-20 a session narrating every few
-	# seconds through this field was warned at 45 s and un-muted at 90 s anyway,
-	# with nvda.log showing the 660 Hz cue pairs the cap had ignored.
 	run = quiet_session(
 		seconds=60.0,
 		interject={
@@ -1055,8 +869,6 @@ def test_an_announcement_carried_on_a_command_resets_the_clock_too() -> None:
 
 
 def test_an_announcement_carried_on_typed_text_resets_the_clock_too() -> None:
-	# The same field on the other mutating command, which shares nothing with
-	# pressGesture but the port it speaks through.
 	run = quiet_session(
 		seconds=60.0,
 		interject={
@@ -1068,9 +880,6 @@ def test_an_announcement_carried_on_typed_text_resets_the_clock_too() -> None:
 
 
 def test_gestures_and_reads_reset_nothing() -> None:
-	# Four hundred keys in ninety seconds have told the human NOTHING, and the
-	# clock is right to say so. `ping` is the same: it proves liveness, not that
-	# anyone was spoken to.
 	run = quiet_session(
 		interject={
 			5.0: command("pressGesture", 201, gestures=["downArrow"]),
@@ -1083,22 +892,16 @@ def test_gestures_and_reads_reset_nothing() -> None:
 
 
 def test_a_live_session_is_never_capped() -> None:
-	# Nothing is suppressed, so there is no silence to bound.
 	run = quiet_session(mode="live", seconds=300.0)
 	assert run.announcer.notices == []
 
 
 def test_an_unattended_machine_is_never_capped() -> None:
-	# Nobody in the room, so the cap is damage rather than a safeguard: it would
-	# un-mute a session whose whole purpose was to run silently.
 	run = quiet_session(silence_cap=SilenceCapPolicy(enabled=False), seconds=300.0)
 	assert run.announcer.notices == []
 
 
 def test_a_prompt_left_open_does_not_trip_the_cap() -> None:
-	# askUser suspends the suppression for its whole window, so the human is
-	# hearing everything: counting that as silence would fire the cap at the one
-	# moment it is provably not needed.
 	run = quiet_session(
 		seconds=300.0,
 		interject={5.0: command("askUser", 201, prompt="have a look at this")},
@@ -1107,9 +910,7 @@ def test_a_prompt_left_open_does_not_trip_the_cap() -> None:
 
 
 def test_re_suppression_is_audible_and_opens_a_fresh_window() -> None:
-	# The lift at 20 s; an announce at 30 s puts the session back under
-	# suppression, audibly; the fresh window warns 10 s after that and lifts 10 s
-	# later again. Exposure stays bounded however many times a session re-arms.
+	# Lift at 20 s, re-suppressed by the announce at 30 s, then a fresh warning and lift.
 	factory = FakeAdapterFactory()
 	run = quiet_session(
 		seconds=80.0,
@@ -1143,16 +944,11 @@ def test_hello_reports_the_machines_cap_to_the_agent() -> None:
 
 
 def test_hello_reports_an_unattended_machine_honestly() -> None:
-	# Reported even in live mode and even when disabled: it is a fact about the
-	# MACHINE, and an agent that knows nobody is listening should not spend round
-	# trips narrating to an empty room.
 	run = run_session([hello("live")], silence_cap=SilenceCapPolicy(enabled=False))
 	assert _result(run.responses()[0])["silenceCap"]["enabled"] is False
 
 
 def test_hello_declares_whether_a_human_is_at_this_machine() -> None:
-	# Spec 0035. Sent as its OWN field, so a server never has to reconstruct it
-	# by inverting the cap. A machine fact, so it goes out in live mode too.
 	run = run_session([hello("live")], attended=True)
 	assert _result(run.responses()[0])["attended"] is True
 
@@ -1163,10 +959,6 @@ def test_hello_declares_an_empty_room_as_itself() -> None:
 
 
 def test_attendance_and_the_cap_are_two_facts_and_may_disagree() -> None:
-	# The pair the old wire could not carry, and the entire reason 11.27 exists:
-	# somebody IS at this machine and it bounds nothing. Under a wire that only
-	# carried `enabled`, this person's session would be announced to the agent as
-	# an empty room and a well-behaved agent would stop narrating to them.
 	run = run_session(
 		[hello("silent")],
 		silence_cap=SilenceCapPolicy(enabled=False),

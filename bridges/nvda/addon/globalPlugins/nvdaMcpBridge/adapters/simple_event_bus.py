@@ -1,16 +1,8 @@
 # nvdaMcpBridge adapters -- SimpleEventBus: an in-process, thread-safe event bus.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: LEAF adapter. IMPLEMENTS the EventBus port. subscribe() returns a
-#       UUID token; unsubscribe(token) removes it. Handlers are stored as
-#       weakrefs so a destroyed subscriber is skipped and cleaned up on the
-#       next emit — no leak, even if the token is never passed to unsubscribe.
-#       A threading.Lock guards all data-structure access because emit() can
-#       be called from the server thread while subscribe/unsubscribe run on
-#       the main thread (the dialog).
-#       No decisions — no unit test file.
-# USED BY: plugin.py (builds one, hands it to BridgeServer and the dialog).
-# BUILT BY: plugin.py at singleton scope.
+# ROLE: leaf adapter implementing EventBus; handlers are held weakly, and a dead one is dropped on emit.
+# BUILT BY: plugin.py.
+# USED BY: plugin.py, BridgeServer and the bridge dialog.
 
 from __future__ import annotations
 
@@ -36,11 +28,6 @@ def _resolve(wh: Any) -> EventHandler | None:
 
 
 class SimpleEventBus(EventBus):
-	"""One dict mapping token → _Entry, plus a per-type index for fast emit.
-	All data-structure access is guarded by ``_lock`` because emit() can
-	run on the server thread while subscribe()/unsubscribe() run on main.
-	"""
-
 	def __init__(self) -> None:
 		self._lock = threading.Lock()
 		self._entries: dict[SubscriptionToken, _Entry] = {}
@@ -67,10 +54,8 @@ class SimpleEventBus(EventBus):
 					pass
 
 	def emit(self, event: BridgeEvent) -> None:
-		# Snapshot (token, entry) pairs under the lock so the iteration
-		# outside doesn't touch shared data at all. Handlers are called on
-		# the emitter's thread — subscribers that care about thread context
-		# are responsible for marshalling themselves.
+		# emit() runs on the server thread while subscribe and unsubscribe run on the main thread;
+		# handlers run on the emitter's thread and marshal themselves.
 		pairs: list[tuple[SubscriptionToken, _Entry]] = []
 		with self._lock:
 			for token in self._by_type.get(event.type, ()):
@@ -102,7 +87,6 @@ class SimpleEventBus(EventBus):
 							pass
 
 
-#: Internal record for one subscription.
 class _Entry:
 	__slots__ = ("event_type", "weak_handler")
 

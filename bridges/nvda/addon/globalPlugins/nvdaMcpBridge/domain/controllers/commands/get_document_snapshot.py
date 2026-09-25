@@ -1,25 +1,8 @@
 # nvdaMcpBridge domain -- GetDocumentSnapshotHandler: answer "what is on this page".
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getDocumentSnapshot` (spec 0026). Builds the
-#       DocumentSnapshot entity from the request's bounds, hands it to the
-#       DocumentReader port to fill, stamps the instant, and maps to the wire.
-#
-# mutates_reader stays False, and it is a claim rather than a default: the
-# adapter renders through NVDA's speech layer WITHOUT speaking, and walks its own
-# TextInfo WITHOUT moving the caret, so an observe-only session (spec 0017) may
-# call this and the user's reader is exactly where they left it afterwards.
-#
-# WHY THE STAMP IS TAKEN HERE and not in the adapter: `capturedAt` is the whole
-# of what stops this result reading as a description of the page rather than of
-# the page at one instant, and a handler with an injected Clock can be tested for
-# it. The adapter has no clock and should not grow one.
-#
-# NO DOCUMENT IS A RESULT, NOT AN ERROR. A dialog, the desktop, a native app: the
-# port answers None and this returns `hasDocument: False` with everything else
-# empty and the stamp still set. Raising instead would make "you are not in a
-# document" -- an ordinary fact an agent branches on -- indistinguishable from a
-# fault, which is the confusion specs 0020, 0021, 0023 and 0024 each had to undo.
+# ROLE: command handler for `getDocumentSnapshot`.
+# mutates_reader is False because the adapter neither speaks nor moves the caret.
+# No document is a result with hasDocument False, not an error.
 
 from __future__ import annotations
 
@@ -44,10 +27,7 @@ class GetDocumentSnapshotHandler(CommandHandler):
 			max_lines=params.maxLines,
 			max_chars=params.maxChars,
 		)
-		# Stamped BEFORE the read, not after: the instant an agent cares about is
-		# when the picture was taken, and on a long document the two differ by the
-		# whole render. Erring towards the earlier one keeps `capturedAt` a lower
-		# bound on the document's age rather than an optimistic one.
+		# Stamped before the read, so capturedAt is a lower bound on the document's age.
 		captured_at = format_wallclock(ctx.clock.time())
 		read = ctx.adapter_set.document_reader.read(snapshot)
 		if read is None:

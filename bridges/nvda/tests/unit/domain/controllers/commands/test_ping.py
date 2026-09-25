@@ -21,9 +21,7 @@ def test_ping_does_not_reset_inactivity() -> None:
 
 
 def test_ping_reports_the_suppression_state(clock: FakeClock) -> None:
-	# This is how a silence-cap lift becomes discoverable by asking (spec 0032):
-	# `status` makes its round trip with `ping`, so the fact rides on a probe that
-	# was being sent anyway.
+	# `status` makes its round trip with `ping`, so a silence-cap lift rides on that probe.
 	factory = FakeAdapterFactory()
 	ctx = make_context(clock, adapters=adapters_from(factory))
 	assert PingHandler().execute(ctx, request("ping")).suppressing is True
@@ -33,6 +31,5 @@ def test_ping_reports_the_suppression_state(clock: FakeClock) -> None:
 
 
 def test_ping_says_nothing_about_speech_before_hello(clock: FakeClock) -> None:
-	# No adapters yet, so there is no honest answer -- and None is a different fact
-	# from either boolean.
+	# No adapters before hello, so None: neither boolean would be honest.
 	assert PingHandler().execute(make_context(clock), request("ping")).suppressing is None

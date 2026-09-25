@@ -1,21 +1,8 @@
 # nvdaMcpBridge domain -- CommandHandler: the per-command controller interface.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: the interface every command handler implements (an abc.ABC, not a
-# Protocol -- an incomplete handler fails at construction). One handler per wire
-# command; the Session dispatches to it and wraps the outcome.
-# USED BY: the Session (dispatch) and registry.py (builds the map).
-#
-# The contract is deliberately thin so the Session stays a pure dispatcher and
-# all error/id/heartbeat handling stays in one place:
-#   * execute returns a wire RESULT dataclass; the Session wraps it in a Response
-#     with the request id.
-#   * to FAIL a command, a handler RAISES -- CommandError for its own domain
-#     errors, or lets a protocol.ValidationError (bad params) / GestureError
-#     propagate. The Session turns any of these into an error Response and, when
-#     established, carries on; a pre-hello failure ends the handshake.
-# Two class attributes carry the policy that used to be ``if cmd == ...`` in the
-# loop, now declared on the handler itself.
+# ROLE: the interface every command handler implements.
+# USED BY: the Session and registry.py.
+# A handler fails a command by raising; the Session turns that into an error Response.
 
 from __future__ import annotations
 
@@ -27,53 +14,26 @@ if TYPE_CHECKING:
 	from .session_context import SessionContext
 
 
-#: The longest ANY single blocking command may hold the session thread.
-#:
-#: Comfortably inside the 120 s command-inactivity window
-#: (SessionConfig.inactivity_timeout), which is measured from the moment a
-#: command is DISPATCHED and is deliberately not refreshed when a handler returns
-#: (spec 0016: inactivity answers "has the agent abandoned this session?", so a
-#: blocking handler must not extend it). A command allowed to block longer would
-#: answer the agent and have the session torn down under it, one line later.
-#:
-#: Lives HERE, on the shared handler module, rather than on whichever blocking
-#: command happened to need it first: it is a property of the SESSION's watchdog,
-#: not of user replies or of log waits, and a second blocking command importing
-#: it from the first would read like a dependency between two unrelated commands.
-#: Clamping in the bridge protects every client, not only the one whose tool
-#: schema says 110.
+#: The longest any blocking command may hold the session thread; it must stay inside the 120 s
+#: inactivity window, which a blocking handler does not refresh.
 MAX_POLL_TIMEOUT: float = 110.0
 
 
 class CommandError(Exception):
-	"""A handler-level failure that becomes an error Response (e.g. version
-	mismatch, not-yet-implemented). Distinct from a transport/validation fault."""
+	"""A handler-level failure that becomes an error Response."""
 
 
 class CommandHandler(ABC):
-	"""Handles one wire command over a SessionContext."""
-
-	#: Whether a successful call resets the command-inactivity watchdog. ``ping``
-	#: sets this False -- it proves liveness (heartbeat) but not that the agent is
-	#: still testing.
+	#: ``ping`` sets this False: it proves liveness, not that the agent is still testing.
 	resets_inactivity: bool = True
 
-	#: Whether this command is valid before ``hello``. Only the hello handler sets
-	#: it True; every other command is rejected until the handshake completes.
 	available_before_hello: bool = False
 
-	#: Whether this command moves the user's machine (a keypress, typed text, a
-	#: config write) rather than only observing it. Set True on the handlers that
-	#: do -- ``PressGestureHandler``, ``TypeTextHandler``, ``SetConfigHandler`` --
-	#: and an observe-only session (spec 0017) refuses them. The base default is
-	#: False and the failure mode of forgetting to opt in is "allowed", so a
-	#: future mutating command must set this deliberately; registry.py's
-	#: enumeration test is what makes forgetting visible.
+	#: True for a command that moves the user's machine, which an observe-only session refuses; the default
+	#: is False, so a new mutating command must opt in.
 	mutates_reader: bool = False
 
-	#: Whether the Session records a log-journal window for this command.
-	#: ``GetLogHandler`` sets this False so a ``getLog`` call does not become its
-	#: own anchor (spec 0020) -- the same shape as ``resets_inactivity``.
+	#: GetLogHandler sets this False, so a getLog call is not its own anchor.
 	marks_log: bool = True
 
 	@abstractmethod

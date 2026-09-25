@@ -9,14 +9,9 @@ from nvdaMcpBridge.adapters.ini_bridge_config import IniBridgeConfig
 from nvdaMcpBridge.domain.entities.connection_mode import DEFAULT, ConnectionMode
 from nvdaMcpBridge.domain.entities.silence_cap import DEFAULT_LIFT_AFTER, DEFAULT_WARN_AFTER
 
-# -- helpers ------------------------------------------------------------------
-
 
 def _ini(mode: str = "namedPipe", auto_start: str = "false") -> str:
 	return f"[nvdaMcpBridge]\nconnectionMode = {mode}\nautoStart = {auto_start}\n"
-
-
-# -- defaults (no file) -------------------------------------------------------
 
 
 def test_defaults_when_file_does_not_exist() -> None:
@@ -29,9 +24,6 @@ def test_defaults_when_file_is_empty() -> None:
 	cfg = IniBridgeConfig(FakeConfigFile(""), FakeLog())
 	assert cfg.get_connection_mode() is DEFAULT
 	assert cfg.get_auto_start() is False
-
-
-# -- read ---------------------------------------------------------------------
 
 
 def test_reads_connection_mode() -> None:
@@ -49,9 +41,6 @@ def test_unrecognised_mode_falls_back_to_default() -> None:
 	assert cfg.get_connection_mode() is DEFAULT
 
 
-# -- write --------------------------------------------------------------------
-
-
 def test_writes_connection_mode() -> None:
 	f = FakeConfigFile(_ini())
 	cfg = IniBridgeConfig(f, FakeLog())
@@ -66,16 +55,10 @@ def test_writes_auto_start() -> None:
 	assert "autostart = true" in (f.read() or "").lower()
 
 
-# -- corrupt file -------------------------------------------------------------
-
-
 def test_corrupt_file_returns_defaults() -> None:
 	cfg = IniBridgeConfig(FakeConfigFile("this is not valid ini {{{"), FakeLog())
 	assert cfg.get_connection_mode() is DEFAULT
 	assert cfg.get_auto_start() is False
-
-
-# -- round-trip ---------------------------------------------------------------
 
 
 def test_round_trip_connection_mode() -> None:
@@ -92,13 +75,7 @@ def test_round_trip_auto_start() -> None:
 	assert cfg.get_auto_start() is True
 
 
-# -- the silence cap (spec 0032) ----------------------------------------------
-#
-# Every read here has to fall to the SAFE side, and "safe" is asymmetric: a cap
-# on a machine nobody is sitting at speaks to an empty room, while a missing cap
-# on an occupied one leaves a blind person unable to hear their own computer with
-# nothing to stop it. So absent, unreadable and nonsensical all mean "assume
-# somebody is there, on the shipped thresholds".
+# Absent, unreadable or nonsensical values all read as attended, on the shipped thresholds.
 
 
 def _cap_ini(body: str) -> str:
@@ -126,7 +103,6 @@ def test_an_unreadable_unattended_value_means_attended_and_says_so() -> None:
 	log = FakeLog()
 	cfg = IniBridgeConfig(FakeConfigFile(_cap_ini("unattended = perhaps")), log)
 	assert cfg.get_unattended() is False
-	# Worth a line in the log: whoever typed it believes they turned the cap off.
 	assert any("unattended" in message for message in log.warnings)
 
 
@@ -159,8 +135,6 @@ def test_round_trip_the_cap_settings() -> None:
 
 
 def test_writing_one_setting_leaves_the_others_alone() -> None:
-	# Every setter goes through the same read-modify-write, so a checkbox toggled
-	# in the dialog must not drop the connection mode beside it.
 	f = FakeConfigFile(None)
 	cfg = IniBridgeConfig(f, FakeLog())
 	cfg.set_connection_mode(ConnectionMode.LOOPBACK_TCP)

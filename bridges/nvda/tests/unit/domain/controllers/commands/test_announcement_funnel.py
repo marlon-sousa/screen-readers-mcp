@@ -1,21 +1,9 @@
-# Architecture check: a command speaks to the human through ONE call, not two.
+# Architecture check: a command speaks to the human through one call, not two.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
-# Spec 0032 defines the set of things that reset the silence cap as "exactly the
-# set of things that get past the suppression" -- and then left each handler to
-# remember the second half. It drifted within one entry: spec 0025's inline
-# announcement on pressGesture/typeText, and setLogLevel's confirmation, all
-# reached the synth through Announcer.announce and told the clock nothing. On
-# 2026-08-20 a session narrating every few seconds was warned at 45 s and
-# un-muted at 90 s because of it, which is the exact harm the cap exists to
-# prevent, produced by the cap itself.
-#
-# SessionContext.announce_to_human makes the two halves one call. That is a
-# property of the SOURCE rather than of any behaviour: a new handler that spoke
-# through the port directly would pass every behavioural test in this directory
-# while silently re-opening the hole, and nobody would find out until a human sat
-# mute again. Hence this check, walking the AST rather than grepping, so an
-# aliased or self-held announcer is caught too.
+# SessionContext.announce_to_human speaks and resets the silence cap in one call. A handler that
+# spoke through the port directly would pass every behavioural test while the cap missed the sound,
+# so this walks the AST to catch aliased or self-held announcers too.
 
 from __future__ import annotations
 
@@ -34,8 +22,7 @@ COMMANDS = (
 	/ "commands"
 )
 
-#: session_context.py is the funnel itself -- it is the one place that may make
-#: the call, because it is the place that notes it afterwards.
+#: session_context.py is the funnel itself, the one place that may make the call.
 HANDLERS = sorted(p.name for p in COMMANDS.glob("*.py") if p.name != "session_context.py")
 
 
@@ -65,9 +52,7 @@ def test_a_handler_never_speaks_through_the_announcer_directly(filename: str) ->
 
 
 def test_the_check_would_actually_fail_on_a_violation() -> None:
-	# A guard that can only pass is not a guard.
 	assert _speaks_past_the_funnel("ctx.announcer.announce('hi')")
 	assert _speaks_past_the_funnel("self.announcer.announce(params.announce)")
-	# What must still be allowed: the other half of the port, and the funnel call.
 	assert not _speaks_past_the_funnel("ctx.announcer.current_synth()")
 	assert not _speaks_past_the_funnel("ctx.announce_to_human('hi')")

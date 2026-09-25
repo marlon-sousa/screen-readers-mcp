@@ -1,14 +1,7 @@
 # nvdaMcpBridge domain -- GetFocusInfoHandler: answer "where am I".
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getFocusInfo`. Reads the focus snapshot from the
-#       FocusInspector port and maps its DTO field names to the wire's camelCase
-#       names (e.g. app_module -> appModule), exactly as GetBrailleHandler maps
-#       its result.
-#
-# A null focus yields an empty FocusInfoResult (all fields defaulted), not an
-# error -- the agent checks for "no focus" with the same assertion it uses for
-# "a button is focused".
+# ROLE: command handler for `getFocusInfo`.
+# A null focus yields an empty FocusInfoResult, not an error.
 
 from __future__ import annotations
 

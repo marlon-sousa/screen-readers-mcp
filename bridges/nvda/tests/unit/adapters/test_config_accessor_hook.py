@@ -1,12 +1,5 @@
 # Unit tests for the config_override_hook module.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# These tests verify the hook mechanism directly, without a live NVDA.
-# They provide a stand-in for AggregatedSection, install the hook,
-# and assert override behaviour, idempotency, and teardown restoration.
-#
-# The map is the CALLER's (one per session), lent to the hook by install() --
-# so these tests build their own dict exactly as NvdaConfigAccessor does.
 
 from __future__ import annotations
 
@@ -16,14 +9,6 @@ from nvdaMcpBridge.adapters.config_override_hook import install, remove
 
 
 class _FakeSection:
-	"""Stand-in for NVDA's AggregatedSection with the .path attribute.
-
-	``written`` records what reached the REAL __setitem__ -- which, for a key
-	the session overrode, must be nothing at all.
-	"""
-
-	# Deliberately a CLASS attribute: every fake section appends to one list,
-	# which is what lets a test assert on all writes at once. ClassVar says so.
 	written: ClassVar[list[tuple[tuple[str, ...], Any]]] = []
 
 	def __init__(self, path: tuple[str, ...]) -> None:
@@ -37,13 +22,11 @@ class _FakeSection:
 
 
 def setup_function() -> None:
-	"""No hook installed at the start of each test."""
 	remove()
 	_FakeSection.written.clear()
 
 
 def teardown_function() -> None:
-	"""Never leave a patched class behind for the next test."""
 	remove()
 
 
@@ -76,12 +59,7 @@ def test_hook_can_override_deep_paths() -> None:
 
 
 def test_the_map_is_read_live_not_copied() -> None:
-	"""A key added after install() is still honoured.
-
-	NvdaConfigAccessor installs on the FIRST set() and then keeps adding to the
-	same dict, so the hook must read through to the live map rather than having
-	snapshotted it.
-	"""
+	"""NvdaConfigAccessor keeps adding to the map after install(), so the hook must read it live."""
 	overrides: dict[tuple[str, ...], Any] = {}
 	install(_FakeSection, overrides)
 
@@ -106,8 +84,7 @@ def test_install_is_idempotent() -> None:
 	first = _FakeSection.__getitem__
 	install(_FakeSection, {("speech", "synth"): "x"})
 
-	# Patched once, so the saved original is the REAL original -- a second patch
-	# would have saved the hook itself and made remove() a no-op.
+	# A second patch would save the hook itself as the original and make remove() a no-op.
 	assert _FakeSection.__getitem__ is first
 	assert _FakeSection(("speech",))["synth"] == "x"
 	remove()
@@ -115,7 +92,6 @@ def test_install_is_idempotent() -> None:
 
 
 def test_a_second_install_repoints_the_map() -> None:
-	"""One session's teardown-less handover must not leak the previous map."""
 	install(_FakeSection, {("a", "b"): "first"})
 	install(_FakeSection, {("a", "b"): "second"})
 	assert _FakeSection(("a",))["b"] == "second"
@@ -129,19 +105,13 @@ def test_remove_is_idempotent() -> None:
 
 
 def test_overrides_are_shared_across_instances() -> None:
-	"""Different AggregatedSection instances see the same overrides."""
 	install(_FakeSection, {("speech", "synth"): "shared"})
 
 	assert _FakeSection(("speech",))["synth"] == "shared"
 	assert _FakeSection(("speech",))["synth"] == "shared"
 
 
-# -- writes ------------------------------------------------------------------
-#
-# The leak these close: NVDA's settings GUI reads a value into a control and
-# writes every control back on OK. With reads hooked and writes not, that round
-# trip lifted the override out of the map and into the real profile, where the
-# next save() persisted it.
+# NVDA's settings GUI writes every control back on OK, so a hooked read needs a hooked write.
 
 
 def test_a_write_to_an_overridden_key_updates_the_map_not_the_profile() -> None:
@@ -155,7 +125,6 @@ def test_a_write_to_an_overridden_key_updates_the_map_not_the_profile() -> None:
 
 
 def test_a_write_to_any_other_key_falls_through_untouched() -> None:
-	"""The session owns the keys it overrode -- not config as a whole."""
 	install(_FakeSection, {("speech", "synth"): "espeak"})
 
 	_FakeSection(("braille",))["display"] = "noBraille"
@@ -164,7 +133,6 @@ def test_a_write_to_any_other_key_falls_through_untouched() -> None:
 
 
 def test_the_gui_round_trip_cannot_escape_the_map() -> None:
-	"""Read a value, write it straight back -- exactly what a settings panel does."""
 	overrides = {("speech", "espeak", "sayCapForCapitals"): True}
 	install(_FakeSection, overrides)
 
@@ -178,7 +146,6 @@ def test_the_gui_round_trip_cannot_escape_the_map() -> None:
 
 
 def test_writes_are_coerced_by_the_supplied_coercer() -> None:
-	"""A hooked write is validated exactly as NVDA's own __setitem__ would."""
 	overrides: dict[tuple[str, ...], Any] = {("speech", "espeak", "rate"): 50}
 	install(_FakeSection, overrides, lambda _path, value: int(value))
 
