@@ -1,30 +1,16 @@
 #!/usr/bin/env python3
-# Read and set VoiceOver's selected voice, by preference (spec 0047, findings 16-17).
+# Read and set VoiceOver's selected voice, by preference.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 #
 #     python3 scripts/voiceover_voice.py show
 #     python3 scripts/voiceover_voice.py set com.apple.eloquence.pt-BR.Reed
 #
-# ROLE: the instrument for the one thing a VoiceOver bridge cannot ask a human to
-# do -- point the reader at its capture voice -- and put back afterwards.
+# ROLE: points VoiceOver at the bridge's capture voice, and back, without a human.
 #
-# WHERE THE VOICE ACTUALLY LIVES, because an evening was spent finding out. NOT in
-# VoiceOver's own preferences, and not in its group container: those hold only
-# timestamps and runtime state, and VoiceOver's writes during a voice change go
-# to /dev/null. The store is the SYSTEM SPEECH domain, one namespace over:
-#
-#     ~/Library/Preferences/com.apple.SpeakSelection.plist
-#         VoiceOverDefaultVoiceSelections = ( "<lang>", Speech.VoiceSelection )
-#
-# WHY export -> modify -> import, RATHER THAN `defaults write`. An old-style plist
-# literal makes every value a STRING. Written that way, `pitch` and `rate` arrive
-# as text where reals are expected; VoiceOver silently rejects the record, falls
-# back to the system default voice, AND rewrites the key with its own choice -- so
-# the evidence of the write is gone before you look, and it presents as "writing
-# the preference does nothing". That wrong conclusion is recorded in spec 0047
-# finding 2 and was only overturned by finding 17.
-#
-# The change applies LIVE, in both directions, with no reader restart.
+# The store is VoiceOverDefaultVoiceSelections in ~/Library/Preferences/com.apple.SpeakSelection.plist,
+# not VoiceOver's own preferences; a change applies live, with no reader restart.
+# Written through export and import because `defaults write` makes `pitch` and `rate` strings, and
+# VoiceOver then silently rejects the record and overwrites the key with its own choice.
 
 from __future__ import annotations
 
@@ -36,7 +22,6 @@ from pathlib import Path
 
 DOMAIN = "com.apple.SpeakSelection"
 KEY = "VoiceOverDefaultVoiceSelections"
-#: What the entries we may rewrite call themselves. Anything else is left alone.
 ENTRY_TYPE = "Speech.VoiceSelection"
 
 

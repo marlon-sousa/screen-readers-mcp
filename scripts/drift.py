@@ -3,29 +3,8 @@
 #
 #     uv run poe gates
 #
-# THREE BINDINGS, ONE CONTRACT, AND NO LANGUAGE SERVER CROSSES BETWEEN THEM. The
-# schema is the only index the Python, Go and Swift renderings share, so each
-# gate here asks whether one of them still says what the schema says.
-#
-# Two of the three are GENERATED from shared/screenreader_wire/protocol.py and
-# committed: the JSON schema both other languages are described by, and the Go
-# binding the server decodes with. Committing a generated file is only safe if
-# something proves it still matches its source -- otherwise the two sides drift
-# and the first symptom is a decode failure in the conformance tier, or worse, a
-# field that silently stops round-tripping. Both ask the same question, "does
-# regenerating change anything?", and the fix is always to regenerate and commit,
-# never to edit the artifact.
-#
-# The third, the SWIFT binding, is hand-written (spec 0043), so there is nothing
-# to regenerate and the question is different: does what the source DECLARES
-# still match the schema, field by field? scripts/swift_wire_binding.py reads the
-# declarations; this file decides whether the difference is drift, and names the
-# schema, the binding and the field -- a drift an agent cannot locate is a drift
-# it will paper over.
-#
-# Note on the comparison: schema.json is compared as PARSED JSON, not as text.
-# Comparing bytes makes this gate fail on a BOM or a line ending that no
-# consumer can observe -- a false alarm that costs more than the gate saves.
+# Each gate asks whether one binding of the wire contract still says what the schema says.
+# schema.json is compared as parsed JSON, so a BOM or line ending is not drift.
 
 from __future__ import annotations
 
@@ -51,9 +30,7 @@ def _run(args: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
 
 
 def schema_gate() -> bool:
-	"""The committed schema must equal what protocol.py generates right now."""
-	# stdout ONLY: uv writes its own progress to stderr, and folding the two
-	# together turns a working generator into "did not emit JSON".
+	# Parse stdout only: uv writes its progress to stderr.
 	code, out, err = _run(
 		[
 			"uv",
@@ -88,7 +65,6 @@ def schema_gate() -> bool:
 
 
 def binding_gate() -> bool:
-	"""`go generate` must be a no-op against the committed binding."""
 	before = BINDING.read_bytes()
 	before_stat = BINDING.stat()
 	code, _out, err = _run(["go", "-C", str(ROOT / "server"), "generate", "./adapters/wire"])
@@ -97,11 +73,7 @@ def binding_gate() -> bool:
 		return False
 	after = BINDING.read_bytes()
 	if before == after:
-		# Restore the ORIGINAL mtime. `go generate` rewrites the file whether or
-		# not the content changed, and the doctor decides the MCP server binary
-		# is stale by comparing it against the newest server/*.go -- so running
-		# this gate would make the binary look stale and fail the very next task.
-		# A gate that manufactures work for another gate is worse than no gate.
+		# `go generate` always rewrites the file; a newer mtime would make the doctor call the binary stale.
 		os.utime(BINDING, (before_stat.st_atime, before_stat.st_mtime))
 		print("  PASS  wire binding  go generate is a no-op")
 		return True
@@ -115,14 +87,10 @@ class _Unmappable(Exception):
 
 
 def _scalars() -> dict[str, str]:
-	# The four JSON scalars, and nothing else: an unmapped construct must reach
-	# _Unmappable rather than fall through to a guess.
 	return {"string": "String", "integer": "Int", "number": "Double", "boolean": "Bool"}
 
 
 def _expected_type(node: dict[str, Any], binding: Binding, where: str) -> tuple[str, bool]:
-	"""The Swift type a schema fragment calls for, and whether it is optional."""
-	# `default` is an annotation, not part of the type -- see schema.py's header.
 	shape = {key: value for key, value in node.items() if key != "default"}
 
 	if "anyOf" in shape:
@@ -137,7 +105,6 @@ def _expected_type(node: dict[str, Any], binding: Binding, where: str) -> tuple[
 		return str(shape["$ref"]).rsplit("/", 1)[-1], False
 
 	if not shape:
-		# The contract's open value: `Any` in Python, `{}` in the schema.
 		return "JSONValue", False
 
 	kind = shape.get("type")
@@ -161,7 +128,6 @@ def _expected_type(node: dict[str, Any], binding: Binding, where: str) -> tuple[
 
 
 def _expected_default(value: Any, field: Field, binding: Binding) -> str:
-	"""How the Swift source must spell a schema default."""
 	if isinstance(value, bool):
 		return "true" if value else "false"
 	if isinstance(value, (int, float)):
@@ -174,8 +140,7 @@ def _expected_default(value: Any, field: Field, binding: Binding) -> str:
 	if vocabulary is not None:
 		members = [name for name, member in vocabulary.members.items() if member == value]
 		if members:
-			# Either spelling is honest Swift; `.none` needs its type spelled out
-			# to avoid reading as Optional.none, and the binding does that.
+			# `.none` needs its type spelled out, or it reads as Optional.none.
 			return f"{field.bare_type}.{members[0]} or .{members[0]}"
 	return json.dumps(value)
 
@@ -192,7 +157,6 @@ def _default_matches(value: Any, field: Field, binding: Binding) -> bool:
 
 
 def _check_shape(name: str, body: dict[str, Any], binding: Binding) -> list[str]:
-	"""Every difference between one `$defs` entry and its Swift struct."""
 	problems: list[str] = []
 	shape = binding.shapes.get(name)
 	if shape is None:
@@ -211,9 +175,7 @@ def _check_shape(name: str, body: dict[str, Any], binding: Binding) -> list[str]
 		except _Unmappable as unmappable:
 			problems.append(str(unmappable))
 			continue
-		# A default of null makes a field Optional in Swift whatever its type says
-		# -- `Response.result` is the contract's open value defaulting to null, and
-		# an Optional is the only way to tell "sent as null" from "not sent".
+		# A default of null makes the field Optional, to tell "sent as null" from "not sent".
 		optional = optional or (property_name not in required and node.get("default", ...) is None)
 		if field.bare_type != expected_type or field.optional != optional:
 			wanted = expected_type + ("?" if optional else "")
@@ -250,7 +212,6 @@ def _check_shape(name: str, body: dict[str, Any], binding: Binding) -> list[str]
 
 
 def swift_gate() -> bool:
-	"""The hand-written Swift binding must still say what the schema says."""
 	committed = json.loads(SCHEMA.read_text(encoding="utf-8-sig"))
 	try:
 		binding = read_binding(SWIFT_BINDING)
@@ -287,18 +248,11 @@ def swift_gate() -> bool:
 
 
 def main() -> int:
-	# Selectable because the two gates need different toolchains, and CI splits
-	# its jobs along exactly that line: the schema gate needs only Python, the
-	# binding gate needs Go. Running both in the `shared` job would drag a Go
-	# toolchain into it for one command; running both in `server` would drag in
-	# uv. Each job asks for the half it is already equipped for, and a developer
-	# with everything installed just runs `poe gates` and gets both.
 	parser = argparse.ArgumentParser(description="Check generated artifacts against their sources.")
 	parser.add_argument("--schema", action="store_true", help="only the JSON schema gate (needs uv)")
 	parser.add_argument("--binding", action="store_true", help="only the Go wire-binding gate (needs go)")
 	parser.add_argument("--swift", action="store_true", help="only the Swift binding gate (needs neither)")
 	args = parser.parse_args()
-	# Neither flag means all of them, so the bare invocation keeps its old meaning.
 	both = not (args.schema or args.binding or args.swift)
 
 	ok = True
