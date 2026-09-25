@@ -2,17 +2,7 @@
 
 // screenreader-mcp tests -- screenreader://session-record, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario. Spec 0021's item 15: the server's own record of a
-// session, built from traffic that already passes through it, covering a whole
-// session WITH NO BRIDGE CALL ADDED. That last clause is the deliverable and the
-// hardest thing to check -- so this scenario counts what the bridge was asked as
-// well as what the record holds, and fails if the record cost a round trip.
-//
-// The record exists because connect_reader hands an agent `logPath` and nothing
-// else, and for a remote bridge that names a file the agent cannot open. It does
-// NOT replace the reader-side transcript: see domain/entities/session_record.go
-// for the two audiences.
+// ROLE: integration scenario for screenreader://session-record, which must cost the bridge no round trip.
 package integration_test
 
 import (
@@ -25,8 +15,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// Like the info resource, it exists before anything is connected: an agent
-// asking what it has done deserves an empty list, not a missing resource.
 func TestTheSessionRecordExistsBeforeAnythingIsConnected(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
@@ -39,14 +27,11 @@ func TestTheSessionRecordExistsBeforeAnythingIsConnected(t *testing.T) {
 	if len(calls) != 0 {
 		t.Errorf("calls = %v, want nothing recorded before any tool ran", calls)
 	}
-	// The note is how an agent learns the reader-side transcript exists at all.
 	if document["note"] == nil || document["note"] == "" {
 		t.Error("the record carries no note explaining what it is not")
 	}
 }
 
-// The deliverable, in one scenario: connect, work, read the record back, and
-// find the whole sequence in it.
 func TestTheRecordCoversAWholeSessionWithNoBridgeCallAdded(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -76,8 +61,6 @@ func TestTheRecordCoversAWholeSessionWithNoBridgeCallAdded(t *testing.T) {
 	document := h.ReadSessionRecord(t)
 	afterReading := len(h.Bridge.Received())
 
-	// Reading the record must cost the bridge NOTHING: it is built from traffic
-	// that already happened, which is the whole reason it needs no wire surface.
 	if afterReading != afterWork {
 		t.Errorf("reading the record sent %d command(s) to the bridge, want none",
 			afterReading-afterWork)
@@ -103,8 +86,6 @@ func TestTheRecordCoversAWholeSessionWithNoBridgeCallAdded(t *testing.T) {
 	}
 }
 
-// What was asked and what came back, not bare tool names: a record an agent
-// cannot reconstruct a session from is not worth publishing.
 func TestTheRecordKeepsWhatWasAskedAndWhatCameBack(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -144,10 +125,6 @@ func TestTheRecordKeepsWhatWasAskedAndWhatCameBack(t *testing.T) {
 	}
 }
 
-// -- the persona on the document (spec 0029) ----------------------------------
-
-// The declaration is what makes a record interpretable: the same call log is a
-// pass from one stance and a finding from another.
 func TestTheRecordSaysWhatTheSessionIsStandingInFor(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -161,10 +138,7 @@ func TestTheRecordSaysWhatTheSessionIsStandingInFor(t *testing.T) {
 	}
 }
 
-// THE REASON IT IS ON THE DOCUMENT and not left to be read out of the recorded
-// connect_reader call: the record is BOUNDED and evicts oldest-first, so in a
-// long session the very call carrying the declaration ages out of the record
-// that exists to preserve it. Driven past the cap here rather than argued.
+// The record evicts oldest-first, so the persona lives on the document and not only in the recorded connect call.
 func TestThePersonaSurvivesTheConnectCallAgeingOutOfTheRecord(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -173,7 +147,6 @@ func TestThePersonaSurvivesTheConnectCallAgeingOutOfTheRecord(t *testing.T) {
 		t.Fatalf("connect_reader failed: %s", got.Text)
 	}
 
-	// One more call than the record holds, so the connect is certainly gone.
 	for i := 0; i < entities.MaxRecordedCalls; i++ {
 		if got := h.Call(t, "status", map[string]any{}); got.IsError {
 			t.Fatalf("status failed on call %d: %s", i, got.Text)

@@ -1,13 +1,5 @@
-// A hand-written stateful fake for the LocalSocketBinder seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/LocalSocketBinder.swift.
-//
-// IT RECORDS CALLS IN ORDER, and that is unusual for a fake in this repo --
-// everywhere else the assertion is on behaviour rather than on interactions.
-// Here the ORDER IS THE BEHAVIOUR: protocol.md §1 requires the directory to
-// exist before the bind and the stale socket to be unlinked before it, and
-// "unlinked afterwards" would be a bridge that removes the socket it is
-// listening on. There is nothing else to observe -- the effects are in a
-// filesystem this test does not have -- so the sequence is the contract.
+// Hand-written stateful fake for the LocalSocketBinder seam.
+// Records calls in order, because the order is the contract: directory created and stale socket removed before the bind.
 
 import VoiceOverBridgeAdapters
 
@@ -21,11 +13,8 @@ public final class FakeLocalSocketBinder: LocalSocketBinder {
 	}
 
 	public private(set) var calls: [Call] = []
-	/// Handed back by `accept`, once per scripted connection.
 	public var connections: [any Transport] = []
-	/// When set, `bind` throws it.
 	public var bindFailure: (any Error)?
-	/// When set, `createDirectory` throws it.
 	public var directoryFailure: (any Error)?
 
 	public init() {}

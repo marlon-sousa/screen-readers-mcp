@@ -1,11 +1,6 @@
 // ROLE: controller -- `getLastSpeech`: the most recent utterance, with no params.
-//
 // BUILT BY: Registry. READS: the session's SpeechBuffer.
-//
-// AN EMPTY BUFFER IS AN EMPTY TEXT, NOT AN ERROR. A session that has not made
-// the reader say anything yet asks a legitimate question, and the sentinel at
-// index 0 is what answers it -- with an empty `emittedAt`, because nothing was
-// emitted and reporting an instant would claim something happened.
+// An empty buffer answers with the index-0 sentinel, empty text and empty `emittedAt`, not an error.
 
 import ScreenReaderWire
 
@@ -17,7 +12,7 @@ public final class GetLastSpeechHandler: CommandHandler {
 		return LastSpeechResult(
 			text: utterance.text,
 			index: index,
-			// No journal to position into; see GetSpeech.
+			// VoiceOver has no log journal to position into; see Observation.
 			logPosition: 0,
 			emittedAt: Wallclock.format(utterance.emittedAt)
 		)

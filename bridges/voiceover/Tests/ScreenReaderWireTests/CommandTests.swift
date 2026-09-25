@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Command.swift.
-//
-// The whole contract's command list is bound, not this bridge's subset, so the
-// count below is the contract's -- and scripts/drift.py compares it with the
-// schema's `commands` map rather than trusting either side.
 
 import Testing
 
@@ -24,8 +20,6 @@ struct CommandTests {
 
 	@Test("an unknown command name is not a Command, and that is data rather than a fault")
 	func unknownNameIsNil() {
-		// The registry answers "unknown command"; nothing fails to decode, which
-		// is why Request.cmd is a String. See EnvelopeTests.
 		#expect(Command(rawValue: "makeCoffee") == nil)
 	}
 

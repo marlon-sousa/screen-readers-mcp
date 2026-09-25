@@ -1,12 +1,5 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/AppKitUserPrompter.swift.
-//
-// THE WHOLE OF THE PROMPTER'S BEHAVIOUR IS THE TABLE, and that is what this file
-// drives: a ticket per question, an answer that waits until somebody polls for
-// it, first-outcome-wins, and a cancelled prompt that accepts nothing
-// afterwards. None of it needs a window, which is why the window is a seam.
-//
-// NO TEST HERE OPENS ONE. A real window needs an NSApplication, steals focus, and
-// on a machine with a screen reader running announces itself out loud.
+// No test here opens a real window: it needs an NSApplication, steals focus and is announced by a running screen reader.
 
 import Fakes
 import Testing
@@ -17,8 +10,6 @@ import VoiceOverBridgeDomain
 @Suite("AppKitUserPrompter")
 struct AppKitUserPrompterTests {
 	private func prompter(_ window: FakePromptWindow) -> AppKitUserPrompter {
-		// Predictable tickets, so a test can write down what it expects. The real
-		// one mints a UUID, which is opaque to everything but this class.
 		var minted = 0
 		return AppKitUserPrompter(
 			window: window,
@@ -39,8 +30,6 @@ struct AppKitUserPrompterTests {
 
 	@Test("there is no reply until there is one, and then it WAITS to be collected")
 	func theAnswerWaits() throws {
-		// An answer outliving its window is the point: an agent whose poll arrived a
-		// moment late still gets the human's decision instead of an empty window.
 		let window = FakePromptWindow()
 		let subject = prompter(window)
 		let ticket = try subject.present("ready?")
@@ -52,9 +41,6 @@ struct AppKitUserPrompterTests {
 
 	@Test("THE FIRST OUTCOME WINS: a window that closes after an answer is still an answer")
 	func firstOutcomeWins() throws {
-		// The human presses return and the window tears itself down: two reports,
-		// in that order, and turning the first into a dismissal would lose their
-		// decision.
 		let window = FakePromptWindow()
 		let subject = prompter(window)
 		let ticket = try subject.present("ready?")
@@ -76,8 +62,6 @@ struct AppKitUserPrompterTests {
 
 	@Test("a cancelled prompt does not come back to life when its own window closes")
 	func aCancelledPromptStaysGone() throws {
-		// The close WE asked for arrives back as a dismissal, and re-populating the
-		// table with it would resurrect a prompt the poll has already taken away.
 		let window = FakePromptWindow()
 		let subject = prompter(window)
 		let ticket = try subject.present("ready?")

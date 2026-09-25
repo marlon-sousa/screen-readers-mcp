@@ -1,22 +1,9 @@
 // screenreader-mcp domain -- the set_state tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `state`, the same capability that
-// gates get_state -- see ports/state_writer.go for why the pair is not split.
+// ROLE: controller, gated on state, the same capability as get_state.
 // USES: ports.StateWriter, through ToolContext.StateWriter().
 // LISTED BY: registry.go.
-//
-// WHY IT EXISTS. `NVDA+space` is a TOGGLE, and there is no idempotent way to say
-// "be in browse mode". Automation therefore has to read, compare, press and
-// re-check -- and the mode can change between the read and the press (a page
-// finishes loading), so the press flips AWAY from the target and the re-check
-// catches it one round trip later, after the keys that followed have already
-// gone somewhere else. That is not hypothetical: it is what the first external
-// run demonstrated, and the agent blamed the application (spec 0027 ask 2).
-//
-// The fix is that the compare-and-set happens INSIDE the reader, so there is no
-// window between the read and the write. This tool carries the intent; the
-// bridge does the comparing.
+// The compare-and-set happens inside the reader, so there is no window between the read and the write.
 package tools
 
 import (
@@ -27,7 +14,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// SetState arrives at a reader mode, idempotently.
 type SetState struct{}
 
 var _ Tool = (*SetState)(nil)
@@ -105,9 +91,7 @@ func (t *SetState) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 		return nil, err
 	}
 	if request.BrowseMode == "" {
-		// An empty call would reach the reader, change nothing and come back
-		// looking exactly like "you were already there" -- one observable for
-		// two situations, in the one field built to separate two situations.
+		// An empty call would come back looking exactly like already being there.
 		return nil, errors.New("name at least one mode to set; browse_mode is the only one this reader accepts today")
 	}
 
@@ -116,8 +100,7 @@ func (t *SetState) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if err != nil {
 		return nil, err
 	}
-	// Changed is never nil on the wire: an agent reading `changed.length == 0`
-	// must not have to handle a missing field as a third case.
+	// Changed is never nil on the wire.
 	changed := result.Changed
 	if changed == nil {
 		changed = []string{}

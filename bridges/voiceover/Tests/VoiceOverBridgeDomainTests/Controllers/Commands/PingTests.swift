@@ -22,17 +22,11 @@ struct PingTests {
 		) as? PingResult
 		let ping = try #require(result)
 		#expect(ping.ok)
-		// nil is a THIRD answer, not a false one: with no silence control there is
-		// nothing to ask, and reporting `false` would be read as proof that the
-		// human can hear their machine.
 		#expect(ping.suppressing == nil)
 	}
 
 	@Test("in a SILENT session it reports that words are being withheld right now")
 	func itReportsSuppression() throws {
-		// The one channel an agent has for noticing a lift: nothing is pushed when
-		// the silence cap fires (protocol.md §6.1, rule 3), so an agent that wants
-		// to know reads this.
 		let silence = FakeSilenceControl()
 		try silence.suppress()
 		let result = try PingHandler().execute(

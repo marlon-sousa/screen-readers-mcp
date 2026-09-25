@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Commands/GetLog.swift.
-//
-// Not implemented by this bridge -- VoiceOver emits no diagnostic log of its own
-// -- and bound anyway. The defaults below are the ones that keep a log slice
-// from being incomplete by default.
 
 import Testing
 

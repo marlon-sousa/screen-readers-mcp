@@ -1,8 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/JsonLinesChannel.swift.
-//
-// The assertions are protocol.md §1's framing rules, tested in the shapes a real
-// socket cannot be asked to produce on demand: a frame split across two reads,
-// two frames in one read, and a read that ends mid-frame.
 
 import Fakes
 import Foundation
@@ -32,10 +28,6 @@ struct JsonLinesChannelTests {
 
 	@Test("two frames in one chunk are BOTH delivered, without touching the transport again")
 	func twoFramesInOneChunk() throws {
-		// The rule protocol.md §1 states out loud: a reader must drain complete
-		// buffered lines before polling again. Without it the second frame waits
-		// for whatever arrives next -- a message lost to an idle timeout although
-		// it had already been delivered.
 		let transport = FakeTransport([
 			.chunk(Data("{\"id\":1,\"cmd\":\"ping\"}\n{\"id\":2,\"cmd\":\"bye\"}\n".utf8)),
 			.endOfStream,
@@ -88,9 +80,6 @@ struct JsonLinesChannelTests {
 		try channel.write(Response.succeeded(id: 4, with: EchoResult(payload: .string("two\nlines"))))
 		#expect(transport.sent.last == 0x0A)
 		#expect(transport.sentLines.count == 1)
-		// The payload's own newline survives as an escape, which is what keeps a
-		// frame a frame: JSON escaping is the reason the framing can be this
-		// simple.
 		#expect(transport.sentLines[0].contains("two\\nlines"))
 	}
 

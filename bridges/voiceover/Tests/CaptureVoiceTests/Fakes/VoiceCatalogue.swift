@@ -1,10 +1,4 @@
-// A hand-written stateful fake for the VoiceCatalogue port, mirroring
-// Sources/CaptureVoice/Domain/Ports/VoiceCatalogue.swift.
-//
-// `defaultVoice(for:)` is a SEPARATE table from `allVoices()` on purpose, exactly
-// as on the real machine: the system's default for a language is not merely the
-// first listed voice matching it, and the difference is what stops us choosing a
-// listed voice that then fails to synthesize.
+// `defaultVoice(for:)` is a separate table from `allVoices()`, as on the real machine, where the default is not merely the first listed match.
 
 @testable import CaptureVoice
 
@@ -13,8 +7,6 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 	var defaults: [String: AvailableVoice]
 	var voices: [AvailableVoice]
 	private(set) var defaultLookups: [String] = []
-	/// Counted because enumerating every voice COSTS TIME on a real machine, and
-	/// the common path must not pay it. See the test that asserts this is zero.
 	private(set) var allVoicesReads = 0
 	private(set) var identifierLookups: [String] = []
 
@@ -33,8 +25,7 @@ final class FakeVoiceCatalogue: VoiceCatalogue {
 		return defaults[language]
 	}
 
-	/// Looks in `voices` BY IDENTIFIER without counting an enumeration, because on
-	/// the real machine this is a direct lookup and rule 0 must not cost the list.
+	/// Not counted as an enumeration: on the real machine this is a direct lookup.
 	func voice(identifier: String) -> AvailableVoice? {
 		identifierLookups.append(identifier)
 		return voices.first { $0.identifier == identifier }

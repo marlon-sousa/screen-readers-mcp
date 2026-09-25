@@ -1,11 +1,4 @@
-// A hand-written stateful fake for the PlistReader adapter seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/PlistReader.swift.
-//
-// An in-memory filesystem of exactly two questions: what is in the plist at a
-// path, and whether something exists at one. It RECORDS THE PATHS ASKED FOR,
-// which is most of the point -- the adapter above it is only correct if it asks
-// about the two locations `scripts/voiceover_channels.sh` reads, and a fake that
-// answered without saying what it was asked could not check that.
+// Hand-written stateful fake for the PlistReader adapter seam; it records the paths asked for.
 
 import VoiceOverBridgeAdapters
 

@@ -1,12 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/Registry.swift.
-//
-// THE ENUMERATION TESTS ARE THE POINT OF THIS FILE. The registry is where a
-// handler is connected and where this bridge states what it can do, so the
-// assertions are about the SET -- which commands are served, which capabilities
-// are announced, and which handler carries a flag the dispatch loop reads. A
-// handler added without a capability, or a capability announced without a
-// handler, is exactly the mistake the capability gate exists to prevent, and it
-// is invisible in any single handler's own test.
 
 import Fakes
 import ScreenReaderWire
@@ -44,46 +36,20 @@ struct RegistryTests {
 
 	@Test("it announces all six -- and at 13.11 that is the complete set, not a step")
 	func capabilitiesDescribeWhatWorks() {
-		// Spec 0046 settles this bridge's capabilities at six and requires them to
-		// arrive ONE ENTRY AT A TIME. This assertion is what made each of those
-		// entries prove it had arrived; with `guidance` it is also the statement
-		// that the lane's capability set is complete.
 		#expect(Registry.capabilities == [.speech, .gestures, .typing, .focus, .interact, .guidance])
 	}
 
 	@Test("every command an announced capability promises has a handler, and nothing extra")
 	func theCapabilityAndItsHandlersAgree() {
-		// THE MISTAKE THIS CATCHES is invisible in any single handler's test: a
-		// capability announced with one of its commands missing is a tool the
-		// agent can see, call, and get "unknown command" from. protocol.md §5
-		// lists what each capability covers; this is that list.
 		let promised: [Capability: [String]] = [
 			.speech: [
 				"getSpeech", "getLastSpeech", "getNextSpeechIndex",
 				"waitForSpeech", "waitForSpeechToFinish",
 			],
 			.gestures: ["pressGesture"],
-			// A SEPARATE CAPABILITY FROM `gestures`, AND THAT IS THE DESIGN. The two
-			// halves of input cost different permissions on macOS (spec 0041), so an
-			// agent has to be able to be told that one of them works on this machine
-			// and the other does not. Folding them into one string would make that
-			// unsayable.
 			.typing: ["typeText"],
-			// ANNOUNCED WITHOUT A PERMISSION BEHIND IT. Focus answers richer where
-			// typing's Accessibility grant is already held and thinner where it is
-			// not -- one capability either way, because the command works on every
-			// machine and the wire has no shape for "works better over there".
 			.focus: ["getFocusInfo"],
-			// THE THREE THAT TALK TO A PERSON RATHER THAN TO A READER, and they are
-			// one capability because they are one conversation: `askUser` is useless
-			// without `waitForUserReply`, and both are only audible because
-			// `announce`'s channel goes around the reader.
 			.interact: ["announce", "askUser", "waitForUserReply"],
-			// THE FIRST CAPABILITY HERE THAT GATES SOMETHING OTHER THAN A TOOL: the
-			// server turns it into the `screenreader://reader-guidance` resource. It
-			// still has exactly one command behind it, which is why it belongs in
-			// this table like the others -- the difference is on the server's side of
-			// the wire, not on this one.
 			.guidance: ["getGuidance"],
 		]
 		let served = registry()
@@ -95,10 +61,6 @@ struct RegistryTests {
 					"`\(capability.rawValue)` promises \(command) and nothing serves it")
 			}
 		}
-		// AND THE CONVERSE, which is the half that would otherwise rot: nothing is
-		// announced that this table does not account for, so a capability added to
-		// `Registry.capabilities` without its handlers fails HERE rather than in a
-		// live session.
 		#expect(Set(Registry.capabilities) == Set(promised.keys))
 	}
 
@@ -116,22 +78,6 @@ struct RegistryTests {
 
 	@Test("the two input commands and `askUser` are the ones that move the user's machine")
 	func exactlyTheInputCommandsMutateTheReader() {
-		// THE FLAG DEFAULTS TO `false` AND THE FAILURE MODE OF FORGETTING IS
-		// "ALLOWED", so a new mutating handler that omits it is invisible in its
-		// own test and visible only here. This assertion is the SET rather than a
-		// membership check for exactly that reason -- and it did its job at 13.8:
-		// it FAILED the moment `typeText` was registered, which is the test asking
-		// whether the new handler had opted in, and the fix was to state the new
-		// set rather than to weaken the assertion. 13.9 adds a handler and does NOT
-		// join this set: reading where the focus is moves nothing, which is what
-		// lets an observe-only session (spec 0017) ask.
-		//
-		// 13.10 ADDS THREE HANDLERS AND EXACTLY ONE OF THEM JOINS, which is the
-		// distinction worth having: `announce` tells the human something and demands
-		// nothing, so an observe-only session may narrate what it is watching;
-		// `askUser` puts a question in front of them and takes the reader back to
-		// let them answer it, which is an interruption they did not ask for. And
-		// `waitForUserReply` only collects what is already there.
 		let mutating = registry().filter { $0.value.mutatesReader }.keys
 		#expect(Set(mutating) == ["pressGesture", "typeText", "askUser"])
 	}
@@ -141,9 +87,6 @@ struct RegistryTests {
 		let reader = Registry.reader(version: "macOS 15.0.0")
 		#expect(reader.name == "voiceover")
 		#expect(reader.version == "macOS 15.0.0")
-		// The convention: <reader>McpBridge. Asserted here, beside the name it is
-		// built from, because the two drifting apart is what would leave a shipped
-		// default endpoint pointing at nothing.
 		#expect(defaultEndpointName == reader.name + "McpBridge")
 	}
 }

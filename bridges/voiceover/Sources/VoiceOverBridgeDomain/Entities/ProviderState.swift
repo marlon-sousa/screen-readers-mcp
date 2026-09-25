@@ -1,38 +1,16 @@
-// ROLE: entity -- the capture voice's lifecycle as a state machine, and pure.
-//
-// FIVE STATES RATHER THAN ONE BOOLEAN, and the reason is the whole point of the
-// type: EACH STATE HAS A DIFFERENT DIAGNOSIS AND A DIFFERENT INSTRUCTION FOR THE
-// HUMAN. "Registered but not published" is a build problem; "published but not
-// selected" is a settings problem the bridge now fixes itself; "selected but not
-// capturing" is a dead provider that only a reader restart re-binds. A boolean
-// would collapse three different answers into one unhelpful one.
-//
-// BUILT BY: PluginKitProviderLifecycle, from three independent signals -- what
-// pluginkit lists, what the system publishes, and what the speech domain says
-// VoiceOver is speaking with. PROMOTED BY: whoever holds the evidence of capture,
-// through `observing(captured:)`, because "is it actually capturing?" is a
-// question only the session's own buffer can answer (spec 0047, finding 18: the
-// reliable signal is utterances arriving, never audio).
-// USED BY: the Hello handler and the two waiting speech handlers, which turn a
-// state into named ReaderConditions rather than into an empty read-back.
-//
-// THE ORDER IS A RANKING, and `canCapture` is where it earns its keep: everything
-// from `selected` up can capture, everything below it cannot, and that single
-// comparison is what a handshake gates a silent session on.
+// ROLE: entity, the capture voice's lifecycle as a pure state machine.
+// BUILT BY: PluginKitProviderLifecycle, from pluginkit, the published voices and VoiceOver's
+// speech domain.
+// PROMOTED BY: whoever holds evidence of capture, through `observing(captured:)`.
+// USED BY: the Hello handler and the two waiting speech handlers.
 
 public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable {
-	/// pluginkit does not list the extension at all.
 	case notRegistered
-	/// pluginkit lists it, but the system is not publishing its voice.
 	case registered
-	/// The voice exists system-wide. Whether VOICEOVER offers it is a different
-	/// question and an unanswerable one -- see `conditions`.
+	/// The voice exists system-wide; whether VoiceOver offers it cannot be answered.
 	case published
-	/// VoiceOver's own selected voice is ours. Nothing has been captured yet,
-	/// which at the start of a session is entirely normal.
 	case selected
-	/// Utterances have arrived. The only state that is evidence rather than
-	/// inference.
+	/// Utterances have arrived: the only state that is evidence rather than inference.
 	case capturing
 
 	private var rank: Int {
@@ -49,10 +27,8 @@ public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable
 		lhs.rank < rhs.rank
 	}
 
-	/// Whether this bridge can capture, silence or read back anything at all.
 	public var canCapture: Bool { self >= .selected }
 
-	/// What this state means, in one sentence.
 	public var diagnosis: String {
 		switch self {
 		case .notRegistered:
@@ -68,13 +44,7 @@ public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable
 		}
 	}
 
-	/// The named conditions that are live in this state.
-	///
-	/// EMPTY IS AN ANSWER AND `selected` IS DELIBERATELY EMPTY. A session that has
-	/// just selected the voice and heard nothing yet is healthy, not broken, and
-	/// reporting two possible faults at every handshake would train a reader to
-	/// ignore them. The ambiguity of "selected, and still nothing" belongs to
-	/// whoever waited and got nothing -- see `unheardConditions`.
+	/// `selected` is deliberately empty: a session that has heard nothing yet is healthy.
 	public var conditions: [ReaderCondition] {
 		switch self {
 		case .notRegistered, .registered:
@@ -86,14 +56,8 @@ public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable
 		}
 	}
 
-	/// What to report when something WAITED for speech and got none.
-	///
-	/// This is the case spec 0047's findings 6 and 18 make undecidable from
-	/// outside the reader: with the voice selected and nothing arriving, the
-	/// provider may have died, or VoiceOver may never have offered the voice, and
-	/// no signal available here separates them. So BOTH are named, with both
-	/// recoveries, which is honest -- where "found: false" would have been a
-	/// confident wrong answer.
+	/// With the voice selected and nothing arriving, a dead provider and a voice VoiceOver never offered
+	/// cannot be told apart from here, so both are named.
 	public var unheardConditions: [ReaderCondition] {
 		switch self {
 		case .selected:
@@ -105,49 +69,12 @@ public enum ProviderState: String, Equatable, Sendable, Comparable, CaseIterable
 		}
 	}
 
-	/// The one rendering of a state for an agent or a transcript: what it means,
-	/// then every condition it puts in question, each with its own recovery.
-	///
-	/// ONE FUNCTION SO THE HALVES CANNOT TRAVEL APART. A diagnosis without its
-	/// recovery is a complaint, and a recovery without its diagnosis is a ritual.
 	public var report: String {
 		([diagnosis] + conditions.map(\.described)).joined(separator: " ")
 	}
 
-	/// AN UTTERANCE THAT ARRIVED IS `capturing`, WHATEVER THE INFERENCE SAID.
-	///
-	/// Pure, so the rule lives here rather than in whichever caller happens to hold
-	/// a buffer.
-	///
-	/// ============================================================================
-	/// IT USED TO REQUIRE `>= .selected` FIRST, AND THAT WAS EVIDENCE GATED BY
-	/// INFERENCE -- 13.26.
-	/// ============================================================================
-	///
-	/// The old rule read: "utterances cannot have arrived through a voice the
-	/// reader is not using, so evidence that says otherwise is stale rather than
-	/// authoritative." The reasoning is sound and the premise is not: the states
-	/// BELOW `capturing` are things this bridge INFERS by asking the system and the
-	/// reader, and one of those questions -- whether VoiceOver offers our voice --
-	/// is asked over AppleScript. On a machine where the person has switched
-	/// AppleScript control off, which is the state 13.26 exists to support, that
-	/// question cannot be answered at all, so the inferred state sits low while the
-	/// machine is perfectly healthy.
-	///
-	/// THIS CHANGE FIXED NOTHING THAT WAS BROKEN ON THE DAY IT WAS MADE, and the
-	/// record says so rather than claiming a scalp: the failure being chased at the
-	/// time turned out to be a conformance harness keyed on a stale literal. What
-	/// stands on its own is the ARGUMENT -- with AppleScript off, `conditions` and
-	/// the state beneath `capturing` really are unanswerable, and a rule that gates
-	/// evidence on them really would refuse a healthy machine. It is a hazard
-	/// closed before it was met, and it is written down as that.
-	///
-	/// So the rule is 13.20's own principle applied to itself: rungs 3 and 4 are
-	/// inference, rung 5 is EVIDENCE, and evidence wins. An utterance arriving
-	/// proves everything beneath it -- the provider ran, the voice was selected,
-	/// the reader spoke through it -- because there is no other way it could have
-	/// got here. What the inference is still good for is saying WHY, when nothing
-	/// arrives; `unheardConditions` is where that lives, and it is untouched.
+	/// An utterance that arrived is `capturing`, whatever the inferred state said: the inference cannot
+	/// be answered when AppleScript control is off.
 	public func observing(captured: Bool) -> ProviderState {
 		guard captured else { return self }
 		return .capturing

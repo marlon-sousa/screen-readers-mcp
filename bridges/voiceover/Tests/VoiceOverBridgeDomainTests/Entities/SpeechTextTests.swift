@@ -1,9 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Entities/SpeechText.swift.
-//
-// THE CASES ARE THE ONES VOICEOVER ACTUALLY SENDS. Spec 0041 measured its SSML:
-// a `<speak>` wrapper, a `<prosody>` carrying the user's rate, inner `<prosody>`
-// for emphasis, `<break>` between phrases, escaped entities, and no `xml:lang`
-// anywhere. Everything asserted here is one of those.
 
 import Testing
 
@@ -36,8 +31,6 @@ struct SpeechTextTests {
 		#expect(SpeechText.plain(ofSsml: "<speak>b &gt; a</speak>") == "b > a")
 		#expect(SpeechText.plain(ofSsml: "<speak>&quot;quoted&quot;</speak>") == "\"quoted\"")
 		#expect(SpeechText.plain(ofSsml: "<speak>it&apos;s</speak>") == "it's")
-		// Left alone rather than guessed at: read back as "nbsp" it would be a
-		// defect, and mangled into some character it would be a worse one.
 		#expect(SpeechText.plain(ofSsml: "<speak>a&nbsp;b</speak>") == "a&nbsp;b")
 	}
 
@@ -64,8 +57,6 @@ struct SpeechTextTests {
 
 	@Test("an unterminated tag swallows the rest, and does not run off the end")
 	func malformedIsSurvivable() {
-		// Whatever the reader said has to be readable back, so this renders
-		// something rather than throwing. What it renders is not a promise.
 		#expect(SpeechText.plain(ofSsml: "<speak>said<prosody") == "said")
 	}
 }

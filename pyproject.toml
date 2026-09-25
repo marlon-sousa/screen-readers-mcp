@@ -453,12 +453,13 @@ ignore_fail = false
 # The comment gate, scripts/comments.py --check. An area is enforced once it has been stripped, and
 # its ceiling is the ratio it was stripped to. Lower a ceiling freely; raising one needs Marlon's
 # approval. `pending` lists files left unstripped because an open PR touches them; the gate skips
-# them entirely, and whoever strips them removes them from the list.
+# them entirely, and whoever strips them removes them from the list. Every tracked Go, Python and
+# Swift file must fall under some area's paths, or the gate fails.
 
 [tool.screen-readers-mcp.comments.server]
 paths = ["server"]
-enforced = false
-ceiling = 1.0
+enforced = true
+ceiling = 0.10
 pending = []
 
 [tool.screen-readers-mcp.comments.nvda]
@@ -469,6 +470,25 @@ pending = []
 
 [tool.screen-readers-mcp.comments.voiceover]
 paths = ["bridges/voiceover"]
+enforced = true
+ceiling = 0.10
+# Open PR #101 (13.24, 13.32, 13.33) touches these; strip them once it merges.
+pending = [
+	"bridges/voiceover/Sources/BridgeListener/main.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeAdapters/PluginKitProviderLifecycle.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Controllers/ReaderEdgeSetup.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Controllers/Session.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Entities/ReaderCondition.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Ports/ProviderLifecycle.swift",
+	"bridges/voiceover/Tests/Fakes/ProviderLifecycle.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeAdaptersTests/PluginKitProviderLifecycleTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Controllers/ReaderEdgeSetupTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Controllers/SessionTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Entities/ReaderConditionTests.swift",
+]
+
+[tool.screen-readers-mcp.comments.scripts]
+paths = ["scripts"]
 enforced = false
 ceiling = 1.0
 pending = []

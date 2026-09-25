@@ -43,9 +43,6 @@ struct SimpleEventBusTests {
 
 	@Test("a subscriber may leave from inside its own handler without deadlocking")
 	func reentrantUnsubscribe() {
-		// The reason handlers are called OUTSIDE the lock: a view that tears itself
-		// down when it sees `stopped` would otherwise deadlock the accept thread,
-		// and it would do it only on the path where the bridge is shutting down.
 		let bus = SimpleEventBus()
 		var token: SubscriptionToken?
 		var seen = 0
@@ -60,10 +57,6 @@ struct SimpleEventBusTests {
 
 	@Test("emitting from another thread while subscribing on this one is safe")
 	func concurrentEmitAndSubscribe() {
-		// Why the lock is not defensive habit: emit runs on the accept thread the
-		// moment a session starts, while subscribe and unsubscribe run wherever a
-		// view lives. Unguarded, this is a corrupted dictionary rather than a
-		// wrong answer.
 		let bus = SimpleEventBus()
 		let group = DispatchGroup()
 		DispatchQueue.global().async(group: group) {

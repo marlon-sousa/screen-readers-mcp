@@ -1,10 +1,5 @@
 // screenreader-mcp adapters -- tests for handshake.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package bridge_test), driving the real handshake against
-// testsupport's fake bridge over an in-memory local: real framing, real `hello`,
-// no OS. The dialer factory is the seam that makes the ordered-endpoint policy
-// testable -- a scripted factory decides which endpoint "answers".
 package bridge_test
 
 import (
@@ -68,8 +63,6 @@ func TestDialEstablishesASessionFromHello(t *testing.T) {
 	}
 }
 
-// The capability gate, made structural: a reader without braille yields a nil
-// collaborator, so there is nothing for a braille tool to be built from.
 func TestDialHandsOverOnlyTheAnnouncedCapabilities(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Capabilities: []wire.Capability{wire.CapabilitySpeech, wire.CapabilityGestures, wire.CapabilityTyping},
@@ -104,9 +97,6 @@ func TestDialHandsOverOnlyTheAnnouncedCapabilities(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 4a: switching the bridge's transport in its dialog needs
-// no server configuration. The first endpoint refuses, the second answers, and
-// the result says which one did.
 func TestDialFallsThroughToTheNextEndpointInDeclaredOrder(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"tcp:127.0.0.1:8765": fake})
@@ -138,9 +128,6 @@ func TestDialReportsEveryEndpointThatFailed(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 8: a version disagreement is a REPORTED failure naming
-// both versions, never a crash -- and the remaining endpoints are not tried,
-// because a bridge answered and the problem is not reachability.
 func TestDialReportsAProtocolMismatchAndStopsTrying(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{ProtocolVersion: 99})
 	other := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
@@ -167,9 +154,6 @@ func TestDialReportsAProtocolMismatchAndStopsTrying(t *testing.T) {
 	}
 }
 
-// The capture mode is fixed for the session's lifetime, so the party that knows
-// what the session is for chooses it. An adapter inventing a default would be
-// that choice made by the wrong layer.
 func TestDialRefusesToInventACaptureMode(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	handshake := newHandshake(t, map[string]*testsupport.FakeBridge{"local:reader": fake})
@@ -194,9 +178,6 @@ func TestDialRejectsAReaderWithNoEndpoints(t *testing.T) {
 	}
 }
 
-// An unknown capability string survives into the session, so the info resource
-// can describe the reader honestly (protocol.md §4: ignore, which is not the
-// same as discard).
 func TestDialRetainsUnknownCapabilities(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Capabilities: []wire.Capability{wire.CapabilitySpeech, "teleportation"},
@@ -213,8 +194,6 @@ func TestDialRetainsUnknownCapabilities(t *testing.T) {
 		t.Errorf("capabilities (-want +got):\n%s", diff)
 	}
 }
-
-// -- the silence cap (spec 0032) ---------------------------------------------
 
 func TestTheHandshakeCarriesTheSilenceCap(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
@@ -239,12 +218,6 @@ func TestTheHandshakeCarriesTheSilenceCap(t *testing.T) {
 	}
 }
 
-// -- attendance (spec 0035) --------------------------------------------------
-
-// The declared fact survives the wire AS ITSELF. The cap says the machine bounds
-// nothing while the bridge says somebody is there -- a pair the old wire could
-// not carry, so a session that shows both proves the field travelled rather than
-// being reconstructed from its neighbour.
 func TestTheHandshakeCarriesDeclaredAttendance(t *testing.T) {
 	present := true
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
@@ -273,10 +246,6 @@ func TestTheHandshakeCarriesDeclaredAttendance(t *testing.T) {
 }
 
 func TestABridgeThatDeclaresNoAttendanceLeavesItNil(t *testing.T) {
-	// Nil is the third answer here too, and it is the ONLY thing that lets the
-	// server tell an older bridge (infer from the cap) from a current one that
-	// says the room is empty. Defaulting it either way would silently discard
-	// that distinction.
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 		SilenceCap: &wire.SilenceCapInfo{
@@ -296,9 +265,6 @@ func TestABridgeThatDeclaresNoAttendanceLeavesItNil(t *testing.T) {
 }
 
 func TestABridgeThatSendsNoCapLeavesItNil(t *testing.T) {
-	// Nil is the third answer -- "this bridge did not say" -- and the server
-	// must not turn it into "uncapped", which would read as permission to go
-	// quiet on a machine that has no bound at all.
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 	})

@@ -1,7 +1,6 @@
 // screenreader-mcp domain -- the set_log_level tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `log`.
+// ROLE: controller, gated on log.
 // USES: ports.LogReader, through ToolContext.ReaderLog().
 // LISTED BY: registry.go.
 
@@ -13,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// SetLogLevel changes the reader's diagnostic log verbosity.
 type SetLogLevel struct{}
 
 var _ Tool = (*SetLogLevel)(nil)

@@ -1,8 +1,5 @@
 // screenreader-mcp domain -- tests for capability.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package entities_test): the set is exercised through exactly the
-// surface the handshake and the tool gate use.
 package entities_test
 
 import (
@@ -23,8 +20,6 @@ func TestSetHasWhatWasAnnounced(t *testing.T) {
 	}
 }
 
-// The zero Set is the answer for "no session yet", so it must behave as an empty
-// set rather than panicking on a nil map.
 func TestZeroSetHasNothing(t *testing.T) {
 	var set entities.Set
 
@@ -36,10 +31,6 @@ func TestZeroSetHasNothing(t *testing.T) {
 	}
 }
 
-// protocol.md §4: a consumer must IGNORE an unknown capability string. Ignoring
-// is not discarding -- the set still reports it, because it is what
-// screenreader://info tells the agent about the reader, and a reader deserves an
-// honest description even where this server has no tool to match.
 func TestUnknownCapabilitiesAreRetainedNotRejected(t *testing.T) {
 	set := entities.NewSet([]string{"speech", "announce", "teleportation"})
 
@@ -60,17 +51,6 @@ func TestAllIsSortedAndDeduplicated(t *testing.T) {
 	}
 }
 
-// -- the contract's own gloss (spec 0031, 2.5) --------------------------------
-
-// A capability cannot be added without saying what it IS. Persona's texts are
-// guarded the same way and for the same reason: the vocabulary is the wire
-// contract's, so a member with nothing to say is a hole in the contract rather
-// than a document's omission.
-//
-// CapabilityGuidance is covered by this like any other, even though it gates a
-// resource and heads no group in screenreader://tools -- what is being asserted
-// is that the vocabulary is complete, not that one document has a place to print
-// every member.
 func TestEveryDeclaredCapabilityHasAMeaning(t *testing.T) {
 	for _, capability := range entities.AllCapabilities() {
 		if capability.Meaning() == "" {
@@ -80,9 +60,6 @@ func TestEveryDeclaredCapabilityHasAMeaning(t *testing.T) {
 	}
 }
 
-// The gloss is for what THIS SERVER declares. A bridge may announce anything and
-// NewSet keeps it, so an unknown string reaching Meaning must answer honestly
-// rather than inventing a description of a group nobody here knows.
 func TestAnUndeclaredCapabilityHasNoMeaning(t *testing.T) {
 	if meaning := entities.Capability("teleportation").Meaning(); meaning != "" {
 		t.Errorf("an undeclared capability was glossed as %q", meaning)

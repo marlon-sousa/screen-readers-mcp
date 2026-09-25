@@ -1,17 +1,9 @@
-// ROLE: entity -- `getDocumentSnapshot`'s params and result, and the line shape
-// and truncation vocabulary the result carries.
-//
-// Pure. Not implemented by this bridge: `document` is not in its capability set.
-//
-// `hasDocument == false` IS THE COMMON ANSWER AND NOT A FAILURE -- focus is
-// frequently not in a document at all. `truncatedBy` names WHICH bound stopped
-// the snapshot, so a caller can raise that one rather than guessing between two.
+// ROLE: entity, `getDocumentSnapshot`'s params and result, and the line and truncation shapes it carries.
+// `hasDocument == false` is the common answer, not a failure.
 
 public struct DocumentSnapshotParams: Codable, Equatable, Sendable {
 	public var fromLine: Int = 0
-	/// 0 means "the reader's own bound", not "no bound": an unbounded snapshot
-	/// of a long document is how a caller reads a truncated answer believing it
-	/// is whole.
+	/// 0 means the reader's own bound, not unbounded.
 	public var maxLines: Int = 0
 	public var maxChars: Int = 0
 
@@ -68,8 +60,6 @@ public struct DocumentSnapshotResult: Codable, Equatable, Sendable {
 	}
 }
 
-/// One line of the document, carrying its own number so a caller can ask for
-/// more from where it stopped.
 public struct SnapshotLine: Codable, Equatable, Sendable {
 	public var line: Int
 	public var text: String
@@ -80,8 +70,7 @@ public struct SnapshotLine: Codable, Equatable, Sendable {
 	}
 }
 
-/// Which bound stopped the snapshot. `none` means nothing did -- the snapshot is
-/// the whole document.
+/// `none` means the snapshot is the whole document.
 public enum TruncatedBy: String, Codable, CaseIterable, Sendable {
 	case none
 	case maxLines

@@ -1,11 +1,4 @@
-// Mirrors Sources/CaptureVoice/Adapters/CaptureEventLine.swift.
-//
-// The two sinks emit the SAME bytes, which is what makes them interchangeable
-// when the sandbox denies one of them. This is the file that keeps that true.
-//
-// It is also the wire the bridge reads (entry 13.5), so the field names and the
-// shape are a contract and not a rendering preference.
-
+// Both sinks emit these same bytes and the bridge parses them, so the field names and shape are a contract.
 import Foundation
 import Testing
 

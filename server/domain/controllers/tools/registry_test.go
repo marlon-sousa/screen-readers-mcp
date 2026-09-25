@@ -1,10 +1,5 @@
 // screenreader-mcp domain -- the Registry's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The registry is the single tool list, so these tests are mostly about that
-// claim holding: what it lists is what the gate knows, and every tool it lists
-// is complete enough to be bound to the SDK without the adapter checking
-// anything.
 package tools_test
 
 import (
@@ -31,10 +26,6 @@ func TestTheUngatedFourAreAlwaysRegistered(t *testing.T) {
 	}
 }
 
-// The wire's lifecycle and diagnostic commands are deliberately NOT tools (spec
-// 0013): `bye` is what disconnect_reader sends, `ping` is what status' round
-// trip is, and `echo` answers a developer's question rather than an agent's.
-// Every advertised tool is tokens in every agent request, so this is a real cost.
 func TestPingEchoAndByeAreNotTools(t *testing.T) {
 	registry := tools.BuildRegistry()
 
@@ -45,8 +36,6 @@ func TestPingEchoAndByeAreNotTools(t *testing.T) {
 	}
 }
 
-// The gate is DERIVED from the list, so a tool cannot exist without the catalog
-// knowing what gates it.
 func TestTheCatalogCoversExactlyTheRegisteredTools(t *testing.T) {
 	registry := tools.BuildRegistry()
 	catalog := registry.Catalog()
@@ -73,9 +62,6 @@ func TestTheCatalogCoversExactlyTheRegisteredTools(t *testing.T) {
 	}
 }
 
-// Every tool must be bindable as it stands: the MCP adapter has zero per-tool
-// code, so anything wrong with a tool's own declaration has to fail here rather
-// than at the first call.
 func TestEveryToolIsCompleteEnoughToBind(t *testing.T) {
 	for _, tool := range tools.BuildRegistry().All() {
 		t.Run(tool.Name(), func(t *testing.T) {
@@ -92,19 +78,12 @@ func TestEveryToolIsCompleteEnoughToBind(t *testing.T) {
 			if err := json.Unmarshal(tool.InputSchema(), &schema); err != nil {
 				t.Fatalf("input schema is not valid JSON: %v", err)
 			}
-			// The SDK REJECTS a tool whose input schema is not an object
-			// schema, and it does so by panicking at registration -- so this
-			// assertion is the difference between a clear test failure and a
-			// crash at startup.
+			// The SDK panics at registration on an input schema that is not an object schema.
 			if schema["type"] != "object" {
 				t.Errorf(`input schema type = %v, want "object"`, schema["type"])
 			}
 
-			// And the output schema, on exactly the same terms (spec 0031,
-			// 3.4): the SDK checks it for "type": "object" at registration
-			// and panics on anything else, so a malformed one is a startup
-			// crash rather than a bad document. What the schema SAYS is
-			// checked against the result struct in output_schema_test.go.
+			// The SDK checks the output schema the same way.
 			var output map[string]any
 			if err := json.Unmarshal(tool.OutputSchema(), &output); err != nil {
 				t.Fatalf("output schema is not valid JSON: %v", err)
@@ -116,8 +95,6 @@ func TestEveryToolIsCompleteEnoughToBind(t *testing.T) {
 	}
 }
 
-// Names are the registry's keys and the SDK's, so a duplicate would silently
-// shadow a tool rather than fail.
 func TestToolNamesAreUnique(t *testing.T) {
 	seen := map[string]bool{}
 	for _, tool := range tools.BuildRegistry().All() {

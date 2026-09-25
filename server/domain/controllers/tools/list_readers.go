@@ -1,18 +1,9 @@
 // screenreader-mcp domain -- the list_readers tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. UNGATED -- advertised from startup, because a
-// server with no session must still be able to say what it knows how to reach.
+// ROLE: controller, ungated.
 // USES: ConnectionControl.List, via ToolContext.
 // LISTED BY: registry.go.
-//
-// Every reader this can ever return is known before the process starts: the
-// answer comes from the layered endpoint configuration, never from what happens
-// to be running. An endpoint that is listening and belongs to no configured
-// reader is
-// absent from it -- which is spec 0013's determinism rule, and matters more given
-// where this is heading, since a bridge is about to become something you
-// provision rather than something you stumble upon.
+// Only configured readers are returned; a listening endpoint that belongs to no configured reader is absent.
 package tools
 
 import (
@@ -21,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// ListReaders answers what readers exist and whether they look reachable.
 type ListReaders struct{}
 
 var _ Tool = (*ListReaders)(nil)
@@ -85,11 +75,6 @@ func (t *ListReaders) OutputSchema() json.RawMessage {
 }`)
 }
 
-// listedEndpoint and listedReader are this tool's OUTPUT shape.
-//
-// Its own shape rather than marshalling the entity directly: what an agent reads
-// is part of the tool's contract, so it should change only when we mean it to,
-// not because a domain field was renamed.
 type listedEndpoint struct {
 	Endpoint string `json:"endpoint"`
 	Liveness string `json:"liveness"`
@@ -115,9 +100,7 @@ func (t *ListReaders) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 		}
 		for _, endpoint := range reader.Endpoints {
 			listed.Endpoints = append(listed.Endpoints, listedEndpoint{
-				// The endpoint's own spelling, which round-trips: what the
-				// agent is shown is exactly what may be written back into a
-				// --reader flag.
+				// The endpoint's own spelling, which round-trips into a --reader flag.
 				Endpoint: endpoint.Endpoint.String(),
 				Liveness: string(endpoint.Liveness),
 			})

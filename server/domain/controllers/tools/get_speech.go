@@ -1,9 +1,7 @@
 // screenreader-mcp domain -- the get_speech tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `speech`.
-// USES: ports.SpeechReader, obtained through ToolContext.Speech() -- which is
-// the capability check, and the only way to reach the port.
+// ROLE: controller, gated on speech.
+// USES: ports.SpeechReader, through ToolContext.Speech().
 // LISTED BY: registry.go.
 package tools
 
@@ -13,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetSpeech reads captured speech since an index.
 type GetSpeech struct{}
 
 var _ Tool = (*GetSpeech)(nil)
@@ -86,21 +83,11 @@ type speechRangeParams struct {
 	SinceIndex int `json:"since_index"`
 }
 
-// capturedEntry is one utterance or braille update as the agent sees it.
-//
-// Shared by get_speech and get_braille because the SHAPE is genuinely the same
-// (text at an index, with a journal coordinate) even though the two rings are
-// not -- unlike the ports, where separate types stop a braille index being
-// handed to a speech call, nothing here consumes an entry.
 type capturedEntry struct {
-	Text  string `json:"text"`
-	Index int    `json:"index"`
-	// LogPosition is the coordinate to hand get_log as since_position.
-	LogPosition int `json:"logPosition"`
-	// EmittedAt is when the reader emitted this, as "YYYY-MM-DD HH:MM:SS.mmm" --
-	// the same shape the reader's own log uses, so it can be pasted into a
-	// search of it. Two of these subtract to answer "how long after". Empty if
-	// the reader did not supply one (spec 0028).
+	Text        string `json:"text"`
+	Index       int    `json:"index"`
+	LogPosition int    `json:"logPosition"`
+	// EmittedAt uses the reader's own log format, "YYYY-MM-DD HH:MM:SS.mmm", and is empty if the reader supplied none.
 	EmittedAt string `json:"emittedAt,omitempty"`
 }
 
@@ -124,8 +111,7 @@ func (t *GetSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	// Never nil: an agent reading `entries` should find an empty list when
-	// nothing was said, not JSON null.
+	// Never nil: an empty list rather than JSON null.
 	entries := make([]capturedEntry, 0, len(captured.Entries))
 	for _, entry := range captured.Entries {
 		entries = append(entries, capturedEntry{

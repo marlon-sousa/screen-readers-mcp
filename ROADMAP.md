@@ -4213,16 +4213,21 @@ the ceiling, so the area cannot drift back. Counts are from
     code, 0.13; its ceiling is 0.15. The five new code lines are `pass` bodies
     where a docstring was an abstract method's only statement.
 
-14.2. **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
+14.2. **Done** -- **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
     every Swift file under `bridges/voiceover/`, except those an open PR
     touches, which go in `pending`. Before: 12,941 comment, 18,436 code, 0.70.
+    After, without the 11 files PR #101 touches: 1,429 comment, 16,388 code,
+    0.09; its ceiling is 0.10. Those 11 files wait in `pending` for #101.
 
-14.3. **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
+14.3. **Done** -- **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
     file under `server/` except the generated `wire.gen.go`. Before: 7,734
-    comment, 18,166 code, 0.43.
+    comment, 18,166 code, 0.43. After: 1,395 comment, 18,166 code, 0.08; its ceiling is
+    0.10.
 
-Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has no
-area in the gate yet.
+Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has an
+area in the gate, not yet enforced; stripping it would be entry 14.4. Every Go,
+Python and Swift file must belong to some area, so a new directory cannot slip
+past the gate unnoticed.
 
 ## Out-of-band work (not board entries)
 

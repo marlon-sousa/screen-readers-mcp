@@ -8,8 +8,6 @@ import Testing
 struct ProtocolVersionTests {
 	@Test("the binding announces the version the published schema declares")
 	func currentIsOne() {
-		// specs/wire/v1/schema.json's `protocolVersion`. scripts/drift.py is what
-		// keeps the two equal; this is the assertion from the Swift side.
 		#expect(ProtocolVersion.current == 1)
 	}
 

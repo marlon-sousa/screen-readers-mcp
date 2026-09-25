@@ -1,12 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/GetFocusInfo.swift.
-//
-// TWO PROPERTIES CARRY THIS FILE, and both are about what the handler does NOT
-// do. It never asks the permission broker anything -- the grant is requested only
-// by a command that POSTS A SYSTEM EVENT, and a command that merely reads where
-// the focus is joining them would spend the lane's one design lever. And it does not interpret the snapshot: `value`
-// and `appModule` are optional on the wire so that "the element has no value"
-// can be told from "the frame forgot the field", and a handler that helpfully
-// turned nil into "" would erase exactly that distinction.
 
 import Fakes
 import Foundation
@@ -56,10 +48,6 @@ struct GetFocusInfoTests {
 
 	@Test("NOTHING FOCUSED IS AN EMPTY ANSWER, not an error")
 	func anEmptySnapshotIsASuccess() throws {
-		// The rule this bridge cannot break: with VoiceOver itself frontmost every
-		// read comes back empty and looks exactly like a dead reader (spec 0047,
-		// finding 5). An agent checks for "no focus" with the same assertion it
-		// uses for "a button is focused", so an empty snapshot must not throw.
 		let result = try result(context())
 		#expect(result.name.isEmpty)
 		#expect(result.role.isEmpty)
@@ -68,14 +56,10 @@ struct GetFocusInfoTests {
 
 	@Test("a nil `value` stays nil rather than becoming an empty string")
 	func theNullableFieldsSurvive() throws {
-		// PRESENT AND NULLABLE is the wire's shape for both of these, and the whole
-		// reason `FocusInfoResult` writes its own Codable: "the element has no
-		// value" is an answer, and "" would be a different one.
 		let result = try result(context())
 		#expect(result.value == nil)
 		#expect(result.appModule == nil)
 		let encoded = String(decoding: try JSONEncoder().encode(result), as: UTF8.self)
-		// The KEYS are there, carrying null. A missing key is a broken frame.
 		#expect(encoded.contains("\"value\":null"))
 		#expect(encoded.contains("\"appModule\":null"))
 	}
@@ -89,12 +73,6 @@ struct GetFocusInfoTests {
 
 	@Test("ANSWERING FOCUS NEVER TOUCHES THE PERMISSION BROKER -- neither status nor request")
 	func focusAsksTheBrokerNothing() throws {
-		// 13.8's lever, defended at the one entry that could quietly spend it. The
-		// grant is requested only by a command that is about to post a system event
-		// -- a `typeText`, or a keystroke `pressGesture` -- and focus reads whether
-		// it is held through an ADAPTER seam, a question that shows no dialog, so
-		// the domain's broker is not on this path at all. A `status` read here would be harmless today and
-		// would put `request` one line away tomorrow.
 		let permissions = FakePermissionBroker(state: .notGranted)
 		_ = try result(context(permissions: permissions))
 		#expect(permissions.requests.isEmpty)

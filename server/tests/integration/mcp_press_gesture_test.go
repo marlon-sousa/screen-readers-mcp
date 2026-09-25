@@ -2,15 +2,7 @@
 
 // screenreader-mcp tests -- one round trip per intention, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, named after the USE CASE (spec 0025, board entry
-// 11.12). Everything below the MCP client is real except the reader: the agent
-// presses a key and the words it caused come back in that same result.
-//
-// It is at THIS boundary because the value of the entry is a property of what
-// the agent receives -- the collapse is only real if the collapsed shape
-// survives the whole stack, and an empty window is only honest if the agent can
-// tell it apart from a field nobody sent.
+// ROLE: integration scenario: everything below the MCP client is real except the reader.
 package integration_test
 
 import (
@@ -21,9 +13,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// pressResult is the shape an agent decodes, written out here rather than
-// imported: the tools package's own struct is unexported, and a test that shared
-// it could not catch a field being renamed on the way out.
+// Declared here, not shared with the tools package, so a field renamed on the way out fails this test.
 type pressResult struct {
 	Pressed []struct {
 		Gesture    string `json:"gesture"`
@@ -43,8 +33,6 @@ type pressResult struct {
 	} `json:"state"`
 }
 
-// The entry in one test: three round trips become one, and the batch stays
-// observable while it happens.
 func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -58,8 +46,7 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 		if err := json.Unmarshal(params, &asked); err != nil {
 			return nil, err
 		}
-		// A reader where the first `h` found a heading and the second found
-		// nothing -- the 2026-08-03 shape, now expressible.
+		// A reader where the first `h` found a heading and the second found nothing.
 		return wire.GestureResult{
 			Pressed: []wire.GesturePress{
 				{Gesture: "h", SpeechFrom: 7, SpeechTo: 8},
@@ -87,8 +74,6 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 	var got pressResult
 	result.Decode(t, &got)
 
-	// The grace and the announcement reached the reader, with the default
-	// applied by the server because the agent did not name one.
 	if asked.GraceMs == nil || *asked.GraceMs == 0 {
 		t.Errorf("graceMs = %v, want the server's default carried through", asked.GraceMs)
 	}
@@ -96,12 +81,9 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 		t.Errorf("announce = %v, want the hint carried to the human", asked.Announce)
 	}
 
-	// What the agent came for: the words, in this result.
 	if len(got.Speech) != 1 || got.Speech[0].Text != "Notícias heading level 1" {
 		t.Fatalf("speech = %v, want the utterance the key caused", got.Speech)
 	}
-	// Coordinates survive the crossing, so the utterance still joins to the log
-	// (spec 0021) and the next read resumes without a gap.
 	if got.Speech[0].Index != 7 || got.Speech[0].LogPosition != 3329 {
 		t.Errorf("entry = index %d at logPosition %d, want 7 at 3329",
 			got.Speech[0].Index, got.Speech[0].LogPosition)
@@ -109,7 +91,6 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 	if got.SpeechFrom != 7 || got.SpeechTo != 8 {
 		t.Errorf("window = [%d,%d), want [7,8)", got.SpeechFrom, got.SpeechTo)
 	}
-	// The batch stays observable: which key spoke, and which said nothing.
 	if len(got.Pressed) != 2 {
 		t.Fatalf("pressed = %v, want one entry per key", got.Pressed)
 	}
@@ -124,9 +105,6 @@ func TestAGesturesSpeechComesBackInTheCallThatPressedIt(t *testing.T) {
 	}
 }
 
-// The honest empty case, end to end. An agent must be able to tell "the reader
-// said nothing by then" from "this reader does not report that at all" -- and
-// must never find a field claiming the window was complete.
 func TestAQuietWindowIsAnEmptyListAndAnAbsentStateIsAbsent(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -136,7 +114,6 @@ func TestAQuietWindowIsAnEmptyListAndAnAbsentStateIsAbsent(t *testing.T) {
 	}
 
 	h.Bridge.Handle(wire.CommandPressGesture, func(json.RawMessage) (any, error) {
-		// A reader that took the key, said nothing, and serves no state.
 		return wire.GestureResult{
 			Pressed:    []wire.GesturePress{{Gesture: "h", SpeechFrom: 4, SpeechTo: 4}},
 			Speech:     []wire.SpeechEntry{},
@@ -160,8 +137,6 @@ func TestAQuietWindowIsAnEmptyListAndAnAbsentStateIsAbsent(t *testing.T) {
 	if _, present := raw["state"]; present {
 		t.Errorf("state = %v, want the field ABSENT when the reader reported none", raw["state"])
 	}
-	// The resume coordinate is still there, which is what makes the empty
-	// answer actionable rather than a dead end.
 	if raw["speechTo"] != float64(4) {
 		t.Errorf("speechTo = %v, want 4 -- where to read from next", raw["speechTo"])
 	}

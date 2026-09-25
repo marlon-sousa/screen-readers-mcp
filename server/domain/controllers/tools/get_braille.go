@@ -1,14 +1,8 @@
 // screenreader-mcp domain -- the get_braille tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `braille`.
+// ROLE: controller, gated on braille.
 // USES: ports.BrailleReader, through ToolContext.Braille().
 // LISTED BY: registry.go.
-//
-// This is the tool the whole capability gate was designed around: a reader
-// without braille never sees it advertised, because the handshake handed over no
-// BrailleReader for it to reach. "JAWS has no braille" is a missing
-// collaborator, not a runtime check somebody has to remember to write.
 package tools
 
 import (
@@ -17,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetBraille reads captured braille since an index.
 type GetBraille struct{}
 
 var _ Tool = (*GetBraille)(nil)
@@ -89,9 +82,6 @@ func (t *GetBraille) Execute(ctx ToolContext, params json.RawMessage) (any, erro
 	if err != nil {
 		return nil, err
 	}
-	// One entry per display update since spec 0021, each carrying the log journal
-	// position it was captured at. It matters more here than for speech: this is
-	// the ONLY braille fetch, so it is the sole route to a braille coordinate.
 	entries := make([]capturedEntry, 0, len(captured.Entries))
 	for _, entry := range captured.Entries {
 		entries = append(entries, capturedEntry{

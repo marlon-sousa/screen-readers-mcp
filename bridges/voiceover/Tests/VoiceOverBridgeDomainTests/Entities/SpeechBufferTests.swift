@@ -1,13 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Entities/SpeechBuffer.swift.
-//
-// THE INDEX CONVENTION IS WHAT MOST OF THIS FILE ASSERTS, because it is what
-// every race-free assertion an agent makes is built on: a bookmark taken before
-// an action, a half-open range read after it, and the guarantee that a stale
-// bookmark answers rather than raises.
-//
-// The clock is a fixture, so the buffer's clock IS the one a test advances --
-// hand-wiring that per test permits a buffer on one clock and a test advancing
-// another, which passes while asserting nothing.
 
 import Fakes
 import Testing
@@ -25,8 +16,6 @@ struct SpeechBufferTests {
 	private func utterance(_ text: String, at emittedAt: Double = 0) -> CapturedUtterance {
 		CapturedUtterance(text: text, emittedAt: emittedAt, ssml: "<speak>\(text)</speak>", voice: "ours")
 	}
-
-	// -- the index convention ------------------------------------------------
 
 	@Test("a fresh buffer holds one empty sentinel, so index 0 is never a real utterance")
 	func theSentinel() {
@@ -49,9 +38,6 @@ struct SpeechBufferTests {
 
 	@Test("the bridge's own numbering is the position in the buffer, whatever the producer said")
 	func theBridgeNumbersUtterances() {
-		// The feed's own sequence counter restarts when the system relaunches the
-		// extension (spec 0041, A4). The port's DTO does not even carry it -- this
-		// asserts the consequence: three utterances captured in order are 1, 2, 3.
 		let speech = buffer()
 		for text in ["one", "two", "three"] {
 			speech.append(utterance(text))
@@ -59,8 +45,6 @@ struct SpeechBufferTests {
 		let read = speech.entriesSince(0)
 		#expect(read.entries.map(\.index) == [1, 2, 3])
 	}
-
-	// -- reading ranges ------------------------------------------------------
 
 	@Test("the range that comes back is the range READ, not the span of what had words")
 	func theRangeIsTheWindow() {
@@ -71,8 +55,6 @@ struct SpeechBufferTests {
 		let read = speech.entriesSince(1)
 		#expect(read.fromIndex == 1)
 		#expect(read.toIndex == 4)
-		// The empty one is skipped, which is exactly why an entry cannot be
-		// located by counting from `fromIndex` and carries its own index.
 		#expect(read.entries.map(\.utterance.text) == ["first", "third"])
 		#expect(read.entries.map(\.index) == [1, 3])
 	}
@@ -114,7 +96,6 @@ struct SpeechBufferTests {
 		clock.advance(500)
 		speech.append(utterance("said", at: 1_700_000_042.5))
 		#expect(speech.last().utterance.emittedAt == 1_700_000_042.5)
-		// And the sentinel has none, which is what renders as "no instant".
 		#expect(speech.entry(at: 0).emittedAt == 0)
 	}
 
@@ -124,8 +105,6 @@ struct SpeechBufferTests {
 		speech.append(utterance("Documents"))
 		#expect(speech.last().utterance.ssml == "<speak>Documents</speak>")
 	}
-
-	// -- the observer --------------------------------------------------------
 
 	@Test("the observer sees each utterance with words, in order")
 	func theObserverIsFed() {
@@ -139,24 +118,16 @@ struct SpeechBufferTests {
 
 	@Test("an utterance with no words is not announced to the observer")
 	func emptyUtterancesAreNotRecorded() {
-		// The transcript is read by a human afterwards; a run of blank SPEECH
-		// lines would be noise in the one record a silent run leaves.
 		let speech = buffer()
 		var seen: [String] = []
 		speech.setObserver { seen.append($0) }
 		speech.append(utterance(""))
 		#expect(seen.isEmpty)
-		// It still occupies an index, so numbering is unaffected.
 		#expect(speech.nextIndex() == 2)
 	}
 
-	// -- searching -----------------------------------------------------------
-
 	@Test("the search matches a substring, at or AFTER the index given")
 	func theLeftEdgeIsInclusive() {
-		// Inclusive, deliberately: lane 1 shipped the exclusive reading and it
-		// silently discarded the first utterance an action caused -- the one the
-		// bookmark-act-wait pattern is always waiting for (spec 0037).
 		let speech = buffer()
 		speech.append(utterance("Documents, folder"))
 		#expect(speech.indexOf("folder", afterIndex: 1) == 1)
@@ -172,8 +143,6 @@ struct SpeechBufferTests {
 		#expect(speech.indexOf("said", afterIndex: 99) == nil)
 		#expect(speech.indexOf("said", afterIndex: -3) == 1)
 	}
-
-	// -- waiting -------------------------------------------------------------
 
 	@Test("a wait returns the moment the words are already there, without sleeping")
 	func waitingForWhatIsAlreadySaid() {
@@ -191,10 +160,8 @@ struct SpeechBufferTests {
 		let speech = buffer()
 		let outcome = speech.waitFor("never said", afterIndex: nil, timeout: 5)
 		#expect(!outcome.found)
-		// A usable "from here" mark, so a caller that timed out can carry on.
 		#expect(outcome.index == speech.nextIndex())
 		#expect(outcome.utterance.text.isEmpty)
-		// And it waited the whole window, in instant advances rather than seconds.
 		#expect(clock.sleeps.reduce(0, +) >= 5)
 	}
 
@@ -210,24 +177,16 @@ struct SpeechBufferTests {
 	func finishingIsQuiet() {
 		let speech = buffer()
 		speech.append(utterance("said"))
-		// Still speaking: the append was just now.
 		#expect(!speech.waitToFinish(timeout: 0))
-		// The wait itself advances the clock past the window, which is what the
-		// injected clock is for -- this costs microseconds, not seconds.
 		#expect(speech.waitToFinish(timeout: 5))
 	}
 
 	@Test("a buffer nothing was ever captured into settles once the window has passed")
 	func silenceBeforeSpeechAlsoSettles() {
-		// Stated rather than hidden: silence before speech starts and silence
-		// after it ends are the same observable, so this asks "has the feed gone
-		// quiet", never "did the reader finish saying something".
 		let speech = buffer()
 		clock.advance(speechFinishedSeconds + 0.1)
 		#expect(speech.waitToFinish(timeout: 0))
 	}
-
-	// -- the grace window ------------------------------------------------------
 
 	@Test("the grace window returns what was ALREADY there without sleeping at all")
 	func aFullBufferIsNotWaitedOn() {
@@ -235,16 +194,11 @@ struct SpeechBufferTests {
 		speech.append(utterance("said"))
 		let read = speech.collectSince(1, grace: 5)
 		#expect(read.entries.map(\.utterance.text) == ["said"])
-		// The predicate is checked before the first sleep, so a window over a
-		// buffer that already has words costs nothing.
 		#expect(clock.sleeps.isEmpty)
 	}
 
 	@Test("an empty window returns an empty result, having waited out the grace")
 	func anEmptyWindowIsAFactNotAClaim() {
-		// The §7.3 sentence in one assertion: nothing arrived BY THEN, which is a
-		// fact. It is not a claim that nothing will, which is why no result on
-		// this route carries a `complete` flag.
 		let speech = buffer()
 		let read = speech.collectSince(1, grace: 0.2)
 		#expect(read.entries.isEmpty)
@@ -262,9 +216,6 @@ struct SpeechBufferTests {
 
 	@Test("it returns EARLY on the first words, leaving the rest for the next read")
 	func itReturnsOnTheFirstWords() {
-		// The cost is stated rather than hidden: an utterance still in flight when
-		// the first one lands is left behind, and the caller can always take it,
-		// because the range it was handed says exactly where to resume.
 		let speech = buffer()
 		speech.append(utterance("first"))
 		let read = speech.collectSince(1, grace: 5)
@@ -275,8 +226,6 @@ struct SpeechBufferTests {
 
 	@Test("an utterance with no words does not end the window early")
 	func anEmptyUtteranceIsNotWords() {
-		// The feed carries entries that render to nothing, and the question the
-		// window asks is "has SPEECH started", not "has anything arrived".
 		let speech = buffer()
 		speech.append(utterance(""))
 		let read = speech.collectSince(1, grace: 0.2)

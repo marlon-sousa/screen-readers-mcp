@@ -1,12 +1,5 @@
 // screenreader-mcp domain -- the ask_user tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Its own file, alongside announce_test.go, for the same reason that one is
-// separate: the subject is a HUMAN on the other end. What is worth protecting
-// here is that the ticket comes back for the agent to poll with, that an empty
-// question never reaches the tester (who would hear two beeps, a pause, and an
-// instruction to answer a question they were never asked), and that the gate is
-// structural.
 package tools_test
 
 import (
@@ -43,8 +36,6 @@ func TestAskUserPresentsThePromptAndReturnsATicket(t *testing.T) {
 	}
 }
 
-// A question with no words is two cue beeps and an instruction to answer
-// something never asked -- strictly worse for the tester than no prompt at all.
 func TestAskUserRefusesEmptyAndWhitespacePrompts(t *testing.T) {
 	for _, params := range []string{`{"prompt":""}`, `{"prompt":"   "}`, `{"prompt":"\n\t"}`} {
 		built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
@@ -59,8 +50,6 @@ func TestAskUserRefusesEmptyAndWhitespacePrompts(t *testing.T) {
 	}
 }
 
-// The gate, structurally: a bridge that cannot reach a human never announces
-// `interact`, so the port was never handed over.
 func TestAskUserIsRefusedWhenTheReaderDidNotAnnounceInteract(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	call := testsupport.NewToolCall(&tools.AskUser{}).WithConnection(built.Connection)
@@ -90,9 +79,6 @@ func TestAskUserWithNothingConnectedSaysToConnectFirst(t *testing.T) {
 	}
 }
 
-// A second outstanding prompt is a bridge-side error (only one window at a
-// time). The session survives it, so the tool must surface it rather than
-// swallow it and leave the agent believing it has two tickets.
 func TestAskUserSurfacesABridgeFailure(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.AskUser{}).WithConnection(built.Connection)

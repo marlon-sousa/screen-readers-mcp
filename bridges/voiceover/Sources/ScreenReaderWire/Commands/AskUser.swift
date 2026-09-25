@@ -1,9 +1,5 @@
-// ROLE: entity -- `askUser`'s params and result.
-//
-// Pure. The result is a TICKET rather than an answer, and that is the whole
-// design: asking must not block the session's dispatch loop, so the reply is
-// collected later by `waitForUserReply` against this ticket. A bridge that
-// waited here would stop answering pings while a human thought.
+// ROLE: entity, `askUser`'s params and result.
+// The result is a ticket so asking never blocks the dispatch loop; `waitForUserReply` collects the reply.
 
 public struct AskUserParams: Codable, Equatable, Sendable {
 	public var prompt: String

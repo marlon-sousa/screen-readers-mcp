@@ -36,10 +36,6 @@ func TestDisconnectEndsTheLiveSession(t *testing.T) {
 	}
 }
 
-// Not an error with nothing connected: teardown is reached from several
-// directions and none of them should have to check first. But the answer still
-// distinguishes the two cases, because "there was nothing to end" is a fact an
-// agent may want.
 func TestDisconnectingWithNoSessionIsNotAFailure(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.DisconnectReader{})
 

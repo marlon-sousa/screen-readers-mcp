@@ -1,50 +1,23 @@
-// ROLE: an adapter-layer CONTROLLER -- the orchestrator of the connection edge.
-//
-// IT IS NOT IN THE DOMAIN, and the test for that is its collaborators: a
-// Listener and a Transport, both adapter seams the domain must never see. So it
-// lives out here with them -- the same doctrine as JsonLinesChannel, one level
-// further out.
-//
-// HOLDS: a Listener, and a factory that turns an accepted Transport into a
-// Session. It owns the server thread.
-// BUILT BY: Wiring. USED BY: the launcher today and the control dialog when it
-// lands, which is why start, stop and an observable status are the whole public
-// surface.
-//
-// ONE SESSION AT A TIME: accept, build, run it inline on the server thread, go
-// back to accepting. It touches nothing a session owns -- the promise that a
-// teardown restores what the session changed is the Session's, kept in its own
-// `defer`.
-//
-// NO SESSION FAULT MAY BREAK THE SERVER. That is lane 1's crashed-client lesson
-// carried over rather than re-learned: a client that dies mid-command must cost
-// its own session and nothing else, so the accept loop catches around the whole
-// of one session and goes back to accepting.
-//
-// THE JOIN IS BOUNDED, because the caller may be the main thread -- a dialog's
-// Stop button, or the app terminating. Teardown is cooperative, so a handler
-// that blocks delays the thread's exit; losing a daemon thread whose listener is
-// already closed is the lesser harm next to an application that has stopped
-// responding.
+// ROLE: adapter-layer controller of the connection edge, owning the server thread.
+// BUILT BY: Wiring.
+// USED BY: the BridgeListener launcher.
+// One session at a time, run inline on the server thread.
+// No session fault may break the server: the accept loop catches around each whole session.
+// The wait in `stop()` is bounded, because the caller may be the main thread.
 
 import Foundation
 import VoiceOverBridgeDomain
 
-/// What Wiring supplies: "a Transport becomes a Session". Everything else a
-/// session needs is bound in the closure, so this class never learns what a
-/// session is made of.
 public typealias SessionFactory = (any Transport) -> Session
 
 public final class BridgeServer {
-	/// How long `stop()` waits for the server thread.
 	static let stopTimeout: Double = 5.0
 
 	private var listener: any Listener
 	private let sessionFactory: SessionFactory
 	private let eventBus: (any EventBus)?
 
-	/// One lock guards every field the server thread and a caller thread both
-	/// touch: the status pair, the live session, the stopping flag.
+	/// Guards every field the server thread and a caller thread both touch.
 	private let lock = NSLock()
 	private var state: ServerState = .stopped
 	private var endpoint: String?
@@ -62,7 +35,6 @@ public final class BridgeServer {
 		self.eventBus = eventBus
 	}
 
-	// -- public API ----------------------------------------------------------
 
 	public var status: ServerStatus {
 		lock.lock()
@@ -70,12 +42,7 @@ public final class BridgeServer {
 		return ServerStatus(state: state, endpoint: endpoint)
 	}
 
-	/// Bind, report listening, and spawn the accept loop. A no-op if already
-	/// running.
-	///
-	/// BINDING HAPPENS ON THE CALLER'S THREAD, deliberately: a bind failure -- a
-	/// port in use, an unwritable directory -- is thrown to whoever asked for the
-	/// bridge rather than dying quietly inside a thread nobody is watching.
+	/// Binds on the caller's thread, so a bind failure is thrown to the caller.
 	public func start(listener replacement: (any Listener)? = nil) throws {
 		lock.lock()
 		if state != .stopped {
@@ -108,10 +75,7 @@ public final class BridgeServer {
 		notify()
 	}
 
-	/// Stop accepting and end any live session. Idempotent, and blocking until
-	/// the server thread has finished or the bound wait has elapsed.
-	///
-	/// MUST NOT BE CALLED FROM THE SERVER THREAD: it waits on that thread.
+	/// Must not be called from the server thread: it waits on that thread.
 	public func stop() {
 		lock.lock()
 		let session = activeSession
@@ -135,9 +99,6 @@ public final class BridgeServer {
 		notify()
 	}
 
-	/// The live session's context, or nil. Read under the lock like every other
-	/// accessor here, because the caller is another thread and the writer is the
-	/// accept loop.
 	public func currentSessionContext() -> SessionContext? {
 		lock.lock()
 		let session = activeSession
@@ -145,7 +106,6 @@ public final class BridgeServer {
 		return session?.sessionContext
 	}
 
-	// -- the accept loop (runs on the server thread) -------------------------
 
 	private func serve() {
 		while !isStopping() {
@@ -161,9 +121,7 @@ public final class BridgeServer {
 			}
 			runSession(over: transport)
 		}
-		// An abnormal exit -- a listener fault rather than stop() -- still has to
-		// leave an honest status and release the endpoint. The stop() path already
-		// owns both, so this only acts when it was not stop() that got us here.
+		// A listener fault, not stop(), ended the loop, so the status and the endpoint are released here.
 		if !isStopping() {
 			listener.close()
 			lock.lock()

@@ -2,21 +2,7 @@
 
 // screenreader-mcp tests -- connecting to a bridge over real loopback TCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, named after the USE CASE rather than a file, and
-// behind //go:build integration so `go test ./...` stays fast. CI runs it
-// explicitly with -tags integration, on every platform.
-//
-// What this tier adds over the unit tests: the TCP LEAF is real. The unit tests
-// prove the client's decisions against a fake seam, which by construction cannot
-// prove that a real socket behaves like that fake -- the poll deadline, short
-// reads, EOF on close. Here the bytes cross a genuine loopback connection, and
-// the composition (endpoint parsing -> DialerFor -> leaf -> client -> handshake)
-// is the production one.
-//
-// What it still cannot catch, and why 10c exists: the peer is a Go fake using
-// the same generated binding as the server, so a bug in the binding itself would
-// have both sides wrong together, in agreement.
+// ROLE: integration scenario over a real loopback TCP leaf, through the production dialing composition.
 package integration_test
 
 import (
@@ -32,8 +18,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// listenLoopback starts the fake bridge on a real loopback socket and returns
-// its endpoint spec. Port 0 so parallel runs cannot collide.
 func listenLoopback(t *testing.T, fake *testsupport.FakeBridge) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -55,7 +39,6 @@ func listenLoopback(t *testing.T, fake *testsupport.FakeBridge) string {
 }
 
 func newHandshake() *bridge.Handshake {
-	// The production dialer factory: real endpoint decisions, real leaves.
 	return bridge.NewHandshake(bridge.DialerFor, fakes.NewFakeClock(), fakes.NewFakeLog())
 }
 
@@ -82,8 +65,6 @@ func TestASessionIsEstablishedOverRealLoopbackTCP(t *testing.T) {
 	}
 }
 
-// A whole command round trip over the real socket, including a result decoded
-// back into domain vocabulary.
 func TestACommandRoundTripsOverRealLoopbackTCP(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	fake.Handle(wire.CommandGetSpeech, func(params json.RawMessage) (any, error) {
@@ -108,8 +89,6 @@ func TestACommandRoundTripsOverRealLoopbackTCP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SpeechSince: %v", err)
 	}
-	// The coordinate survives the whole round trip, not just the mapping: one
-	// entry per utterance, each carrying the journal position it was captured at.
 	if len(speech.Entries) != 1 || speech.Entries[0].Text != "Edit  blank" || speech.ToIndex != 1 {
 		t.Errorf("speech = %+v, want the bridge's own answer", speech)
 	}
@@ -118,15 +97,11 @@ func TestACommandRoundTripsOverRealLoopbackTCP(t *testing.T) {
 	}
 }
 
-// A dead first endpoint must not cost the agent its connection: the second is
-// dialed and the result says which one answered. Both endpoints are sockets
-// here so the scenario runs on every platform.
 func TestADeadFirstEndpointFallsThroughToTheSecond(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	live := listenLoopback(t, fake)
 
-	// A port that was listening and is not any more is the closest portable
-	// stand-in for a bridge that was switched to the other transport.
+	// A port that was listening and is not any more stands in for a bridge switched to the other transport.
 	dead, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listening: %v", err)
@@ -148,8 +123,6 @@ func TestADeadFirstEndpointFallsThroughToTheSecond(t *testing.T) {
 	}
 }
 
-// Bye ends the session politely; the bridge sees it, which is what makes a
-// disconnect distinguishable from a crash on the bridge's side.
 func TestDisconnectingSendsBye(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	spec := listenLoopback(t, fake)

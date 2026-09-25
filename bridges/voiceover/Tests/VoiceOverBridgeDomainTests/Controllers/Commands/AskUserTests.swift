@@ -1,18 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/AskUser.swift.
-//
-// TWO PROPERTIES CARRY THIS FILE, and both are about a person rather than about
-// a reader:
-//
-//  1. IT RETURNS AT ONCE, WITH A TICKET. Asking must not hold the session thread
-//     -- the thread that also renews the silence lease -- so what this asserts is
-//     that the handler came back while the window is still open and nobody has
-//     answered.
-//  2. IT GIVES THE READER BACK WHILE IT ASKS. A question put to somebody whose
-//     screen reader this session has muted is a dialog they cannot hear, so a
-//     silent session passes through for as long as the window is up.
-//
-// NO TEST HERE OPENS A WINDOW OR SPEAKS: FakeUserPrompter and FakeAnnouncer stand
-// in for the screen and the loudspeaker.
 
 import Fakes
 import ScreenReaderWire
@@ -51,7 +37,6 @@ struct AskUserTests {
 		let result = try handler.execute(session, request("did the menu open?"))
 		#expect(prompter.presented == ["did the menu open?"])
 		#expect((result as? AskUserResult)?.ticket == prompter.lastTicket)
-		// Still outstanding: nothing about asking waits for an answer.
 		#expect(session.outstandingPrompt?.ticket == prompter.lastTicket)
 		#expect(prompter.reply(for: prompter.lastTicket) == nil)
 	}
@@ -65,9 +50,6 @@ struct AskUserTests {
 
 	@Test("A SILENT SESSION PASSES THROUGH WHILE THE WINDOW IS OPEN")
 	func itLiftsTheSuppressionToAsk() throws {
-		// protocol.md §5: `suppressing` is false while an askUser window is open.
-		// The reason is not bookkeeping -- somebody has to be able to hear the field
-		// they are typing into.
 		let silence = FakeSilenceControl()
 		try silence.suppress()
 		let session = context(mode: .silent, silence: silence)
@@ -91,7 +73,6 @@ struct AskUserTests {
 		let session = context(prompter: prompter)
 		let first = try #require(try handler.execute(session, request("one")) as? AskUserResult)
 		#expect(throws: CommandError.self) { try handler.execute(session, request("two")) }
-		// The refusal must not have disturbed the question the human is looking at.
 		#expect(session.outstandingPrompt?.ticket == first.ticket)
 		#expect(prompter.presented == ["one"])
 	}
@@ -107,9 +88,6 @@ struct AskUserTests {
 
 	@Test("a question that could not be SPOKEN still succeeds -- the window is up")
 	func speechIsNotTheWholeQuestion() throws {
-		// The half that failed is the copy for somebody who cannot see the screen,
-		// and a question they can see is worth more than no question. It goes in the
-		// record instead.
 		let announcer = FakeAnnouncer()
 		announcer.fails = true
 		let transcript = FakeTranscript()

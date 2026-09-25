@@ -2,17 +2,7 @@
 
 // screenreader-mcp tests -- one call, several intentions, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, named after the USE CASE (spec 0036, board entry
-// 11.16). Everything below the MCP client is real except the reader: a mixed
-// plan crosses the whole stack over a real transport, and a refused one delivers
-// nothing at all.
-//
-// It is at THIS boundary because the entry's value is a property of what the
-// AGENT receives. A plan is only worth having if the merged window, the per-step
-// bookmarks and the three-valued outcome survive the crossing -- and the refusal
-// is only worth having if it happens before a single command reaches the reader,
-// which is a fact about the wire and not about a domain object.
+// ROLE: integration scenario: a plan crosses the whole stack over a real transport; only the reader is faked.
 package integration_test
 
 import (
@@ -24,9 +14,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// planResult is the shape an agent decodes, written out here rather than
-// imported: the tools package's own struct is unexported, and a test that shared
-// it could not catch a field being renamed on the way out.
+// Declared here for the reason pressResult is; see mcp_press_gesture_test.go.
 type planResult struct {
 	Outcome    string `json:"outcome"`
 	FailedStep int    `json:"failedStep"`
@@ -52,13 +40,6 @@ type planResult struct {
 	} `json:"state"`
 }
 
-// The entry in one test: four intentions that would have cost four agent turns
-// arrive as one call, and what comes back is ONE window with a bookmark per
-// step.
-//
-// The plan is the scenario that was UNTESTABLE in the first external run: type a
-// command, submit it, wait while it runs, and interrupt it. Across separate
-// calls the command had always finished before a stop could be sent.
 func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -67,9 +48,6 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 		t.Fatalf("connect_reader: %s", got.Text)
 	}
 
-	// A reader whose speech ring advances as the plan runs: the server marks
-	// it before each step, so what the bridge answers getNextSpeechIndex with
-	// is what the bookmarks are made of.
 	index := 0
 	h.Bridge.Handle(wire.CommandGetNextSpeechIndex, func(json.RawMessage) (any, error) {
 		return wire.NextIndexResult{Index: index}, nil
@@ -88,7 +66,6 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 			return nil, err
 		}
 		pressed = append(pressed, asked.Gestures...)
-		// Submitting the command is what makes the reader speak.
 		if len(pressed) == 2 {
 			index = 1
 		}
@@ -111,8 +88,6 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 			return nil, err
 		}
 		narrated = asked.Text
-		// The reader acknowledges the call and says nothing more; the server
-		// asks for no result body here.
 		return map[string]any{}, nil
 	})
 
@@ -135,23 +110,16 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 	if got.Outcome != "completed" {
 		t.Fatalf("outcome = %q (%s), want completed", got.Outcome, got.Message)
 	}
-	// Every intention reached the reader, in order, as ordinary commands --
-	// composition is over the bridge's existing commands, so nothing new
-	// crossed the wire.
 	if typed.Text != "big" {
 		t.Errorf("typed %q, want the command", typed.Text)
 	}
 	if len(pressed) != 2 || pressed[0] != "enter" || pressed[1] != "escape" {
 		t.Errorf("pressed %v, want the submit and then the stop", pressed)
 	}
-	// Each step went out with NO grace of its own: the result carries one
-	// window, not one per step.
 	if typed.GraceMs == nil || *typed.GraceMs != 0 {
 		t.Errorf("typeText graceMs = %v, want 0 -- the pause belongs to the plan", typed.GraceMs)
 	}
 
-	// What the agent came for: one window over the whole plan, and a bookmark
-	// per step so it can see which one spoke.
 	if len(got.Steps) != 4 {
 		t.Fatalf("steps = %+v, want one entry per step", got.Steps)
 	}
@@ -170,17 +138,12 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 	if len(got.Speech) != 1 || got.Speech[0].Text != "running" {
 		t.Fatalf("speech = %+v, want the utterance the plan caused", got.Speech)
 	}
-	// The coordinates survive the crossing, so the utterance still joins to
-	// the log and the next read resumes without a gap.
 	if got.Speech[0].LogPosition != 8814 {
 		t.Errorf("logPosition = %d, want 8814", got.Speech[0].LogPosition)
 	}
-	// The human heard the plan described BEFORE it ran, once, whatever the
-	// first step happened to be.
 	if narrated != "running a long command and then stopping it" {
 		t.Errorf("the reader was told %q, want the narration spoken before step 1", narrated)
 	}
-	// And the two things that ride on every mutating result.
 	if got.Announced != "running a long command and then stopping it" {
 		t.Errorf("announced = %q, want the narration echoed back", got.Announced)
 	}
@@ -189,18 +152,9 @@ func TestAPlanCarriesSeveralIntentionsAndComesBackAsOneWindow(t *testing.T) {
 	}
 }
 
-// The refusal, end to end and at the wire: a plan naming a capability this
-// reader never announced delivers NO keystroke -- not one, not the ones before
-// the bad step -- and the error names the step that asked.
-//
-// This is the property that makes a plan safe to send at all. Four separate
-// calls fail one at a time in front of the agent; a plan fails in the middle and
-// leaves the reader wherever it got to, which is why the check happens before
-// anything moves.
 func TestARefusedPlanDeliversNoKeystroke(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
-		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
-		// Gestures but no typing: the second step is the impossible one.
+		Reader:       wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
 		Capabilities: []wire.Capability{wire.CapabilityGestures, wire.CapabilityInteract},
 	})
 	if got := h.Connect(t); got.IsError {
@@ -232,10 +186,7 @@ func TestARefusedPlanDeliversNoKeystroke(t *testing.T) {
 		t.Errorf("%d commands reached the reader, want NONE: the plan was refused whole "+
 			"before anything was delivered", delivered)
 	}
-	// Including the announcement. A capability refusal is a message about the
-	// agent's own mistake, and announce is the channel to the person at the
-	// machine -- speaking a refusal down it would interrupt somebody to report
-	// a thing that never happened.
+	// No announcement either: a refusal is the agent's own mistake and must not interrupt the person at the machine.
 	if !strings.Contains(result.Text, "step 2") {
 		t.Errorf("the refusal %q does not name the step that asked", result.Text)
 	}
@@ -244,10 +195,6 @@ func TestARefusedPlanDeliversNoKeystroke(t *testing.T) {
 	}
 }
 
-// A trigger that never fires stops the plan and is NOT reported as an error at
-// the MCP boundary either: an agent must be able to read `trigger_not_found` off
-// an ordinary successful result, exactly as it reads `found: false` from the
-// tool this step is made of.
 func TestATriggerThatNeverFiredIsASuccessfulResultAtTheBoundary(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},

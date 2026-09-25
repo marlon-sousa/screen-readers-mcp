@@ -1,14 +1,10 @@
 // screenreader-mcp fakes -- FakeStateWriter: the StateWriter port double.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: test double. MIRRORS domain/ports/state_writer.go.
+// ROLE: test double for domain/ports/state_writer.go.
 // USED BY: the set_state tool controller tests.
 //
-// It COMPARES INSIDE ITSELF, the way the real bridge compares inside the reader:
-// asking for the mode it already holds moves nothing and reports nothing. That
-// keeps the property under test where it belongs -- a server-side controller
-// that started comparing on its own would show up here as a redundant write
-// rather than pass quietly.
+// It compares inside itself, as the real bridge does, so asking for the held mode moves nothing.
 package fakes
 
 import (
@@ -17,32 +13,26 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// FakeStateWriter holds a mode and records every request.
 type FakeStateWriter struct {
 	mu sync.Mutex
 
 	state ports.ReaderState
 	err   error
 
-	// Requests is every write asked for, including the ones that moved
-	// nothing: "the tool dispatched" and "the mode moved" are two facts.
+	// Requests includes the writes that moved nothing.
 	Requests []ports.StateWrite
 }
 
 var _ ports.StateWriter = (*FakeStateWriter)(nil)
 
-// NewFakeStateWriter builds a writer holding a zero state.
 func NewFakeStateWriter() *FakeStateWriter { return &FakeStateWriter{} }
 
-// SetHeldState seeds the state the writer starts from and reports back.
 func (f *FakeStateWriter) SetHeldState(state ports.ReaderState) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.state = state
 }
 
-// FailWith makes every write return err -- how the real bridge reports a focus
-// that is not a browsable document.
 func (f *FakeStateWriter) FailWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

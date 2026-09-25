@@ -1,15 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/MarkerFileSilenceControl.swift.
-//
-// IT DRIVES A REAL FILE IN A TEMPORARY DIRECTORY, for the reason FileLineTailer's
-// test does: every decision this class makes is about what a real filesystem
-// does -- that a rewrite MOVES THE MODIFICATION TIME, that a replace is whole
-// rather than partial, that a delete is a delete -- and a fake seam would only
-// prove they behave as the fake was written to. The lease is a contract between
-// two processes about an mtime, so an mtime is what this asserts.
-//
-// AND IT READS BACK THROUGH THE EXTENSION'S OWN PARSER where it can, because the
-// file is a wire contract in miniature and two halves that each pass their own
-// tests can still disagree about the bytes.
 
 import Foundation
 import Fakes
@@ -45,9 +34,6 @@ struct MarkerFileSilenceControlTests {
 
 	@Test("a LIVE session writes a marker too, saying it is not silent")
 	func liveWritesANotSilentMarker() throws {
-		// The channel carries the user's own voice in both modes, so presence
-		// cannot mean silence -- if it did, every live session would mute the
-		// machine.
 		let (control, path) = marker()
 		defer { control.release() }
 		try control.begin(preferredVoice: "com.apple.eloquence.pt-BR.Reed")
@@ -81,9 +67,7 @@ struct MarkerFileSilenceControlTests {
 		defer { control.release() }
 		try control.begin(preferredVoice: nil)
 		let first = try modified(path)
-		// A filesystem's mtime resolution is coarse enough that two writes in the
-		// same instant can share one, so this waits past it rather than asserting
-		// something the filesystem never promised.
+		// Waits past the filesystem's mtime resolution, which two writes in one instant can share.
 		Thread.sleep(forTimeInterval: 0.02)
 		control.renew()
 		#expect(try modified(path) > first)
@@ -119,8 +103,6 @@ struct MarkerFileSilenceControlTests {
 		control.release()
 		#expect(FileManager.default.fileExists(atPath: path) == false)
 		#expect(control.isSuppressing == false)
-		// A released session is over. A renewal from a stale caller must not put
-		// the machine back into silence behind everyone's back.
 		control.renew()
 		#expect(FileManager.default.fileExists(atPath: path) == false)
 	}
@@ -134,9 +116,7 @@ struct MarkerFileSilenceControlTests {
 
 	@Test("the marker path is derived the way the EXTENSION derives it")
 	func theDerivationMatches() {
-		// Two processes must compute one path from one rule or they never meet.
-		// Inside the sandbox the extension's own home IS its container, so it
-		// writes <home>/voiceover-capture-silent and the system puts that here.
+		// Must match the path the sandboxed extension writes, <home>/voiceover-capture-silent inside its container.
 		#expect(
 			MarkerFileSilenceControl.containerMarkerPath(home: "/Users/somebody")
 				== "/Users/somebody/Library/Containers/\(captureExtensionBundleID)/Data/voiceover-capture-silent"
@@ -145,10 +125,6 @@ struct MarkerFileSilenceControlTests {
 
 	@Test("what this side writes is what the OTHER side reads: silent, with the voice")
 	func theTwoHalvesAgree() throws {
-		// The bytes are the contract. This asserts them through the shape the
-		// extension's own parser expects -- keys, types and all -- because two
-		// halves that each pass their own tests can still disagree about a field
-		// name, and the failure would be a machine that does not go quiet.
 		let (control, path) = marker()
 		defer { control.release() }
 		try control.begin(preferredVoice: "com.apple.eloquence.pt-BR.Reed")

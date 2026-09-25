@@ -46,8 +46,6 @@ struct WaitForSpeechTests {
 		#expect(!result.found)
 		#expect(result.text.isEmpty)
 		#expect(result.index == ctx.speech?.nextIndex())
-		// Empty, deliberately: there is no instant for speech that never arrived,
-		// and reporting "now" would read as a match that happened (spec 0028).
 		#expect(result.emittedAt.isEmpty)
 	}
 
@@ -62,7 +60,6 @@ struct WaitForSpeechTests {
 		)
 		#expect(hit.found)
 		#expect(hit.index == mark)
-		// And the mark really does exclude what came before it.
 		let miss = try result(
 			ctx, ["text": .string("before"), "afterIndex": .int(mark), "timeout": .double(1)]
 		)
@@ -83,14 +80,8 @@ struct WaitForSpeechTests {
 		#expect(try result(ctx, ["text": .string("said")]).logPosition == 0)
 	}
 
-	// -- an empty answer that is not an answer (13.6) ---------------------------
-
 	@Test("A MISS ON A SESSION THAT HEARD NOTHING asks the reader edge to account for itself")
 	func anUnexplainedMissIsNamed() {
-		// "The reader did not say it" and "we were never listening to the reader"
-		// are the same empty result, and only one of them is about the software
-		// under test. Spec 0041's sharpest requirement is that a bridge on this
-		// route must not let them look alike.
 		let ctx = context()
 		ctx.adapters = fakeAdapterSet(
 			providerLifecycle: FakeProviderLifecycle(machineState: .notRegistered))
@@ -106,7 +97,6 @@ struct WaitForSpeechTests {
 		ctx.speech?.append(CapturedUtterance(text: "something else"))
 		let miss = try result(ctx, ["text": .string("never"), "timeout": .double(0)])
 		#expect(!miss.found)
-		// And the bookmark still comes back usable, as it always did.
 		let buffer = try #require(ctx.speech)
 		#expect(miss.index == buffer.nextIndex())
 	}

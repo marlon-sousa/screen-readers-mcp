@@ -1,14 +1,5 @@
-// ROLE: entity -- `getBraille`'s params and result, and the entry the result
-// carries.
-//
-// Pure. This bridge implements NONE of it: VoiceOver's scripting object model
-// exposes a braille window with exactly one property, `enabled`, and no way to
-// read what is on the display (spec 0046, part 2). So `braille` is a capability
-// this bridge does not advertise, and the gate makes that a first-class answer
-// rather than a broken command -- spec 0013's whole point.
-//
-// THE SHAPE IS STILL BOUND, because the binding renders the CONTRACT and not
-// this reader's subset. See Command.swift's header for why that is the rule.
+// ROLE: entity, `getBraille`'s params and result, and the entry the result carries.
+// VoiceOver's scripting model exposes only the braille window's `enabled`, so this bridge does not advertise `braille`.
 
 public struct GetBrailleParams: Codable, Equatable, Sendable {
 	public var sinceIndex: Int
@@ -30,7 +21,6 @@ public struct BrailleResult: Codable, Equatable, Sendable {
 	}
 }
 
-/// One braille display update, indexed and half-open exactly as speech is.
 public struct BrailleEntry: Codable, Equatable, Sendable {
 	public var text: String
 	public var index: Int

@@ -1,13 +1,7 @@
 // screenreader-mcp tests -- the reader-guidance controller.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: unit tests for spec 0029 4.4's three properties -- lazy, cached for the
-// session, and keyed on the LIVE CONNECTION rather than on a flag.
-//
-// The call COUNT is the subject here, not the text: every one of these would
-// pass against a controller that made a fresh round trip on every read, or
-// against one that served the previous session's document to a new session, if
-// the assertions were about content. Both are the bugs this file exists to stop.
+// The call count is the subject: content assertions would also pass against a controller that refetched every read or served a previous session's text.
 package controllers_test
 
 import (
@@ -30,17 +24,10 @@ func connected(t *testing.T, reader string) (*testsupport.Connection, *fakeSessi
 	return session, &fakeSessions{current: session.Connection}
 }
 
-// fakeSessions is the narrowed session source the controller declares.
-//
-// Hand-written rather than reaching for FakeConnectionControl: this controller
-// needs exactly one method, and a double with connect/disconnect/verify on it
-// would suggest the controller could reach them.
 type fakeSessions struct{ current *ports.ReaderConnection }
 
 func (f *fakeSessions) Current() *ports.ReaderConnection { return f.current }
 
-// Lazy AND cached, in one assertion: nothing is fetched until somebody reads,
-// and a second read costs no round trip.
 func TestTheReaderGuidanceIsFetchedOnceAndThenCached(t *testing.T) {
 	session, sessions := connected(t, "nvda")
 	guidance := controllers.NewReaderGuidance(sessions)
@@ -69,10 +56,6 @@ func TestTheReaderGuidanceIsFetchedOnceAndThenCached(t *testing.T) {
 	}
 }
 
-// The cache is keyed on the connection itself, so a new session cannot be served
-// the previous one's text. This is the case a `fetched bool` would get wrong,
-// and it is not a hypothetical: reconnecting under a different persona is the
-// documented way to change stance (spec 0029 3.3).
 func TestReconnectingRefetchesRatherThanServingThePreviousSession(t *testing.T) {
 	first, sessions := connected(t, "nvda")
 	first.Guidance.Result = ports.ReaderGuidance{Persona: "user", Recognised: true, Text: "the user's list"}
@@ -101,9 +84,6 @@ func TestReconnectingRefetchesRatherThanServingThePreviousSession(t *testing.T) 
 	}
 }
 
-// Nothing connected is an ANSWER, not a failure -- the resource is registered
-// whether or not a session is -- so the controller says which answer it is and
-// leaves the wording to the adapter.
 func TestReadingWithNoSessionReportsThatRatherThanFailing(t *testing.T) {
 	guidance := controllers.NewReaderGuidance(&fakeSessions{})
 
@@ -113,8 +93,6 @@ func TestReadingWithNoSessionReportsThatRatherThanFailing(t *testing.T) {
 	}
 }
 
-// A bridge that announced no `guidance` is a supported configuration: the gate
-// is structural (the port is nil), so nothing here checks a capability string.
 func TestABridgeThatPublishesNoGuidanceIsReportedAsSuch(t *testing.T) {
 	session := testsupport.NewConnection("jaws", entities.CapabilitySpeech)
 	guidance := controllers.NewReaderGuidance(&fakeSessions{current: session.Connection})
@@ -125,9 +103,6 @@ func TestABridgeThatPublishesNoGuidanceIsReportedAsSuch(t *testing.T) {
 	}
 }
 
-// A bridge that announced the capability and then refused the command is a
-// FAULT, not a degraded document -- and one bad moment must not become permanent
-// for the session, so nothing is cached and the next read tries again.
 func TestARefusalIsNotCachedAndIsNotDressedUpAsADocument(t *testing.T) {
 	session, sessions := connected(t, "nvda")
 	session.Guidance.Err = errors.New("bridge refused getGuidance: no documents packaged")
@@ -146,8 +121,6 @@ func TestARefusalIsNotCachedAndIsNotDressedUpAsADocument(t *testing.T) {
 	}
 }
 
-// The persona reported is the one the BRIDGE echoed, so the document says what
-// it actually answered for rather than what this server assumed it would.
 func TestTheDocumentCarriesWhatTheBridgeAnsweredFor(t *testing.T) {
 	session, sessions := connected(t, "nvda")
 	session.Guidance.Result = ports.ReaderGuidance{Persona: "auditor", Recognised: false, Text: "general"}

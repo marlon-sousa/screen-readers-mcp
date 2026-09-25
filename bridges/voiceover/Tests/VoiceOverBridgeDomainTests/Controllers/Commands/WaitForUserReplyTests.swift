@@ -1,14 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Controllers/Commands/WaitForUserReply.swift.
-//
-// THE COMMAND IS A POLL, AND THAT IS WHAT THIS FILE CHECKS. It waits on the
-// injected Clock -- so a thirty-second poll costs microseconds here -- it comes
-// back with `answered: false` rather than an error when nobody has answered yet,
-// and it CLOSES the window on all three of the endings that are endings.
-//
-// The reason it is a poll rather than an await is in UserPrompter's header: the
-// thread that would block is the one renewing the silence lease, and a lease
-// expiring while somebody reads a dialog is the failure 13.6's whole design
-// exists to prevent.
 
 import Fakes
 import ScreenReaderWire
@@ -21,9 +11,6 @@ struct WaitForUserReplyTests {
 	private let ask = AskUserHandler()
 	private let handler = WaitForUserReplyHandler()
 
-	/// A session with a prompt already outstanding, which is the only state this
-	/// command is ever dispatched in. Built by running the real `askUser`, so the
-	/// two halves cannot drift apart about what an open window looks like.
 	private func asked(
 		mode: CaptureMode = .silent,
 		prompter: FakeUserPrompter = FakeUserPrompter(),
@@ -63,8 +50,6 @@ struct WaitForUserReplyTests {
 
 	@Test("A POLL THAT TIMES OUT IS `answered: false` AND LEAVES THE WINDOW OPEN")
 	func aPollMissKeepsTheWindow() throws {
-		// `waitForSpeech`'s manners: a wait that expires is an ordinary outcome an
-		// agent branches on, and the next poll continues the same wait.
 		let clock = FakeClock()
 		let prompter = FakeUserPrompter()
 		let session = try asked(prompter: prompter, clock: clock)
@@ -74,8 +59,6 @@ struct WaitForUserReplyTests {
 		#expect(result.text.isEmpty)
 		#expect(session.outstandingPrompt != nil)
 		#expect(prompter.cancelled.isEmpty)
-		// It waited on the injected clock rather than on the wall: five seconds of
-		// polls, instantly.
 		#expect(clock.sleeps.allSatisfy { $0 == promptPollInterval })
 		#expect(!clock.sleeps.isEmpty)
 	}
@@ -117,9 +100,6 @@ struct WaitForUserReplyTests {
 
 	@Test("but NOT if the silence cap has already lifted: that was a guarantee, not a loan")
 	func aLiftedCapIsNotUndone() throws {
-		// protocol.md §6.1 gives the human their machine back for good unless a
-		// fresh window is opened and audibly marked, which this bridge does not do.
-		// Re-muting them here would take back a guarantee.
 		let clock = FakeClock()
 		let silence = FakeSilenceControl()
 		let prompter = FakeUserPrompter()
@@ -151,9 +131,6 @@ struct WaitForUserReplyTests {
 
 	@Test("A POLL LONGER THAN THE INACTIVITY WINDOW IS CLAMPED, and says so in the record")
 	func aLongPollIsClamped() throws {
-		// The inactivity watchdog is measured from DISPATCH and is not extended by a
-		// handler that blocks, so a poll allowed to run past it would answer the
-		// agent and have the session torn down under it one line later.
 		let clock = FakeClock()
 		let transcript = FakeTranscript()
 		let prompter = FakeUserPrompter()
