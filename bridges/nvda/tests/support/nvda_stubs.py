@@ -1,31 +1,8 @@
 # nvdaMcpBridge tests -- the NVDA modules the adapter edge imports.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
+# ROLE: test scaffolding; stubs for the NVDA modules that adapters/nvda_*.py import, mirroring NVDA 2026.1.
 #
-# The bridge domain imports NVDA nowhere, so the suite needs no stubs at all --
-# except for the handful of adapters under adapters/nvda_*.py, which are the
-# NVDA-importing edge and are on pyright's ignore list. Those are worth testing
-# anyway: spec 0020 shipped two defects in nvda_log_capture.py precisely because
-# nothing exercised it, and spec 0021's per-capture journal position is the same
-# kind of thing -- an adapter that read it once at start() would ship a constant
-# integer that looks perfectly valid on the wire.
-#
-# The stubs live HERE rather than in each test module because sys.modules is
-# process-wide: two modules each installing their own partial "logHandler" with
-# setdefault meant whichever pytest collected first won, and the other silently
-# tested against a stub missing the names it needed. One complete stub, installed
-# idempotently, removes the ordering hazard.
-#
-# They mirror only what the adapters actually use, taken from NVDA's own source:
-#
-#   * logHandler.Logger carries the level constants, and IO is 12 -- ABOVE
-#     DEBUG's 10, not below it (source/logHandler.py: `IO = 12`).
-#   * logHandler.Formatter renders time as "%H:%M:%S" plus ".%03d" milliseconds,
-#     local -- the shape nvda.log lines carry. NVDA overrides formatTime only to
-#     dodge a Universal CRT crash (#12160); the OUTPUT is the stdlib's, so this
-#     uses the stdlib implementation with NVDA's two format attributes.
-#   * extensionPoints Action/Filter expose register/unregister and are fired BY
-#     NVDA, never by us -- so the stub keeps the handlers and lets a test fire
-#     them, which is exactly what NVDA does at the moment of capture.
+# One shared, idempotent stub per module: sys.modules is process-wide, so per-module stubs race on collection.
 
 from __future__ import annotations
 
@@ -36,19 +13,11 @@ from typing import Any
 
 
 class StubFormatter(logging.Formatter):
-	"""NVDA's Formatter, reduced to the time format the log adapter borrows."""
-
 	default_time_format = "%H:%M:%S"
 	default_msec_format = "%s.%03d"
 
 
 class StubLog:
-	"""Stands in for logHandler.log: NVDA's level constants, a real root logger.
-
-	``info`` records rather than emits, because the silent speech source writes
-	its session markers through it and a test needs to see exactly those.
-	"""
-
 	DEBUG = logging.DEBUG  # 10
 	IO = 12  # NVDA's custom level, between DEBUG and DEBUGWARNING
 	DEBUGWARNING = 15
@@ -61,7 +30,6 @@ class StubLog:
 		self.root.propagate = False
 		self.root.handlers.clear()
 		self.root.setLevel(logging.INFO)
-		#: Everything written through info(), in order.
 		self.messages: list[str] = []
 
 	def info(self, message: str) -> None:
@@ -72,8 +40,6 @@ class StubLog:
 
 
 class StubExtensionPoint:
-	"""Stands in for an NVDA Action/Filter: holds handlers, fires on demand."""
-
 	def __init__(self) -> None:
 		self.handlers: list[Any] = []
 
@@ -86,39 +52,27 @@ class StubExtensionPoint:
 
 
 class StubEventQueue:
-	"""Stands in for queueHandler.eventQueue plus its pump.
-
-	The silent speech source queues the callbacks it would otherwise have eaten
-	rather than calling them inline, because a say-all callback speaks again and
-	inline would recurse. A stub that RAN them on submit would therefore test the
-	one shape the adapter must not have, so this one holds them until a test
-	pumps -- which is what makes the deferral itself observable.
-	"""
+	"""Holds queued callbacks until pump(): running them on submit hides the recursion to avoid."""
 
 	def __init__(self) -> None:
 		self.queued: list[tuple[Any, tuple[Any, ...]]] = []
 
 	def pump(self) -> None:
-		"""Run everything queued so far, in order, as NVDA's event loop would."""
 		while self.queued:
 			func, args = self.queued.pop(0)
 			func(*args)
 
 
 class StubSpeechCommand:
-	"""speech.commands.SpeechCommand, reduced to being a distinct base type."""
+	pass
 
 
 class StubBaseCallbackCommand(StubSpeechCommand):
-	"""The class the adapter tests isinstance against; run() is the contract."""
-
 	def run(self) -> None:
 		raise NotImplementedError
 
 
 class StubCallbackCommand(StubBaseCallbackCommand):
-	"""NVDA's generic callback -- the one say all clocks its next chunk with."""
-
 	def __init__(self, callback: Any, name: str | None = None) -> None:
 		self._callback = callback
 		self._name = name or repr(callback)
@@ -128,8 +82,6 @@ class StubCallbackCommand(StubBaseCallbackCommand):
 
 
 class StubBeepCommand(StubBaseCallbackCommand):
-	"""A callback whose whole job is to make a sound, so silent mode drops it."""
-
 	def __init__(self, hz: int = 440, length: int = 10) -> None:
 		self.hz = hz
 		self.length = length
@@ -140,8 +92,6 @@ class StubBeepCommand(StubBaseCallbackCommand):
 
 
 class StubWaveFileCommand(StubBaseCallbackCommand):
-	"""The other audible callback; dropped for the same reason as the beep."""
-
 	def __init__(self, fileName: str = "sound.wav") -> None:
 		self.fileName = fileName
 		self.played = False
@@ -151,14 +101,7 @@ class StubWaveFileCommand(StubBaseCallbackCommand):
 
 
 class StubSayAllHandler:
-	"""NVDA's _SayAllHandler, reduced to the one thing the adapter reads.
-
-	`_getActiveSayAll` is a WEAKREF in the real thing, which is the whole trap:
-	it keeps returning the reader object long after the read stopped. The stub
-	models the object and the stopped-ness SEPARATELY, so a test can hold the
-	exact state a real reader passes through and a real clock cannot be made to
-	hold still -- present, but done.
-	"""
+	"""In NVDA 2026.1 _getActiveSayAll is a weakref that keeps returning the reader after the read stopped."""
 
 	def __init__(self, reader: Any = None) -> None:
 		self.reader = reader
@@ -181,12 +124,8 @@ class StubObjectsReader:
 		self.walker = None if stopped else object()
 
 
-#: The one instance of each, shared by every test module that installs them --
-#: which is what makes the install idempotent and order-independent.
 log = StubLog()
 eventQueue = StubEventQueue()
-#: Module object for `speech.sayAll`; tests set `.SayAllHandler` on it, exactly
-#: as NVDA's own sayAll.initialize() rebinds that module attribute at startup.
 sayAll = types.ModuleType("speech.sayAll")
 sayAll.SayAllHandler = None  # type: ignore[attr-defined]
 filter_speechSequence = StubExtensionPoint()
@@ -195,17 +134,10 @@ pre_writeCells = StubExtensionPoint()
 
 
 def set_say_all_handler(handler: Any) -> None:
-	"""Rebind `speech.sayAll.SayAllHandler`, as NVDA's initialize() does.
-
-	A function rather than a bare assignment in each test, because a module
-	attribute is untyped and every assignment would otherwise need its own
-	pyright suppression.
-	"""
 	sayAll.SayAllHandler = handler  # type: ignore[attr-defined]
 
 
 def _queueFunction(queue: StubEventQueue, func: Any, *args: Any, **kwargs: Any) -> None:
-	"""queueHandler.queueFunction: put it on the queue, do NOT run it here."""
 	queue.queued.append((func, args))
 
 

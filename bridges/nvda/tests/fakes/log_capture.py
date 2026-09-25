@@ -1,17 +1,6 @@
 # nvdaMcpBridge tests -- FakeLogCapture, standing in for the LogCapture port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/log_capture.py
-#
-# Holds an in-memory LogJournal so the filters and window bracketing are exercised
-# through the real entity rather than re-implemented here.
-#
-# The level bookkeeping MIRRORS the real adapter's, deliberately: start() records
-# the floor to restore and the floor now in force, set_level() moves only the
-# latter, and stop() restores what start() saved regardless of any set_level in
-# between. An earlier version of this fake tracked levels differently from the
-# adapter, which is exactly the gap a fake must not have -- the tests would agree
-# with themselves while the shipped adapter did something else.
+# Level bookkeeping must mirror the real adapter: stop() restores what start() saved, whatever set_level did.
 
 from __future__ import annotations
 
@@ -24,16 +13,12 @@ from nvdaMcpBridge.domain.ports.log_capture import LogCapture
 if TYPE_CHECKING:
 	from nvdaMcpBridge import protocol as p
 
-#: The level a stand-in NVDA is at before any session touches it. NVDA's own
-#: default is INFO, so a fake that starts anywhere else would make capturedAtLevel
-#: assertions agree with nothing real.
+#: NVDA's own default level, INFO.
 DEFAULT_NVDA_LEVEL: int = 20
 
 
 @dataclass
 class _SliceCall:
-	"""Record of a slice() call, for test assertions."""
-
 	start: int
 	end: int
 	min_level: p.LogLevel | None = None
@@ -44,23 +29,15 @@ class _SliceCall:
 
 
 class FakeLogCapture(LogCapture):
-	"""An in-memory :class:`LogCapture` backed by a real LogJournal."""
-
 	def __init__(self, *, fail_on: set[str] | None = None) -> None:
 		self._fail_on = fail_on or set()
 		self._journal = LogJournal()
-		# The stand-in for log.root.level: what "NVDA" is set to right now.
 		self._nvda_level: int = DEFAULT_NVDA_LEVEL
 		self._previous_level: int | None = None
 		self._current_level: p.LogLevel | None = None
-		# Public for test assertions.
 		self.events: list[tuple[Any, ...]] = []
 		self.slice_calls: list[_SliceCall] = []
-		#: The "now" slice_last_seconds compares record.created against; a test
-		#: sets this directly rather than pulling in a real wall clock.
 		self.now: float = 0.0
-
-	# -- port implementation ---------------------------------------------------
 
 	@property
 	def current_level(self) -> p.LogLevel:
@@ -173,12 +150,9 @@ class FakeLogCapture(LogCapture):
 
 	def set_level(self, level: p.LogLevel) -> None:
 		self._record("set_level", level)
-		# NOT _previous_level: stop() restores what the session STARTED from, so a
-		# set_level in between must not become the thing teardown restores.
+		# Not _previous_level: teardown restores the level the session started from.
 		self._nvda_level = self._level_number(level)
 		self._current_level = level
-
-	# -- helpers ---------------------------------------------------------------
 
 	@staticmethod
 	def _wire_level(level_no: int) -> p.LogLevel:
@@ -215,7 +189,6 @@ class FakeLogCapture(LogCapture):
 		thread_id: int = 1,
 		created: float = 0.0,
 	) -> None:
-		"""Add a record to the journal (for tests that need content to slice)."""
 		self._journal.append(level_no, level_name, module, message, timestamp, thread, thread_id, created)
 
 	def feed_record(
@@ -229,5 +202,4 @@ class FakeLogCapture(LogCapture):
 		thread_id: int = 1,
 		created: float = 0.0,
 	) -> None:
-		"""Add a fully specified record to the journal."""
 		self._journal.append(level_no, level_name, module, message, timestamp, thread, thread_id, created)

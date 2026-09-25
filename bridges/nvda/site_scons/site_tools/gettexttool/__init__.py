@@ -1,19 +1,6 @@
-"""This tool allows generation of gettext .mo compiled files, pot files from source code files
-and pot files for merging.
+"""Builders for gettext .mo and .pot files.
 
-Three new builders are added into the constructed environment:
-
-- gettextMoFile: generates .mo file from .pot file using msgfmt.
-- gettextPotFile: Generates .pot file from source code files.
-- gettextMergePotFile: Creates a .pot file appropriate for merging into existing .po files.
-
-To properly configure get text, define the following variables:
-
-- gettext_package_bugs_address
-- gettext_package_name
-- gettext_package_version
-
-
+Configure gettext_package_bugs_address, gettext_package_name and gettext_package_version.
 """
 
 from SCons.Action import Action

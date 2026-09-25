@@ -1,15 +1,7 @@
 # nvdaMcpBridge tests -- FakeChannel, standing in for the MessageChannel port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/message_channel.py
-#
-# The session's I/O double: it scripts WHOLE messages (dicts), not bytes -- the
-# byte level is JsonLinesChannel's job, proven once in test_json_lines_channel.
-# Script entries reuse fakes/script.py: a ``dict`` is a message; TIMEOUT_EVENT is
-# a quiet poll (advances the clock as a real idle socket would); CLOSED_EVENT is
-# the peer going away (ChannelClosed); an ``Exception`` instance is raised as-is,
-# which is how a test drives the "unreadable line" path (a protocol.ValidationError
-# straight from read_message). Everything written back is recorded for assertions.
+# Script entries: a dict is a message, TIMEOUT_EVENT a quiet poll, CLOSED_EVENT the peer leaving, and an
+# Exception instance is raised as-is.
 
 from __future__ import annotations
 
@@ -25,17 +17,11 @@ if TYPE_CHECKING:
 
 
 class FakeChannel(MessageChannel):
-	"""Replays a scripted stream of whole messages and records the replies."""
-
 	def __init__(
 		self,
 		events: list[Any] | None = None,
 		*,
-		# FakeClock, not the Clock PORT, and deliberately: a scripted timeout
-		# ADVANCES time (ScriptedQueue.tick_timeout), and `advance` is not on the
-		# port -- no real clock can be moved. Widening this to Clock would only
-		# make the advance call untypeable, so a test that needs real sleeping
-		# elsewhere passes a FakeClock here and the real one to the Session.
+		# FakeClock, not Clock: a scripted timeout advances time, which the port cannot.
 		clock: FakeClock | None = None,
 		timeout_advance: float = 5.0,
 		on_empty: str = "closed",
@@ -63,5 +49,4 @@ class FakeChannel(MessageChannel):
 		self.closed = True
 
 	def responses(self) -> list[dict[str, Any]]:
-		"""Every reply written back, decoded to plain dicts, in order."""
 		return [p.to_dict(m) for m in self.sent]

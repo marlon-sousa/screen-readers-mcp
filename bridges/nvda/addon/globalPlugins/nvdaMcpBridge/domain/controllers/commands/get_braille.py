@@ -1,9 +1,6 @@
 # nvdaMcpBridge domain -- GetBrailleHandler: braille captured since an index.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getBraille`. The braille counterpart of getSpeech:
-# each update crosses the wire as its own entry, carrying the journal position
-# it was captured at (spec 0021).
+# ROLE: command handler for `getBraille`.
 
 from __future__ import annotations
 

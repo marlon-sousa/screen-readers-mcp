@@ -1,14 +1,5 @@
 # nvdaMcpBridge tests -- FakeCommandHandler, standing in for a CommandHandler.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/controllers/commands/command_handler.py
-#
-# Lets the Session's DISPATCH mechanics be tested without any real command logic:
-# a registry of these proves unknown-command handling, error wrapping when a
-# handler raises, the resets_inactivity / available_before_hello policy, and the
-# pre-hello gate -- none of which should depend on what getSpeech or pressGesture
-# actually do. It records the contexts/requests it was called with and returns a
-# canned result or raises a canned exception.
 
 from __future__ import annotations
 
@@ -23,8 +14,6 @@ if TYPE_CHECKING:
 
 
 class FakeCommandHandler(CommandHandler):
-	"""A scriptable handler: returns ``result`` or raises ``error``."""
-
 	def __init__(
 		self,
 		*,
@@ -40,8 +29,7 @@ class FakeCommandHandler(CommandHandler):
 		self.resets_inactivity = resets_inactivity
 		self.available_before_hello = available_before_hello
 		self.marks_log = marks_log
-		# Runs INSIDE the dispatch, so a window test can put records in the journal
-		# at the one moment that lands them between this command's two marks.
+		# Runs inside the dispatch, between this command's two log marks.
 		self._on_execute = on_execute
 		self.calls: list[p.Request] = []
 

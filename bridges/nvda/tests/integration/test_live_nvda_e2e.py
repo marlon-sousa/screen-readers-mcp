@@ -1,29 +1,6 @@
-# Live-NVDA end-to-end scenario: drive the REAL bridge over the loopback socket.
+# Live-NVDA end-to-end scenario: drive the real bridge over the loopback socket.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# This is the automated half of spec 0007's 9c checklist. Unlike the headless
-# integration scenarios (which stand up an in-process BridgeServer), this dials
-# the bridge that a real NVDA + installed addon is listening with on
-# 127.0.0.1:DEFAULT_PORT, so it proves the REAL adapters -- the spy synth, the
-# capture hooks, the fail-safe restore, the gesture injection -- behave like
-# their fakes. It is the "only place that proves a real adapter behaves like its
-# fake" AGENTS.md means by a live-NVDA scenario.
-#
-# It is NOT a CI test: when no bridge is listening (as in CI, or on any machine
-# without NVDA running the addon) every test SKIPS at the dial. Run it locally
-# with NVDA up and the addon installed:
-#
-#     uv run --directory bridges/nvda --with pytest pytest tests/integration/test_live_nvda_e2e.py -v
-#
-# It reuses the addon's own SocketTransport + JsonLinesChannel as the client
-# side, exactly as the headless socket roundtrip does -- the wire is symmetric.
-#
-# Human-observable checklist items (NVDA actually goes quiet / talks again, the
-# panic gesture's spoken confirmation, config-save/profile-switch defence) stay
-# manual in the PR body; this file automates the programmatic contract: the
-# handshake fields, capture, exact-finish, sequential sessions, and -- the one
-# safety property it CAN prove over the wire -- that the real synth is restored
-# after a session (a fresh hello reports the same real synth, never the spy).
+# Dials the real NVDA and installed add-on on 127.0.0.1:DEFAULT_PORT; every test skips when nothing listens.
 
 from __future__ import annotations
 
@@ -33,8 +10,7 @@ from typing import Any
 
 import pytest
 
-#: Every test here drives a REAL NVDA on this machine -- gestures, typed
-#: text, config changes. Excluded from the default run; see pyproject.toml.
+#: Drives a real NVDA on this machine; excluded from the default run.
 pytestmark = pytest.mark.live_nvda
 
 from nvdaMcpBridge import protocol as p
@@ -45,19 +21,12 @@ from nvdaMcpBridge.domain.ports.message_channel import Timeout
 
 HOST = "127.0.0.1"
 
-#: A gesture that speaks in essentially any focus context (reports the title),
-#: so the capture assertion does not depend on a particular window being open.
-#: The checklist's NVDA+f7 (elements list) is the manual, human-observed variant.
+#: Speaks in essentially any focus context, so capture does not depend on the open window.
 SPEAKING_GESTURE = "NVDA+t"
 
 
 @pytest.fixture(scope="module", autouse=True)
 def require_live_bridge() -> None:
-	"""Probe once per module: if no bridge is listening, skip every test here.
-
-	One connection attempt instead of one per test, so a machine without NVDA
-	(CI included) spends a single short timeout, not several.
-	"""
 	try:
 		socket.create_connection((HOST, p.DEFAULT_PORT), timeout=0.5).close()
 	except OSError:
@@ -67,8 +36,6 @@ def require_live_bridge() -> None:
 
 
 class Agent:
-	"""The client end of one bridge session: send a command, read its reply."""
-
 	def __init__(self, channel: JsonLinesChannel) -> None:
 		self._channel = channel
 		self._id = 0
@@ -94,7 +61,6 @@ class Agent:
 
 
 def _dial() -> Agent:
-	"""Connect to the live bridge, or skip the test if nothing is listening."""
 	try:
 		sock = socket.create_connection((HOST, p.DEFAULT_PORT), timeout=1.0)
 	except OSError:
@@ -109,16 +75,7 @@ def _hello(agent: Agent, mode: str) -> dict[str, Any]:
 
 
 def _spoken(speech: dict[str, Any]) -> str:
-	"""The utterances in a getSpeech result, joined for a readable assertion.
-
-	The wire carries one entry per utterance since spec 0021 (each with its own
-	index and journal position); joining here keeps these tests about "did NVDA
-	actually say something" rather than about the result's shape.
-	"""
 	return "\n".join(entry["text"] for entry in speech["entries"])
-
-
-# -- handshake (checklist 1, 5) ----------------------------------------------
 
 
 def test_hello_reports_real_nvda_and_served_capabilities() -> None:
@@ -129,14 +86,10 @@ def test_hello_reports_real_nvda_and_served_capabilities() -> None:
 		assert hello["reader"]["version"], "reader.version should match About NVDA"
 		assert hello["capabilities"] == [c.value for c in NVDA_CAPABILITIES]
 		assert hello["mode"] == "silent"
-		# The real synth stays loaded and is reported as-is (never swapped).
 		assert hello["synth"], "hello should report NVDA's real synth"
 		agent.result("bye")
 	finally:
 		agent.close()
-
-
-# -- silent capture + exact finish (checklist 2) -----------------------------
 
 
 def test_silent_session_captures_a_gesture_and_finishes() -> None:
@@ -144,28 +97,18 @@ def test_silent_session_captures_a_gesture_and_finishes() -> None:
 	try:
 		_hello(agent, "silent")
 		start = agent.result("getNextSpeechIndex")["index"]
-		# Spec 0025: the reply already carries what the key caused, so it is no
-		# longer a bare {"ok": True}. `pressed` says which gestures went out and
-		# the ring span each landed in; the getSpeech below still runs because
-		# that command is what this test covers, not because it is still the way
-		# to learn what a key said.
 		pressed = agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
 		assert [press["gesture"] for press in pressed["pressed"]] == [SPEAKING_GESTURE]
 		assert pressed["speechTo"] >= pressed["speechFrom"] >= start
-		# Silent mode suppresses at the speak() filter (the synth is untouched),
-		# so finish is the buffer's ~1s elapsed heuristic; give it the window.
+		# Silent-mode finish is the buffer's one-second elapsed heuristic; give it the window.
 		assert agent.result("waitForSpeechToFinish", timeout=3.0)["finished"] is True
 		speech = agent.result("getSpeech", sinceIndex=start)
 		assert _spoken(speech).strip(), "the gesture should have been captured as speech"
 		assert speech["toIndex"] > speech["fromIndex"]
-		# Every utterance carries the journal coordinate the join needs (spec 0021).
 		assert all(entry["logPosition"] >= 0 for entry in speech["entries"])
 		agent.result("bye")
 	finally:
 		agent.close()
-
-
-# -- transparency: the synth is never swapped (checklist 2/3) ----------------
 
 
 def test_the_synth_stays_the_real_one_across_sessions() -> None:
@@ -176,8 +119,6 @@ def test_the_synth_stays_the_real_one_across_sessions() -> None:
 	finally:
 		first.close()
 
-	# The synth is never swapped, so a brand-new session reports the same real
-	# synth -- NVDA kept using its configured synth throughout (transparency).
 	second = _dial()
 	try:
 		assert _hello(second, "silent")["synth"] == real_synth
@@ -185,9 +126,6 @@ def test_the_synth_stays_the_real_one_across_sessions() -> None:
 		second.result("bye")
 	finally:
 		second.close()
-
-
-# -- announce: the bridge->human hint channel --------------------------------
 
 
 def test_announce_is_acked_in_silent_mode() -> None:
@@ -200,9 +138,6 @@ def test_announce_is_acked_in_silent_mode() -> None:
 		agent.close()
 
 
-# -- live mode (checklist 4) --------------------------------------------------
-
-
 def test_live_session_captures_without_swapping() -> None:
 	agent = _dial()
 	try:
@@ -210,15 +145,11 @@ def test_live_session_captures_without_swapping() -> None:
 		assert hello["mode"] == "live"
 		start = agent.result("getNextSpeechIndex")["index"]
 		agent.result("pressGesture", gestures=[SPEAKING_GESTURE])
-		# The buffer's elapsed-time heuristic decides finish; allow the window.
 		agent.result("waitForSpeechToFinish", timeout=3.0)
 		assert _spoken(agent.result("getSpeech", sinceIndex=start)).strip()
 		agent.result("bye")
 	finally:
 		agent.close()
-
-
-# -- sequential sessions against one server (checklist 7) ---------------------
 
 
 def test_two_sequential_sessions_on_one_server() -> None:

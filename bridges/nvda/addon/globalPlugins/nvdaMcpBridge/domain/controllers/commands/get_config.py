@@ -1,10 +1,6 @@
 # nvdaMcpBridge domain -- GetConfigHandler: read the reader's config.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getConfig`. Parses the keyPath, reads via the
-#       ConfigAccessor port, and returns the value in a ConfigResult. A bad key
-#       path raises CommandError, which the Session turns into an error Response
-#       and the session survives.
+# ROLE: command handler for `getConfig`.
 
 from __future__ import annotations
 

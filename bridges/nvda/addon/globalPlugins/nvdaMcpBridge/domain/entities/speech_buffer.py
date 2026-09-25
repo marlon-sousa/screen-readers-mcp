@@ -1,11 +1,8 @@
 # nvdaMcpBridge domain -- SpeechBuffer: indexed capture of what NVDA speaks.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: entity. The bridge's central subject matter.
-# FED BY: the SpeechSource port's implementation (the spy synth in silent mode,
-#         the pre_speechQueued hook in live mode) calling append/notify_finished.
-# READ BY: the Session controller, answering getSpeech / waitForSpeech / ...
-# DEPENDS ON: the Clock port (injected via IndexedBuffer).
+# ROLE: entity.
+# FED BY: the SpeechSource port's implementation, calling append.
+# READ BY: the speech command handlers.
 
 from __future__ import annotations
 
@@ -19,41 +16,17 @@ if TYPE_CHECKING:
 	from ..ports.clock import Clock
 	from ..ports.continuous_read import ContinuousRead
 
-#: Neither mode has an exact "speech finished" signal (spec 0008 removed the spy
-#: synth; silent mode suppresses at the speak() filter, so no synth ever runs),
-#: so both treat speech as finished once this many seconds pass with no new
-#: sequence -- NVDASpyLib's ``SPEECH_HAS_FINISHED_SECONDS``.
-#:
-#: MEASURED 2026-08-03, and the number turns out not to matter: NVDA finishes
-#: producing a keystroke's speech ~124 ms after the gesture, while an agent's
-#: tool round trip is ~2.6 s. So by the time waitForSpeechToFinish arrives this
-#: window has ALWAYS already expired, and the call returns from a stale
-#: ``_last_time`` without waiting on anything. Shortening it buys nothing --
-#: it was never being paid. See ROADMAP entry 11.9.
+# Neither capture mode has an exact finish signal, so speech counts as finished after this much quiet.
+# NVDA 2026.1 finishes a keystroke's speech about 124 ms after the gesture, well inside this window.
 SPEECH_FINISHED_SECONDS: float = 1.0
 
-#: A ceiling on how long a claimed continuous read may hold the settle open with
-#: nothing arriving. The ContinuousRead port is the reader's own account and is
-#: normally right -- but this project has now shipped one version of that port
-#: that was WRONG in the direction that never clears (it read object liveness
-#: rather than reader state, and a settle built on it never settled). A wrong
-#: answer that expires is an imprecision; a wrong answer that does not is a hang,
-#: and only one of those is worth risking on a reader we do not control.
-#:
-#: Set well above the inter-chunk gap MEASURED live on 2026-08-18 -- 1.8 to 2.0 s
-#: for every one of thirty lines, under ibmeci -- so a genuine read is never cut
-#: short by it. That measurement is also why SPEECH_FINISHED_SECONDS alone could
-#: never work here: every gap in that say-all exceeded it.
+# Bounds how long a claimed continuous read may hold the settle open, so a wrong port answer cannot hang.
+# NVDA 2026.1 with ibmeci measured 1.8 to 2.0 s between say-all chunks.
 CONTINUOUS_READ_STALE_SECONDS: float = 6.0
 
 
 class SpeechBuffer(IndexedBuffer):
-	"""Indexed capture of NVDA speech sequences with wait-for / wait-to-finish.
-
-	``exact_finish`` selects how "speech has finished" is decided. Since spec 0008
-	removed the spy synth there is no exact signal in either mode, so both leave
-	it false and fall back to the elapsed-time heuristic.
-	"""
+	"""``exact_finish`` is left false in both capture modes, which use the elapsed-time heuristic."""
 
 	def __init__(
 		self,
@@ -66,8 +39,7 @@ class SpeechBuffer(IndexedBuffer):
 		self.exact_finish: bool = exact_finish
 		self._speaking: bool = False
 		self._observer: Callable[[str], None] | None = None
-		#: Optional, and None means "assume not" -- so a reader whose bridge has
-		#: no way to see a continuous read keeps exactly today's behaviour.
+		# None means no continuous read is ever in progress.
 		self._continuous_read: ContinuousRead | None = continuous_read
 
 	def _sentinel(self) -> Any:
@@ -77,22 +49,11 @@ class SpeechBuffer(IndexedBuffer):
 		return join_speech(entry)
 
 	def set_observer(self, observer: Callable[[str], None] | None) -> None:
-		"""Register a callback fired (outside the lock) for each appended text.
-
-		The Session wires this to the Transcript port so captured speech is
-		logged bridge-side even if the agent never fetches it.
-		"""
+		"""The observer is called outside the lock."""
 		self._observer = observer
 
 	def append(self, sequence: Any, log_position: int = 0) -> None:
-		"""Record a captured speech sequence; called from NVDA's speech thread.
-
-		``log_position`` is the journal's append position at the moment of
-		capture (spec 0021) -- a plain value from the caller, so this buffer
-		never learns the journal exists. Production callers (the speech source
-		adapters) always pass the real one; the default lets tests that do not
-		care about the join omit it.
-		"""
+		"""Called from NVDA's speech thread."""
 		with self._lock:
 			self._record(sequence, log_position)
 			self._speaking = True
@@ -101,36 +62,11 @@ class SpeechBuffer(IndexedBuffer):
 			self._observer(text)
 
 	def notify_finished(self) -> None:
-		"""Exact "speech finished" signal (silent mode: ``synthDoneSpeaking``)."""
 		with self._lock:
 			self._speaking = False
 
 	def index_of(self, text: str, after_index: int | None = None) -> int:
-		"""First index at/after ``after_index`` whose text contains ``text``.
-
-		``after_index`` is an INCLUSIVE left edge: the entry sitting AT it can
-		match. That is this repo's convention everywhere else -- ``entries_since``,
-		``slice_since``, ``find_since`` and ``getSpeech``'s ``sinceIndex`` all
-		render a half-open window with an inclusive left edge -- and it is what
-		every description of ``waitForSpeech`` promises ("at or after this index").
-
-		It read ``after_index + 1`` until spec 0037, borrowed from NVDASpyLib,
-		whose indexing conventions are not ours. That silently discarded the FIRST
-		utterance an action caused, which is precisely the one the documented
-		bookmark-act-wait pattern is waiting for, and it failed as a timeout rather
-		than an error -- so it read as "the reader never said it" (entry 11.29).
-
-		``after_index=None`` (no constraint) and ``after_index=0`` now select the
-		same entries, and that is harmless: index 0 is the empty sentinel, so no
-		real capture is ever there. They stay two distinct requests on the wire
-		because the server keeps them distinct on purpose -- see
-		``wait_for_speech.go``.
-
-		A negative ``after_index`` is clamped into range, same as
-		``entries_since`` does with its own anchor: without the clamp the
-		inclusive edge would slice from the END of the list and report a match
-		that is not there. Returns ``-1`` when not found.
-		"""
+		"""``after_index`` is an inclusive left edge, clamped to 0. Returns ``-1`` when not found."""
 		first = 0 if after_index is None else max(0, after_index)
 		with self._lock:
 			for offset, entry in enumerate(self._entries[first:]):
@@ -139,11 +75,7 @@ class SpeechBuffer(IndexedBuffer):
 		return -1
 
 	def wait_for(self, text: str, after_index: int | None, timeout: float) -> tuple[bool, int, str]:
-		"""Block until ``text`` is spoken after ``after_index`` or ``timeout``.
-
-		Returns ``(found, index, text)``. On a miss, ``index`` is the current
-		:meth:`next_index` (a fresh bookmark) and ``text`` is empty.
-		"""
+		"""Returns ``(found, index, text)``; on a miss, ``index`` is the current :meth:`next_index`."""
 		found_index = -1
 
 		def _seen() -> bool:
@@ -157,28 +89,10 @@ class SpeechBuffer(IndexedBuffer):
 		return False, self.next_index(), ""
 
 	def collect_since(self, index: int, grace: float) -> tuple[list[tuple[str, int, int, float]], int, int]:
-		"""Entries from ``index`` that arrive within ``grace`` seconds; then stop.
+		"""Return :meth:`entries_since`'s triple once anything arrives or ``grace`` elapses.
 
-		The grace window of spec 0025, and the whole reason it is a different
-		primitive from :meth:`wait_to_finish`. That one asks "has speech
-		STOPPED?", which cannot be answered at the moment it is asked -- silence
-		before speech starts and silence after it ends are the same observable,
-		so no constant makes the answer true. This asks "has speech STARTED?",
-		and returns what had arrived by an instant the caller chose. An empty
-		result is therefore a fact ("nothing by then"), not a claim ("nothing").
-
-		Returns exactly :meth:`entries_since`'s triple, so a caller reports the
-		half-open range the same way it always did and resumes from ``toIndex``.
-
-		Returns EARLY as soon as anything renders non-empty, because the common
-		case is one announcement ~124 ms after a keystroke and waiting out the
-		rest of the window buys nothing. The cost of that choice is stated
-		rather than hidden: an utterance still in flight when the first one
-		lands is left for the next read, which the caller can always take,
-		since the range it was handed says exactly where to resume.
-
-		``grace <= 0`` is a legitimate opt-out -- it reads the buffer as it
-		stands and never sleeps, which is the pre-0025 behaviour.
+		Returns early, so an utterance still in flight is left for the next read. An empty result means
+		nothing had arrived by then, not that nothing will.
 		"""
 
 		def _arrived() -> bool:
@@ -189,15 +103,10 @@ class SpeechBuffer(IndexedBuffer):
 		return self.entries_since(index)
 
 	def wait_to_finish(self, timeout: float) -> bool:
-		"""Block until NVDA has stopped speaking, or ``timeout`` elapses."""
 		return self._wait(self._has_finished, timeout)
 
 	def _has_finished(self) -> bool:
-		# Asked FIRST, and outside the lock. A continuous read that is part-way
-		# through is not finished however long the gap since the last chunk has
-		# been -- the gap IS the read, waiting on audio for the chunk it just
-		# handed over. Reading it before taking the lock keeps a port call off
-		# the buffer's own mutex, which append() takes from NVDA's thread.
+		# Outside the lock, so a port call never holds the mutex append() takes on NVDA's thread.
 		if self._continuous_read is not None and self._continuous_read.in_progress():
 			with self._lock:
 				quiet_for = self._clock.monotonic() - self._last_time

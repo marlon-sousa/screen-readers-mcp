@@ -1,11 +1,5 @@
 # nvdaMcpBridge tests -- builders for command-handler tests.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# A command handler is testable with a hand-built SessionContext and no Session
-# at all -- that is the point of splitting dispatch out. make_context assembles
-# one from fakes; each test seeds only the pieces its handler touches. These are
-# builders, not fixtures, because every handler wants a different shape (the root
-# AGENTS.md's fixture policy).
 
 from __future__ import annotations
 
@@ -30,8 +24,6 @@ if TYPE_CHECKING:
 
 
 class RecordingClose:
-	"""Captures the reason a handler asked the session to close with."""
-
 	def __init__(self) -> None:
 		self.reasons: list[TeardownReason] = []
 
@@ -53,7 +45,6 @@ def make_context(
 	gesture_resolver: FakeGestureResolver | None = None,
 	teardown_requested: Callable[[], bool] | None = None,
 ) -> SessionContext:
-	"""Build a SessionContext for a handler test, seeded with only what it needs."""
 	ctx = SessionContext(
 		clock,
 		transcript or FakeTranscript(),
@@ -76,11 +67,6 @@ def speech_with(
 	exact_finish: bool = True,
 	log_positions: Sequence[int] | None = None,
 ) -> SpeechBuffer:
-	"""A SpeechBuffer holding *lines*, optionally each with its journal position.
-
-	``log_positions`` stands in for what the speech source reads off the journal
-	at the moment of capture (spec 0021); the buffer only ever sees plain ints.
-	"""
 	buffer = SpeechBuffer(clock, exact_finish=exact_finish)
 	for index, line in enumerate(lines):
 		buffer.append([line], log_positions[index] if log_positions else 0)
@@ -105,5 +91,4 @@ def request(cmd: str, id: int = 1, **params: object) -> p.Request:
 
 
 def adapters_from(factory: FakeAdapterFactory) -> AdapterSet:
-	"""The AdapterSet a factory would hand a session (mode is arbitrary here)."""
 	return factory.build(p.CaptureMode.SILENT)

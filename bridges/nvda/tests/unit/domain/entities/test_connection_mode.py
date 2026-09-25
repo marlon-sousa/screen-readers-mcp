@@ -7,8 +7,6 @@ from nvdaMcpBridge.domain.entities.connection_mode import DEFAULT, ConnectionMod
 
 
 class TestConnectionMode:
-	"""The ConnectionMode enum: three members, DEFAULT is NAMED_PIPE, string values match."""
-
 	def test_members(self) -> None:
 		members = list(ConnectionMode)
 		assert len(members) == 3
@@ -25,7 +23,6 @@ class TestConnectionMode:
 		assert ConnectionMode.REMOTE_TCP.value == "remoteTcp"
 
 	def test_str_enum_members_are_strings(self) -> None:
-		# StrEnum members *are* str, so they compare equal to their wire value.
 		assert isinstance(ConnectionMode.NAMED_PIPE, str)
 		assert ConnectionMode.NAMED_PIPE == "namedPipe"
 

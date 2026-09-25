@@ -1,21 +1,9 @@
 # nvdaMcpBridge adapters -- TcpListener: the Listener leaf.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: LEAF adapter. IMPLEMENTS the Listener seam (adapters/ports/listener.py)
-#       by doing the real socket accept, and nothing else.
-# USED BY: adapters/bridge_server.py, via the seam, never directly.
-# BUILT BY: plugin.py in session C (loopback host + the default port).
-#
-# Loopback ONLY -- **Decided** (spec 0007, ROADMAP 9.1): remote TCP is remote
-# keystroke injection and config writes, deferred behind its own security entry,
-# so this binds 127.0.0.1 and never a routable address. listen(1) keeps a single
-# session at a time (a second dial waits in the backlog or is refused).
-#
-# Decision-free by design: settimeout turns an idle accept into TimeoutError
-# (socket.timeout IS TimeoutError since 3.10) so the server thread polls without
-# a wakeup pipe, and close() from another thread makes a blocked accept raise --
-# translated to ListenerClosed, the seam's contract, the only "logic" here and
-# the direct analogue of SocketTransport reporting b"" at EOF.
+# ROLE: leaf adapter implementing Listener with a TCP socket.
+# BUILT BY: adapters/build_listener.py.
+# USED BY: adapters/bridge_server.py, through the Listener seam.
+# Binds loopback only: remote TCP would be remote keystroke injection and config writes.
 
 from __future__ import annotations
 
@@ -25,14 +13,10 @@ from .ports.listener import Listener, ListenerClosed
 from .ports.transport import Transport
 from .socket_transport import DEFAULT_POLL_TIMEOUT, SocketTransport
 
-#: Poll window for accept: how long it blocks before reporting TimeoutError, so
-#: the server thread can notice a stop request. close() unblocks it sooner.
 DEFAULT_ACCEPT_TIMEOUT: float = 0.5
 
 
 class TcpListener(Listener):
-	"""A loopback-only TCP listener yielding one connection at a time."""
-
 	def __init__(
 		self,
 		host: str,
@@ -70,8 +54,6 @@ class TcpListener(Listener):
 		try:
 			conn, _ = self._sock.accept()
 		except OSError:
-			# A timeout is the idle poll; anything else on a closed socket is our
-			# own close() unblocking the accept.
 			if self._closed:
 				raise ListenerClosed from None
 			raise

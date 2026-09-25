@@ -1,9 +1,5 @@
 # Unit tests for domain/controllers/commands/registry.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# The registry is the one place that must agree with the wire contract: every
-# v1 command needs a handler, and the two dispatch policies (available before
-# hello, resets inactivity) must be declared on exactly the right handlers.
 
 from __future__ import annotations
 
@@ -13,11 +9,6 @@ from nvdaMcpBridge.domain.controllers.commands.registry import NVDA_CAPABILITIES
 
 
 def test_announced_capabilities_match_what_the_bridge_serves() -> None:
-	# All eleven capability groups are now served with real ports and NVDA
-	# adapters. LOG joined with entry 11.4 (spec 0020); GUIDANCE with 11.20
-	# (spec 0029), and it is the only one that gates a RESOURCE rather than a
-	# set of tools; DOCUMENT with 11.13 (spec 0026), the browse-mode buffer
-	# handed over whole.
 	assert NVDA_CAPABILITIES == (
 		p.Capability.SPEECH,
 		p.Capability.BRAILLE,
@@ -53,14 +44,6 @@ def test_only_ping_skips_the_inactivity_reset() -> None:
 
 
 def test_exactly_the_mutating_commands_are_marked() -> None:
-	# Spec 0017's enumeration test: every registered handler is asked, so a new
-	# mutating command cannot be added without a deliberate answer here. What
-	# moves the user's machine is a keypress, typed text, a config write, a mode
-	# write, a prompt and a log-level change; everything else -- announce
-	# included, which speaks to the human without changing anything -- observes.
-	#
-	# (The name no longer counts them: it said "three" against a list of five for
-	# some time, which is the drift this test exists to prevent.)
 	registry = build_command_registry(FakeAdapterFactory(), "x")
 	mutating = {cmd for cmd, handler in registry.items() if handler.mutates_reader}
 	assert mutating == {

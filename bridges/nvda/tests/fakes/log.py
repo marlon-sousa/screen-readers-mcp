@@ -1,8 +1,6 @@
 # nvdaMcpBridge test doubles -- FakeLog: the Log port in memory.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: fake (subclasses Log). Records every message in lists so tests can
-#       assert on what was logged. FAKES: domain/ports/log.py
+# ROLE: fake; records every message.
 
 from __future__ import annotations
 
@@ -10,8 +8,6 @@ from nvdaMcpBridge.domain.ports.log import Log
 
 
 class FakeLog(Log):
-	"""In-memory log for tests. Every call appends to the matching list."""
-
 	def __init__(self) -> None:
 		self.infos: list[str] = []
 		self.warnings: list[str] = []

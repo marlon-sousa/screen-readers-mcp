@@ -463,8 +463,8 @@ pending = []
 
 [tool.screen-readers-mcp.comments.nvda]
 paths = ["bridges/nvda", "shared"]
-enforced = false
-ceiling = 1.0
+enforced = true
+ceiling = 0.15
 pending = []
 
 [tool.screen-readers-mcp.comments.voiceover]

@@ -1,17 +1,8 @@
 # nvdaMcpBridge adapters -- NvdaBrailleSource: braille capture (both modes).
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: adapter. IMPLEMENTS the BrailleSource port. There is no "silent" braille,
-#       so the same capture runs in both modes.
-# BUILT BY: adapters/nvda_adapter_factory.py, in either mode.
-# COLLABORATORS: braille.pre_writeCells -- notified with the raw text NVDA is
-#                about to write to the display (the pattern NVDA's own
-#                _remoteClient uses); we append rawText to the BrailleBuffer,
-#                which de-duplicates consecutive identical refreshes.
-#
-# On pyright's ignore list (imports NVDA). NVDA holds handlers weakly, so this
-# instance must outlive its registration -- the AdapterSet keeps it for the
-# session; stop() unregisters at teardown.
+# ROLE: adapter implementing BrailleSource from braille.pre_writeCells, in both capture modes.
+# BUILT BY: adapters/nvda_adapter_factory.py.
+# NVDA holds handlers weakly, so this instance must outlive its registration.
 
 from __future__ import annotations
 
@@ -27,8 +18,6 @@ if TYPE_CHECKING:
 
 
 class NvdaBrailleSource(BrailleSource):
-	"""Feeds the BrailleBuffer from the pre_writeCells hook."""
-
 	def __init__(self) -> None:
 		self._buffer: BrailleBuffer | None = None
 		self._log_position: Callable[[], int] = lambda: 0

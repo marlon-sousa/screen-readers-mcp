@@ -1,11 +1,5 @@
 # Unit tests for adapters/file_transcript.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FileTranscript owns every decision (the transcript vocabulary), so it is
-# tested precisely against a FakeFileWriter: exact lines, no filesystem. Only
-# create_session_log -- which picks real paths and prunes real files -- touches
-# the disk. The TextFileWriter leaf beneath it has no test file on purpose: it
-# makes no decisions. See the root AGENTS.md ("Testing").
 
 from __future__ import annotations
 
@@ -27,11 +21,7 @@ def writer() -> FakeFileWriter:
 
 @pytest.fixture
 def transcript(writer: FakeFileWriter) -> FileTranscript:
-	"""A transcript over the same `writer` the test can inspect, by construction."""
 	return FileTranscript(writer, timestamp=_fixed_timestamp)
-
-
-# -- vocabulary (no filesystem) ----------------------------------------------
 
 
 def test_records_every_event_in_order_with_timestamps(
@@ -55,8 +45,7 @@ def test_records_every_event_in_order_with_timestamps(
 def test_an_undeclared_persona_is_written_as_a_placeholder(
 	transcript: FileTranscript, writer: FakeFileWriter
 ) -> None:
-	"""Spec 0029: the FIELD is always present, so a reader of the file can tell
-	"no persona was declared" from "this build predates personas"."""
+	"""The persona field is always present, so no persona reads differently from an older build."""
 	transcript.open()
 	transcript.session_opened("live", "espeak", "")
 	assert writer.lines == ["T SESSION OPEN mode=live synth=espeak persona=-"]
@@ -95,9 +84,6 @@ def test_events_after_close_are_dropped(transcript: FileTranscript, writer: Fake
 	assert writer.lines[-1] == "T SESSION CLOSE reason=client-bye"
 
 
-# -- session log files (real filesystem) -------------------------------------
-
-
 def test_create_session_log_writes_a_real_file(tmp_path: Path) -> None:
 	log = create_session_log(tmp_path, name_stamp=lambda: "0001", timestamp=_fixed_timestamp)
 	log.gesture("NVDA+f7")
@@ -108,7 +94,6 @@ def test_create_session_log_writes_a_real_file(tmp_path: Path) -> None:
 
 def test_create_session_log_reports_the_path_it_opened(tmp_path: Path) -> None:
 	log = create_session_log(tmp_path, name_stamp=lambda: "0001")
-	# `hello` hands this to the agent, so it must be the real file.
 	assert Path(log.path) == tmp_path / "session-0001.log"
 
 
@@ -122,7 +107,6 @@ def test_create_session_log_prunes_the_oldest_sessions(tmp_path: Path) -> None:
 	for _ in range(5):
 		create_session_log(tmp_path, keep=3, name_stamp=_stamp).session_closed("client-bye")
 
-	# Only the last 3 of the 5 sessions survive.
 	assert sorted(p.name for p in tmp_path.glob("session-*.log")) == [
 		"session-0003.log",
 		"session-0004.log",
