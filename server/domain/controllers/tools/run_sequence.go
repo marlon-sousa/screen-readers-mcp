@@ -1,51 +1,8 @@
 // screenreader-mcp domain -- the run_sequence tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED BY ITS STEPS -- the third gating value,
-// because a plan spans several capabilities and honestly has no single one
-// (entities.GatedByItsSteps).
-// USES: entities.SequencePlan, and the ports behind ToolContext.Gestures(),
-// .Text(), .Speech(), .Focus(), .Braille(), .Interact(), .State() and .Clock().
+// ROLE: controller, gated by its steps, since a plan spans several capabilities.
+// USES: entities.SequencePlan and the ports behind ToolContext.
 // LISTED BY: registry.go.
-//
-// WHAT IT IS FOR, and the claim it must be judged on. Spec 0036, board entry
-// 11.16, out of the first external run. NOT a latency optimisation: entry 11.4
-// measured the server-to-bridge hop at 0.2-0.5 ms, so the 5-10 s a step cost
-// that run was the client model's own turn time and none of it is ours. What
-// this removes is MODEL ROUND TRIPS.
-//
-// And not primarily for throughput either. One scenario in that run was
-// UNTESTABLE: a command with a 1.5 s finish delay always completed before the
-// agent could interrupt it, because typing it and submitting it cost two agent
-// turns before a stop could be sent. As a plan -- type, submit, wait half a
-// second, stop -- every hop is a fraction of a millisecond and the stop lands
-// comfortably inside 1.5 s. A class of behaviour that could not be tested at all
-// becomes testable; that is the claim.
-//
-// COMPOSITION IS OVER THE BRIDGE'S EXISTING COMMANDS, NOT OVER SIBLING TOOLS,
-// and the distinction is load-bearing (spec 0036, part 3.2). Each mutating tool
-// spends its OWN grace window and returns its OWN speech list; the result here
-// is ONE window. So the steps are dispatched through the same ports the tools
-// drive, with graceMs 0 on each, and one final speech read is taken after the
-// trailing gap.
-//
-// THAT FINAL READ IS WHAT MAKES THE WINDOW GAPLESS. Per-step windows alone would
-// leave speech that arrived BETWEEN one step's window closing and the next
-// step's dispatch belonging to neither -- returned by nothing, and invisible.
-// Here every step's span is the half-open range between the mark taken at its
-// own dispatch and the mark taken at the next one, and the last step runs to
-// where the final read ended, so the spans partition the merged window exactly.
-//
-// `outcome` IS THREE-VALUED, and collapsing the middle row into either
-// neighbour is the failure spec 0025 named when it rejected an `until:`
-// parameter: "the trigger never fired" and "a step broke" call for different
-// next moves by the agent, so they are different answers.
-//
-// NO NEW PORT AND NO NEW ADAPTER, which is the whole reason a sequence is
-// affordable server-side: no wire command, no bridge change, no add-on rebuild
-// and no protocol amendment. What each underlying command does to the reader --
-// including whether it is withheld from an observe-only session -- is still the
-// bridge's own per-command business, unchanged by being driven from here.
 package tools
 
 import (
@@ -58,45 +15,24 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// DefaultGapMs is the pause after each step, including the last, when the agent
-// did not name one.
-//
-// The same 100 ms as DefaultGraceMs and for the same measurement (speech
-// produced ~124 ms after a keystroke), but it is a different thing in a
-// different place: the grace is spent INSIDE the bridge for one command, this is
-// spent HERE, between commands. It is the sequence's single timing knob --
-// anything longer or deliberate is a `delay` step, so there are never two
-// parameters meaning "wait here".
+// DefaultGapMs is the pause after every step, including the last, when the agent names none.
 const DefaultGapMs = DefaultGraceMs
 
-// MaxGapMs bounds the knob, so 32 steps cannot spend an unbounded time in gaps
-// alone. Anything longer is a delay step, which the budget also counts.
 const MaxGapMs = 5000
 
-// The three answers a plan can end with. Strings rather than a bool, because
-// there are genuinely three situations and two of them are not failures.
 const (
-	// outcomeCompleted: every step ran.
 	outcomeCompleted = "completed"
-	// outcomeTriggerNotFound: a wait_for_speech step timed out. The
-	// remaining steps did NOT run, and this is NOT an error -- the tool
-	// answers found:false for exactly this reason, and a plan must not turn
-	// that into a failure on its way through.
+	// outcomeTriggerNotFound: a wait_for_speech step timed out and the remaining steps did not run; it is not an error.
 	outcomeTriggerNotFound = "trigger_not_found"
-	// outcomeFailed: a step failed, or the plan ran out of budget.
-	outcomeFailed = "failed"
+	outcomeFailed          = "failed"
 )
 
-// RunSequence carries several intentions in one call.
 type RunSequence struct{}
 
 var _ Tool = (*RunSequence)(nil)
 
 func (t *RunSequence) Name() string { return "run_sequence" }
 
-// Capability is the third gating value: this tool needs a session, but which
-// capabilities it needs is a property of the plan it is handed, checked per call
-// by Validate rather than declared here (spec 0036, part 2).
 func (t *RunSequence) Capability() entities.Capability { return entities.GatedByItsSteps }
 
 func (t *RunSequence) Description() string {
@@ -330,20 +266,13 @@ func (t *RunSequence) OutputSchema() json.RawMessage {
 }`)
 }
 
-// -- what the agent sends ----------------------------------------------------
-
 type runSequenceParams struct {
 	Steps    []sequenceStepParams `json:"steps"`
 	GapMs    *int                 `json:"gap_ms"`
 	Announce string               `json:"announce"`
 }
 
-// sequenceStepParams is one step as JSON: exactly one field is non-nil, and the
-// FIELD NAME is the discriminator.
-//
-// Every field is a pointer so that "present" is distinguishable from "zero" --
-// `{"delay": 0}` is a mistake worth naming, and an erased int could not tell it
-// from a step that named no delay at all.
+// sequenceStepParams has exactly one non-nil field, whose name is the discriminator; pointers keep present distinct from zero.
 type sequenceStepParams struct {
 	PressGesture  *string         `json:"press_gesture"`
 	TypeText      *string         `json:"type_text"`
@@ -358,20 +287,10 @@ type waitStepParams struct {
 	Timeout float64 `json:"timeout"`
 }
 
-// -- what the agent receives -------------------------------------------------
-
-// sequenceStepResult is one step that RAN.
-//
-// The kind-specific fields are all omitempty and all absent on the steps they do
-// not belong to, which is why the schema declares only the four every step has.
-// The three sub-results are the OTHER TOOLS' OWN RESULT STRUCTS -- reused rather
-// than restated, so a read step's focus reads exactly like get_focus_info's
-// answer, by construction rather than by agreement.
 type sequenceStepResult struct {
 	Step int    `json:"step"`
 	Kind string `json:"kind"`
-	// The half-open span the ring stood at either side of THIS step's
-	// dispatch. An empty span is a real answer: this step said nothing.
+	// [SpeechFrom, SpeechTo) is half-open; an empty span means this step said nothing.
 	SpeechFrom int `json:"speechFrom"`
 	SpeechTo   int `json:"speechTo"`
 
@@ -383,28 +302,17 @@ type sequenceStepResult struct {
 	Braille *speechRangeResult   `json:"braille,omitempty"`
 }
 
-// runSequenceResult is the plan's answer: how it ended, what each step did, and
-// the ONE window that spans all of it.
-//
-// The embedded observation is the same shape press_gesture and type_text
-// publish, one level up (spec 0036, part 2): the merged speech list, the resume
-// coordinate, the modes that cannot be heard, and the echoed announcement.
 type runSequenceResult struct {
 	Outcome string `json:"outcome"`
-	// FailedStep counts from 1 and is ABSENT when the plan completed.
+	// FailedStep counts from 1 and is absent when the plan completed.
 	FailedStep int `json:"failedStep,omitempty"`
-	// Message is why, and only ever accompanies outcomeFailed: a trigger that
-	// never fired needs no explanation beyond which step waited for it.
+	// Message accompanies only outcomeFailed.
 	Message string               `json:"message,omitempty"`
 	Steps   []sequenceStepResult `json:"steps"`
 	observation
 }
 
-// -- the use case ------------------------------------------------------------
-
 func (t *RunSequence) Execute(ctx ToolContext, params json.RawMessage) (any, error) {
-	// Asked first so that "nothing is connected" answers the plain error,
-	// before any talk of steps and capabilities.
 	session, err := ctx.Session()
 	if err != nil {
 		return nil, err
@@ -425,12 +333,7 @@ func (t *RunSequence) Execute(ctx ToolContext, params json.RawMessage) (any, err
 	if err != nil {
 		return nil, err
 	}
-	// THE WHOLE PLAN, BEFORE THE FIRST KEYSTROKE. A plan is refused entire
-	// rather than discovered broken halfway through with the reader left
-	// mid-edit -- and refused BEFORE the announcement, because a capability
-	// refusal is a message about the agent's own mistake and `announce` is the
-	// channel to the person at the machine. Speaking it down there would
-	// interrupt somebody to report a thing that never happened.
+	// The whole plan is validated before the first keystroke and before the announcement, so a refusal presses and speaks nothing.
 	if err := plan.Validate(session.Capabilities); err != nil {
 		return nil, refusal(ctx, err)
 	}
@@ -447,10 +350,7 @@ func (t *RunSequence) Execute(ctx ToolContext, params json.RawMessage) (any, err
 	run := newSequenceRun(ctx, plan, gap)
 	outcome, failedStep, message, err := run.walk()
 	if err != nil {
-		// The connection going away mid-plan is not "a step failed": the
-		// session is over, and the answer has to be an ERROR so the
-		// dispatcher notices the loss and records it. Everything else stays
-		// a result, which is what makes partial execution legible.
+		// A lost connection must be an error so the dispatcher records it; every other failure stays a result.
 		return nil, err
 	}
 	window, err := run.observe(announced)
@@ -466,10 +366,6 @@ func (t *RunSequence) Execute(ctx ToolContext, params json.RawMessage) (any, err
 	}, nil
 }
 
-// refusal turns the entity's structured miss into the agent-facing error, which
-// already names the tool, the capability and the connected reader -- and now the
-// step, because "this reader has no braille" leaves an agent still hunting for
-// which of its own steps asked for it.
 func refusal(ctx ToolContext, err error) error {
 	var missing *entities.MissingCapability
 	if !errors.As(err, &missing) {
@@ -480,9 +376,7 @@ func refusal(ctx ToolContext, err error) error {
 	return failure
 }
 
-// gapFor reads the plan's single timing knob. Absent means the default, which is
-// NOT the same as 0 -- so the parameter is a pointer and the default lives in
-// one place.
+// gapFor: absent means the default, which is not the same as 0.
 func gapFor(asked *int) (time.Duration, error) {
 	gap := DefaultGapMs
 	if asked != nil {
@@ -498,12 +392,6 @@ func gapFor(asked *int) (time.Duration, error) {
 	return time.Duration(gap) * time.Millisecond, nil
 }
 
-// parsePlan turns the JSON steps into the entity.
-//
-// It enforces the ONE THING JSON's shape can express and the entity cannot: that
-// a step names exactly one kind. Everything else -- an empty gesture id, a
-// negative delay, an unknown read target, the bounds -- is the plan's own
-// validation, so that the gate is testable without going through a decoder.
 func parsePlan(steps []sequenceStepParams) (entities.SequencePlan, error) {
 	parsed := make([]entities.SequenceStep, 0, len(steps))
 	for i, raw := range steps {
@@ -516,7 +404,6 @@ func parsePlan(steps []sequenceStepParams) (entities.SequencePlan, error) {
 	return entities.SequencePlan{Steps: parsed}, nil
 }
 
-// step is one raw step as the entity's value, or the reason it is not one.
 func (p sequenceStepParams) step() (entities.SequenceStep, error) {
 	named := 0
 	step := entities.SequenceStep{}
@@ -564,12 +451,7 @@ func (p sequenceStepParams) step() (entities.SequenceStep, error) {
 	}
 }
 
-// readTargets maps the asked-for targets, defaulting an empty list to focus --
-// which is what "orient me" means when nobody said more.
-//
-// Unknown strings pass through UNTRANSLATED so that the plan's validation is
-// what rejects them, naming the step: dropping them here would leave a plan that
-// asked for something impossible reading as a plan that asked for nothing.
+// readTargets defaults an empty list to focus, and passes unknown strings through so the plan's validation rejects them by step.
 func readTargets(asked []string) []entities.ReadTarget {
 	if len(asked) == 0 {
 		return []entities.ReadTarget{entities.ReadFocus}
@@ -581,8 +463,7 @@ func readTargets(asked []string) []entities.ReadTarget {
 	return targets
 }
 
-// seconds converts a wire timeout. Zero stays zero, which every port reads as
-// "the reader's own default".
+// seconds keeps zero as zero, which every port reads as the reader's own default.
 func seconds(value float64) time.Duration {
 	if value <= 0 {
 		return 0
@@ -590,39 +471,24 @@ func seconds(value float64) time.Duration {
 	return time.Duration(value * float64(time.Second))
 }
 
-// sequenceRun is one plan in flight: the collaborators, the marks taken so far,
-// and the per-step results.
-//
-// A PRIVATE HELPER of this controller, sharing its file per AGENTS.md -- not a
-// role of its own. It holds no state between calls and outlives nothing: the
-// controller builds one, walks it, and returns.
 type sequenceRun struct {
 	ctx  ToolContext
 	plan entities.SequencePlan
 	gap  time.Duration
 
-	// speech is the reader's speech port, or nil when it serves none. It is
-	// resolved ONCE because it is the source of every mark: without it there
-	// is no speech ring for a coordinate to be in, and every span is empty.
+	// speech is nil when the reader serves none, and then every span is empty.
 	speech ports.SpeechReader
 
-	// deadline is when the whole-plan budget runs out.
 	deadline time.Time
 
-	// start is the mark taken before step 1, and the left edge of the merged
-	// window.
 	start int
-	// at is the most recent mark, which is where the next step's span begins.
-	at int
-	// braille is where the braille ring stood at the last read, so a second
-	// read step reports what arrived since the first rather than repeating it.
+	at    int
+	// braille is where the braille ring stood at the last read, so a second read reports only what arrived since.
 	braille int
 
 	steps []sequenceStepResult
 }
 
-// newSequenceRun takes the opening marks: the speech index the plan starts from,
-// and -- only when the plan actually reads braille -- where that ring stands.
 func newSequenceRun(ctx ToolContext, plan entities.SequencePlan, gap time.Duration) *sequenceRun {
 	run := &sequenceRun{
 		ctx:      ctx,
@@ -640,14 +506,7 @@ func newSequenceRun(ctx ToolContext, plan entities.SequencePlan, gap time.Durati
 	return run
 }
 
-// mark is where the speech ring stands now.
-//
-// A read of its own rather than the coordinate a mutating command reports,
-// because it has to be the same coordinate for all six kinds: a delay and a
-// settle report nothing, and a plan whose spans came from two different clocks
-// would not partition its own window. Failure is not fatal -- the mark simply
-// does not move, which reads as a silent step, and the merged read is where a
-// real speech problem surfaces.
+// A failed mark leaves the mark unmoved, which reads as a silent step.
 func (r *sequenceRun) mark() int {
 	if r.speech == nil {
 		return r.at
@@ -659,13 +518,6 @@ func (r *sequenceRun) mark() int {
 	return next
 }
 
-// markBraille notes where the braille ring stands, but only for a plan that
-// actually reads it.
-//
-// There is no next-index probe for braille as there is for speech -- get_braille
-// is the only braille fetch -- so the end is learned by reading and keeping the
-// coordinate. The entries are discarded: they are what was on the display BEFORE
-// this plan, which the plan did not cause and nobody asked for.
 func (r *sequenceRun) markBraille() {
 	if !r.plan.ReadsBraille() {
 		return
@@ -679,13 +531,7 @@ func (r *sequenceRun) markBraille() {
 	}
 }
 
-// walk runs the plan and reports how it ended.
-//
-// ABORT ON THE FIRST FAILURE. Nothing is rolled back, because keystrokes cannot
-// be un-pressed: what the per-step results buy is that the agent can see exactly
-// how far it got, which is what makes the wreckage legible.
-//
-// The error return is reserved for the connection going away -- see Execute.
+// walk aborts on the first failure and rolls nothing back; its error return is reserved for a lost connection.
 func (r *sequenceRun) walk() (outcome string, failedStep int, message string, err error) {
 	for i, step := range r.plan.Steps {
 		number := i + 1
@@ -697,9 +543,7 @@ func (r *sequenceRun) walk() (outcome string, failedStep int, message string, er
 		result := sequenceStepResult{Step: number, Kind: string(step.Kind), SpeechFrom: r.at}
 		continued, failure := r.dispatch(step, &result)
 		r.steps = append(r.steps, result)
-		// The gap runs after EVERY step, including a failed one and the
-		// last: it is what gives that step's speech time to reach the
-		// merged read, which is the whole reason the window is gapless.
+		// The gap runs after every step, including a failed one and the last, so that step's speech reaches the merged read.
 		r.ctx.Clock.Sleep(r.gap)
 		r.at = r.mark()
 		r.close(number)
@@ -710,28 +554,18 @@ func (r *sequenceRun) walk() (outcome string, failedStep int, message string, er
 		case failure != nil:
 			return outcomeFailed, number, failure.Error(), nil
 		case !continued:
-			// A trigger that never fired. NOT an error, and not to be
-			// collapsed into one: the plan stopped, and the agent's next
-			// move is a different one from a step having broken.
 			return outcomeTriggerNotFound, number, "", nil
 		}
 	}
 	return outcomeCompleted, 0, "", nil
 }
 
-// close writes the just-finished step's right edge, which is the mark taken
-// after its gap -- so the spans of consecutive steps meet exactly and no
-// utterance belongs to neither.
+// close ends the step at the mark taken after its gap, so consecutive spans meet exactly.
 func (r *sequenceRun) close(number int) {
 	r.steps[number-1].SpeechTo = r.at
 }
 
-// dispatch runs one step. It reports whether the plan CONTINUES -- only a
-// wait_for_speech step can answer no -- and the failure that stopped it.
-//
-// Every mutating call goes out with graceMs 0 and no announcement: the pause
-// belongs to the plan (one knob, not two), and the announcement was spoken once
-// before step 1 rather than repeated per step.
+// dispatch reports whether the plan continues; only a wait_for_speech step can answer no.
 func (r *sequenceRun) dispatch(step entities.SequenceStep, into *sequenceStepResult) (bool, error) {
 	switch step.Kind {
 	case entities.StepPressGesture:
@@ -754,8 +588,6 @@ func (r *sequenceRun) dispatch(step entities.SequenceStep, into *sequenceStepRes
 		if err != nil {
 			return true, err
 		}
-		// The reader counts what it received; this server does not recount
-		// it, and the text itself is never echoed back.
 		typed := outcome.Typed
 		into.Typed = &typed
 		return true, nil
@@ -781,10 +613,7 @@ func (r *sequenceRun) dispatch(step entities.SequenceStep, into *sequenceStepRes
 		if err != nil {
 			return true, err
 		}
-		// Matched from the PLAN's start, not from this step's own mark: the
-		// trigger can legitimately land in the fraction of a millisecond
-		// between the previous step's dispatch and this one's, and a wait
-		// that could miss it that way would abort a plan that was working.
+		// Matched from the plan's start: the trigger can land between the previous step's dispatch and this one's.
 		after := r.start
 		match, err := speech.WaitForSpeech(ports.SpeechWait{
 			Text:       step.Match,
@@ -806,13 +635,10 @@ func (r *sequenceRun) dispatch(step entities.SequenceStep, into *sequenceStepRes
 	case entities.StepRead:
 		return true, r.read(step.Read, into)
 	}
-	// Unreachable: the plan's own validation refused any other kind before
-	// anything was dispatched.
+	// Unreachable: the plan's own validation refused any other kind.
 	return true, fmt.Errorf("%q is not a step kind", step.Kind)
 }
 
-// read orients. Each target gates independently, which is why they are asked for
-// one at a time rather than as a bundle.
 func (r *sequenceRun) read(targets []entities.ReadTarget, into *sequenceStepResult) error {
 	for _, target := range targets {
 		switch target {
@@ -859,19 +685,13 @@ func (r *sequenceRun) read(targets []entities.ReadTarget, into *sequenceStepResu
 				FromIndex: captured.FromIndex,
 				ToIndex:   captured.ToIndex,
 			}
-			// So a second read step reports what arrived since this one
-			// rather than repeating it.
 			r.braille = captured.ToIndex
 		}
 	}
 	return nil
 }
 
-// observe takes the one read that makes the window gapless, and the mode
-// snapshot that rides on every mutating result.
-//
-// The last step's right edge is corrected to the read's own end: speech that
-// arrived while the read was in flight belongs to the last step, not to nobody.
+// observe moves the last step's right edge to the read's own end, so speech that arrived mid-read belongs to that step.
 func (r *sequenceRun) observe(announced string) (observation, error) {
 	seen := ports.Observation{FromIndex: r.start, ToIndex: r.at}
 	var failure error
@@ -888,10 +708,7 @@ func (r *sequenceRun) observe(announced string) (observation, error) {
 			}
 		}
 	}
-	// Sampled once, at the end, so it reports the modes the plan LEFT the
-	// reader in rather than whichever step happened to be the last mutating
-	// one. Never fatal: absent state is a reader that serves none, which is
-	// the same answer this shape gives everywhere else.
+	// Sampled once, at the end, so it reports the modes the plan left the reader in.
 	if inspector, err := r.ctx.State(); err == nil {
 		if state, err := inspector.State(); err == nil {
 			seen.State = &state

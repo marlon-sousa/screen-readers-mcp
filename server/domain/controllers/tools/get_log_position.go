@@ -1,19 +1,8 @@
 // screenreader-mcp domain -- the get_log_position tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `log`.
+// ROLE: controller, gated on log.
 // USES: ports.LogReader, through ToolContext.ReaderLog().
 // LISTED BY: registry.go.
-//
-// The programmatic F1: mark the moment observation starts, so "everything since
-// then" is answerable later without a command span that was never built (spec
-// 0021). It is get_next_speech_index for the log, and it is a separate tool for
-// the same reason that one is separate from get_speech -- paying for a slice to
-// learn a single integer defeats the purpose of marking the moment you begin.
-//
-// It is also what makes an UNATTENDED session observable at all: an agent
-// watching a human drive the reader issues no marking commands, so the command
-// anchor has nothing to anchor on. A cursor the caller holds does.
 
 package tools
 
@@ -23,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetLogPosition marks the reader's log journal at the present moment.
 type GetLogPosition struct{}
 
 var _ Tool = (*GetLogPosition)(nil)

@@ -1,8 +1,5 @@
 // screenreader-mcp domain -- tests for reader_listing.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The join is where spec 0013's determinism rule actually lives, so these are
-// the tests that hold acceptance criterion 4 up.
 package entities_test
 
 import (
@@ -23,8 +20,6 @@ func TestBuildListingReportsPipeLivenessAndTCPUnknown(t *testing.T) {
 		Name: "nvda",
 		Endpoints: []entities.EndpointStatus{
 			{Endpoint: testsupport.Endpoint(t, "local:nvdaMcpBridge"), Liveness: entities.Listening},
-			// A socket cannot be tested without connecting, and connecting
-			// would occupy the bridge's single session slot.
 			{Endpoint: testsupport.Endpoint(t, "tcp:127.0.0.1:8765"), Liveness: entities.LivenessUnknown},
 		},
 	}}}
@@ -43,10 +38,6 @@ func TestBuildListingReportsAConfiguredEndpointThatIsAbsent(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 4, second half: a listening endpoint belonging to no known
-// reader is NOT reported and cannot be connected to. The join walks the
-// configured readers, so an unconfigured endpoint has no way in even when the
-// probe swears it is live.
 func TestBuildListingIgnoresLiveEndpointsNobodyConfigured(t *testing.T) {
 	nvda := testsupport.Reader(t, "nvda", "local:nvdaMcpBridge")
 	live := []entities.Endpoint{
@@ -66,8 +57,6 @@ func TestBuildListingIgnoresLiveEndpointsNobodyConfigured(t *testing.T) {
 	}
 }
 
-// The declared order is what connect_reader tries, so the listing must show it
-// unchanged -- an agent reading this is reading the plan.
 func TestBuildListingKeepsDeclaredOrder(t *testing.T) {
 	nvda := testsupport.Reader(t, "nvda", "tcp:127.0.0.1:8765", "local:nvdaMcpBridge")
 
@@ -83,10 +72,6 @@ func TestBuildListingKeepsDeclaredOrder(t *testing.T) {
 	}
 }
 
-// A local endpoint addressed by a PATH is not something the host's listing can
-// speak for, so it reports unknown exactly as a TCP endpoint does. Reporting it
-// NOT LISTENING would be a confident wrong answer: the bridge may well be
-// running on that very socket.
 func TestBuildListingCannotAnswerForAnEndpointAddressedByPath(t *testing.T) {
 	nvda := testsupport.Reader(t, "nvda", "local:/tmp/nvdaMcpBridge.sock")
 

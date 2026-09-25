@@ -1,19 +1,9 @@
 // screenreader-mcp adapters -- Handshake: the SessionDialer.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. IMPLEMENTS the domain's SessionDialer port: try one reader's
-// endpoints in declared order, complete `hello` with the first that answers, and
-// hand back a ReaderConnection carrying exactly the capability ports that reader
-// announced.
-// DEPENDS ON: a dialer factory (adapters/bridge/endpoint.go in production, a
-// fake in tests), the JSON-lines client, the generated wire binding, and the
-// Clock and Log ports.
+// ROLE: adapter implementing the SessionDialer port: tries a reader's endpoints in order and completes `hello` with the first that answers.
 // BUILT BY: wiring/wiring.go.
-// USED BY: 10b's connection controller, and only ever because an agent asked --
-// this server never dials on its own.
-//
-// This is the one place that maps `hello`'s wire result into domain vocabulary,
-// and the one place that compares protocol versions.
+// USED BY: the connection controller, only when an agent asks to connect.
 package bridge
 
 import (
@@ -27,10 +17,6 @@ import (
 )
 
 // DialerFactory turns an endpoint into a way to reach it.
-//
-// A seam rather than a direct call to DialerFor, so that the ordered-endpoint
-// policy in this file is unit-tested against scripted connections with no OS
-// involved. Production wiring passes DialerFor.
 type DialerFactory func(entities.Endpoint) (adapterports.Dialer, error)
 
 // Handshake dials and completes `hello`.
@@ -42,25 +28,13 @@ type Handshake struct {
 
 var _ ports.SessionDialer = (*Handshake)(nil)
 
-// NewHandshake builds the dialer. Stateless between calls: everything a session
-// needs lives in the ReaderConnection it returns, so there is no "current
-// reader" anywhere in this process.
 func NewHandshake(dialerFor DialerFactory, clock ports.Clock, log ports.Log) *Handshake {
 	return &Handshake{dialerFor: dialerFor, clock: clock, log: log}
 }
 
 // Dial tries each of the reader's endpoints in declared order.
-//
-// The order is the user's transport toggle made invisible: spec 0011's dialog
-// switches the NVDA bridge between named pipe and loopback TCP, and trying both
-// in the order the reader declared them means neither the agent nor the user has
-// to configure anything when it is switched.
 func (h *Handshake) Dial(reader entities.ConfiguredReader, opts ports.SessionOptions) (*ports.ReaderConnection, error) {
 	if opts.Mode == "" {
-		// Not defaulted here: the capture mode is fixed for the session's
-		// whole lifetime, so the party that knows what the session is for
-		// chooses it. An adapter inventing a default would be that choice
-		// made by the wrong layer.
 		return nil, errors.New("capture mode is required")
 	}
 	if len(reader.Endpoints) == 0 {
@@ -77,10 +51,7 @@ func (h *Handshake) Dial(reader entities.ConfiguredReader, opts ports.SessionOpt
 
 		var mismatch *ports.ProtocolMismatchError
 		if errors.As(err, &mismatch) {
-			// A bridge ANSWERED; the disagreement is about versions, not
-			// about reachability. Trying the next endpoint would most
-			// likely reach the same bridge over its other transport and
-			// bury the real answer under a second, vaguer failure.
+			// A bridge answered with a version mismatch; trying its other transport would bury that answer.
 			return nil, err
 		}
 		h.log.Debugf("reader %q: endpoint %s did not answer: %v", reader.Name, endpoint, err)
@@ -102,9 +73,6 @@ func (h *Handshake) dialOne(endpoint entities.Endpoint, opts ports.SessionOption
 	client := NewJSONLinesClient(transport, h.clock, h.log)
 	connection, err := h.hello(client, endpoint, opts)
 	if err != nil {
-		// Nothing was established, so nothing is owed a `bye`; dropping the
-		// connection is both the correct teardown and the one that cannot
-		// hang waiting for a peer that is already unhappy.
 		_ = client.Close()
 		return nil, err
 	}
@@ -121,21 +89,13 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		level := wire.LogLevel(*opts.LogLevel)
 		params.LogLevel = &level
 	}
-	// Nil is left OFF the params entirely rather than sent as false, so the
-	// bridge applies its own per-mode default. Sending false would silently
-	// turn "I did not say" into "do not", which is the distinction the field
-	// exists to keep (spec 0024).
+	// Nil stays off the params so the bridge applies its own per-mode default.
 	if opts.Normalize != nil {
 		normalize := *opts.Normalize
 		params.Normalize = &normalize
 	}
 	if opts.Persona != "" {
-		// Sent so the bridge can record it in its own transcript and say it
-		// aloud to whoever is at the machine (spec 0029). A bridge that
-		// predates personas ignores the field, and one that does not
-		// recognise the value must degrade rather than refuse the handshake
-		// (protocol.md §4) -- so nothing here has to know what the bridge
-		// makes of it.
+		// A bridge that does not recognise the persona must degrade rather than refuse the handshake.
 		persona := opts.Persona.String()
 		params.Persona = &persona
 	}
@@ -154,11 +114,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 
 	announced := make([]string, len(result.Capabilities))
 	for i, capability := range result.Capabilities {
-		// Unknown capability strings survive as members of the domain set
-		// (protocol.md §4 says a consumer must ignore what it does not
-		// know, which is not the same as discarding it): the set is what
-		// `screenreader://info` reports, and a reader deserves to be
-		// described honestly even where this server has no tool to match.
+		// Unknown capability strings are kept so `screenreader://info` describes the reader honestly.
 		announced[i] = string(capability)
 	}
 	capabilities := entities.NewSet(announced)
@@ -170,19 +126,14 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		},
 		Capabilities: capabilities,
 		Mode:         entities.CaptureMode(result.Mode),
-		// The persona the AGENT declared, not one the bridge confirmed --
-		// which is why it is copied from the options rather than read out of
-		// the result. This is the same place the confirmed mode is copied, so
-		// the two live side by side and the difference between them is stated
-		// once, on the field (spec 0029).
+		// The persona the agent declared, not one the bridge confirmed.
 		Persona:         opts.Persona,
 		Synth:           result.Synth,
 		LogPath:         result.LogPath,
 		BridgeVersion:   derefOr(result.BridgeVersion, ""),
 		ProtocolVersion: result.ProtocolVersion,
 	}
-	// Spec 0032. Left nil for a bridge that did not send the field, which is a
-	// different fact from a bridge that said "not capped" -- see the entity.
+	// Nil means the bridge did not send the field, which differs from "not capped".
 	if result.SilenceCap != nil {
 		session.SilenceCap = &entities.SilenceCap{
 			Enabled:   result.SilenceCap.Enabled,
@@ -191,17 +142,12 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		}
 	}
 
-	// Spec 0035. Copied rather than dereferenced, so the session owns its own
-	// value; nil is PRESERVED, because "this bridge does not say" is a third
-	// answer and the sentence renderer has a compatibility path for exactly it.
+	// Nil is preserved: "this bridge does not say" is a third answer the sentence renderer handles.
 	if result.Attended != nil {
 		attended := *result.Attended
 		session.Attended = &attended
 	}
 
-	// Spec 0024. Carried through verbatim: the key paths and values are the
-	// reader's own vocabulary and the reason is its own sentence, so there is
-	// nothing here for this server to interpret.
 	for _, entry := range result.Normalized {
 		session.Normalized = append(session.Normalized, entities.NormalizedSetting{
 			KeyPath:  entry.KeyPath,
@@ -216,9 +162,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 		Endpoint:  endpoint,
 		Lifecycle: client,
 	}
-	// The capability gate, expressed structurally: a port is handed over only
-	// when the reader announced it, so a reader without braille yields a nil
-	// collaborator rather than a method that exists and fails.
+	// A port is handed over only when the reader announced it, so a missing capability yields a nil collaborator.
 	if capabilities.Has(entities.CapabilitySpeech) {
 		connection.Speech = client
 	}
@@ -233,9 +177,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	}
 	if capabilities.Has(entities.CapabilityState) {
 		connection.State = client
-		// Both halves ride the ONE capability, exactly as get_config and
-		// set_config both ride `config` (spec 0033). The reader's own limits on
-		// what may be SET are per-field and are enforced at the bridge.
+		// Both halves ride the one capability; the reader's per-field write limits are enforced at the bridge.
 		connection.StateWrite = client
 	}
 	if capabilities.Has(entities.CapabilityConfig) {
@@ -256,9 +198,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	if capabilities.Has(entities.CapabilityDocument) {
 		connection.Document = client
 	}
-	// The document itself, when the bridge sent it in the handshake (spec 0022
-	// A.5). Absent from an older bridge, which is why the port above stays: the
-	// controller falls back to a getGuidance round trip and nothing breaks.
+	// Absent from an older bridge, in which case the controller falls back to a getGuidance round trip.
 	if result.Guidance != nil {
 		connection.GuidanceDocument = &entities.ReaderGuidanceDocument{
 			Reader:     result.Reader.Name,
@@ -270,11 +210,7 @@ func (h *Handshake) hello(client *JSONLinesClient, endpoint entities.Endpoint, o
 	return connection, nil
 }
 
-// derefOr reads an optional wire field. A nil pointer means the bridge did not
-// send the field at all -- an older build predating it -- which is a different
-// fact from a bridge that sent "unknown" because it could not determine its own
-// version. Both flatten to a harmless empty string here; the distinction is
-// preserved on the wire for anyone who needs it.
+// derefOr reads an optional wire field; nil means the bridge did not send it.
 func derefOr(value *string, fallback string) string {
 	if value == nil {
 		return fallback

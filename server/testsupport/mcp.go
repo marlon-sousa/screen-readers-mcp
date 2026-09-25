@@ -1,23 +1,7 @@
 // screenreader-mcp testsupport -- a real MCP client driving the real server.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: test scaffolding for the headless integration tier. Assembles the WHOLE
-// production stack -- wiring, the SDK server, the tools, the domain, the
-// JSON-lines client, a real transport leaf -- with only the BRIDGE faked, and
-// hands the test an MCP client session to drive it through.
-// USED BY: server/tests/integration/.
-//
-// The integration surface is the MCP BOUNDARY (spec 0013): these tests assert on
-// what an MCP client sees -- tools/list, tools/call results, resource reads --
-// and never on internal state. The SDK's in-memory transports let a real client
-// drive a real server in one process, with no stdio.
-//
-// The bridge is reached over a real loopback socket rather than an in-memory
-// pipe, so the composition under test is the production one all the way down,
-// including config.Load and the TCP leaf. What this tier still cannot catch, and
-// why 10c exists: the fake bridge encodes frames with the same adapters/wire
-// package the server decodes them with, so a bug in the binding itself would
-// have both sides wrong together, in agreement.
+// ROLE: test scaffolding assembling the whole production stack with only the bridge faked, reached over loopback.
+// USED BY: server/tests/integration/ and the conformance tier.
 package testsupport
 
 import (
@@ -32,34 +16,18 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/wiring"
 )
 
-// MCPHarness is one running server and a client attached to it.
 type MCPHarness struct {
-	// Session is the MCP client's session: the only thing a test should
-	// normally touch.
 	Session *sdk.ClientSession
 
-	// Server is the assembled process, for the rare assertion that is about
-	// the composition rather than about what the client sees. NIL when the
-	// server under test is a separate PROCESS rather than an in-process
-	// composition -- which is what the conformance tier drives.
+	// Nil when the server under test is a separate process, as in the conformance tier.
 	Server *wiring.Server
 
-	// Bridge is the fake bridge the server will dial, so a test can seed
-	// command answers and assert on what the bridge was sent. NIL when the
-	// bridge is real: the conformance tier's whole point is that nothing on
-	// the far side of the wire is ours.
+	// Nil when the bridge is real.
 	Bridge *FakeBridge
 
-	// ToolsChanged receives one value per tools/list_changed notification.
-	// Nothing should ever arrive on it -- see AssertNoToolsChanged.
 	ToolsChanged chan struct{}
 }
 
-// StartMCP builds the whole server around a fake bridge listening on loopback,
-// and connects a client to it.
-//
-// The reader is configured through --reader, exactly as a user would override an
-// endpoint, so the layered configuration is part of what is exercised.
 func StartMCP(t *testing.T, options BridgeOptions) *MCPHarness {
 	t.Helper()
 
@@ -89,22 +57,13 @@ func StartMCP(t *testing.T, options BridgeOptions) *MCPHarness {
 	return harness
 }
 
-// AttachMCP connects a client over an already-built transport and wraps it in
-// the harness, so every assertion helper below works the same whichever server
-// is on the other end.
-//
-// It exists for the conformance tier, where the server is the BUILT BINARY over
-// stdio rather than an in-process composition, and the bridge is the real Python
-// one. Everything a test does through the harness is ordinary MCP either way,
-// which is the point: the tiers differ in what is real, never in how they ask.
 func AttachMCP(t *testing.T, transport sdk.Transport) *MCPHarness {
 	t.Helper()
 
 	changed := make(chan struct{}, 32)
 	client := sdk.NewClient(&sdk.Implementation{Name: "test-client", Version: "0"}, &sdk.ClientOptions{
 		ToolListChangedHandler: func(context.Context, *sdk.ToolListChangedRequest) {
-			// Buffered and non-blocking: a test that does not care about
-			// the notification must not deadlock the SDK's reader.
+			// Non-blocking, so a test that ignores the notification cannot deadlock the SDK's reader.
 			select {
 			case changed <- struct{}{}:
 			default:
@@ -121,8 +80,6 @@ func AttachMCP(t *testing.T, transport sdk.Transport) *MCPHarness {
 	return &MCPHarness{Session: session, ToolsChanged: changed}
 }
 
-// listen starts the fake bridge on a real loopback socket. Port 0, so parallel
-// runs cannot collide.
 func listen(t *testing.T, bridge *FakeBridge) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -143,7 +100,6 @@ func listen(t *testing.T, bridge *FakeBridge) string {
 	return listener.Addr().String()
 }
 
-// ToolNames is what tools/list currently advertises.
 func (h *MCPHarness) ToolNames(t *testing.T) []string {
 	t.Helper()
 	listing, err := h.Session.ListTools(context.Background(), nil)
@@ -157,7 +113,6 @@ func (h *MCPHarness) ToolNames(t *testing.T) []string {
 	return names
 }
 
-// Advertises reports whether one tool is currently in tools/list.
 func (h *MCPHarness) Advertises(t *testing.T, name string) bool {
 	t.Helper()
 	for _, advertised := range h.ToolNames(t) {
@@ -168,19 +123,12 @@ func (h *MCPHarness) Advertises(t *testing.T, name string) bool {
 	return false
 }
 
-// ToolResult is one tools/call answer, as a client sees it.
 type ToolResult struct {
-	// Text is the result's text content -- the tool's JSON on success, the
-	// error message when IsError.
 	Text string
 
-	// IsError says the tool failed. A failed tool is a RESULT, not a protocol
-	// error, so that an agent can read the reason and self-correct.
 	IsError bool
 }
 
-// Call makes a tools/call. Arguments may be nil for a tool that takes none,
-// which is what a client actually sends.
 func (h *MCPHarness) Call(t *testing.T, name string, arguments map[string]any) ToolResult {
 	t.Helper()
 	result, err := h.Session.CallTool(context.Background(), &sdk.CallToolParams{
@@ -198,8 +146,6 @@ func (h *MCPHarness) Call(t *testing.T, name string, arguments map[string]any) T
 	return answer
 }
 
-// CallExpectingProtocolError makes a call that should fail at the JSON-RPC
-// level -- the SDK's answer for a name it has never heard of.
 func (h *MCPHarness) CallExpectingProtocolError(t *testing.T, name string) error {
 	t.Helper()
 	_, err := h.Session.CallTool(context.Background(), &sdk.CallToolParams{Name: name})
@@ -209,7 +155,6 @@ func (h *MCPHarness) CallExpectingProtocolError(t *testing.T, name string) error
 	return err
 }
 
-// Decode unmarshals a successful result's JSON into a value.
 func (r ToolResult) Decode(t *testing.T, into any) {
 	t.Helper()
 	if r.IsError {
@@ -220,17 +165,11 @@ func (r ToolResult) Decode(t *testing.T, into any) {
 	}
 }
 
-// Connect opens a session through the real connect_reader tool.
 func (h *MCPHarness) Connect(t *testing.T) ToolResult {
 	t.Helper()
 	return h.ConnectAs(t, "user")
 }
 
-// ConnectAs connects declaring a particular persona (spec 0029).
-//
-// `persona` is required, so every connect in the suite has to name one; Connect
-// picks `user` for the scenarios that are not about personas at all, and this is
-// for the ones that are.
 func (h *MCPHarness) ConnectAs(t *testing.T, persona string) ToolResult {
 	t.Helper()
 	return h.Call(t, "connect_reader", map[string]any{
@@ -238,19 +177,16 @@ func (h *MCPHarness) ConnectAs(t *testing.T, persona string) ToolResult {
 	})
 }
 
-// ReadInfo reads screenreader://info.
 func (h *MCPHarness) ReadInfo(t *testing.T) map[string]any {
 	t.Helper()
 	return h.ReadResource(t, "screenreader://info")
 }
 
-// ReadSessionRecord reads screenreader://session-record (spec 0021).
 func (h *MCPHarness) ReadSessionRecord(t *testing.T) map[string]any {
 	t.Helper()
 	return h.ReadResource(t, "screenreader://session-record")
 }
 
-// ResourceURIs is what resources/list currently advertises.
 func (h *MCPHarness) ResourceURIs(t *testing.T) []string {
 	t.Helper()
 	listing, err := h.Session.ListResources(context.Background(), nil)
@@ -264,22 +200,16 @@ func (h *MCPHarness) ResourceURIs(t *testing.T) []string {
 	return uris
 }
 
-// ReadGuidance reads screenreader://guidance as text (spec 0023). Separate from
-// ReadResource because this one is markdown, not JSON.
 func (h *MCPHarness) ReadGuidance(t *testing.T) string {
 	t.Helper()
 	return h.ReadResourceText(t, "screenreader://guidance")
 }
 
-// ReadReaderGuidance reads screenreader://reader-guidance as text (spec 0029) --
-// the connected reader's own account of the declared stance, framed by the
-// server.
 func (h *MCPHarness) ReadReaderGuidance(t *testing.T) string {
 	t.Helper()
 	return h.ReadResourceText(t, "screenreader://reader-guidance")
 }
 
-// ReadResourceText reads any resource the server publishes, undecoded.
 func (h *MCPHarness) ReadResourceText(t *testing.T, uri string) string {
 	t.Helper()
 	read, err := h.Session.ReadResource(context.Background(), &sdk.ReadResourceParams{URI: uri})
@@ -289,7 +219,6 @@ func (h *MCPHarness) ReadResourceText(t *testing.T, uri string) string {
 	return read.Contents[0].Text
 }
 
-// ReadResource reads any resource the server publishes, decoded as JSON.
 func (h *MCPHarness) ReadResource(t *testing.T, uri string) map[string]any {
 	t.Helper()
 	read, err := h.Session.ReadResource(context.Background(), &sdk.ReadResourceParams{URI: uri})
@@ -303,20 +232,7 @@ func (h *MCPHarness) ReadResource(t *testing.T, uri string) map[string]any {
 	return document
 }
 
-// AssertNoToolsChanged fails if the server emitted tools/list_changed.
-//
-// THE CHANNEL CHANGED SIDES. It used to be waited ON: the gated tools appeared
-// when a session opened, the SDK debounced the notification by a few
-// milliseconds, and a test asserting on tools/list immediately after connecting
-// would race it. Spec 0022 (option (c)) made the list a constant, so there is
-// nothing to wait for -- and the same channel now proves the stronger claim,
-// that nothing was announced at all, because a client which never re-lists must
-// never need to.
-//
-// The settle is a real timeout rather than the Clock port for the reason the
-// wait was: what it allows for is the SDK's own scheduling, which no injected
-// clock reaches. A false PASS here costs nothing (the constant list is asserted
-// directly elsewhere); a false FAIL would be flaky, so it errs long.
+// The settle is a real timeout because it waits on the SDK's own scheduling, which no injected clock reaches.
 func (h *MCPHarness) AssertNoToolsChanged(t *testing.T) {
 	t.Helper()
 	select {

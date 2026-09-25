@@ -1,25 +1,8 @@
 // screenreader-mcp domain -- the get_document_snapshot tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `document`.
+// ROLE: controller, gated on document.
 // USES: ports.DocumentReader, through ToolContext.Document().
 // LISTED BY: registry.go.
-//
-// WHY THIS TOOL EXISTS (spec 0026, board entry 11.13). Reading a page by
-// arrowing costs one round trip PER LINE, and that is where the 2026-08-03 run
-// died: it reached a results page and never got the three titles. This is the
-// one thing in the surface that reduces the NUMBER of steps rather than the cost
-// of one.
-//
-// AND WHY IT IS NOT A STRUCTURAL READ, which is the objection it has to answer.
-// Browse mode IS a flat text rendering -- NVDA's own translator comment says so
-// -- and this returns exactly that text, roles and all, as the user reads it.
-// Compare what spec 0023 forbade: querying an object model by role and app
-// module, vocabulary a blind user does not have. Nothing here is outside what
-// the person at the reader could have read by holding down the down arrow. The
-// delivery changes; the substance does not. That is why the description says
-// "the flat text a user arrows through" in those words, and why this tool is not
-// qualified per persona the way get_focus_info and get_state are.
 package tools
 
 import (
@@ -29,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// GetDocumentSnapshot reads the reader's flat document, whole.
 type GetDocumentSnapshot struct{}
 
 var _ Tool = (*GetDocumentSnapshot)(nil)
@@ -130,10 +112,7 @@ type snapshotLineResult struct {
 	Text string `json:"text"`
 }
 
-// documentSnapshotResult always carries every field, `lines` included as an
-// empty array rather than null when there is nothing to report: an agent that
-// ranges over the result must not have to nil-check a list whose emptiness is
-// already stated by hasDocument and by the span.
+// documentSnapshotResult sends lines as an empty array rather than null when there is nothing to report.
 type documentSnapshotResult struct {
 	HasDocument bool                 `json:"hasDocument"`
 	CapturedAt  string               `json:"capturedAt"`

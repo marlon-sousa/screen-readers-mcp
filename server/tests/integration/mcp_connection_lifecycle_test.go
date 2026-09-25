@@ -2,22 +2,7 @@
 
 // screenreader-mcp tests -- the agent-driven connection lifecycle, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, named after the USE CASE. Behind
-// //go:build integration like its neighbours; CI runs it with -tags integration
-// on every platform.
-//
-// This is the headless tier spec 0013 says carries most of the weight, and what
-// it asserts on is WHAT AN MCP CLIENT SEES -- tools/list, tools/call results,
-// resource reads -- never internal state. Everything below the client is real:
-// wiring, the SDK server, the tool controllers, the domain, the JSON-lines
-// client and a real loopback socket. Only the bridge is a fake, and it speaks
-// real wire frames.
-//
-// The capability GATE's scenarios -- the gated tools appearing and retracting, a
-// reader without braille, the retracted-tool backstop -- arrive with the gated
-// tools themselves, in the last of 10b's three PRs. What is proved here is
-// everything that does not depend on one existing.
+// ROLE: integration scenario asserting only what an MCP client sees, with everything real but the bridge.
 package integration_test
 
 import (
@@ -29,7 +14,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// ungated is what a server with no session must advertise, and exactly that.
 var ungated = []string{"connect_reader", "disconnect_reader", "list_readers", "status"}
 
 func advertised(t *testing.T, h *testsupport.MCPHarness) []string {
@@ -39,14 +23,6 @@ func advertised(t *testing.T, h *testsupport.MCPHarness) []string {
 	return names
 }
 
-// Acceptance criterion 3, as spec 0022 leaves it: a fresh server advertises the
-// WHOLE surface and has still dialed nothing.
-//
-// The two halves were once one claim -- "only the ungated four" proved both that
-// nothing had been dialed and that the gate was shut. They are separate now, and
-// the second is the one that mattered: what acceptance criterion 9 is really
-// about is that no connection happens unasked, and that is asserted directly
-// against the bridge below.
 func TestAFreshServerAdvertisesEveryToolAndHasDialedNothing(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
@@ -56,7 +32,6 @@ func TestAFreshServerAdvertisesEveryToolAndHasDialedNothing(t *testing.T) {
 			t.Errorf("tools/list = %v, want the ungated %q present", names, name)
 		}
 	}
-	// And a gated one, with nothing connected: it is listed, and it refuses.
 	if !slices.Contains(names, "get_speech") {
 		t.Errorf("tools/list = %v, want gated tools advertised before connecting", names)
 	}
@@ -64,7 +39,6 @@ func TestAFreshServerAdvertisesEveryToolAndHasDialedNothing(t *testing.T) {
 		t.Error("get_speech ran with nothing connected")
 	}
 
-	// Acceptance criterion 9: nothing was dialed, so the bridge saw nothing.
 	if got := h.Bridge.Received(); len(got) != 0 {
 		t.Errorf("the bridge was sent %v before any agent asked", got)
 	}
@@ -82,8 +56,6 @@ func TestAFreshServerAdvertisesEveryToolAndHasDialedNothing(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 3's second half: the readers are reported from the
-// configured set, and reporting them dials nothing.
 func TestListReadersReportsTheConfiguredReadersWithoutDialing(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
@@ -98,11 +70,7 @@ func TestListReadersReportsTheConfiguredReadersWithoutDialing(t *testing.T) {
 	}
 	h.Call(t, "list_readers", nil).Decode(t, &listing)
 
-	// THE HARNESS'S READER IS FOUND BY NAME, NOT BY POSITION. The listing also
-	// carries every reader the binary SHIPS a default for -- two since 13.11 --
-	// because the harness's --reader flag layers on top of the embedded defaults
-	// rather than replacing them. Indexing [0] made this test a statement about
-	// how many bridges the repo happens to have, which is not what it is for.
+	// The listing also carries every reader the binary ships a default for, so the harness's reader is found by name.
 	var nvda *struct {
 		Reader    string `json:"reader"`
 		Endpoints []struct {
@@ -118,8 +86,7 @@ func TestListReadersReportsTheConfiguredReadersWithoutDialing(t *testing.T) {
 	if nvda == nil || len(nvda.Endpoints) == 0 {
 		t.Fatalf("readers = %+v, want the configured nvda reader among them", listing.Readers)
 	}
-	// A TCP endpoint cannot be tested without connecting, and connecting
-	// would occupy the single session slot the agent is about to want.
+	// Probing a TCP endpoint would occupy the bridge's single session slot.
 	if nvda.Endpoints[0].Liveness != "unknown" {
 		t.Errorf("liveness = %q, want unknown for a TCP endpoint", nvda.Endpoints[0].Liveness)
 	}
@@ -128,8 +95,6 @@ func TestListReadersReportsTheConfiguredReadersWithoutDialing(t *testing.T) {
 	}
 }
 
-// Connecting really does reach the bridge and complete a handshake, and what
-// comes back describes the session the wire established.
 func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -157,7 +122,6 @@ func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 	if !strings.HasPrefix(connected.Endpoint, "tcp:") {
 		t.Errorf("endpoint = %q, want the one that answered", connected.Endpoint)
 	}
-	// Acceptance criterion 5: the mode reported is the one hello established.
 	if connected.Mode != "silent" {
 		t.Errorf("mode = %q, want silent", connected.Mode)
 	}
@@ -169,8 +133,6 @@ func TestConnectingHandshakesAndDescribesTheSession(t *testing.T) {
 	}
 }
 
-// `status` makes a real round trip while a session is live, so its answer is
-// proof rather than possibly-stale local state.
 func TestStatusProvesALiveSessionOnTheWire(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{
 		Reader: wire.ReaderInfo{Name: "nvda", Version: "2026.1"},
@@ -202,8 +164,6 @@ func TestStatusProvesALiveSessionOnTheWire(t *testing.T) {
 	}
 }
 
-// Acceptance criterion 7: a second connect is refused and the live session is
-// left untouched.
 func TestConnectingWhileConnectedIsRefused(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 	if got := h.Connect(t); got.IsError {
@@ -218,7 +178,6 @@ func TestConnectingWhileConnectedIsRefused(t *testing.T) {
 		t.Errorf("error = %q, want it to say what to do instead", second.Text)
 	}
 
-	// The session survived: status still describes it.
 	var status struct {
 		State string `json:"state"`
 	}
@@ -228,8 +187,6 @@ func TestConnectingWhileConnectedIsRefused(t *testing.T) {
 	}
 }
 
-// Disconnecting is polite -- the bridge sees `bye` -- and the ungated four
-// survive it, since they are how the agent gets back.
 func TestDisconnectingSendsByeAndLeavesTheToolListStanding(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 	before := advertised(t, h)
@@ -249,7 +206,6 @@ func TestDisconnectingSendsByeAndLeavesTheToolListStanding(t *testing.T) {
 	}
 }
 
-// Scenario 3, and acceptance criterion 8: reported, not fatal.
 func TestAProtocolMismatchIsReportedAndTheServerKeepsRunning(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{ProtocolVersion: 99})
 
@@ -261,7 +217,6 @@ func TestAProtocolMismatchIsReportedAndTheServerKeepsRunning(t *testing.T) {
 		t.Errorf("error = %q, want both versions named", result.Text)
 	}
 
-	// The process is alive, still serving, and still saying why.
 	var status struct {
 		State  string `json:"state"`
 		Reason string `json:"reason"`
@@ -275,14 +230,10 @@ func TestAProtocolMismatchIsReportedAndTheServerKeepsRunning(t *testing.T) {
 	}
 }
 
-// An unknown reader errors with the known names, so a wrong guess self-corrects
-// in the same turn -- and does not become a dial.
 func TestAnUnknownReaderNamesTheOnesThatExist(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
-	// A valid persona, so the reader name is what this scenario is testing:
-	// persona is validated at the tool boundary and would otherwise be the
-	// error reported.
+	// A valid persona, since persona is validated first and would otherwise be the error reported.
 	result := h.Call(t, "connect_reader", map[string]any{
 		"reader": "narrator", "mode": "silent", "persona": "user",
 	})
@@ -297,7 +248,6 @@ func TestAnUnknownReaderNamesTheOnesThatExist(t *testing.T) {
 	}
 }
 
-// Reconnecting after a disconnect opens a fresh session.
 func TestReconnectingAfterADisconnectOpensAFreshSession(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 
@@ -320,8 +270,6 @@ func TestReconnectingAfterADisconnectOpensAFreshSession(t *testing.T) {
 	}
 }
 
-// A tool failure is a RESULT with IsError, not a JSON-RPC error, so an agent can
-// read the reason and self-correct within the turn.
 func TestAToolFailureIsAReadableResultRatherThanAProtocolError(t *testing.T) {
 	h := testsupport.StartMCP(t, testsupport.BridgeOptions{})
 

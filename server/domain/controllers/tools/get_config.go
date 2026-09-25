@@ -1,14 +1,9 @@
 // screenreader-mcp domain -- the get_config tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `config`.
+// ROLE: controller, gated on config.
 // USES: ports.ConfigAccessor, through ToolContext.Config().
 // LISTED BY: registry.go.
-//
-// BOTH THE KEY PATH AND THE VALUE ARE OPAQUE. The path is a route into the
-// reader's own configuration tree, whose shape only the reader and the agent
-// know; the value is arbitrary JSON, carried as a raw message so it round-trips
-// byte for byte without this server ever deciding what type it is.
+// The key path and the value are opaque; the value round-trips byte for byte as a raw message.
 package tools
 
 import (
@@ -18,7 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetConfig reads one reader configuration value.
 type GetConfig struct{}
 
 var _ Tool = (*GetConfig)(nil)
@@ -69,8 +63,6 @@ type configParams struct {
 	Value   json.RawMessage `json:"value"`
 }
 
-// configResult carries the value as a raw message, so what the reader holds
-// reaches the agent unchanged -- no number becoming a float, no re-ordering.
 type configResult struct {
 	Value json.RawMessage `json:"value"`
 }

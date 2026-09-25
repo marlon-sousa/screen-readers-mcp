@@ -1,21 +1,9 @@
 // screenreader-mcp domain -- the status tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. UNGATED.
+// ROLE: controller, ungated.
 // USES: ConnectionControl.Status, .Current and .Verify, via ToolContext.
 // LISTED BY: registry.go.
-//
-// WHEN A SESSION IS LIVE THIS MAKES A REAL `ping` ROUND TRIP, so the answer is
-// proof rather than possibly-stale local state. Two things make that worth the
-// round trip. A bridge can die without this server noticing, since it only finds
-// out when it next speaks. And an idle agent LOSES ITS SESSION BY DESIGN: the
-// bridge's command-inactivity watchdog is deliberately not reset by `ping`
-// (protocol.md §6), so a keepalive cannot mask an abandoned session -- which
-// means "am I still connected?" is a question this server genuinely cannot
-// answer from memory.
-//
-// This is also why `ping` is not a tool of its own: what an agent wants from it
-// is "is this connection real right now?", which is exactly this answer.
+// A live session gets a real ping round trip: a bridge can die unnoticed, and the inactivity watchdog is not reset by ping.
 package tools
 
 import (
@@ -24,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// Status reports the connection.
 type Status struct{}
 
 var _ Tool = (*Status)(nil)
@@ -97,57 +84,36 @@ func (t *Status) OutputSchema() json.RawMessage {
 }`)
 }
 
-// statusSession is the live session as the agent sees it.
 type statusSession struct {
 	Reader        string   `json:"reader"`
 	ReaderVersion string   `json:"readerVersion"`
 	Endpoint      string   `json:"endpoint"`
 	Capabilities  []string `json:"capabilities"`
 	Mode          string   `json:"mode"`
-	// Persona is what this session declared it stands for (spec 0029) -- part of
-	// the answer to "what am I in the middle of?", because it decides what the
-	// run's findings mean.
-	Persona       string `json:"persona,omitempty"`
-	Synth         string `json:"synth"`
-	LogPath       string `json:"logPath"`
-	BridgeVersion string `json:"bridgeVersion,omitempty"`
-	ProtocolVer   int    `json:"protocolVersion"`
+	Persona       string   `json:"persona,omitempty"`
+	Synth         string   `json:"synth"`
+	LogPath       string   `json:"logPath"`
+	BridgeVersion string   `json:"bridgeVersion,omitempty"`
+	ProtocolVer   int      `json:"protocolVersion"`
 }
 
 type statusResult struct {
 	State  string `json:"state"`
 	Reason string `json:"reason,omitempty"`
 
-	// Live is the outcome of the round trip: true when the reader answered,
-	// false when it did not, and absent when there was no session to ask.
+	// Live is absent when there was no session to ask.
 	Live *bool `json:"live,omitempty"`
 
-	// LiveError is why the round trip failed, when it did.
 	LiveError string `json:"liveError,omitempty"`
 
-	// Suppressing is whether the reader is withholding speech from its human
-	// right now, off the same round trip as Live above.
-	//
-	// This is how a silence-cap LIFT is discoverable by asking (spec 0032
-	// Part 5). Nothing is pushed -- a lift arrives as no error, no exception
-	// and no field on an unrelated result -- so an agent that never looks
-	// carries on working correctly and simply does not know the room got
-	// loud. That is an acceptable outcome: the mechanism exists for the
-	// human, and the human is served either way. This is for the agent that
-	// does want to know.
-	//
-	// A pointer, because "the bridge did not say" is a third answer.
+	// Suppressing is nil when the bridge did not say.
 	Suppressing *bool `json:"suppressing,omitempty"`
 
 	Session *statusSession `json:"session,omitempty"`
 }
 
 func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
-	// Verify FIRST: it re-checks the wire and records a loss it finds, so the
-	// state read afterwards is the corrected one rather than the one this
-	// process happened to be holding. Its error is reported, not returned --
-	// "the connection is gone" is the answer status was asked for, not a
-	// failure of the tool.
+	// Verify first, so the state read afterwards is the corrected one; its error is reported, not returned.
 	var (
 		live        *bool
 		liveError   string
@@ -160,9 +126,7 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 		if err != nil {
 			liveError = err.Error()
 		} else {
-			// Only from a round trip that actually answered: a report from a
-			// failed ping describes nothing, and reporting it would be
-			// guessing in the one tool built not to.
+			// Only from a round trip that answered: a failed ping's report describes nothing.
 			suppressing = report.Suppressing
 		}
 	}
@@ -176,8 +140,7 @@ func (t *Status) Execute(ctx ToolContext, _ json.RawMessage) (any, error) {
 		Suppressing: suppressing,
 	}
 
-	// Re-read the connection AFTER Verify: if the round trip discovered a
-	// loss, there is no session left to describe.
+	// Re-read after Verify: a loss it found leaves no session to describe.
 	if connection := ctx.Control.Current(); connection != nil {
 		session := connection.Session
 		result.Session = &statusSession{

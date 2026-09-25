@@ -1,16 +1,9 @@
 // screenreader-mcp domain -- the type_text tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `typing`.
+// ROLE: controller, gated on typing.
 // USES: ports.TextTyper, through ToolContext.Text().
 // LISTED BY: registry.go.
-//
-// text IS OPAQUE, exactly as a gesture id is (spec 0005, principle 3): it is
-// content, not a command, and this server routes it without interpreting it.
-// Distinct from press_gesture, not a convenience wrapper over it -- typing a
-// URL one character at a time through press_gesture resolves each character
-// through the CURRENT keyboard layout and silently drops anything it cannot
-// map; type_text is layout-independent Unicode injection (spec 0019).
+// text is opaque content, injected independently of the keyboard layout.
 package tools
 
 import (
@@ -20,7 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// TypeText inserts literal text at the focused control.
 type TypeText struct{}
 
 var _ Tool = (*TypeText)(nil)
@@ -125,9 +117,7 @@ type typeTextParams struct {
 }
 
 type typeTextResult struct {
-	// Typed is the LENGTH of what was sent, never the text: type_text is exactly
-	// how a secret would be entered, and echoing it back would put the secret in
-	// the tool result (spec 0019's transcript decision applies here too).
+	// Typed is the length of what was sent, never the text, which may be a secret.
 	Typed int `json:"typed"`
 	observation
 }
@@ -141,16 +131,11 @@ func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	if err := decodeParams(params, &request); err != nil {
 		return nil, err
 	}
-	// Erased params cannot tell "text" absent from "text" sent as "": both
-	// decode to the zero value, so both are treated as the same missing
-	// argument. Unlike announce, whitespace is NOT rejected here -- a space or
-	// a tab is legitimate literal content to insert, not noise.
+	// Absent and empty text are the same missing argument; whitespace is legitimate content.
 	if request.Text == "" {
 		return nil, errors.New("text is required")
 	}
-	// The narration is not content and is held to the announce tool's rule, even
-	// though `text` beside it is not: whitespace typed INTO a field is literal,
-	// whitespace spoken ALOUD is two cue beeps and nothing between them.
+	// The narration is held to the announce tool's rule, whitespace included.
 	announced, err := announcement(request.Announce)
 	if err != nil {
 		return nil, err
@@ -169,8 +154,6 @@ func (t *TypeText) Execute(ctx ToolContext, params json.RawMessage) (any, error)
 	}
 	return typeTextResult{
 		// The reader counts what it received; this server does not recount it.
-		// One authority for the number, and it is the side that actually
-		// injected the characters.
 		Typed:       outcome.Typed,
 		observation: observed(outcome.Observation, announced),
 	}, nil

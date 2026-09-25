@@ -2,17 +2,7 @@
 
 // screenreader-mcp tests -- reading the whole document, over MCP.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, named after the USE CASE (spec 0026, entry 11.13).
-// Everything below the client is real except the bridge: the tool controller,
-// the JSON-lines client, the transport and the MCP binding all run.
-//
-// What is worth proving HERE rather than in a unit test is the shape SURVIVING
-// the round trip -- specifically the two answers this repo has repeatedly
-// collapsed by accident. `hasDocument: false` has to arrive as a false and not
-// as an error or an absence, and `truncatedBy` has to arrive as "none" and not
-// as an empty string, because both are read by an agent that will branch on
-// them.
+// ROLE: integration scenario: everything below the client is real except the bridge.
 package integration_test
 
 import (
@@ -24,10 +14,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// page is a document with the three renderings the maintainer named: a heading
-// carrying its level, a link saying it is one, and a radio button with its
-// state. If any of these can be lost between the bridge and the agent, the tool
-// does not do the thing it exists for.
 var page = []wire.SnapshotLine{
 	{Line: 0, Text: "heading level 1 BlindTec"},
 	{Line: 1, Text: "link Skip to content"},
@@ -47,8 +33,6 @@ type snapshotAnswer struct {
 	TruncatedBy string `json:"truncatedBy"`
 }
 
-// servingDocument is a bridge that answers getDocumentSnapshot with `page`,
-// honouring maxLines so a test can see a bound bite end to end.
 func servingDocument(t *testing.T, h *testsupport.MCPHarness) {
 	t.Helper()
 	h.Bridge.Handle(wire.CommandGetDocumentSnapshot, func(params json.RawMessage) (any, error) {
@@ -78,8 +62,6 @@ func servingDocument(t *testing.T, h *testsupport.MCPHarness) {
 	})
 }
 
-// The whole point of the tool, at the boundary an agent actually sees: one call,
-// no arguments, the entire document with its roles intact.
 func TestABareCallReturnsTheWholeDocumentWithItsRoles(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda(wire.CapabilityDocument))
 	servingDocument(t, h)
@@ -110,8 +92,6 @@ func TestABareCallReturnsTheWholeDocumentWithItsRoles(t *testing.T) {
 	}
 }
 
-// The distinction this repo has had to restore four times, proved across the
-// wire: not in a document is a FALSE, not an error and not an absence.
 func TestNotBeingInADocumentIsAFalseAndNotAFailure(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda(wire.CapabilityDocument))
 	h.Bridge.Handle(wire.CommandGetDocumentSnapshot, func(json.RawMessage) (any, error) {
@@ -134,15 +114,12 @@ func TestNotBeingInADocumentIsAFalseAndNotAFailure(t *testing.T) {
 	if answer.Lines == nil {
 		t.Error("lines is null; it must arrive as an empty array so an agent can range over it")
 	}
-	// The bridge omitted truncatedBy entirely. It must still reach the agent as
-	// a member of the set, never as "" -- an agent branching on a falsy value
-	// would read "not truncated" out of a field that said nothing.
+	// The bridge omitted truncatedBy; the server must still report "none".
 	if answer.TruncatedBy != "none" {
 		t.Errorf("truncatedBy is %q, want \"none\" when the bridge omits it", answer.TruncatedBy)
 	}
 }
 
-// A bound the agent chose reaches the bridge and its cause comes back named.
 func TestAChosenBoundIsHonouredAndItsCauseIsNamed(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda(wire.CapabilityDocument))
 	servingDocument(t, h)
@@ -159,8 +136,6 @@ func TestAChosenBoundIsHonouredAndItsCauseIsNamed(t *testing.T) {
 	}
 }
 
-// The capability gate, asserted the way spec 0022 made it work: the tool is
-// advertised to everyone and REFUSES the call, naming what is missing.
 func TestAReaderWithNoDocumentCapabilityRefusesTheCall(t *testing.T) {
 	h := testsupport.StartMCP(t, nvda())
 	h.Connect(t)

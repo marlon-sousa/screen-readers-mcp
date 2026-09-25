@@ -1,13 +1,9 @@
 // screenreader-mcp domain -- the get_focus_info tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `focus`.
+// ROLE: controller, gated on focus.
 // USES: ports.FocusInspector, through ToolContext.Focus().
 // LISTED BY: registry.go.
-//
-// Role and state strings are the READER's vocabulary and pass through opaquely.
-// The agent knows what NVDA means by "editableText" and what JAWS means by its
-// own spelling; this server does not, and must not learn.
+// Role and state strings are the reader's vocabulary and pass through opaquely.
 package tools
 
 import (
@@ -16,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetFocusInfo reads the focus object.
 type GetFocusInfo struct{}
 
 var _ Tool = (*GetFocusInfo)(nil)
@@ -56,9 +51,7 @@ func (t *GetFocusInfo) OutputSchema() json.RawMessage {
 }`)
 }
 
-// focusResult keeps Value and AppModule as pointers, because the wire
-// distinguishes "this object has no value" from "its value is the empty string",
-// and collapsing the two would throw away a real answer.
+// focusResult keeps Value and AppModule as pointers: no value is a different answer from the empty string.
 type focusResult struct {
 	Name      string   `json:"name"`
 	Role      string   `json:"role"`
@@ -79,8 +72,7 @@ func (t *GetFocusInfo) Execute(ctx ToolContext, _ json.RawMessage) (any, error) 
 	}
 	states := info.States
 	if states == nil {
-		// An empty list rather than JSON null: "this object has no states" is
-		// an answer an agent can iterate over without a special case.
+		// An empty list rather than JSON null.
 		states = []string{}
 	}
 	return focusResult{

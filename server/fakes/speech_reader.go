@@ -1,17 +1,8 @@
 // screenreader-mcp fakes -- FakeSpeechReader: the SpeechReader port double.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: test double. MIRRORS domain/ports/speech_reader.go.
-// USED BY: 10b's speech tool controller tests.
-//
-// Stateful rather than call-scripted: it keeps an append-only log of utterances
-// and answers from it, so index arithmetic -- the half-open [from, to) window
-// that makes ToIndex the next sinceIndex -- is exercised for real rather than
-// hand-fed per test.
-//
-// Each utterance also carries a journal position (spec 0021), and the positions
-// MOVE: a fake that stamped every entry with the same number would let a tool
-// pass its coordinate through incorrectly and still look right.
+// ROLE: test double for domain/ports/speech_reader.go.
+// USED BY: the speech tool controller tests.
 package fakes
 
 import (
@@ -23,17 +14,13 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// spokenEntry is one utterance and where it sits on the log journal's timeline.
 type spokenEntry struct {
 	text        string
 	logPosition int
-	// emittedAt is the wall-clock stamp the real bridge supplies (spec 0028).
-	// Synthetic and monotonic here, so a test can assert ordering and presence
-	// without pinning a machine's clock or timezone.
+	// emittedAt is synthetic and monotonic, so tests pin no clock or timezone.
 	emittedAt string
 }
 
-// FakeSpeechReader is an in-memory speech log.
 type FakeSpeechReader struct {
 	mu        sync.Mutex
 	spoken    []spokenEntry
@@ -45,13 +32,9 @@ type FakeSpeechReader struct {
 
 var _ ports.SpeechReader = (*FakeSpeechReader)(nil)
 
-// NewFakeSpeechReader builds an empty log that reports speech as settled.
 func NewFakeSpeechReader() *FakeSpeechReader { return &FakeSpeechReader{finished: true} }
 
-// Speak appends an utterance, as the reader would have.
-//
-// The stand-in journal advances by one first, so consecutive utterances get
-// DIFFERENT positions -- the reader logs around what it says.
+// Speak gives each utterance its own journal position, so a wrongly passed coordinate shows.
 func (f *FakeSpeechReader) Speak(text ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -65,9 +48,7 @@ func (f *FakeSpeechReader) Speak(text ...string) {
 	}
 }
 
-// SpeakWithoutStamp records an utterance the way a bridge older than spec 0028
-// does: text and coordinate, no wall clock. The field is optional on the wire
-// precisely so that bridge keeps working, and this is how that is tested.
+// SpeakWithoutStamp records an utterance with no wall clock, as older bridges send.
 func (f *FakeSpeechReader) SpeakWithoutStamp(text ...string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -77,39 +58,30 @@ func (f *FakeSpeechReader) SpeakWithoutStamp(text ...string) {
 	}
 }
 
-// AdvanceJournal moves the stand-in journal without speaking, for a test that
-// needs records to land between two utterances.
 func (f *FakeSpeechReader) AdvanceJournal(records int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.journal += records
 }
 
-// JournalPosition is where the stand-in journal currently stands.
 func (f *FakeSpeechReader) JournalPosition() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.journal
 }
 
-// FailWith makes every call return err, for the paths where a live bridge
-// refuses.
 func (f *FakeSpeechReader) FailWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.err = err
 }
 
-// SetFinished controls what WaitForSpeechToFinish reports.
 func (f *FakeSpeechReader) SetFinished(finished bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.finished = finished
 }
 
-// Waits records every wait that was asked for -- a spy, used only where the
-// interaction IS the requirement (that a tool passed the caller's afterIndex
-// through, say).
 func (f *FakeSpeechReader) Waits() []ports.SpeechWait {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -191,10 +163,7 @@ func (f *FakeSpeechReader) WaitForSpeech(wait ports.SpeechWait) (ports.SpeechMat
 			}, nil
 		}
 	}
-	// Not found is an ANSWER, not an error: the wire contract says so, and a
-	// fake that returned an error here would let a tool get away with
-	// treating a legitimate `found: false` as a failure. The position on a miss
-	// is the journal's CURRENT one, mirroring the bridge (spec 0021).
+	// Not found is an answer, not an error; the position on a miss is the journal's current one.
 	return ports.SpeechMatch{Found: false, Index: len(f.spoken), LogPosition: f.journal}, nil
 }
 

@@ -1,25 +1,7 @@
 // screenreader-mcp tools -- wiregen: the wire binding generator.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: development tool, outside the ports-and-adapters architecture. It reads
-// the published contract, specs/wire/v1/schema.json, and writes the server's
-// private binding of it, server/adapters/wire/wire.gen.go.
-// RUN BY: the //go:generate directive in adapters/wire/doc.go, and by the CI
-// `server` job, which regenerates and then `git diff --exit-code`s -- so the
-// committed binding can never drift from the published schema.
-// NOT SHIPPED: it lives under tools/ rather than cmd/ so that cmd/ stays exactly
-// the binaries we release.
-//
-// Why generation at all: spec 0013 decided that each implementation owns its own
-// binding, and that what is shared between the halves is the CONTRACT, not code.
-// Generating from the schema is what makes that split safe -- it replaces the
-// same-bytes drift guarantee the two Python halves used to get for free.
-//
-// There is no test file beside this. Its correctness is checked end to end and
-// continuously: the generated package must compile, its unit tests must pass,
-// the drift gate must produce no diff, and 10c's conformance job proves the
-// binding against the real Python bridge. A unit test of the type mapper would
-// restate the mapping table in a second place.
+// ROLE: development tool that reads specs/wire/v1/schema.json and writes server/adapters/wire/wire.gen.go.
+// USED BY: the //go:generate directive in adapters/wire/doc.go, and the CI check that regenerates and diffs it.
 package main
 
 import (
@@ -60,28 +42,20 @@ func run(schemaPath, outPath, pkg string) error {
 	}
 	formatted, err := format.Source(source)
 	if err != nil {
-		// Emit the unformatted source alongside the error: a syntax bug in
-		// the generator is far easier to see in the text it produced.
+		// The unformatted source rides along, where a generator syntax bug is easiest to see.
 		return fmt.Errorf("generated source does not parse: %w\n%s", err, source)
 	}
 	return os.WriteFile(outPath, formatted, 0o644)
 }
 
-// --- the schema, read with key order preserved --------------------------------
-
-// document is the published schema's top level.
 type document struct {
 	ProtocolVersion int     `json:"protocolVersion"`
 	Defs            *object `json:"$defs"`
 	Commands        *object `json:"commands"`
 }
 
-// object is a JSON object that remembers the order its keys were written in.
-//
-// encoding/json decodes an object into a map, which loses that order, and the
-// generator's output must be byte-stable for the drift gate to mean anything.
-// Preserving order also keeps a generated struct's fields in the same sequence
-// as the schema, so the two documents read alike.
+// object is a JSON object that keeps its key order: a map would lose it, and the output must be byte-stable
+// for the drift check to mean anything.
 type object struct {
 	keys   []string
 	values map[string]json.RawMessage
@@ -113,8 +87,7 @@ func (o *object) UnmarshalJSON(data []byte) error {
 	return err
 }
 
-// Keys returns the key order as written. A nil object has none, so callers need
-// no nil check.
+// Keys returns the key order as written; a nil object has none.
 func (o *object) Keys() []string {
 	if o == nil {
 		return nil
@@ -122,7 +95,6 @@ func (o *object) Keys() []string {
 	return o.keys
 }
 
-// Raw returns one member's raw JSON.
 func (o *object) Raw(key string) json.RawMessage {
 	if o == nil {
 		return nil
@@ -130,7 +102,6 @@ func (o *object) Raw(key string) json.RawMessage {
 	return o.values[key]
 }
 
-// node is one JSON Schema fragment, in the subset this contract uses.
 type node struct {
 	Ref                  string          `json:"$ref"`
 	Type                 string          `json:"type"`
@@ -142,19 +113,7 @@ type node struct {
 	AdditionalProperties json.RawMessage `json:"additionalProperties"`
 }
 
-// --- the mapping decisions ----------------------------------------------------
-
-// enumNames maps a schema enum's value set to the Go type it becomes.
-//
-// The schema spells its enums inline, so nothing in the document says what to
-// call them. Rather than inventing a name from the field that happens to use an
-// enum first -- which would rename types as the schema is edited -- the naming
-// is an explicit decision recorded here, matching the reference implementation's
-// own names (protocol.py's CaptureMode, LogLevel).
-//
-// An enum that is NOT in this table is a hard error rather than a fall-back to
-// plain string: a new closed value set in the contract deserves a deliberate
-// name, and failing the generator is how that decision gets asked for.
+// enumNames names each enum after protocol.py's own types; an enum missing here fails the generator.
 var enumNames = map[string]string{
 	"live|silent":       "CaptureMode",
 	"browse|focus|none": "BrowseMode",
@@ -163,7 +122,6 @@ var enumNames = map[string]string{
 	"maxChars|maxLines|none":                                                           "TruncatedBy",
 }
 
-// initialisms are the leading lowercase runs that are spelled all-caps in Go.
 var initialisms = map[string]string{
 	"id":   "ID",
 	"ok":   "OK",
@@ -174,15 +132,12 @@ var initialisms = map[string]string{
 	"tcp":  "TCP",
 }
 
-// enumKey is the order-independent identity of a value set.
 func enumKey(values []string) string {
 	sorted := append([]string(nil), values...)
 	sort.Strings(sorted)
 	return strings.Join(sorted, "|")
 }
 
-// exported turns a JSON member name into an exported Go identifier, spelling a
-// leading initialism in caps (`id` -> `ID`, `nvdaLogPath` -> `NVDALogPath`).
 func exported(name string) string {
 	if name == "" {
 		return ""
@@ -200,14 +155,8 @@ func exported(name string) string {
 	return strings.ToUpper(name[:1]) + name[1:]
 }
 
-// goType maps one schema fragment to a Go type.
-//
-// The one rule worth stating out loud: any shape the contract deliberately
-// leaves OPEN -- an empty schema, an object with no declared properties --
-// becomes json.RawMessage. Those are exactly the places where reader-specific
-// vocabulary rides through as opaque data (a config value, a command's params),
-// and raw JSON carries them byte-for-byte without this server deciding what
-// type they are.
+// goType maps a schema fragment to a Go type. Shapes the contract leaves open become json.RawMessage, so reader
+// vocabulary rides through untouched.
 func goType(n *node) (string, error) {
 	switch {
 	case n.Ref != "":
@@ -224,8 +173,7 @@ func goType(n *node) (string, error) {
 			concrete = append(concrete, option)
 		}
 		if len(concrete) != 1 {
-			// A genuine union of two concrete shapes has no faithful Go
-			// spelling; carry it opaquely rather than picking one.
+			// A union of two concrete shapes has no faithful Go spelling, so it is carried opaquely.
 			return "json.RawMessage", nil
 		}
 		inner, err := goType(&concrete[0])
@@ -278,14 +226,7 @@ func goType(n *node) (string, error) {
 	}
 }
 
-// nullable_ makes a type able to express "absent". Slices, maps,
-// json.RawMessage and anything already a pointer can, so they are left alone
-// rather than becoming a pointer to something nilable.
-//
-// Idempotent on purpose: a field can be BOTH nullable in its schema and absent
-// from the required list -- `logLevel` is exactly that -- and applying the rule
-// twice must not produce a double pointer, which expresses a third state
-// ("present, but null") that the contract does not have.
+// nullable_ must stay idempotent: a field both nullable and optional must never become a double pointer.
 func nullable_(goTypeName string) string {
 	if strings.HasPrefix(goTypeName, "*") ||
 		strings.HasPrefix(goTypeName, "[]") ||
@@ -295,8 +236,6 @@ func nullable_(goTypeName string) string {
 	}
 	return "*" + goTypeName
 }
-
-// --- emission -----------------------------------------------------------------
 
 func generate(doc *document, pkg, schemaPath string) ([]byte, error) {
 	var b strings.Builder
@@ -361,7 +300,6 @@ func Supports(version int) bool {
 	return []byte(b.String()), nil
 }
 
-// emitCommands writes the command name constants, in the schema's own order.
 func emitCommands(b *strings.Builder, doc *document) error {
 	b.WriteString("// Command is a wire command name.\ntype Command string\n\n")
 	b.WriteString("// The commands this contract defines (protocol.md §5).\nconst (\n")
@@ -372,8 +310,6 @@ func emitCommands(b *strings.Builder, doc *document) error {
 	return nil
 }
 
-// emitEnums writes each named enum type once, discovered by walking every
-// fragment of the document and grouping by value set.
 func emitEnums(b *strings.Builder, doc *document) error {
 	values := map[string][]string{} // Go type name -> its values, in schema order
 	var walk func(n *node) error
@@ -439,7 +375,6 @@ func emitEnums(b *strings.Builder, doc *document) error {
 	return nil
 }
 
-// emitStructs writes one struct per $def, fields in schema order.
 func emitStructs(b *strings.Builder, doc *document) error {
 	for _, name := range doc.Defs.Keys() {
 		var def node
@@ -466,10 +401,7 @@ func emitStructs(b *strings.Builder, doc *document) error {
 			}
 			tag := field
 			if !required[field] {
-				// An optional field must be able to say "absent", so it is
-				// made nilable and omitted when it is: a peer that never
-				// receives the key behaves as the contract says, and a zero
-				// value is never mistaken for a choice.
+				// An optional field is nilable and omitted when absent, so a zero value is never mistaken for a choice.
 				typeName = nullable_(typeName)
 				tag += ",omitempty"
 			}

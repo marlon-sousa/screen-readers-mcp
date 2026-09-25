@@ -4215,9 +4215,10 @@ the ceiling, so the area cannot drift back. Counts are from
     every Swift file under `bridges/voiceover/`, except those an open PR
     touches, which go in `pending`. Before: 12,941 comment, 18,436 code, 0.70.
 
-14.3. **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
+14.3. **Done** -- **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
     file under `server/` except the generated `wire.gen.go`. Before: 7,734
-    comment, 18,166 code, 0.43.
+    comment, 18,166 code, 0.43. After: 1,395 comment, 18,166 code, 0.08; its ceiling is
+    0.10.
 
 Not in this lane: `scripts/`, 1,364 comment and 3,263 code, 0.42. It has an
 area in the gate, not yet enforced; stripping it would be entry 14.4. Every Go,

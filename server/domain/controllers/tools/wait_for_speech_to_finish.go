@@ -1,7 +1,6 @@
 // screenreader-mcp domain -- the wait_for_speech_to_finish tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `speech`.
+// ROLE: controller, gated on speech.
 // USES: ports.SpeechReader, through ToolContext.Speech().
 // LISTED BY: registry.go.
 package tools
@@ -13,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// WaitForSpeechToFinish blocks until speech settles.
 type WaitForSpeechToFinish struct{}
 
 var _ Tool = (*WaitForSpeechToFinish)(nil)
@@ -88,8 +86,7 @@ func (t *WaitForSpeechToFinish) Execute(ctx ToolContext, params json.RawMessage)
 		return nil, err
 	}
 
-	// Zero means "the reader's own default": the contract owns that value, so
-	// this server does not duplicate it into the request.
+	// Zero means the reader's own default.
 	var timeout time.Duration
 	if request.Timeout > 0 {
 		timeout = time.Duration(request.Timeout * float64(time.Second))

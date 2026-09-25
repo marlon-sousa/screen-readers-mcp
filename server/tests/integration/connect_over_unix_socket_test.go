@@ -2,17 +2,8 @@
 
 // screenreader-mcp tests -- connecting to a bridge over a real Unix socket.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, POSIX only -- the real-transport tier for the
-// LOCAL endpoint as POSIX spells it. Its Windows sibling is
-// connect_over_named_pipe_windows_test.go, and the pair is the point: one
-// endpoint kind, two mechanisms, the same scenarios either side.
-//
-// This is where the derivation in domain/entities/local_socket.go meets a real
-// kernel: the bridge binds where the rule says a bridge binds, the server dials
-// a BARE NAME and finds it, and the probe reads the same directory and reports
-// it listening. Nothing in it names a path -- if it did, it would be testing the
-// override rather than the rendezvous.
+// ROLE: integration scenario, POSIX only, where the local socket derivation meets a real kernel; nothing here
+// names a path, so the rendezvous by bare name is what is tested.
 package integration_test
 
 import (
@@ -31,14 +22,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// runtimeDir points XDG_RUNTIME_DIR at a directory of this test's own, so the
-// derivation resolves somewhere disposable instead of into the developer's home.
-//
-// NOT t.TempDir(), and the reason is the constraint this whole file is about: a
-// unix socket path is capped at 103 usable bytes, macOS's $TMPDIR is 49 of them
-// before anything else, and t.TempDir() then adds the test's name. The budget is
-// gone before the socket is. /tmp is short, present on every POSIX host, and
-// this is a test.
+// Not t.TempDir(): a unix socket path is capped at 103 usable bytes, and macOS's $TMPDIR alone takes 49.
 func runtimeDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("/tmp", "srmcp")
@@ -50,12 +34,7 @@ func runtimeDir(t *testing.T) string {
 	return dir
 }
 
-// listenSocket starts the fake bridge where a bridge of that name belongs, and
-// returns the bare name -- exactly what a configured endpoint carries.
-//
-// It creates the directory 0700 and unlinks before binding, which are the
-// LISTENER's obligations under specs/wire/v1 §1: a socket file outlives the
-// process that made it, unlike a pipe.
+// A socket file outlives the process that made it, so the listener unlinks before binding.
 func listenSocket(t *testing.T, fake *testsupport.FakeBridge, name string) string {
 	t.Helper()
 
@@ -108,11 +87,6 @@ func TestASessionIsEstablishedOverARealUnixSocket(t *testing.T) {
 	}
 }
 
-// The POSIX half of the regression the pipe leaf carries: a command that takes
-// longer than one poll interval must still succeed. net.Conn reports a passed
-// deadline as os.ErrDeadlineExceeded, which is the seam's contract, so this
-// should fall out for free -- and asserting it is how we know the unix leaf
-// really is the shared net leaf and not a second implementation of it.
 func TestACommandSlowerThanThePollIntervalSurvivesOverARealSocket(t *testing.T) {
 	runtimeDir(t)
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
@@ -144,10 +118,6 @@ func TestACommandSlowerThanThePollIntervalSurvivesOverARealSocket(t *testing.T) 
 	}
 }
 
-// The probe against a real directory. Until spec 0044 this could not be written
-// at all off Windows: the non-Windows listing was empty by construction, so
-// every endpoint reported liveness unknown and `list_readers`'s liveness column
-// was a constant on the host lane 3 is built on.
 func TestTheProbeSeesARealListeningSocket(t *testing.T) {
 	runtimeDir(t)
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
@@ -164,9 +134,7 @@ func TestTheProbeSeesARealListeningSocket(t *testing.T) {
 	}
 }
 
-// The whole listing, end to end: a configured reader whose local endpoint is up
-// reports LISTENING, and its TCP endpoint -- which cannot be probed without
-// taking the bridge's one session slot -- reports unknown.
+// A TCP endpoint cannot be probed without taking the bridge's one session slot, so it reports unknown.
 func TestTheListingReportsARealSocketAsListening(t *testing.T) {
 	runtimeDir(t)
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})

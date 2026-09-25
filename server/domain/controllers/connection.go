@@ -1,31 +1,11 @@
 // screenreader-mcp domain -- Connection: the session lifecycle controller.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: controller. Owns the whole agent-initiated connection lifecycle: List,
-// Connect, Disconnect, loss detection, and the heartbeat.
-// DEPENDS ON (all ports): EndpointSource, EndpointProbe, SessionDialer, Clock,
-// Log.
+// ROLE: controller owning the agent-initiated connection lifecycle: List, Connect, Disconnect, loss detection and the heartbeat.
+// BUILT BY: wiring/wiring.go.
+// USED BY: the four ungated tool controllers, through the ConnectionControl interface they declare.
 //
-// IT NO LONGER PUBLISHES ANYTHING (spec 0022, option (c), agreed 2026-08-19).
-// Connecting used to compute the allowed tool names and hand them to a
-// ToolPublisher, and every teardown path retracted them again. Every tool is now
-// advertised from startup, so both went, and the port went with them: the
-// lifecycle stopped being the thing that decides what an agent can SEE. What a
-// session still decides is what a call can DO, and that was never here -- it is
-// ToolContext, per call.
-// BUILT BY: wiring/wiring.go. USED BY: the four ungated tool controllers,
-// through the narrow ConnectionControl interface they declare.
-//
-// THE ONLY STATEFUL THING IN THIS PROCESS, and it is an ordinary value owned by
-// wiring -- not a package global, no init() side effect, no singleton. That is
-// the constraint that keeps concurrent sessions reachable later as a map plus a
-// routing parameter rather than as an unpicking of globals.
-//
-// NO RETRY POLICY AND NO BACKOFF. A failed connect returns the error to the
-// agent and leaves the state Disconnected. A background retry loop was
-// considered and rejected: it buys "the tools are there when you look" at the
-// price of connection state changing under the agent mid-task, a reconnect
-// racing a teardown, and a give-up policy nobody asked for.
+// A failed connect returns the error and leaves the state Disconnected; this server never retries on its own.
 package controllers
 
 import (
@@ -38,17 +18,9 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// HeartbeatInterval is how often the connection is proved real while a session
-// is live.
-//
-// It keeps the CONNECTION honest without keeping an idle SESSION alive: the
-// bridge's heartbeat watchdog is reset by any message, but its command
-// inactivity watchdog is deliberately not reset by `ping` (protocol.md §6). An
-// abandoned session therefore still ends, which is the contract working as
-// intended.
+// HeartbeatInterval keeps the connection honest; `ping` does not reset the bridge's command inactivity watchdog, so an abandoned session still ends.
 const HeartbeatInterval = 20 * time.Second
 
-// Connection is the one connection's lifecycle.
 type Connection struct {
 	endpoints ports.EndpointSource
 	probe     ports.EndpointProbe
@@ -56,14 +28,12 @@ type Connection struct {
 	clock     ports.Clock
 	log       ports.Log
 
-	// Everything below is the state, and the mutex is not optional: the
-	// heartbeat goroutine and a tool call reach it at the same time.
+	// The heartbeat goroutine and a tool call reach the state at the same time.
 	mu         sync.Mutex
 	status     entities.ConnectionStatus
 	connection *ports.ReaderConnection
 }
 
-// NewConnection builds the controller, disconnected and having dialed nothing.
 func NewConnection(
 	endpoints ports.EndpointSource,
 	probe ports.EndpointProbe,
@@ -81,11 +51,7 @@ func NewConnection(
 	}
 }
 
-// List joins the configured readers with the probe's answer.
-//
-// It DIALS NOTHING. The bridge serves one session at a time, so a probing
-// connection would occupy the very slot the agent is about to want -- which is
-// why a TCP endpoint honestly reports "unknown" rather than being tested.
+// List dials nothing: the bridge serves one session at a time, so a probe would occupy the agent's slot.
 func (c *Connection) List() entities.ReaderListing {
 	readers := c.endpoints.Readers()
 
@@ -96,7 +62,6 @@ func (c *Connection) List() entities.ReaderListing {
 	return entities.BuildListing(readers, c.probe.Live(candidates))
 }
 
-// Connect opens the one session.
 func (c *Connection) Connect(readerName string, opts ports.SessionOptions) (*ports.ReaderConnection, error) {
 	reader, err := c.find(readerName)
 	if err != nil {
@@ -107,9 +72,7 @@ func (c *Connection) Connect(readerName string, opts ports.SessionOptions) (*por
 	if c.connection != nil {
 		live := c.connection.Session.Reader.Name
 		c.mu.Unlock()
-		// An error rather than a silent switch: switching would pull the
-		// session out from under whatever multi-step task is using it, and
-		// the agent that wanted a different reader can say so explicitly.
+		// An error rather than a silent switch, which would pull the session from under a running task.
 		return nil, fmt.Errorf(
 			"a session with %q is already live; call disconnect_reader first", live)
 	}
@@ -133,10 +96,7 @@ func (c *Connection) Connect(readerName string, opts ports.SessionOptions) (*por
 	return connection, nil
 }
 
-// Disconnect ends the session politely and retracts the gated tools.
-//
-// Not an error when nothing is connected: teardown is reached from several
-// directions and none of them should have to check first.
+// Disconnect is not an error when nothing is connected, and an already-gone peer still yields a clean disconnect.
 func (c *Connection) Disconnect() error {
 	c.mu.Lock()
 	connection := c.connection
@@ -146,9 +106,6 @@ func (c *Connection) Disconnect() error {
 		return nil
 	}
 
-	// `bye` first, then the drop. Bye already treats an already-gone peer as
-	// success, so a bridge that died a moment ago still yields a clean
-	// disconnect rather than an error the agent can do nothing about.
 	byeErr := connection.Lifecycle.Bye()
 	closeErr := connection.Lifecycle.Close()
 
@@ -163,7 +120,6 @@ func (c *Connection) Disconnect() error {
 	return nil
 }
 
-// Status is the recorded state and why it holds.
 func (c *Connection) Status() entities.ConnectionStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -177,11 +133,7 @@ func (c *Connection) Current() *ports.ReaderConnection {
 	return c.connection
 }
 
-// Verify makes a real round trip and records a loss it finds.
-//
-// This is the method that makes `status` proof rather than memory, and it is
-// also what a tool call falls back on when it discovers the connection has gone.
-// Nil when there is nothing to verify: "no session" is not a failed check.
+// Verify makes a real round trip and records a loss it finds; nil when there is no session.
 func (c *Connection) Verify() (ports.PingReport, error) {
 	c.mu.Lock()
 	connection := c.connection
@@ -199,20 +151,12 @@ func (c *Connection) Verify() (ports.PingReport, error) {
 		c.lose(err)
 		return ports.PingReport{}, err
 	}
-	// A bridge that ANSWERED, with a refusal, is still there: protocol.md §3
-	// says an established session survives a failing command, so this must
-	// not tear anything down.
+	// A bridge that answered with a refusal is still there, so nothing is torn down.
 	c.log.Debugf("ping was refused but the connection is alive: %v", err)
 	return ports.PingReport{}, err
 }
 
-// RunHeartbeat proves the connection real on a schedule, until stop is closed.
-//
-// Run by wiring in a goroutine rather than started implicitly on connect. Two
-// reasons: a loop nobody can step is a loop no test can assert on -- this one
-// sleeps on the Clock port, so a fake drives it deterministically -- and the
-// heartbeat's lifetime is the PROCESS's, not a session's, so starting and
-// stopping it per connect would be bookkeeping with nothing to gain.
+// RunHeartbeat sleeps on the Clock port, until stop is closed.
 func (c *Connection) RunHeartbeat(stop <-chan struct{}) {
 	for {
 		select {
@@ -229,20 +173,15 @@ func (c *Connection) RunHeartbeat(stop <-chan struct{}) {
 		default:
 		}
 
-		// Verify is a no-op with no session, so the loop needs no state of
-		// its own and cannot disagree with the controller about whether one
-		// is live.
 		_, _ = c.Verify()
 	}
 }
 
-// Close is the process shutting down: end the session if there is one, without
-// asking the agent.
+// Close ends the session, if any, at process shutdown.
 func (c *Connection) Close() {
 	_ = c.Disconnect()
 }
 
-// find resolves a reader name against the configured set.
 func (c *Connection) find(name string) (entities.ConfiguredReader, error) {
 	readers := c.endpoints.Readers()
 	for _, reader := range readers {
@@ -251,8 +190,7 @@ func (c *Connection) find(name string) (entities.ConfiguredReader, error) {
 		}
 	}
 
-	// The error LISTS the known names, so an agent that guessed wrong
-	// self-corrects in the same turn rather than spending one on list_readers.
+	// The error lists the known names so the agent can self-correct in the same turn.
 	known := make([]string, 0, len(readers))
 	for _, reader := range readers {
 		known = append(known, reader.Name)
@@ -265,11 +203,7 @@ func (c *Connection) find(name string) (entities.ConfiguredReader, error) {
 		"unknown reader %q: known readers are %v", name, known)
 }
 
-// recordFailure records why a connect did not happen.
-//
-// A protocol mismatch gets its own state, because the remedy is different --
-// update one of the two components rather than try again -- and because the
-// process deliberately stays up so `status` can keep saying so.
+// recordFailure gives a protocol mismatch its own state, because the remedy is to update a component, not retry.
 func (c *Connection) recordFailure(err error) {
 	state := entities.Disconnected
 
@@ -284,9 +218,7 @@ func (c *Connection) recordFailure(err error) {
 	c.log.Errorf("connect failed: %v", err)
 }
 
-// lose records an observed connection loss: the tools go away and the state says
-// why. The agent is free to connect again whenever it chooses -- this server
-// will not do it on its own.
+// lose records an observed connection loss; the agent may reconnect whenever it chooses.
 func (c *Connection) lose(cause error) {
 	c.mu.Lock()
 	connection := c.connection
@@ -304,12 +236,7 @@ func (c *Connection) lose(cause error) {
 	c.log.Infof("connection to %q lost: %v", connection.Session.Reader.Name, cause)
 }
 
-// clear drops the session.
-//
-// Nothing is retracted: the tool list is a constant now. What changes for an
-// agent is that the next call through any gated tool answers a CapabilityError
-// naming no reader -- which is the honest report of "nothing is connected", and
-// is the same answer whether the session was ended politely or was lost.
+// clear drops the session; afterwards every gated tool answers a CapabilityError, whether it ended politely or was lost.
 func (c *Connection) clear(status entities.ConnectionStatus) {
 	c.mu.Lock()
 	c.connection = nil

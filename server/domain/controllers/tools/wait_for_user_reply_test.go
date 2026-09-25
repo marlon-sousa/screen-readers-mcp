@@ -1,17 +1,5 @@
 // screenreader-mcp domain -- the wait_for_user_reply tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The subject is the TIMEOUT the tool resolves before the bridge ever sees it.
-// Both directions of getting it wrong are session-ending, and neither is visible
-// from the tool's return value:
-//
-//   - too small (an omitted timeout left at zero) and the bridge applies its own
-//     30 s default while the client sizes a 10 s deadline, so the client gives up
-//     first and the bridge's late reply desyncs the response stream;
-//   - too large (a poll longer than the inactivity window) and the answer arrives
-//     just before the watchdog tears the session down under the agent.
-//
-// So each is pinned here, at the one place that decides the value.
 package tools_test
 
 import (
@@ -48,8 +36,6 @@ func TestWaitForUserReplyReturnsTheAnswer(t *testing.T) {
 	}
 }
 
-// A poll miss is a normal outcome, not an error: the window is still open and
-// the agent is expected to call again.
 func TestWaitForUserReplyReportsAPollMissWithoutFailing(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)
@@ -67,11 +53,6 @@ func TestWaitForUserReplyReportsAPollMissWithoutFailing(t *testing.T) {
 	}
 }
 
-// An omitted timeout must NOT reach the bridge as zero. The bridge would then
-// apply its own 30 s default while the client sized a deadline from the 5 s
-// default the other waiting commands share -- the client would give up at 10 s
-// and the bridge's reply would arrive with nobody reading it, which the next call
-// sees as a mismatched id and treats as a lost connection.
 func TestWaitForUserReplyFillsTheDefaultTimeout(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)
@@ -89,9 +70,6 @@ func TestWaitForUserReplyFillsTheDefaultTimeout(t *testing.T) {
 	}
 }
 
-// A poll may not outlast the command-inactivity watchdog (120 s, measured from
-// dispatch and deliberately not refreshed when a handler returns): the agent
-// would get its answer and lose the session in the same breath.
 func TestWaitForUserReplyCapsAnExcessiveTimeout(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)
@@ -109,8 +87,6 @@ func TestWaitForUserReplyCapsAnExcessiveTimeout(t *testing.T) {
 	}
 }
 
-// A timeout the agent chose, inside the cap, is passed through untouched --
-// the clamp must not quietly become a policy of its own.
 func TestWaitForUserReplyPassesAReasonableTimeoutThrough(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)
@@ -125,7 +101,6 @@ func TestWaitForUserReplyPassesAReasonableTimeoutThrough(t *testing.T) {
 	}
 }
 
-// The gate, structurally.
 func TestWaitForUserReplyIsRefusedWhenTheReaderDidNotAnnounceInteract(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)
@@ -141,9 +116,6 @@ func TestWaitForUserReplyIsRefusedWhenTheReaderDidNotAnnounceInteract(t *testing
 	}
 }
 
-// An expired or unknown ticket is a bridge error; the session survives it, so
-// the tool surfaces it instead of reporting a poll miss the agent would retry
-// forever.
 func TestWaitForUserReplySurfacesABridgeFailure(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityInteract)
 	call := testsupport.NewToolCall(&tools.WaitForUserReply{}).WithConnection(built.Connection)

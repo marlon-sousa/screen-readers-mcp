@@ -1,29 +1,8 @@
 // screenreader-mcp domain -- the press_gesture tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `gestures`.
+// ROLE: controller, gated on gestures.
 // USES: ports.GestureSender, through ToolContext.Gestures().
 // LISTED BY: registry.go.
-//
-// GESTURE IDS ARE OPAQUE (spec 0005, principle 3). `NVDA+f7` means something
-// to NVDA and to the agent, and nothing to this server, which routes the string
-// without interpreting it. That is what keeps the chassis reader-agnostic: a
-// JAWS gesture vocabulary needs no code change here.
-//
-// AND NO EXAMPLE OF ONE APPEARS IN THE TEXT BELOW (spec 0022 A.6, board entry
-// 11.24(a)). It used to: the description offered "NVDA+f7" while the reader's
-// own document gave the literal form as "nvda+tab", and the one an agent was
-// likelier to copy was the one the reader does not publish. An outside reader
-// found that and we could not.
-//
-// Two reasons it is gone rather than corrected. The reader's document is
-// GENERATED out of the running reader, so it is right even where the user has
-// rebound a command, which a hand-written example can never be. And under spec
-// 0022's option (c) every tool is advertised from startup, so this text is read
-// BEFORE any reader is chosen -- an NVDA example here presumes a reader nobody
-// has selected yet, on a session that may turn out to be JAWS or TalkBack.
-//
-// adapters/mcp/surface_text_test.go is what keeps it gone.
 package tools
 
 import (
@@ -33,7 +12,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// PressGesture presses reader gestures in order.
 type PressGesture struct{}
 
 var _ Tool = (*PressGesture)(nil)
@@ -155,8 +133,7 @@ type pressGestureParams struct {
 
 type gesturePress struct {
 	Gesture string `json:"gesture"`
-	// The half-open span the ring stood at either side of THIS key's dispatch.
-	// An empty span is a real answer: this key said nothing.
+	// [SpeechFrom, SpeechTo) is half-open; an empty span means this key said nothing.
 	SpeechFrom int `json:"speechFrom"`
 	SpeechTo   int `json:"speechTo"`
 }
@@ -178,17 +155,12 @@ func (t *PressGesture) Execute(ctx ToolContext, params json.RawMessage) (any, er
 	if len(request.Gestures) == 0 {
 		return nil, errors.New("gestures is required, and must name at least one gesture")
 	}
-	// Validated BEFORE the keys are dispatched, like the announce tool validates
-	// before touching its port: a narration that cannot be spoken must not be
-	// discovered after the machine has already moved.
+	// Validated before the keys are dispatched, so an unspeakable narration is not discovered after the machine moved.
 	announced, err := announcement(request.Announce)
 	if err != nil {
 		return nil, err
 	}
-	// Absent means "use the reader's default", which is NOT the same as 0. An
-	// erased int cannot tell the two apart, so the parameter is a pointer and
-	// the default lives in one place -- the contract -- rather than being
-	// restated here where it could drift.
+	// Absent means the reader's default, which is not the same as 0.
 	grace := DefaultGraceMs
 	if request.GraceMs != nil {
 		grace = *request.GraceMs
@@ -201,9 +173,6 @@ func (t *PressGesture) Execute(ctx ToolContext, params json.RawMessage) (any, er
 	if err != nil {
 		return nil, err
 	}
-	// The ids are opaque to this server, so it echoes them rather than
-	// interpreting them -- but each now carries the window it was dispatched in,
-	// which is what makes a silent key visible instead of inferred.
 	pressed := make([]gesturePress, 0, len(outcome.Pressed))
 	for _, p := range outcome.Pressed {
 		pressed = append(pressed, gesturePress{

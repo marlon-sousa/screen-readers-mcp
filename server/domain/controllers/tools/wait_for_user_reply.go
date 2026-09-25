@@ -1,13 +1,9 @@
 // screenreader-mcp domain -- the wait_for_user_reply tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `interact`.
+// ROLE: controller, gated on interact.
 // USES: ports.Interact, through ToolContext.Interact().
 // LISTED BY: registry.go.
-//
-// Polls for the human's answer to an ask_user prompt. Returns answered=false
-// on a poll miss (the window is still open). The agent re-polls until
-// answered=true or the bridge returns an error (expired/cancelled ticket).
+// Answers answered=false on a poll miss; an expired or cancelled ticket is an error.
 package tools
 
 import (
@@ -17,31 +13,12 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// defaultPollTimeout is what an omitted `timeout` means, filled in HERE rather
-// than left to the bridge's own default.
-//
-// The bridge would default it to 30 s, but the client sizes its local deadline
-// from the value it sent -- and when nothing is sent it can only guess. It
-// guesses with the contract default shared by the other waiting commands (5 s),
-// which is far shorter than 30, so the client would give up first, return a
-// timeout instead of `answered: false`, and leave the bridge's late reply
-// unread in the stream -- which the NEXT call reads as a mismatched id and
-// treats as a dead connection. Sending the value explicitly keeps the two ends
-// agreeing about when to stop waiting.
+// defaultPollTimeout is sent explicitly: omitted, the client sizes its deadline from the 5 s contract default while the bridge waits 30 s, and the late reply then reads as a dead connection.
 const defaultPollTimeout = 30 * time.Second
 
-// maxPollTimeout mirrors the bridge's own cap on a single poll (spec 0016).
-//
-// A poll may not outlast the session's command-inactivity watchdog (120 s by
-// default), which is measured from the moment the command is DISPATCHED and is
-// deliberately not refreshed when a handler returns: a poll that blocked longer
-// than the window would answer the agent and then have the session torn down
-// under it. The bridge clamps for every client; this is the same number said
-// out loud in the schema, so an agent never has to discover it by losing a
-// session.
+// maxPollTimeout mirrors the bridge's cap: a poll may not outlast the session's 120 s inactivity watchdog, which is not refreshed when a handler returns.
 const maxPollTimeout = 110 * time.Second
 
-// WaitForUserReply polls for the human's answer.
 type WaitForUserReply struct{}
 
 var _ Tool = (*WaitForUserReply)(nil)
@@ -118,9 +95,6 @@ func (t *WaitForUserReply) Execute(ctx ToolContext, params json.RawMessage) (any
 		return nil, err
 	}
 
-	// Fill the default and apply the cap here, so the value the bridge receives
-	// is the same one the client sizes its deadline from (see defaultPollTimeout)
-	// and no poll can outlive the inactivity watchdog (see maxPollTimeout).
 	timeout := time.Duration(request.Timeout * float64(time.Second))
 	if timeout <= 0 {
 		timeout = defaultPollTimeout

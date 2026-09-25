@@ -1,14 +1,7 @@
 // screenreader-mcp testsupport -- builders for a live ReaderConnection.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: test scaffolding, NOT a port double -- doubles live in fakes/ and this
-// package is deliberately everything else (AGENTS.md).
-// USED BY: the connection controller's tests and the tool controllers' tests,
-// both of which need "a session with these capabilities" without a bridge.
-//
-// A builder rather than a fixture, because every test customises it: which
-// capabilities were announced is the variable the whole capability gate turns
-// on, so it is stated per test rather than defaulted somewhere out of sight.
+// ROLE: test scaffolding, not a port double.
+// USED BY: the connection and tool controllers' tests, which need a session with given capabilities and no bridge.
 package testsupport
 
 import (
@@ -17,18 +10,11 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/fakes"
 )
 
-// Connection is a live session with fake collaborators behind it.
-//
-// The capability ports are handed over EXACTLY for the capabilities named, and
-// left nil otherwise -- mirroring what the real handshake does, which is what
-// makes "this reader has no braille" a missing collaborator here too rather than
-// a flag a test sets.
+// Capability ports are set only for the capabilities named and left nil otherwise, as the real handshake does.
 type Connection struct {
-	// Connection is what the code under test is given.
 	Connection *ports.ReaderConnection
 
-	// The fakes behind it, for seeding answers and asserting on interaction.
-	// Each is nil unless its capability was announced.
+	// Each fake is nil unless its capability was announced.
 	Lifecycle  *fakes.FakeSessionLifecycle
 	Speech     *fakes.FakeSpeechReader
 	Braille    *fakes.FakeBrailleReader
@@ -43,12 +29,6 @@ type Connection struct {
 	Guidance   *fakes.FakeGuidanceReader
 }
 
-// NewConnection builds a session for a reader announcing exactly these
-// capabilities.
-//
-// The endpoint and identity are fixed and unremarkable on purpose: a test that
-// cares about them says so by reading them back, and one that does not is not
-// made to invent them.
 func NewConnection(reader string, announced ...entities.Capability) *Connection {
 	names := make([]string, len(announced))
 	for i, capability := range announced {
@@ -89,8 +69,6 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 	if set.Has(entities.CapabilityState) {
 		built.State = fakes.NewFakeStateInspector()
 		built.Connection.State = built.State
-		// One capability, both halves -- as `config` hands out both the read
-		// and the write (spec 0033).
 		built.StateWrite = fakes.NewFakeStateWriter()
 		built.Connection.StateWrite = built.StateWrite
 	}
@@ -117,8 +95,6 @@ func NewConnection(reader string, announced ...entities.Capability) *Connection 
 	return built
 }
 
-// EveryCapability is every group the wire contract defines, for the tests whose
-// subject is not the gate.
 func EveryCapability() []entities.Capability {
 	return []entities.Capability{
 		entities.CapabilitySpeech, entities.CapabilityBraille, entities.CapabilityGestures,

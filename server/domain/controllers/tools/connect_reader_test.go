@@ -1,10 +1,5 @@
 // screenreader-mcp domain -- the connect_reader tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// This tool is the only thing in the server that causes a dial, so its tests are
-// where "the agent owns the connection" is pinned down: the reader is required,
-// the session-fixed parameters reach the handshake as given, and a bad value is
-// refused HERE rather than travelling to the bridge to be rejected there.
 package tools_test
 
 import (
@@ -48,8 +43,6 @@ func TestConnectPassesTheReaderAndModeThrough(t *testing.T) {
 	}
 }
 
-// log_level is optional, and when given it must reach the handshake -- it is a
-// real, temporary change to the READER's own logging, fixed for the session.
 func TestConnectPassesAnOptionalLogLevelThrough(t *testing.T) {
 	call := connectCall(t)
 
@@ -66,9 +59,6 @@ func TestConnectPassesAnOptionalLogLevelThrough(t *testing.T) {
 	}
 }
 
-// Required and never defaulted (spec 0013): defaulting to the single live reader
-// would make one call mean different things minute to minute, and defaulting to
-// the single KNOWN one is deterministic only until a second bridge ships.
 func TestTheReaderArgumentIsRequiredAndTheErrorListsTheKnownNames(t *testing.T) {
 	call := connectCall(t)
 	call.Control.SetListing(entities.BuildListing([]entities.ConfiguredReader{
@@ -88,8 +78,6 @@ func TestTheReaderArgumentIsRequiredAndTheErrorListsTheKnownNames(t *testing.T) 
 	}
 }
 
-// A bad mode is refused at the tool boundary, with the valid values named. The
-// bridge would reject it too, but a round trip later and with a worse message.
 func TestAnInvalidModeIsRefusedBeforeDialing(t *testing.T) {
 	call := connectCall(t)
 
@@ -117,8 +105,6 @@ func TestAnInvalidLogLevelIsRefusedBeforeDialing(t *testing.T) {
 	}
 }
 
-// Mode is required too: the wire fixes it for the session's lifetime, so a tool
-// inventing a default would be the wrong layer making that choice.
 func TestTheModeArgumentIsRequired(t *testing.T) {
 	call := connectCall(t)
 
@@ -127,11 +113,6 @@ func TestTheModeArgumentIsRequired(t *testing.T) {
 	}
 }
 
-// -- persona (spec 0029) ------------------------------------------------------
-
-// Required, like mode, and NEVER defaulted. A default would silently attribute a
-// stance nobody chose, and a claim resting on a defaulted `user` session is one
-// nobody can withdraw, because nobody knows it was made.
 func TestThePersonaArgumentIsRequired(t *testing.T) {
 	call := connectCall(t)
 
@@ -144,9 +125,6 @@ func TestThePersonaArgumentIsRequired(t *testing.T) {
 	}
 }
 
-// The error is where most agents will meet personas for the first time, so it
-// names all three WITH the question each one asks -- a wrong guess should
-// self-correct in this turn rather than cost a round trip.
 func TestAnInvalidPersonaIsRefusedAndTheErrorTeachesTheThree(t *testing.T) {
 	call := connectCall(t)
 
@@ -176,9 +154,6 @@ func TestThePersonaReachesTheHandshake(t *testing.T) {
 	}
 }
 
-// A persona an agent declares but never reads is a label, not an instruction --
-// and the first external run (spec 0027) never read the guidance resource at
-// all. Connect is the one moment an agent is guaranteed to be reading.
 func TestTheResultCarriesTheStanceInFull(t *testing.T) {
 	call := connectCall(t)
 
@@ -204,8 +179,6 @@ func TestTheResultCarriesTheStanceInFull(t *testing.T) {
 	}
 }
 
-// What the agent gets back has to be enough to work with: who answered, where,
-// what it can do, and where the session's two logs are.
 func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	call := connectCall(t)
 
@@ -235,8 +208,7 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	if len(got.Capabilities) != len(testsupport.EveryCapability()) {
 		t.Errorf("capabilities = %v, want every capability announced", got.Capabilities)
 	}
-	// Acceptance criterion 5: the mode reported is the one the BRIDGE
-	// confirmed, which is what makes the check meaningful rather than an echo.
+	// The mode reported is the one the bridge confirmed, not an echo of the request.
 	if got.Mode != "silent" {
 		t.Errorf("mode = %q, want the mode hello established", got.Mode)
 	}
@@ -245,8 +217,6 @@ func TestTheResultDescribesTheSessionThatWasEstablished(t *testing.T) {
 	}
 }
 
-// A failed connect is reported and nothing else happens: no retry, no fallback
-// to another reader, no state invented here.
 func TestAFailedConnectIsReportedToTheAgent(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.ConnectReader{})
 	call.Control.FailConnectWith(errors.New(`reader "nvda": no endpoint answered`))
@@ -260,13 +230,6 @@ func TestAFailedConnectIsReportedToTheAgent(t *testing.T) {
 			len(call.Control.Connects()))
 	}
 }
-
-// -- the silence cap (spec 0032) ---------------------------------------------
-//
-// Connect is the one moment an agent is guaranteed to be reading, and it is the
-// earliest instant this fact exists -- it describes the machine that just
-// answered. An agent that never learns a human is expected there is an agent
-// that goes quiet on them.
 
 func connectAnswer(t *testing.T, call *testsupport.ToolCall) map[string]any {
 	t.Helper()
@@ -297,11 +260,6 @@ func TestConnectStatesTheMachinesSilenceCap(t *testing.T) {
 	}
 }
 
-// Spec 0035, end to end through the tool: the session's DECLARED attendance is
-// what reaches the agent, not an inference from the cap. The case chosen is the
-// one the old wire could not express -- a human at a machine that bounds
-// nothing -- because it is the only one where the two routes disagree, and so
-// the only one that proves which route ran.
 func TestConnectReportsDeclaredAttendanceRatherThanInferringIt(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.ConnectReader{})
 	built := testsupport.NewConnection("nvda", testsupport.EveryCapability()...)
@@ -323,8 +281,7 @@ func TestConnectReportsDeclaredAttendanceRatherThanInferringIt(t *testing.T) {
 }
 
 func TestConnectAlwaysSaysSomethingAboutSilence(t *testing.T) {
-	// Including for a bridge that sent no field at all. An absent answer would
-	// read as "nothing to worry about", which is the one thing it does not mean.
+	// Including for a bridge that sent no field: absent must not read as nothing to worry about.
 	call := connectCall(t)
 
 	sentence, ok := connectAnswer(t, call)["silenceCap"].(string)

@@ -458,8 +458,8 @@ ignore_fail = false
 
 [tool.screen-readers-mcp.comments.server]
 paths = ["server"]
-enforced = false
-ceiling = 1.0
+enforced = true
+ceiling = 0.10
 pending = []
 
 [tool.screen-readers-mcp.comments.nvda]

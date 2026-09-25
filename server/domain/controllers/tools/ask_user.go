@@ -1,13 +1,8 @@
 // screenreader-mcp domain -- the ask_user tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: controller, one per tool. GATED on `interact`.
-// USES: ports.Interact, through ToolContext.Interact().
+// ROLE: controller for one tool, gated on `interact`.
 // LISTED BY: registry.go.
-//
-// Presents a prompt to the human and returns a ticket immediately. The agent
-// then polls with wait_for_user_reply. Speech suppression is suspended for the
-// duration of the interaction window; the human hears normally.
 package tools
 
 import (
@@ -18,7 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// AskUser presents a prompt to the human operating the reader.
 type AskUser struct{}
 
 var _ Tool = (*AskUser)(nil)

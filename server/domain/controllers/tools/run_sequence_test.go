@@ -1,24 +1,6 @@
 // screenreader-mcp domain -- the run_sequence tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Black-box (package tools_test), against fakes for every port a plan can reach.
-//
-// WHAT IS WORTH PROTECTING HERE, and it is not throughput. Four properties, each
-// of which is a way this tool could quietly become dishonest:
-//
-//  1. THE WINDOW IS GAPLESS. The per-step spans must partition the merged one,
-//     so no utterance is credited to nobody. That is what the trailing read
-//     exists for, and it is invisible until something arrives in a gap.
-//  2. `trigger_not_found` IS NOT `failed`. Collapsing them is the exact failure
-//     spec 0025 named when it rejected an `until:` parameter.
-//  3. A SILENT STEP IS PRESENT with an empty span, rather than omitted.
-//  4. A REFUSED PLAN DELIVERS NOTHING -- no keystroke, and no announcement,
-//     because a capability refusal is a message to the agent and `announce` is
-//     the channel to the human.
-//
-// Time is injected, never patched: the fake clock's Sleep is an instant advance,
-// and its OnSleep hook is how speech is made to arrive DURING a gap -- which is
-// the only way property 1 can be exercised at all.
+// The fake clock's OnSleep hook is how speech is made to arrive during a gap.
 package tools_test
 
 import (
@@ -34,18 +16,13 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// sequenceCall wires run_sequence against a reader announcing exactly these
-// capabilities -- stated per test, because which ones are announced is the
-// variable the whole up-front gate turns on.
 func sequenceCall(t *testing.T, announced ...entities.Capability) (*testsupport.ToolCall, *testsupport.Connection) {
 	t.Helper()
 	built := testsupport.NewConnection("nvda", announced...)
 	return testsupport.NewToolCall(&tools.RunSequence{}).WithConnection(built.Connection), built
 }
 
-// sequenceResult is the shape an agent decodes. Written out here rather than
-// reaching for the tool's own struct, which is unexported and must stay so: a
-// test sharing it could not catch a field being renamed on the way out.
+// sequenceResult is written out, not borrowed from the tool, so a field renamed on the way out is caught.
 type sequenceResult struct {
 	Outcome    string `json:"outcome"`
 	FailedStep int    `json:"failedStep"`
@@ -82,12 +59,7 @@ type sequenceResult struct {
 	} `json:"state"`
 }
 
-// speakInGaps makes the reader say one thing during each pause, in order --
-// which is where the speech a keystroke causes actually lands, and the only way
-// to exercise a window that has to be gapless.
-//
-// An empty string is a gap in which nothing was said, so a test can place a
-// SILENT step between two talkative ones.
+// speakInGaps says one thing during each pause, in order; an empty string is a gap in which nothing was said.
 func speakInGaps(call *testsupport.ToolCall, speech *testsupport.Connection, said ...string) {
 	gap := 0
 	call.Clock.OnSleep(func(time.Duration) {
@@ -98,13 +70,6 @@ func speakInGaps(call *testsupport.ToolCall, speech *testsupport.Connection, sai
 	})
 }
 
-// PROPERTY 1, and the whole reason the trailing read exists: speech that arrives
-// in the pause after a step belongs to THAT step, and the per-step spans
-// partition the merged window with nothing left over.
-//
-// Without the final read the last step's right edge would be a mark taken before
-// its own speech had arrived, and that utterance would be returned by nothing --
-// present in no step's span and outside the merged window's end.
 func TestThePerStepSpansPartitionTheMergedWindow(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilitySpeech)
 	speakInGaps(call, built, "Documents list", "Report, one of four")
@@ -129,9 +94,6 @@ func TestThePerStepSpansPartitionTheMergedWindow(t *testing.T) {
 		t.Fatalf("steps = %v, want one entry per step", got.Steps)
 	}
 
-	// The partition itself: step 1 starts where the window does, each step
-	// begins exactly where the last ended, and the last ends where the window
-	// does. No utterance can belong to neither.
 	at := got.SpeechFrom
 	for _, step := range got.Steps {
 		if step.SpeechFrom != at {
@@ -144,21 +106,15 @@ func TestThePerStepSpansPartitionTheMergedWindow(t *testing.T) {
 		t.Errorf("the last step ends at %d, want %d -- the trailing read is not being "+
 			"credited to it", at, got.SpeechTo)
 	}
-	// And the speech really is attributed one apiece rather than blended.
 	if got.Steps[0].SpeechTo-got.Steps[0].SpeechFrom != 1 {
 		t.Errorf("step 1 = [%d,%d), want exactly its own utterance",
 			got.Steps[0].SpeechFrom, got.Steps[0].SpeechTo)
 	}
 }
 
-// PROPERTY 3: a step that said nothing is REPORTED, with an empty span, rather
-// than omitted -- spec 0025's "batching stops hiding things", applied to mixed
-// step kinds. Most reader commands never move focus and never speak.
 func TestASilentStepIsPresentWithAnEmptySpan(t *testing.T) {
 	call, built := sequenceCall(t,
 		entities.CapabilityGestures, entities.CapabilityTyping, entities.CapabilitySpeech)
-	// The gesture spoke; the typing did not, which is the ordinary case with
-	// speak-typed-characters off.
 	speakInGaps(call, built, "Search edit", "")
 
 	result, err := call.Run(`{"steps":[{"press_gesture":"a"},{"type_text":"report"}]}`)
@@ -178,8 +134,7 @@ func TestASilentStepIsPresentWithAnEmptySpan(t *testing.T) {
 	if silent.Typed == nil || *silent.Typed != len("report") {
 		t.Errorf("typed = %v, want the reader's own count", silent.Typed)
 	}
-	// The count is reported and the text never is: typing is exactly how a
-	// secret would be entered, and a plan is not a way round that.
+	// The count is reported and the text never is.
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("marshalling the result: %v", err)
@@ -189,10 +144,6 @@ func TestASilentStepIsPresentWithAnEmptySpan(t *testing.T) {
 	}
 }
 
-// PROPERTY 2, the one this entry exists to keep honest: a trigger that never
-// fired stops the plan and is NOT a failure. "The trigger never fired" and "a
-// step broke" call for different next moves by the agent, so they are different
-// answers -- and the step that waited is named either way.
 func TestATriggerThatNeverFiredIsItsOwnOutcome(t *testing.T) {
 	call, _ := sequenceCall(t, entities.CapabilityGestures, entities.CapabilitySpeech)
 
@@ -218,8 +169,6 @@ func TestATriggerThatNeverFiredIsItsOwnOutcome(t *testing.T) {
 		t.Errorf("message = %q, want none: nothing broke, so there is nothing to explain",
 			got.Message)
 	}
-	// The remaining steps did NOT run, and the per-step results say how far it
-	// got rather than leaving the agent to guess.
 	if len(got.Steps) != 2 {
 		t.Fatalf("steps = %v, want the plan stopped at the trigger", got.Steps)
 	}
@@ -228,8 +177,6 @@ func TestATriggerThatNeverFiredIsItsOwnOutcome(t *testing.T) {
 	}
 }
 
-// The other half of the same property: a trigger that DID fire carries straight
-// on, which is what makes act-on-trigger a plan rather than a new concept.
 func TestAFiredTriggerCarriesStraightOn(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilitySpeech)
 	speakInGaps(call, built, "processing")
@@ -259,14 +206,9 @@ func TestAFiredTriggerCarriesStraightOn(t *testing.T) {
 	}
 }
 
-// The trigger matches anything said since the PLAN started, not since the
-// waiting step was dispatched. The utterance can legitimately land in the
-// fraction of a millisecond between the previous step going out and this one,
-// and a wait that could miss it that way would abort a plan that was working.
 func TestATriggerMatchesSpeechFromEarlierInTheSamePlan(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilitySpeech)
-	// Said in the pause after step 1, which is BEFORE the waiting step is
-	// dispatched.
+	// Said in the pause after step 1, before the waiting step is dispatched.
 	speakInGaps(call, built, "processing")
 
 	result, err := call.Run(`{"steps":[
@@ -282,17 +224,12 @@ func TestATriggerMatchesSpeechFromEarlierInTheSamePlan(t *testing.T) {
 	if got.Outcome != "completed" {
 		t.Fatalf("outcome = %q, want the earlier utterance to satisfy the trigger", got.Outcome)
 	}
-	// And it did not match speech from BEFORE the plan: the wait was asked
-	// with the plan's own start index.
 	waits := built.Speech.Waits()
 	if len(waits) != 1 || waits[0].AfterIndex == nil || *waits[0].AfterIndex != 0 {
 		t.Errorf("wait = %+v, want it bounded by the plan's start index", waits)
 	}
 }
 
-// Abort on the first failure, with the per-step results that make partial
-// execution legible. Nothing is rolled back -- keystrokes cannot be un-pressed --
-// so how far it got is the only thing that can be reported, and it must be.
 func TestAFailingStepStopsThePlanAndSaysHowFarItGot(t *testing.T) {
 	call, built := sequenceCall(t,
 		entities.CapabilityGestures, entities.CapabilityTyping, entities.CapabilitySpeech)
@@ -326,11 +263,6 @@ func TestAFailingStepStopsThePlanAndSaysHowFarItGot(t *testing.T) {
 	}
 }
 
-// PROPERTY 4: the whole plan is checked BEFORE the first keystroke, so a plan
-// naming something this reader cannot do is refused entire rather than
-// discovered halfway through with the reader left mid-edit. The error names the
-// step, because "this reader has no typing" leaves an agent hunting for which of
-// its own lines asked.
 func TestAPlanNamingAnUnannouncedCapabilityDeliversNothing(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilityInteract)
 
@@ -352,18 +284,13 @@ func TestAPlanNamingAnUnannouncedCapabilityDeliversNothing(t *testing.T) {
 	if pressed := built.Gestures.Pressed(); len(pressed) != 0 {
 		t.Errorf("pressed %v, want NOTHING delivered by a refused plan", pressed)
 	}
-	// And nothing was said to the human. A capability refusal is a message
-	// about the agent's own mistake; announce is the channel to the person at
-	// the machine, and speaking a refusal down it would interrupt somebody to
-	// report a thing that never happened.
+	// And nothing was said to the human.
 	if said := built.Interact.Announced(); len(said) != 0 {
 		t.Errorf("announced %q, want silence: the plan never ran", said)
 	}
 }
 
-// The announcement is spoken BEFORE step 1 and comes back echoed. Proved by
-// making it fail: if nothing is pressed when the announcement could not be
-// spoken, the announcement must have come first.
+// Proved by making the announcement fail: if nothing is pressed, it came first.
 func TestTheAnnouncementPrecedesStepOneAndIsEchoedBack(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilityInteract)
 
@@ -392,10 +319,6 @@ func TestTheAnnouncementPrecedesStepOneAndIsEchoedBack(t *testing.T) {
 	}
 }
 
-// A whitespace-only announcement is refused, exactly as the announce tool and
-// the two mutating tools refuse it -- and refused before anything is dispatched,
-// so a narration that cannot be spoken is never discovered after the machine has
-// already moved.
 func TestAWhitespaceAnnouncementIsRefusedBeforeAnythingRuns(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilityInteract)
 
@@ -407,10 +330,6 @@ func TestAWhitespaceAnnouncementIsRefusedBeforeAnythingRuns(t *testing.T) {
 	}
 }
 
-// COMPOSITION IS OVER THE BRIDGE'S COMMANDS, not over sibling tools, and this is
-// what that means in practice: every step goes out with graceMs 0 and no
-// announcement of its own. A per-step grace would give each step its own window,
-// and the result carries ONE.
 func TestEveryStepIsDispatchedWithNoGraceOfItsOwn(t *testing.T) {
 	call, built := sequenceCall(t,
 		entities.CapabilityGestures, entities.CapabilityTyping, entities.CapabilityInteract)
@@ -428,8 +347,6 @@ func TestEveryStepIsDispatchedWithNoGraceOfItsOwn(t *testing.T) {
 	if graces := built.Text.Graces(); len(graces) != 1 || graces[0] != 0 {
 		t.Errorf("typing graces = %v, want [0]", graces)
 	}
-	// The announcement went out ONCE, through the interact port, rather than
-	// riding on each step and being spoken twice.
 	if said := built.Gestures.Announcements(); len(said) != 1 || said[0] != "" {
 		t.Errorf("the gesture carried the announcement %q, want none", said)
 	}
@@ -441,9 +358,6 @@ func TestEveryStepIsDispatchedWithNoGraceOfItsOwn(t *testing.T) {
 	}
 }
 
-// The plan's single timing knob: the pause after each step INCLUDING the last,
-// which is what gives the final read something to find. Anything longer is a
-// delay step, so there are never two parameters meaning "wait here".
 func TestTheGapRunsAfterEveryStepIncludingTheLast(t *testing.T) {
 	call, _ := sequenceCall(t, entities.CapabilityGestures)
 
@@ -466,9 +380,6 @@ func TestTheGapRunsAfterEveryStepIncludingTheLast(t *testing.T) {
 	}
 }
 
-// A delay is the application's own known timing, and it is spent where the
-// latency is a fraction of a millisecond rather than a model turn -- which is
-// the whole reason the untestable scenario becomes testable.
 func TestADelayStepWaitsForTheTimeItWasGiven(t *testing.T) {
 	call, _ := sequenceCall(t, entities.CapabilityGestures)
 
@@ -489,9 +400,6 @@ func TestADelayStepWaitsForTheTimeItWasGiven(t *testing.T) {
 	}
 }
 
-// A settle reports whether the reader stopped answering -- and the field says
-// only that. It can never claim the reader had finished, which is why it is a
-// plain bool on the step rather than anything shaped like completeness.
 func TestASettleStepReportsWhetherTheReaderStopped(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilitySpeech)
 	built.Speech.SetFinished(false)
@@ -512,14 +420,10 @@ func TestASettleStepReportsWhetherTheReaderStopped(t *testing.T) {
 	}
 }
 
-// The read step orients, which is the half of the original trailing-read idea
-// that survived spec 0025: focus is not speech and is on no other result.
 func TestAReadStepOrientsWithFocusAndBraille(t *testing.T) {
 	call, built := sequenceCall(t,
 		entities.CapabilityGestures, entities.CapabilityFocus, entities.CapabilityBraille)
 	built.Focus.SetFocus(ports.FocusInfo{Name: "Report", Role: "listItem"})
-	// Brailled in the pause after the key, which is when a display update
-	// caused by that key actually arrives.
 	call.Clock.OnSleep(func(time.Duration) { built.Braille.Braille("Report lv 1") })
 
 	result, err := call.Run(`{"steps":[
@@ -544,8 +448,6 @@ func TestAReadStepOrientsWithFocusAndBraille(t *testing.T) {
 	}
 }
 
-// A read step with no targets means "orient me", which is focus -- the default
-// stated in one place rather than assumed by each caller.
 func TestAnEmptyReadListMeansFocus(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityFocus)
 	built.Focus.SetFocus(ports.FocusInfo{Name: "Search", Role: "editableText"})
@@ -561,8 +463,6 @@ func TestAnEmptyReadListMeansFocus(t *testing.T) {
 	}
 }
 
-// Braille from a SECOND read step reports what arrived since the first, rather
-// than repeating it -- the same no-overlap-no-gap rule the speech window follows.
 func TestASecondBrailleReadResumesWhereTheFirstEnded(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityBraille)
 	// On the display before the plan: not caused by it, and not reported.
@@ -593,9 +493,6 @@ func TestASecondBrailleReadResumesWhereTheFirstEnded(t *testing.T) {
 	}
 }
 
-// The modes an agent cannot hear ride on the result, sampled once the plan had
-// finished -- so they report the state the plan LEFT the reader in rather than
-// whichever step happened to be the last mutating one.
 func TestTheModesRideOnTheResult(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilityState)
 	built.State.SetState(ports.ReaderState{BrowseMode: "focus", SpeechMode: "talk"})
@@ -610,9 +507,7 @@ func TestTheModesRideOnTheResult(t *testing.T) {
 		t.Errorf("state = %+v, want the modes that cannot be heard", got.State)
 	}
 
-	// And ABSENT on a reader that serves no state: absent and "all four
-	// fields zero" are different answers. Decoded into a FRESH value, because
-	// a pointer field left over from the decode above would read as present.
+	// Decoded into a fresh value, because a pointer left over from the decode above would read as present.
 	without, _ := sequenceCall(t, entities.CapabilityGestures)
 	result, err = without.Run(`{"steps":[{"press_gesture":"a"}]}`)
 	if err != nil {
@@ -625,8 +520,6 @@ func TestTheModesRideOnTheResult(t *testing.T) {
 	}
 }
 
-// A step naming no kind, or two, is the agent's own mistake and is named as
-// such -- before anything is delivered.
 func TestAStepMustNameExactlyOneKind(t *testing.T) {
 	for _, one := range []struct {
 		what  string
@@ -647,8 +540,6 @@ func TestAStepMustNameExactlyOneKind(t *testing.T) {
 	}
 }
 
-// The plan's own bounds reach the agent as a refusal rather than as a session
-// spent waiting.
 func TestThePlanIsRefusedWhenItIsUnbounded(t *testing.T) {
 	call, _ := sequenceCall(t, entities.CapabilityGestures)
 	if _, err := call.Run(`{"steps":[]}`); err == nil {
@@ -662,14 +553,9 @@ func TestThePlanIsRefusedWhenItIsUnbounded(t *testing.T) {
 	}
 }
 
-// The whole-plan budget is the backstop for the waiting steps' sum. It stops the
-// plan and says which step it reached, rather than letting a plan of long waits
-// hold the session.
 func TestThePlanStopsWhenItsBudgetRunsOut(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures, entities.CapabilitySpeech)
-	// Two settles that each eat most of the budget. The fake clock advances
-	// on Sleep; the settle itself does not wait, so the delay steps here are
-	// what spend the time.
+	// The fake clock advances on Sleep, so the delay steps are what spend the budget.
 	result, err := call.Run(`{"steps":[
 		{"delay":20000},
 		{"delay":20000},
@@ -695,10 +581,6 @@ func TestThePlanStopsWhenItsBudgetRunsOut(t *testing.T) {
 	}
 }
 
-// The connection going away mid-plan is NOT "a step failed": the session is
-// over, and it has to surface as an error so the dispatcher notices the loss and
-// records it. A result carrying outcome:"failed" would leave the server still
-// believing it had a reader.
 func TestALostConnectionSurfacesAsAnErrorRatherThanAFailedStep(t *testing.T) {
 	call, built := sequenceCall(t, entities.CapabilityGestures)
 	built.Gestures.FailWith(ports.ErrConnectionLost)
@@ -709,8 +591,6 @@ func TestALostConnectionSurfacesAsAnErrorRatherThanAFailedStep(t *testing.T) {
 	}
 }
 
-// With no session at all the answer is the plain "connect first", before any
-// talk of steps and capabilities.
 func TestWithNoReaderConnectedItSaysConnectFirst(t *testing.T) {
 	call := testsupport.NewToolCall(&tools.RunSequence{})
 
