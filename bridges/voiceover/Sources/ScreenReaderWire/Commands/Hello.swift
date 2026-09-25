@@ -1,28 +1,12 @@
-// ROLE: entity -- `hello`'s params and result, and the three shapes only the
-// result carries.
-//
-// Pure. Built by the Hello handler (entry 13.4), which is the one place that
-// knows what this build implements: it composes the capability set, the reader
-// identity and the silence cap, and it is the command after which the adapter
-// set exists at all.
-//
-// `protocolVersion` IS THE ONLY VERSION COMPARED. `bridgeVersion` is this
-// bridge's own and travels for the human reading a transcript; the server never
-// gates on it (spec 0012).
-//
-// `synth` NAMES THE VOICE THE SESSION IS HEARING OR SILENCING. On NVDA it is the
-// synthesizer driver; on macOS it is the capture voice, and it is a string
-// rather than an enum because it is a reader's vocabulary passing through as
-// opaque data -- exactly what spec 0005 says the chassis must not interpret.
+// ROLE: entity, `hello`'s params and result, and the three shapes only the result carries.
+// Only `protocolVersion` is compared; `bridgeVersion` is informational.
 
 public struct HelloParams: Codable, Equatable, Sendable {
 	public var mode: CaptureMode
 	public var protocolVersion: Int
-	/// Unset leaves the reader's own log verbosity alone; capture happens either
-	/// way. This bridge has no reader log to raise (see LogLevel.swift).
+	/// nil leaves the reader's own log verbosity alone.
 	public var logLevel: LogLevel?
-	/// Unset means the MODE's default, which differs by mode -- the only honest
-	/// default, per protocol.md §2.
+	/// nil means the mode's default, which differs by mode.
 	public var normalize: Bool?
 	public var persona: String = ""
 
@@ -60,8 +44,7 @@ public struct HelloResult: Codable, Equatable, Sendable {
 	public var bridgeVersion: String = "unknown"
 	public var guidance: GetGuidanceResult?
 	public var silenceCap: SilenceCapInfo?
-	/// Whether a human is at the machine. A bridge MUST default to attended
-	/// (protocol.md §6); nil here means the peer did not say.
+	/// A bridge must default to attended; nil means the peer did not say.
 	public var attended: Bool?
 	public var normalized: [NormalizedSetting] = []
 
@@ -107,8 +90,6 @@ public struct HelloResult: Codable, Equatable, Sendable {
 	}
 }
 
-/// Which screen reader answered, and which version of it. The chassis surfaces
-/// this and never branches on it (spec 0005).
 public struct ReaderInfo: Codable, Equatable, Sendable {
 	public var name: String
 	public var version: String
@@ -119,9 +100,7 @@ public struct ReaderInfo: Codable, Equatable, Sendable {
 	}
 }
 
-/// The lease on silence: how long a silent session may go before the bridge
-/// warns, and before it gives the machine's owner their voice back. Hard
-/// invariant 3 in the shape the wire can carry.
+/// How long a silent session may go before the bridge warns, and before it gives the user speech back.
 public struct SilenceCapInfo: Codable, Equatable, Sendable {
 	public var enabled: Bool
 	public var warnAfterSeconds: Double
@@ -134,9 +113,6 @@ public struct SilenceCapInfo: Codable, Equatable, Sendable {
 	}
 }
 
-/// One reader setting the bridge changed for the session, and why. `previous`
-/// and `current` are open values because a setting is whatever the reader says
-/// it is.
 public struct NormalizedSetting: Codable, Equatable, Sendable {
 	public var keyPath: [String]
 	public var previous: JSONValue

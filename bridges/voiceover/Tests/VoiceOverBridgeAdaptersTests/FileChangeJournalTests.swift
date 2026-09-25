@@ -1,14 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/FileChangeJournal.swift.
-//
-// THE FORMAT IS THE CONTRACT, because the reader is a program: this file's whole
-// audience is `scripts/voiceover_restore.py` and a human arriving after a crash,
-// and what they do is pair `changed` entries with `restored` ones. So the tests
-// assert the exact bytes -- one flat JSON object per line, the same six keys in
-// the same order -- rather than "something was written".
-//
-// The escaping tests are not pedantry. A voice identifier comes out of a
-// preference file this bridge did not write, and a repair tool that mis-parsed
-// one would write the wrong identifier back into somebody's speech settings.
 
 import Fakes
 import Testing
@@ -41,8 +31,6 @@ struct FileChangeJournalTests {
 
 	@Test("a restore is the SAME line with `restored` true, so the two can be paired")
 	func aRestoreIsPairable() {
-		// What a repair tool does is match them up. A restore that described the
-		// setting differently would leave an open change forever.
 		let (writer, journal) = journal()
 		journal.changed(voice)
 		journal.restored(voice)
@@ -56,9 +44,6 @@ struct FileChangeJournalTests {
 
 	@Test("`was` with nothing in it is null, never an empty string")
 	func nothingIsNullAndNotEmpty() {
-		// "There was no previous voice" and "the previous voice was the empty
-		// string" are different, and a repair tool acting on the second would write
-		// an empty identifier into somebody's speech preferences.
 		let (writer, journal) = journal()
 		journal.changed(ReaderChange(kind: .voice, store: "somewhere", was: nil, now: nil))
 		#expect(writer.lines[0].contains("\"was\":null"))
@@ -78,8 +63,6 @@ struct FileChangeJournalTests {
 
 	@Test("nothing is written, and the file is not even opened, until something changes")
 	func aQuietSessionLeavesNothing() {
-		// Most of the value of this file is that a line in it MEANS something
-		// happened, so a session that changed nothing must not touch it at all.
 		let (writer, _) = journal()
 		#expect(writer.lines.isEmpty)
 		#expect(writer.openCount == 0)
@@ -95,8 +78,6 @@ struct FileChangeJournalTests {
 
 	@Test("it lives beside the transcripts, under one fixed name")
 	func itLivesBesideTheTranscripts() {
-		// ONE FILE FOR THE WHOLE MACHINE: a repair needs every session's unfinished
-		// business, and a crashed session cannot be relied on to name its own file.
 		let path = FileChangeJournal.defaultPath(home: "/Users/someone")
 		#expect(path == "/Users/someone/Library/Logs/screen-readers-mcp/reader-changes.jsonl")
 		#expect(path.hasPrefix(FileTranscript.defaultLogDirectory(home: "/Users/someone")))
@@ -104,13 +85,6 @@ struct FileChangeJournalTests {
 
 	@Test("the kinds are exactly what this build can emit")
 	func theKindsAreWhatCanBeEmitted() {
-		// A kind nothing can emit would be a repair tool looking for something that
-		// never happens -- `Transcript`'s rule about its verbs, applied here. 13.26
-		// briefly carried three: it also journalled the VoiceOver modifier and the
-		// modifier the RUNNING reader was using, for a handshake that borrowed
-		// Control-Option on a Caps-Lock machine. A live run found that writing that
-		// preference under a running reader makes VoiceOver put a modal question on
-		// screen, the borrow came out, and the kinds went with it.
 		#expect(ReaderChange.Kind.allCases == [.voice])
 	}
 }

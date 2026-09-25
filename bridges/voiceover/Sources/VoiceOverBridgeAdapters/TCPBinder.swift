@@ -1,12 +1,6 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the LoopbackBinder seam with the real socket
-// calls, and decides nothing. Which HOST it may be asked to bind is the
-// listener's decision, one layer up.
-//
-// USED BY: TCPListener, through the seam, never directly. NO TEST FILE.
-//
-// SO_REUSEADDR IS SET because a bridge that has just been stopped leaves its
-// port in TIME_WAIT, and without it restarting the bridge fails for a minute
-// with a message about an address already in use that is not true any more.
+// ROLE: leaf adapter implementing the LoopbackBinder seam with the real socket calls.
+// USED BY: TCPListener, through the seam.
+// SO_REUSEADDR lets a just-stopped bridge rebind a port still in TIME_WAIT.
 
 import Darwin
 import Foundation
@@ -61,8 +55,7 @@ public final class TCPBinder: LoopbackBinder {
 		)
 		descriptor = socketDescriptor
 
-		// The port actually bound is only knowable now, when the caller asked for
-		// port 0 and let the kernel choose.
+		// The port actually bound is only knowable now, when the caller asked for port 0.
 		var actual = sockaddr_in()
 		var length = socklen_t(MemoryLayout<sockaddr_in>.size)
 		let named = withUnsafeMutablePointer(to: &actual) { pointer in

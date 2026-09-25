@@ -1,18 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/VoiceOverRestart.swift.
-//
-// THE SEQUENCE IS THE WHOLE CLASS, AND THE ORDER IS WHAT IS UNDER TEST. This
-// repository printed `killall VoiceOver && open -a VoiceOver` as advice for
-// weeks, and it is wrong in two independent ways -- `killall` alone does not
-// bring the reader back, and the `&&` races, because `killall` returns when the
-// SIGNAL IS SENT and `open` on an application the system still believes is
-// running does nothing at all. Both cost the maintainer real time, and the second
-// very probably cost the 2026-09-02 field report twenty minutes and an
-// interruption of the blind user at the machine.
-//
-// So the assertions are about a WAIT between two commands, and about which half
-// failed -- because "I could not stop VoiceOver" and "I stopped VoiceOver and it
-// did not come back" are opposite sentences to say to a person who may be sitting
-// in silence.
 
 import Fakes
 import Testing
@@ -22,8 +8,6 @@ import VoiceOverBridgeDomain
 
 @Suite("VoiceOverRestart")
 struct VoiceOverRestartTests {
-	/// A machine whose reader really does go away and come back when the tools are
-	/// run -- which is what makes the ORDER assertable rather than the call count.
 	private func machine(
 		quitWorks: Bool = true, startWorks: Bool = true
 	) -> (FakeProcessRunner, FakeRunningApplications, VoiceOverRestart) {
@@ -52,10 +36,6 @@ struct VoiceOverRestartTests {
 
 	@Test("it does NOT start until the process is actually gone")
 	func itWaitsForTheProcessToGo() throws {
-		// THE `&&` BUG, AS A TEST. `killall` returns on the SIGNAL, not on the exit,
-		// so a reader that takes a moment to die must not be `open`ed while the
-		// system still believes it is running -- which does nothing at all and
-		// leaves somebody with no screen reader. The fake dies on the third poll.
 		let tools = FakeProcessRunner()
 		let apps = FakeRunningApplications()
 		var dying = false
@@ -81,8 +61,6 @@ struct VoiceOverRestartTests {
 
 	@Test("a reader that will not quit leaves everything alone, and SAYS it is still running")
 	func aReaderThatWillNotQuit() {
-		// The safe failure: their screen reader still works, and nothing was
-		// started, so nothing is half done.
 		let (tools, _, restart) = machine(quitWorks: false)
 		do {
 			try restart.restart()
@@ -90,8 +68,6 @@ struct VoiceOverRestartTests {
 		} catch let failure as ReaderRestartError {
 			#expect(failure.readerStillRunning)
 			#expect(failure.description.contains("still running"))
-			// AND `open` WAS NEVER RUN. A restart that could not stop the reader must
-			// not go on to start a second one.
 			#expect(!tools.invocations.contains { $0.executable == VoiceOverRestart.openTool })
 		} catch {
 			Issue.record("expected a ReaderRestartError")
@@ -100,8 +76,6 @@ struct VoiceOverRestartTests {
 
 	@Test("a reader that does not COME BACK says so in the loudest terms available")
 	func aReaderThatDoesNotComeBack() {
-		// The dangerous failure, and the one this whole class exists to be honest
-		// about: there is a person with no screen reader, right now.
 		let (_, _, restart) = machine(startWorks: false)
 		do {
 			try restart.restart()
@@ -125,9 +99,6 @@ struct VoiceOverRestartTests {
 			}
 		}
 		try VoiceOverRestart(tools: tools, applications: apps, clock: FakeClock()).restart()
-		// NOTHING WAS KILLED. Sending a kill to a reader that is not there is
-		// harmless and pointless, and skipping it keeps the log honest about what
-		// this bridge did to somebody's machine.
 		#expect(tools.invocations.map(\.executable) == [VoiceOverRestart.openTool])
 	}
 

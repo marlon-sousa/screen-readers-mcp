@@ -1,28 +1,13 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the Defaults seam over `UserDefaults`. Real
-// persistence, no decisions.
-//
-// BUILT BY: Wiring. USED BY: UserDefaultsBridgeConfig, which holds every
-// decision about what is stored and what it means.
-//
-// NO TEST FILE (leaf): there is nothing here `UserDefaults` does not already
-// guarantee, and a test would be testing Apple's code with our machine's
-// preferences as the fixture.
-//
-// `object(forKey:)` RATHER THAN `bool(forKey:)`, and that is the one thing in
-// this file worth knowing: `UserDefaults.bool(forKey:)` answers `false` for a key
-// that was never set, which would make "the human turned the cues off" and "the
-// human has never opened this dialog" the same reading. The seam promises an
-// optional for exactly that reason, so the presence of the key has to be checked
-// here.
+// ROLE: leaf adapter implementing the Defaults seam over `UserDefaults`.
+// BUILT BY: Wiring.
+// USED BY: UserDefaultsBridgeConfig.
+// Reads use `object(forKey:)`, because `bool(forKey:)` answers false for a key never set and the seam must return nil for it.
 
 import Foundation
 
 public final class UserDefaultsStore: Defaults {
 	private let store: UserDefaults
 
-	/// The standard defaults for this application by default. Injectable so the
-	/// launcher and a diagnosis can point at a suite of their own without this
-	/// class knowing why.
 	public init(store: UserDefaults = .standard) {
 		self.store = store
 	}

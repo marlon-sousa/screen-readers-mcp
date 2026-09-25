@@ -1,42 +1,10 @@
-// ROLE: adapter -- IMPLEMENTS the SilenceControl domain port by writing the one
-// file the capture voice reads.
-//
-// BUILT BY: VoiceOverAdapterFactory, one per session. THE OTHER HALF IS
-// MarkerFileCaptureModeSource, inside the extension, and the two are separate
-// PROCESSES that meet only at this file -- so its shape is a wire contract in
-// miniature: `{"silent": <bool>, "voice": "<identifier>"}`, and a change here is
-// a change there.
-//
-// WHAT IT WRITES, AND WHY THE FILE EXISTS IN BOTH MODES. A live session keeps a
-// marker too, saying `silent: false`, because the second field has to reach the
-// extension either way: it names the voice the user chose for themselves, so
-// pass-through re-speaks in it and capture becomes acoustically invisible (spec
-// 0046, "Rule 0"). PRESENCE IS THEREFORE NOT SILENCE -- if it were, every live
-// session would mute the machine.
-//
-// SILENCE IS A LEASE. Every write stamps the file's modification time, and the
-// extension treats a marker older than its lease as pass-through. `renew()` is
-// what keeps a silence alive, and it is called from the session loop rather than
-// from a timer of this class's own -- deliberately, and it is the safer
-// coupling: silence then depends on the liveness of THE VERY LOOP THAT CAN LIFT
-// IT. A session thread that wedged inside a handler would go on renewing from
-// its own timer and leave a blind user mute with every watchdog still ticking;
-// with the loop as the pulse, that machine un-mutes itself in one lease.
-//
-// The cost of that choice, stated rather than hidden: a single command that
-// blocks LONGER than the lease -- a `waitForSpeech` with a timeout past 30 s --
-// lets the marker expire mid-command, and the human hears their machine again
-// before the agent expected. That is the safe direction, it is visible in
-// `ping`'s `suppressing`, and it is preferable to the alternative failure.
-//
-// AN ATOMIC REPLACE, NOT AN APPEND. `Data.write(to:)` replaces the file whole, so
-// the extension -- which reads it on the request thread, once per utterance --
-// can never observe half a line. That is also why this class does its own IO
-// rather than sitting on the FileWriter seam: that seam is an append-only,
-// long-lived-handle writer built for the transcript, and it can neither replace
-// nor delete. See the tests, which drive a real file for the same reason
-// FileLineTailer's do -- every decision here is about what a real filesystem
-// does with mtimes.
+// ROLE: adapter implementing the SilenceControl port by writing the one file the capture voice reads.
+// BUILT BY: VoiceOverAdapterFactory, one per session.
+// The file's shape, `{"silent": <bool>, "voice": "<identifier>"}`, is a contract with MarkerFileCaptureModeSource in the extension; change both together.
+// A live session writes the marker too, with `silent: false`, to pass on the user's voice, so presence is not silence.
+// Silence is a lease on the file's modification time, renewed only from the session loop: a timer of its own would keep a wedged session muting a blind user.
+// A command that blocks longer than the lease lets the marker expire mid-command, which is the safe direction.
+// Replaced atomically, so the extension, reading once per utterance, never sees half a file.
 
 import Foundation
 import VoiceOverBridgeDomain
@@ -53,15 +21,7 @@ public final class MarkerFileSilenceControl: SilenceControl {
 
 	public var isSuppressing: Bool { suppressing }
 
-	/// Where the marker lives for a given home directory.
-	///
-	/// DUPLICATED FROM THE EXTENSION ON PURPOSE, for the reason
-	/// `ContainerFileSpeechSource.containerFilePath` is and `LocalSocketPath`
-	/// mirrors the server's Go: two processes must compute one path from one rule
-	/// or they never meet. Inside the sandbox the extension's own
-	/// `NSHomeDirectory()` already IS its container, so it writes
-	/// `<home>/voiceover-capture-silent`; this side is not sandboxed and spells
-	/// the whole path out. `home` is passed in, so this stays a pure function.
+	/// Must compute the path the extension uses (`<home>/voiceover-capture-silent` in its sandbox container), or the two never meet.
 	public static func containerMarkerPath(home: String) -> String {
 		URL(fileURLWithPath: home)
 			.appendingPathComponent("Library/Containers")
@@ -91,9 +51,7 @@ public final class MarkerFileSilenceControl: SilenceControl {
 	}
 
 	public func renew() {
-		// A failed renewal is deliberately silent: it expires the lease, the
-		// machine speaks, and that is the direction every unanswerable question in
-		// this mechanism is answered in.
+		// A failed renewal is silent on purpose: the lease expires and the machine speaks.
 		guard open else { return }
 		try? write()
 	}
@@ -101,9 +59,7 @@ public final class MarkerFileSilenceControl: SilenceControl {
 	public func release() {
 		open = false
 		suppressing = false
-		// The ordinary case's immediate lift. NOTHING DEPENDS ON IT RUNNING -- the
-		// lease is the guarantee, because a SIGKILL, a panic and a power cut all
-		// skip this line and all leave the marker to expire on its own.
+		// The lease, not this removal, is the guarantee: a SIGKILL, a panic or a power cut skips this line.
 		try? FileManager.default.removeItem(atPath: path)
 	}
 
@@ -120,6 +76,5 @@ public final class MarkerFileSilenceControl: SilenceControl {
 	}
 }
 
-/// The marker's name inside the extension's container. Frozen with the bundle
-/// identity, for the reason `captureExtensionBundleID` is.
+/// Frozen with the bundle identity; see `captureExtensionBundleID`.
 public let markerFileName = "voiceover-capture-silent"

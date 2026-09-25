@@ -1,46 +1,13 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the Tones seam over AVFoundation. It makes
-// the sound and decides nothing about what it means.
-//
-// BUILT BY: Wiring, once per process. USED BY: AudibleSessionSignals, which owns
-// the vocabulary of cues and the preference that silences them.
-//
-// NO TEST FILE, AND HERE THAT IS A HARD RULE RATHER THAN THE USUAL LEAF
-// ARGUMENT: a test that built this would play sounds on the developer's machine,
-// which is the same class of mistake as speaking over them.
-//
-// ONE ENGINE, STARTED LAZILY AND KEPT. Starting an AVAudioEngine is the part
-// that can fail -- no output device, an audio server that has gone away -- so it
-// happens on the first cue and its failure is thrown to a caller who is already
-// prepared to survive one. Building the engine at construction would move that
-// failure to start-up, where the bridge has nobody to tell.
-//
-// THE TONES ARE SHAPED RATHER THAN SQUARE, and that is not decoration: a sine
-// that starts and stops at full amplitude clicks, and two clicks are what a cue
-// would be remembered as. The short fade at each end is arithmetic, not a
-// decision about what the cue means.
+// ROLE: leaf adapter implementing the Tones seam over AVFoundation; it makes the sound and decides nothing.
+// BUILT BY: Wiring, once per process.
+// USED BY: AudibleSessionSignals, which owns the cue vocabulary.
+// Do not unit-test this: building it plays sound on the developer's machine.
+// The engine starts on the first cue, not at construction, so a start failure reaches a caller prepared to survive it.
 
 import AVFoundation
 
 public final class CoreAudioTones: Tones {
-	/// How loud a cue is, as a fraction of full scale.
-	///
-	/// IT WAS 0.2 AND NOBODY HAD SAID WHY -- the one parameter in this file with
-	/// no argument behind it, while the fade, the duration and the pitches each
-	/// carried one. That gap was found the way such gaps should be: the
-	/// maintainer, who is blind and uses NVDA daily, heard the cue and said it was
-	/// "light" where NVDA's is "clear", then asked how it had been decided. The
-	/// honest answer was that the pattern had been designed and the loudness had
-	/// not.
-	///
-	/// WHAT IS BEING MATCHED IS THE NVDA BRIDGE'S CUE -- lane 1 of this repo, the
-	/// sound the maintainer actually hears when a session takes his reader -- and
-	/// not NVDA's beeps in general. `nvda_session_signals.py` calls
-	/// `tones.beep(hz, ms)` and takes NVDA's default volume, which its signature
-	/// puts at `left=50, right=50`: half scale. **Not verified against NVDA's
-	/// source here** -- `../nvda` is a stated prerequisite for reading real code
-	/// and this machine has no checkout -- so the number is the documented default
-	/// rather than a line somebody read. Lane 1's TIMING, which
-	/// `AudibleSessionSignals` now matches, is in this repository and was.
+	/// Half scale, matching NVDA's `tones.beep` default volume of 50 that the NVDA bridge's cues use; taken from its documented signature, not read in NVDA's source.
 	private static let amplitude: Float = 0.5
 
 	private let engine = AVAudioEngine()
@@ -56,11 +23,6 @@ public final class CoreAudioTones: Tones {
 		}
 		try startIfNeeded(format: format)
 		for (index, frequency) in frequencies.enumerated() {
-			// THE SILENCE GOES BEFORE EVERY TONE BUT THE FIRST, so a pair is heard
-			// as two beeps rather than as one sound that changes pitch. Scheduled as
-			// a buffer rather than timed with a delay: the player queue already
-			// guarantees order, and a `DispatchQueue.asyncAfter` would put the cue's
-            // rhythm at the mercy of whatever else the session thread is doing.
 			if index > 0, gapSeconds > 0 {
 				guard let silence = CoreAudioTones.tone(0, seconds: gapSeconds, format: format) else {
 					throw ToneError("the silence between two cue tones could not be rendered")
@@ -89,11 +51,7 @@ public final class CoreAudioTones: Tones {
 		}
 	}
 
-	/// One tone as samples: a sine, with a five-millisecond fade at each end.
-	///
-	/// A frequency of ZERO renders silence, which is how the gap between two tones
-	/// is scheduled -- `sin(0)` is 0 for every sample, so no special case is
-	/// needed and the silence carries the same envelope arithmetic as a tone.
+	/// A sine with a five-millisecond fade at each end, without which it clicks; frequency 0 renders the silence between tones.
 	private static func tone(_ frequency: Double, seconds: Double, format: AVAudioFormat)
 		-> AVAudioPCMBuffer?
 	{
@@ -115,8 +73,6 @@ public final class CoreAudioTones: Tones {
 	}
 }
 
-/// Why a cue could not be played. Its own type so the session's guard reports
-/// something a human can act on rather than a Core Audio status code.
 public struct ToneError: Error, Equatable, CustomStringConvertible {
 	public let description: String
 

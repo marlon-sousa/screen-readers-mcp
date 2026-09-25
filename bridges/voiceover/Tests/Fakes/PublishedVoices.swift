@@ -1,10 +1,4 @@
-// A hand-written stateful fake for the PublishedVoices adapter seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/PublishedVoices.swift.
-//
-// A list, and nothing else. What matters in the tests above it is that the
-// published identifier is NOT the one the audio unit declared -- the system
-// prefixes it -- so the default here carries that prefix, and a suffix match is
-// the only thing that finds it.
+// Hand-written stateful fake for the PublishedVoices adapter seam.
 
 @testable import VoiceOverBridgeAdapters
 
@@ -15,10 +9,6 @@ public final class FakePublishedVoices: PublishedVoices {
 		self.voices = voices
 	}
 
-	/// How many times the machine's list was actually asked for. It matters to one
-	/// caller: `SynthesizerAnnouncer` resolves its voice ONCE and keeps it, because
-	/// the list is a property of the machine and an announcement in a different
-	/// voice each time is worse to listen to than one in the wrong voice.
 	public private(set) var enumerations = 0
 
 	public func identifiers() -> [String] {
@@ -26,15 +16,8 @@ public final class FakePublishedVoices: PublishedVoices {
 		return voices
 	}
 
-	/// COUNTED, and it is the point: the lifecycle must ask the system to re-read
-	/// on EVERY poll rather than once before the loop, because the call is a
-	/// request served on the system's own schedule and one that lands mid-read
-	/// changed nothing. A fake that only answered could not tell a wait that
-	/// converges from one that merely elapses. 13.26.
 	public private(set) var refreshes = 0
 
-	/// What the system finds when it re-reads. Set it to model a machine where the
-	/// voice appears a few polls later -- which is what a real one does.
 	public var onRefresh: (() -> Void)?
 
 	public func refresh() {

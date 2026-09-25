@@ -1,21 +1,5 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the ProcessRunner seam by actually launching
-// the tool.
-//
-// USED BY: PluginKitProviderLifecycle and SpeakSelectionVoiceStore, through the
-// seam, never directly.
-//
-// DELIBERATELY DECIDES NOTHING. It does not know what pluginkit's output means,
-// what a non-zero status implies, or which tools may be run; it launches, feeds
-// standard input, waits, and hands back three values. That is why it has no test
-// file, per the repo's rule about leaves -- there is nothing here `Process` does
-// not already guarantee. A decision that turns up in this file belongs one layer
-// up.
-//
-// THE PIPES ARE DRAINED BEFORE THE WAIT, and that is the one thing that would be
-// a bug rather than a preference: `waitUntilExit()` before reading a pipe
-// deadlocks as soon as a tool writes more than the pipe buffer holds, and
-// `defaults export` of a real preference domain writes far more than that -- the
-// speech domain on the maintainer's machine is tens of kilobytes of base64.
+// ROLE: leaf adapter implementing the ProcessRunner seam by launching the tool.
+// USED BY: PluginKitProviderLifecycle and SpeakSelectionVoiceStore, through the seam.
 
 import Foundation
 
@@ -45,8 +29,7 @@ public final class SubprocessRunner: ProcessRunner {
 		}
 		try? input.fileHandleForWriting.close()
 
-		// Read both pipes to EOF FIRST. See the header: waiting first deadlocks on
-		// any tool whose output outgrows the pipe buffer.
+		// Drain both pipes before waiting: waiting first deadlocks once a tool's output outgrows the pipe buffer, which `defaults export` does.
 		let stdout = out.fileHandleForReading.readDataToEndOfFile()
 		let stderr = err.fileHandleForReading.readDataToEndOfFile()
 		process.waitUntilExit()

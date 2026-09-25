@@ -1,74 +1,26 @@
-// ROLE: entity -- the indexed capture of what the reader said, and this bridge's
-// central subject matter.
-//
-// FED BY: the SpeechSource port's implementation, on the source's own thread.
+// ROLE: entity -- the indexed capture of what the reader said.
+// FED BY: the SpeechSource implementation, on the source's own thread.
 // READ BY: the five speech handlers, on the session thread.
-// DEPENDS ON: the Clock port (injected), and nothing else. Pure in the sense
-// that matters -- it does no IO -- while owning the one lock in this domain,
-// because it is the one place two threads meet.
-//
-// THE BRIDGE NUMBERS UTTERANCES ITSELF, AND THAT IS THE WHOLE REASON THIS CLASS
-// ASSIGNS INDICES. The capture extension stamps every line with a sequence
-// number of its own, and it looks exactly as trustworthy as this one -- but the
-// system relaunches that extension freely and the counter restarts when it does
-// (measured, spec 0041 A4). A bridge that trusted those numbers would have its
-// ordering reset mid-session with no signal at all: two utterances would share
-// an index, a bookmark taken before an action would point after it, and
-// `getSpeech { sinceIndex: n }` would answer with speech from before the mark.
-// So the extension's counter is DISCARDED at the adapter and the position in
-// this array is the index the agent sees.
-//
-// THE INDEX CONVENTION IS LANE 1'S, deliberately: one empty sentinel entry at
-// index 0, so the first real capture lands at 1 and `getLastSpeech` on an
-// untouched session answers with an empty string rather than an error.
-// `nextIndex` is the index the next capture will occupy -- the bookmark an agent
-// takes BEFORE acting, which is what makes an assertion race-free against
-// speech that was already in flight.
-//
-// EVERY READ CLAMPS. A stale bookmark -- an index from before a reconnect, or
-// one an agent invented -- answers with the sentinel or an empty range and never
-// raises: the agent asked a legitimate question about a place that does not
-// exist, and an error frame would tell it less than an empty answer does.
+// The index is this array's position, never the extension's own sequence number, which restarts when the system relaunches the extension.
+// Index 0 is an empty sentinel, so the first capture lands at 1 and `getLastSpeech` on an untouched session answers with an empty string.
+// Every read clamps: a stale bookmark answers with the sentinel or an empty range, never an error.
 
 import Foundation
 
-/// Poll cadence for the wait loops. Small enough to feel instant, large enough
-/// not to spin. A FakeClock makes `sleep` an instant advance, so a test that
-/// exercises these loops never actually pauses.
 public let speechPollInterval: Double = 0.03
 
-/// How long the buffer must stay quiet before speech counts as finished.
-///
-/// THERE IS NO EXACT "FINISHED" SIGNAL ON THIS ROUTE, and there cannot be: the
-/// capture voice is handed an utterance BEFORE any audio exists, and in silent
-/// mode no audio is ever produced, so the only observable is that nothing new
-/// has arrived for a while. The wire type's own header says the same: this waits
-/// for the buffer to stop growing, not for the machine to fall silent.
-///
-/// One second, which is lane 1's number for the same heuristic. Lane 1 measured
-/// that the constant is rarely paid at all -- a reader finishes producing a
-/// keystroke's speech far faster than an agent's round trip arrives -- and there
-/// is no reason to expect a different answer here. What has NOT been measured on
-/// this route is the feed's own tail latency (spec 0046, open question 3), which
-/// is the one thing that could make a shorter window wrong.
+/// There is no exact finished signal (silent mode produces no audio), so this waits for the buffer to stop growing.
 public let speechFinishedSeconds: Double = 1.0
 
 public final class SpeechBuffer {
 	private let clock: any Clock
-	/// Recursive because a public method that already holds the lock calls
-	/// another one that takes it -- `waitFor` reads through `indexOf` -- and two
-	/// lock types for one invariant is how a deadlock gets introduced later.
+	/// Recursive because `waitFor` reads through `indexOf` while holding the lock.
 	private let lock = NSRecursiveLock()
 
-	/// Append-only and unbounded within a session (protocol.md §7): nothing ages
-	/// out while the session lives, so `getSpeech { sinceIndex: 0 }` still
-	/// answers with everything at the end of a long run.
+	/// Append-only and unbounded within a session.
 	private var entries: [CapturedUtterance]
 
-	/// MONOTONIC, and it must stay that way: this drives the elapsed-time
-	/// heuristic, which has to survive a clock correction. The wall-clock stamp
-	/// an agent reads back is a different number for a different job, and it
-	/// rides on the entry itself (spec 0028).
+	/// Monotonic, so the elapsed-time heuristic survives a clock correction.
 	private var lastAppendedAt: Double
 
 	private var observer: ((String) -> Void)?
@@ -79,22 +31,14 @@ public final class SpeechBuffer {
 		self.lastAppendedAt = clock.monotonic()
 	}
 
-	// -- writing -------------------------------------------------------------
-
-	/// Register a callback fired for each appended utterance that has words.
-	///
-	/// The Session's handshake wires this to the Transcript port, so captured
-	/// speech is recorded bridge-side even when the agent never fetches it --
-	/// which is the only record a run leaves if it crashed before reading.
-	/// Fired OUTSIDE the lock: the transcript writes to a file, and holding a
-	/// mutex across an IO call would stall the reader's own capture thread.
+	/// Fired outside the lock: the transcript writes to a file, and IO under the mutex would stall the capture thread.
 	public func setObserver(_ observer: ((String) -> Void)?) {
 		lock.lock()
 		defer { lock.unlock() }
 		self.observer = observer
 	}
 
-	/// Record one captured utterance. Called from the speech source's thread.
+	/// Called from the speech source's thread.
 	public func append(_ utterance: CapturedUtterance) {
 		let notify: ((String) -> Void)?
 		lock.lock()
@@ -107,42 +51,30 @@ public final class SpeechBuffer {
 		}
 	}
 
-	// -- reading -------------------------------------------------------------
-
-	/// Index of the most recent entry; 0 when only the sentinel is present.
 	public func lastIndex() -> Int {
 		lock.lock()
 		defer { lock.unlock() }
 		return entries.count - 1
 	}
 
-	/// Whether nothing has been captured in this session yet -- only the sentinel.
-	///
-	/// Its one caller asks a question that costs a subprocess (see UnheardSpeech),
-	/// so it is here rather than as `lastIndex() == 0` at the call site: what
-	/// "empty" means is the buffer's own business, and the sentinel is exactly the
-	/// convention that makes the naive spelling of it wrong.
 	public var isEmpty: Bool {
 		lock.lock()
 		defer { lock.unlock() }
 		return entries.count <= 1
 	}
 
-	/// The index the next capture will occupy: the agent's bookmark.
 	public func nextIndex() -> Int {
 		lock.lock()
 		defer { lock.unlock() }
 		return entries.count
 	}
 
-	/// The most recent entry and the index it sits at.
 	public func last() -> (utterance: CapturedUtterance, index: Int) {
 		lock.lock()
 		defer { lock.unlock() }
 		return (entries[entries.count - 1], entries.count - 1)
 	}
 
-	/// The entry at `index`, or the sentinel when the index is out of range.
 	public func entry(at index: Int) -> CapturedUtterance {
 		lock.lock()
 		defer { lock.unlock() }
@@ -150,13 +82,7 @@ public final class SpeechBuffer {
 		return entries[index]
 	}
 
-	/// Everything with words from `index` to now, each carrying its own index.
-	///
-	/// Returns the half-open range `[fromIndex, toIndex)` that was READ, not the
-	/// span of what came back: an entry that renders empty is skipped, so the
-	/// caller cannot recover an entry's index by counting from `fromIndex`, which
-	/// is exactly why each entry carries its own. The next call passes `toIndex`
-	/// as its `sinceIndex` and nothing is read twice or skipped.
+	/// Returns the half-open range read, not the span returned: empty entries are skipped, so each carries its own index.
 	public func entriesSince(_ index: Int) -> (
 		entries: [(utterance: CapturedUtterance, index: Int)], fromIndex: Int, toIndex: Int
 	) {
@@ -171,30 +97,7 @@ public final class SpeechBuffer {
 		return (found, from, to)
 	}
 
-	/// Everything from `index` that arrives within `grace` seconds; then stop.
-	///
-	/// THE GRACE WINDOW OF protocol.md §7.3, and a different primitive from
-	/// `waitToFinish` rather than a shorter one. That asks "has speech STOPPED?",
-	/// which cannot be answered at the moment it is asked -- silence before speech
-	/// starts and silence after it ends are the same observable, so no constant
-	/// makes the answer true. This asks "has speech STARTED?", and reports what
-	/// had arrived by an instant the caller chose. An empty result is therefore a
-	/// FACT ("nothing by then") and never a CLAIM ("nothing"), which is the one
-	/// sentence §7.3 is built on and the reason no result on this route carries a
-	/// `complete` flag.
-	///
-	/// Returns exactly `entriesSince`'s triple, so a caller reports the half-open
-	/// range the way it always did and resumes from `toIndex`.
-	///
-	/// IT RETURNS EARLY as soon as anything with words has arrived: the common
-	/// case is one announcement shortly after a command, and waiting out the rest
-	/// of the window buys nothing. The cost of that is stated rather than hidden
-	/// -- an utterance still in flight when the first one lands is left for the
-	/// next read, which the caller can always take, because the range it was
-	/// handed says exactly where to resume.
-	///
-	/// `grace <= 0` is a legitimate opt-out: it reads the buffer as it stands and
-	/// never sleeps.
+	/// An empty result means nothing had arrived by the deadline, not that nothing will; returns as soon as anything with words arrives.
 	public func collectSince(_ index: Int, grace: Double) -> (
 		entries: [(utterance: CapturedUtterance, index: Int)], fromIndex: Int, toIndex: Int
 	) {
@@ -202,18 +105,7 @@ public final class SpeechBuffer {
 		return entriesSince(index)
 	}
 
-	/// The first index at or after `afterIndex` whose text contains `text`.
-	///
-	/// `afterIndex` IS AN INCLUSIVE LEFT EDGE, matching every other range in this
-	/// protocol and what `waitForSpeech` promises ("at or after this index").
-	/// Lane 1 shipped the exclusive reading, borrowed from a library whose
-	/// conventions are not ours, and it silently discarded the FIRST utterance an
-	/// action caused -- the one the bookmark-act-wait pattern is always waiting
-	/// for -- failing as a timeout that read like "the reader never said it"
-	/// (spec 0037). Written this way here rather than re-learned.
-	///
-	/// `nil` means no constraint. A negative index is clamped, so a stale
-	/// bookmark never slices from the end of the array.
+	/// `afterIndex` is inclusive: an exclusive reading drops the first utterance an action caused.
 	public func indexOf(_ text: String, afterIndex: Int? = nil) -> Int? {
 		lock.lock()
 		defer { lock.unlock() }
@@ -225,14 +117,7 @@ public final class SpeechBuffer {
 		return nil
 	}
 
-	// -- waiting -------------------------------------------------------------
-
-	/// Block until `text` is captured at or after `afterIndex`, or `timeout`.
-	///
-	/// On a miss the index is a FRESH BOOKMARK -- what `nextIndex` says now --
-	/// so a caller that timed out can still resume from a usable mark, and the
-	/// utterance is empty because nothing matched. `found == false` is a normal
-	/// answer: "the reader did not say it" is frequently what a test asserts.
+	/// On a miss the index is a fresh bookmark and the utterance is empty.
 	public func waitFor(_ text: String, afterIndex: Int?, timeout: Double) -> (
 		found: Bool, index: Int, utterance: CapturedUtterance
 	) {
@@ -247,8 +132,6 @@ public final class SpeechBuffer {
 		return (false, nextIndex(), CapturedUtterance(text: ""))
 	}
 
-	/// Block until nothing has been captured for `speechFinishedSeconds`, or
-	/// until `timeout` elapses. Returns whether it settled.
 	public func waitToFinish(timeout: Double) -> Bool {
 		wait(timeout: timeout) { self.hasFinished() }
 	}
@@ -259,11 +142,6 @@ public final class SpeechBuffer {
 		return (clock.monotonic() - lastAppendedAt) > speechFinishedSeconds
 	}
 
-	/// Poll `predicate` until it holds or `timeout` seconds elapse.
-	///
-	/// Checked once IMMEDIATELY, so a zero timeout still evaluates the current
-	/// state, then the clock is slept between polls -- injected, so a five-second
-	/// wait costs microseconds in a test.
 	private func wait(timeout: Double, _ predicate: () -> Bool) -> Bool {
 		let deadline = clock.monotonic() + max(0, timeout)
 		while true {

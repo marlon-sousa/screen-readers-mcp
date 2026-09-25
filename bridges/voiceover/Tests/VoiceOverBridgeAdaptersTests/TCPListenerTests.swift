@@ -17,9 +17,6 @@ struct TCPListenerTests {
 
 	@Test("the endpoint reports the port BOUND, not the port asked for")
 	func theEndpointIsWhatWasBound() throws {
-		// The case that makes this worth testing: a caller asks for 0 and the
-		// kernel chooses. A status display showing "127.0.0.1:0" would be telling
-		// a human to connect somewhere nothing is listening.
 		let binder = FakeLoopbackBinder(answersWithPort: 51234)
 		let listener = TCPListener(port: 0, binder: binder)
 		try listener.open()

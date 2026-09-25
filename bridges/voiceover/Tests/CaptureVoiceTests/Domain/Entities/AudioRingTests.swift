@@ -1,10 +1,3 @@
-// Mirrors Sources/CaptureVoice/Domain/Entities/AudioRing.swift.
-//
-// The ring is the one place in this module where a mistake is HEARD rather than
-// reported, so every rule its header states is asserted here: wrap-around,
-// overflow accounting, the two fades, the done semantics the render block relies
-// on, and that the consumer never waits for the producer.
-
 import Foundation
 import Testing
 
@@ -12,8 +5,6 @@ import Testing
 
 @Suite("AudioRing")
 struct AudioRingTests {
-	/// Drains `count` samples and hands back what arrived. Every test reads the
-	/// ring through this, so no test writes pointer arithmetic of its own.
 	func drain(_ ring: AudioRing, _ count: Int) -> (samples: [Float], done: Bool) {
 		var buffer = [Float](repeating: .nan, count: count)
 		let result = buffer.withUnsafeMutableBufferPointer { pointer in
@@ -52,8 +43,7 @@ struct AudioRingTests {
 
 	@Test("samples that do not fit are DROPPED and counted, not silently lost")
 	func overflowIsAccounted() {
-		// One slot is always kept free to tell full from empty, so eight capacity
-		// holds seven samples.
+		// One slot is always kept free to tell full from empty, so capacity 8 holds seven samples.
 		let ring = AudioRing(capacity: 8)
 		append(ring, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 		#expect(ring.overflowDrops == 3)
@@ -91,8 +81,7 @@ struct AudioRingTests {
 
 	@Test("fadeOutTail ramps the newest samples to zero, and leaves the rest alone")
 	func fadeOutTailRamps() {
-		// Speech does not end at a zero crossing; an utterance that simply stops
-		// clicks, and here every utterance ends in a cancel.
+		// Speech does not end at a zero crossing, so an utterance that simply stops clicks.
 		let ring = AudioRing(capacity: 32)
 		append(ring, Array(repeating: 1, count: 8))
 		ring.fadeOutTail(4)
@@ -150,11 +139,7 @@ struct AudioRingTests {
 
 	@Test("the consumer never waits for the producer", .timeLimit(.minutes(1)))
 	func consumerNeverBlocks() {
-		// The rule this asserts is a SAFETY one: the render block runs on the audio
-		// thread, so it uses trylock and takes a dropout rather than a stall. What
-		// is checked is that a consumer racing a busy producer still terminates
-		// promptly AND that nothing arrives out of order or twice -- a dropped
-		// block must cost silence, never corruption.
+		// The render block runs on the audio thread and takes a dropout rather than a stall: a dropped block must cost silence, never corruption.
 		let total = 20_000
 		let ring = AudioRing(capacity: 4096)
 		let producer = Thread {
@@ -184,8 +169,7 @@ struct AudioRingTests {
 			done = drained.done
 		}
 		#expect(done, "the consumer did not reach the end of the utterance in time")
-		// Whatever survived must be a strictly increasing run: the ring may DROP on
-		// overflow, but it must never reorder or duplicate.
+		// The ring may drop on overflow, but must never reorder or duplicate.
 		#expect(received == received.sorted())
 		#expect(Set(received).count == received.count)
 		#expect(received.count + ring.overflowDrops == total)

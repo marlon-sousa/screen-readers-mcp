@@ -1,56 +1,23 @@
-// ROLE: composition root -- the answer to "who connects what". It picks the
-// adapters, stacks them, and hands the controllers their ports.
-//
-// AN AMENDMENT TO SPEC 0046's 13.4 LAYOUT, with its why: the layout names
-// `Wiring` as the AdapterFactory's builder without giving it a file, and lane 1
-// puts `wiring.py` beside the package rather than inside `adapters/`. It lands
-// in the adapters module here for a reason that is Swift's and not a preference:
-// SwiftPM cannot import an executable target into a test target, so a Wiring in
-// `VoiceOverBridgeApp` would be unreachable from the integration scenarios --
-// and a composition root nothing can exercise is the one file where a wiring
-// mistake would survive every test. It imports the domain and the adapters,
-// which is exactly what a composition root is allowed to do and nothing else is.
-//
-// USED BY: the integration scenarios and the headless launcher, which is what
-// starts a bridge today. THE CONTROL DIALOG IS A LATER ENTRY, and when it lands
-// it is a client of this file like the launcher is: a view consumes ports and
-// builds nothing, so the one place that knows which concrete classes a dialog
-// runs on will be here, in the module a test can import, rather than in the
-// executable target no test can.
-//
-// IT MAKES NO DECISIONS OF ITS OWN. Every choice here is read from BridgeConfig
-// or passed in; that is what keeps "which transport" a setting rather than
-// something compiled in.
+// ROLE: composition root: picks the adapters, stacks them, and hands the controllers their ports.
+// It lives in the adapters module because SwiftPM cannot import an executable target into a test
+// target.
+// USED BY: the integration scenarios and the headless launcher.
 
 import Foundation
 import ScreenReaderWire
 import VoiceOverBridgeDomain
 
 public enum Wiring {
-	/// This bridge's own version. It travels in `hello` for the human reading a
-	/// transcript and is NEVER compared with anything: what must match between
-	/// two halves is the protocol version (spec 0012).
-	///
-	/// DECLARED IN `BridgeVersion.swift` SINCE 13.11, which is the entry that owns
-	/// packaging. It was a literal here reading `0.1.0-dev` while every Info.plist
-	/// build.sh wrote said `1.0`; now one file declares it and both the handshake
-	/// and the bundle take it from there.
+	/// This bridge's own version, reported in `hello` and never compared with anything.
 	public static let bridgeVersion = voiceOverBridgeVersion
 
-	/// The screen reader's version, which on macOS is the SYSTEM's.
-	///
-	/// VoiceOver has no version of its own to report: it ships with macOS and is
-	/// updated with it, so the honest answer to "which VoiceOver?" is which macOS.
-	/// Reported that way rather than as "unknown", because an agent comparing
-	/// behaviour across machines needs the number that actually varies.
+	/// The reader's version, which on macOS is the system's: VoiceOver ships and updates with macOS.
 	public static func readerVersion() -> String {
 		let version = ProcessInfo.processInfo.operatingSystemVersion
 		return "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
 	}
 
-	/// The directories the local endpoint's derivation needs, read from THIS
-	/// process's environment. The one place in the bridge that reads them, so
-	/// everything below is a pure function of values.
+	/// The one place the bridge reads these directories from the environment.
 	public static func localSocketDirs() -> LocalSocketDirs {
 		LocalSocketDirs(
 			runtimeDir: ProcessInfo.processInfo.environment["XDG_RUNTIME_DIR"] ?? "",
@@ -58,31 +25,16 @@ public enum Wiring {
 		)
 	}
 
-	/// Where the capture voice's feed is read from, for THIS process.
-	///
-	/// The default is the extension's own container, derived by the same rule the
-	/// extension derives it from -- see `ContainerFileSpeechSource`. The override
-	/// is the same environment variable the extension reads (`VOCAPTURE_LOG`), so
-	/// a developer can point both halves at one file in a temporary directory and
-	/// exercise the feed with no reader at all: append a `synthesize` line and it
-	/// arrives in the session's buffer.
-	///
-	/// The environment is read HERE and nowhere below, which is the same rule the
-	/// endpoint's derivation follows: everything under this line is a pure
-	/// function of values.
+	/// Where the capture feed is read from; `VOCAPTURE_LOG` overrides it, as it does for the extension,
+	/// so both halves can share one file with no reader at all.
 	public static func capturePath() -> String {
 		let override = ProcessInfo.processInfo.environment["VOCAPTURE_LOG"] ?? ""
 		guard override.isEmpty else { return override }
 		return ContainerFileSpeechSource.containerFilePath(home: NSHomeDirectory())
 	}
 
-	/// Where the bridge tells the capture voice what it is asking of it.
-	///
-	/// The default is the same file the extension reads, derived by the same rule
-	/// -- see `MarkerFileSilenceControl.containerMarkerPath`. The override is the
-	/// same variable the extension reads (`VOCAPTURE_MARKER`), for the reason
-	/// `VOCAPTURE_LOG`'s exists: both halves can be pointed at one temporary
-	/// directory and capture mode exercised with no reader at all.
+	/// Where the bridge tells the capture voice what it asks of it; `VOCAPTURE_MARKER` overrides it, as
+	/// it does for the extension.
 	public static func markerPath() -> String {
 		let override = ProcessInfo.processInfo.environment["VOCAPTURE_MARKER"] ?? ""
 		guard override.isEmpty else { return override }
@@ -90,21 +42,8 @@ public enum Wiring {
 	}
 
 	/// Where this process's own `.app` bundle is, if it can be found at all.
-	///
-	/// THE ONE PLACE IN THIS BRIDGE THAT KNOWS WHERE A BUNDLE LIVES, which is why
-	/// it is here and not in `PluginKitProviderLifecycle`: that class's header
-	/// says it is "the place that knows what an answer means and not the place
-	/// that knows what we are called", and 13.20's `register()` would have made it
-	/// both. Two candidates, in order:
-	///
-	///  1. `Bundle.main`, when this code IS the assembled app.
-	///  2. The conventional `build/` directory beside the package, which is where
-	///     `build.sh` puts it and what the dev `BridgeListener` runs against.
-	///
-	/// NIL IS A LEGITIMATE ANSWER and not a fallback to a guess: with no bundle,
-	/// `register()` fails by NAME carrying both commands, which a human can run.
-	/// A guessed path would let `lsregister -f` register nothing and report
-	/// success.
+	/// Tries `Bundle.main`, then `build/` beside the package. Nil makes `register()` fail by name, where
+	/// a guessed path would let `lsregister -f` register nothing and report success.
 	public static func captureBundlePaths(
 		main: Bundle = .main,
 		fileManager: FileManager = .default,
@@ -122,14 +61,7 @@ public enum Wiring {
 	}
 
 	/// The capture voice's lifecycle, over the three signals that answer for it.
-	///
-	/// ONE PER PROCESS, not one per session: it describes the MACHINE, so a
-	/// session-scoped one would run `pluginkit` again for an answer that cannot
-	/// have changed because a socket was accepted.
-	///
-	/// IT IS HANDED THE BUNDLE PATHS AND A CLOCK SINCE 13.20, because `register()`
-	/// runs two tools against this bridge's own bundle and then POLLS for the
-	/// result -- pluginkit hands its work to pkd and returns.
+	/// One per process: it describes the machine, which a new session cannot change.
 	public static func providerLifecycle(
 		runner: (any ProcessRunner)? = nil,
 		paths: CaptureBundlePaths? = nil,
@@ -149,101 +81,44 @@ public enum Wiring {
 
 	/// What this process is allowed to do to the machine, and the one object that
 	/// can ask for more.
-	///
-	/// ONE PER PROCESS, like the lifecycle: it describes this process's standing
-	/// with the system, which cannot change because a socket was accepted.
-	///
-	/// CONSTRUCTING IT ASKS FOR NOTHING, and that distinction is the lane's whole
-	/// design. Wiring builds the broker at startup and never calls `request`; the
-	/// only calls to it in this repository are in TWO COMMAND HANDLERS -- the first
-	/// `typeText` of a session (13.8) and the first `pressGesture` of one -- both
-	/// through `AccessibilityGrant`. That is what makes "connecting to this reader
-	/// never raises a consent dialog" a checkable statement rather than an
-	/// intention: nothing here, in the factory, in the HANDSHAKE, in the doctor or
-	/// in a probe may ask it anything. Reading `status` is a different question,
-	/// and rung 1 and the launcher both do it, because reading shows no dialog.
-	///
-	/// IT HELD THE APPLESCRIPT RUNNER FROM 13.11 TO 13.31, because one of the two
-	/// permissions was a fact about the CHANNEL rather than about this process and
-	/// could only be read by using it. There is one permission now and it is
-	/// answered by `AXIsProcessTrusted`, so the broker takes nothing at all.
+	/// Constructing it asks for nothing; only the two command handlers, through `AccessibilityGrant`,
+	/// may call `request`.
 	public static func permissionBroker() -> any PermissionBroker {
 		TCCPermissionBroker()
 	}
 
 	/// How a synthesized keystroke leaves this process: one Core Graphics event
 	/// per chunk of text, or per key of a chord.
-	///
-	/// ONE PER PROCESS, and stateless like the script runner. THE ONLY PLACE THE
-	/// REAL ONE IS BUILT -- a test that built it would type into whatever window
-	/// the developer had in front of them.
+	/// Built only here: a test that built it would type into whatever window the developer has open.
 	public static func eventPoster() -> any EventPoster {
 		CGEventPoster()
 	}
 
 	/// Which physical key produces a character on the layout that is active now.
-	///
-	/// ONE PER PROCESS, and unlike the poster it holds STATE worth sharing: the
-	/// reverse map costs 256 UCKeyTranslate calls to build, and one instance per
-	/// session would rebuild it per handshake for an answer that is a property of
-	/// the machine. It re-reads the input source's id on every lookup, so a shared
-	/// one still follows a person who switches layouts mid-session.
-	///
-	/// IT ASKS FOR NO PERMISSION AND POSTS NOTHING -- reading the keyboard layout
-	/// is free, which is why it is built here rather than being another thing
-	/// `ReaderEdge.swift` has to keep out of tests. What a test must not build is
-	/// the POSTER beneath it.
+	/// One per process: the reverse map costs 256 UCKeyTranslate calls to build, and it re-reads the
+	/// input source on every lookup, so a layout switch mid-session is still followed.
 	public static func keyboardLayout() -> any KeyboardLayout {
 		CurrentKeyboardLayout()
 	}
 
 	/// How this bridge reads another application's accessibility tree.
-	///
-	/// ONE PER PROCESS, and stateless like the script runner. It reads and never
-	/// writes, so unlike the poster and the broker nothing stops a test building
-	/// it -- what stops a test USING it is that its answer is whatever window the
-	/// developer has in front of them.
 	public static func accessibilityTree() -> any AccessibilityTree {
 		AXAccessibilityTree()
 	}
 
-	/// Who is in front, over NSWorkspace. ONE PER PROCESS, stateless, and free:
-	/// it costs no permission at all.
+	/// Who is in front, over NSWorkspace; it costs no permission.
 	public static func frontmostApplication() -> any FrontmostApplication {
 		WorkspaceFrontmostApplication()
 	}
 
-	/// Whether this process may read an accessibility tree at all -- the seam
-	/// focus uses to pick its route.
-	///
-	/// THE SAME CLASS AS `permissionBroker()`, ON PURPOSE: one leaf answers the
-	/// domain's port and this seam, so there is exactly one place in the bridge
-	/// that talks to the permission machinery. The two defaults here are two
-	/// INSTANCES of it and that costs nothing -- it holds no state, and both
-	/// methods read the same system Bool -- while the identity that matters,
-	/// which class asks the system, is preserved.
-	///
-	/// IT ASKS NOBODY ANYTHING, exactly as constructing the broker does not:
-	/// `isTrusted` shows no dialog, and every call to `request` in this repository
-	/// is in a command handler that is about to move the machine.
-	///
-	/// ONE CLASS ANSWERS BOTH INTERFACES, and since 13.31 it needs nothing to do
-	/// it: `isTrusted` reads `AXIsProcessTrusted`, which is the whole of what this
-	/// broker does now that the automation permission and its channel are gone.
+	/// Whether this process may read an accessibility tree; the same class as `permissionBroker()`, and
+	/// `isTrusted` shows no dialog.
 	public static func accessibilityTrust() -> any AccessibilityTrust {
 		TCCPermissionBroker()
 	}
 
 	/// How this bridge speaks to the human at the reader.
-	///
-	/// ONE PER PROCESS: one machine has one loudspeaker, and two announcers would
-	/// be two synthesizers talking over each other.
-	///
-	/// IT IS HANDED THE SAME SUFFIX THE VOICE STORE MATCHES OURS BY, which is the
-	/// point of building it here: the announcer must never pick the capture voice,
-	/// because that voice renders silence while a silent session holds it and the
-	/// announcement would be silence talking to itself. The rule already existed --
-	/// this is the second reader of it, not a second copy.
+	/// One per process. It must never pick the capture voice, which renders silence in a silent session.
 	public static func announcer(
 		voices: (any PublishedVoices)? = nil,
 		out: (any SpeechOut)? = nil
@@ -257,37 +132,26 @@ public enum Wiring {
 	}
 
 	/// The language the human at this machine reads in, as the system spells it.
-	///
-	/// READ HERE AND NOWHERE BELOW, like the endpoint's directories and the two
-	/// capture paths: everything under this line is a pure function of values. A
-	/// warning spoken in the wrong language is a warning nobody acts on, which is
-	/// why it is worth asking at all -- and it is only a preference, so an
-	/// unmatched one costs nothing.
 	public static func preferredLanguage() -> String {
 		Locale.preferredLanguages.first ?? "en-US"
 	}
 
-	/// How this bridge asks the human a question. ONE PER PROCESS: one screen, and
-	/// two prompters would each hold half the tickets.
+	/// How this bridge asks the human a question; one per process, so one holder of the tickets.
 	public static func userPrompter(window: (any PromptWindow)? = nil) -> any UserPrompter {
 		AppKitUserPrompter(window: window ?? AppKitPromptWindow())
 	}
 
 	/// What the person at this machine has bound their VoiceOver modifier to.
-	///
-	/// THE SECOND READER OF THE SAME FILE (13.25), over the same seam and the same
-	/// home directory as the scripting setting above -- and through
-	/// `VoiceOverPreferencesFile`, so the two cannot come to disagree about where
-	/// VoiceOver keeps its preferences.
+	/// Reads through `VoiceOverPreferencesFile`, so every reader of VoiceOver's preferences agrees on
+	/// where they live.
 	public static func readerModifierSetting(
 		reader: (any PlistReader)? = nil
 	) -> any ReaderModifierSetting {
 		VoiceOverPrefsModifierSetting(reader: reader ?? FilePlistReader(), home: NSHomeDirectory())
 	}
 
-	/// How the reader is taken away and brought back. ONE PER PROCESS, and it is
-	/// the one collaborator in this graph that can leave a blind person with no
-	/// screen reader -- so it is built in exactly one place and is visible here.
+	/// How the reader is taken away and brought back; it can leave a blind person with no screen
+	/// reader, so it is built only here.
 	public static func readerRestart(
 		tools: (any ProcessRunner)? = nil,
 		applications: (any RunningApplications)? = nil,
@@ -300,33 +164,24 @@ public enum Wiring {
 	}
 
 	/// The record of what sessions on this machine changed and put back.
-	///
-	/// ONE FILE FOR THE WHOLE MACHINE, appended to by every session -- unlike the
-	/// per-session transcript beside it, and for the reason the port gives: what a
-	/// repair needs is every session's unfinished business, and a crashed session
-	/// cannot be relied on to name its own file. So the path is derived here rather
-	/// than handed a fresh one per connection.
+	/// One file for the whole machine, appended to by every session: a crashed session cannot be
+	/// relied on to name its own file.
 	public static func changeJournal(home: String = NSHomeDirectory()) -> any ChangeJournal {
 		let path = FileChangeJournal.defaultPath(home: home)
 		try? FileManager.default.createDirectory(
 			atPath: URL(fileURLWithPath: path).deletingLastPathComponent().path,
 			withIntermediateDirectories: true)
-		// APPENDING, and the leaf's own header says why choosing the other one
-		// would have quietly wiped every earlier session's unresolved changes.
+		// Appending: truncating would wipe every earlier session's unresolved changes.
 		return FileChangeJournal(writer: AppendingTextFileWriter(path: path))
 	}
 
-	/// The persisted settings. ONE PER PROCESS, because two would be two caches of
-	/// one file -- and this one deliberately caches nothing at all.
+	/// The persisted settings; one per process, and it caches nothing.
 	public static func bridgeConfig(defaults: (any Defaults)? = nil) -> any BridgeConfig {
 		UserDefaultsBridgeConfig(defaults: defaults ?? UserDefaultsStore())
 	}
 
 	/// The audible cues, and the preference that silences them.
-	///
-	/// IT TAKES THE CONFIG RATHER THAN A BOOLEAN so the switch is read on every
-	/// cue: a human who turns the cues off while a session is running means now,
-	/// not next time.
+	/// Takes the config so the switch is read on every cue, and turning cues off applies at once.
 	public static func sessionSignals(
 		config: any BridgeConfig,
 		announcer speaker: (any Announcer)? = nil,
@@ -353,8 +208,7 @@ public enum Wiring {
 		}
 	}
 
-	/// One connection becomes one session: the transport is framed as JSON lines,
-	/// and the controller is handed ports only.
+	/// One connection becomes one session, framed as JSON lines.
 	public static func session(
 		over transport: any Transport,
 		clock: any Clock,
@@ -375,10 +229,7 @@ public enum Wiring {
 
 	/// The whole bridge: a listener, and a factory that turns each accepted
 	/// connection into a session with a transcript of its own.
-	///
-	/// A TRANSCRIPT PER SESSION, not per process: the file is the record of ONE
-	/// run, and two runs sharing one would leave a tester unable to tell which
-	/// half they were reading.
+	/// A transcript per session, so a file is the record of one run.
 	public static func bridgeServer(
 		config: any BridgeConfig,
 		signals: any SessionSignals,
@@ -422,11 +273,7 @@ public enum Wiring {
 			readerVersion: readerVersion(),
 			bridgeVersion: bridgeVersion
 		)
-		// ONE SOURCE FOR THE MACHINE'S ANSWER ABOUT ITS HUMAN. `attended` and the
-		// silence cap's `enabled` are the same fact (protocol.md §6.2 keeps them
-		// separable for readers whose cap can be switched off on its own; this one
-		// has no such setting yet), so they are derived here, once, rather than in
-		// two places that agree today.
+		// `attended` and the silence cap's `enabled` are one fact here, derived once.
 		let sessionConfig = SessionConfig(
 			readerVersion: readerVersion(),
 			attended: config.attended,

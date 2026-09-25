@@ -1,7 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/JSONValue.swift.
-//
-// This type is what the contract's open fields hold, so its tests are about
-// FIDELITY: whatever a peer sent has to survive being held and handed back.
 
 import Testing
 
@@ -22,9 +19,6 @@ struct JSONValueTests {
 
 	@Test("a boolean is not read as a number, and an integer is not read as a double")
 	func scalarsAreNotConfused() throws {
-		// Order matters in the decoder: `true` would decode as 1 in a language
-		// that tried Int first, and an integer that came back as 7.0 would change
-		// what a round trip means for an index.
 		#expect(try WireJSON.value("true") != .int(1))
 		#expect(try WireJSON.value("7") != .double(7))
 	}

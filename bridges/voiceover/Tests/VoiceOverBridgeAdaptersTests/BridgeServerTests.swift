@@ -1,8 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/BridgeServer.swift.
-//
-// The accept loop runs on its own thread, so every assertion here waits for a
-// condition rather than sleeping for a guess: a test that slept would be slow
-// when it passed and flaky when it failed.
 
 import Fakes
 import Foundation
@@ -14,8 +10,6 @@ import Testing
 
 @Suite("BridgeServer")
 struct BridgeServerTests {
-	/// Build a server whose sessions do nothing but record that they ran and end
-	/// at once -- the accept loop is what is under test, not the session.
 	private func makeServer(
 		listener: FakeListener,
 		bus: FakeEventBus = FakeEventBus(),
@@ -82,7 +76,6 @@ struct BridgeServerTests {
 		#expect(throws: SocketError.self) {
 			try server.start()
 		}
-		// And it stays stopped rather than reporting a state it never reached.
 		#expect(server.status.state == .stopped)
 	}
 
@@ -97,15 +90,11 @@ struct BridgeServerTests {
 		#expect(waitUntil { server.status.state == .listening })
 		#expect(built == 1)
 		server.stop()
-		// listening, session-active, listening, stopped: the whole story, in order.
 		#expect(bus.states == [.listening, .sessionActive, .listening, .stopped])
 	}
 
 	@Test("a session that blows up costs its own session and nothing else")
 	func aSessionFaultDoesNotBreakTheServer() throws {
-		// Lane 1's crashed-client lesson, carried over rather than re-learned. The
-		// first connection's channel throws something the session never expected;
-		// the server must still accept the second.
 		final class ExplodingTransport: Transport {
 			func receive() throws -> Data { throw SocketError(call: "recv", code: 54) }
 			func sendAll(_ data: Data) throws {}
@@ -147,9 +136,6 @@ struct BridgeServerTests {
 
 	@Test("stop ends the live session rather than waiting for the peer to hang up")
 	func stopTearsDownTheLiveSession() throws {
-		// A transport that never says anything: without the teardown request the
-		// session would poll until its own watchdog fired, and stop() would block
-		// for its whole bounded wait.
 		final class SilentTransport: Transport {
 			func receive() throws -> Data { throw PollTimeout() }
 			func sendAll(_ data: Data) throws {}

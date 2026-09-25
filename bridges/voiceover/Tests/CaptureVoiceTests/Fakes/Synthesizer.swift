@@ -1,10 +1,3 @@
-// A hand-written stateful fake for the Synthesizer port, mirroring
-// Sources/CaptureVoice/Domain/Ports/Synthesizer.swift.
-//
-// This is the fake that makes the controller testable with NO AUDIO DEVICE and no
-// VoiceOver: it records what it was asked to speak, in which voice, into which
-// ring, and answers with whatever statistics the test wants reported.
-
 @testable import CaptureVoice
 
 final class FakeSynthesizer: Synthesizer {
@@ -17,8 +10,7 @@ final class FakeSynthesizer: Synthesizer {
 	private(set) var ringsSpokenInto: [AudioRing] = []
 	private(set) var cancelCount = 0
 	private(set) var statisticsReads = 0
-	/// Every call, in order, so a test can assert that the counters are read
-	/// BEFORE the cancel that truncates the ring.
+	/// Every call in order, so a test can assert the counters are read before the cancel truncates the ring.
 	private(set) var calls: [String] = []
 	var onSpeak: (() -> Void)?
 

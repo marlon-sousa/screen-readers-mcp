@@ -1,10 +1,3 @@
-// A hand-written stateful fake for the FileWriter seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/FileWriter.swift.
-//
-// It records lines in memory, which is what lets FileTranscript's test assert
-// the exact text of a transcript with no filesystem -- and therefore assert on
-// the FORMAT, which is the only thing that adapter decides.
-
 import VoiceOverBridgeAdapters
 
 public final class FakeFileWriter: FileWriter {

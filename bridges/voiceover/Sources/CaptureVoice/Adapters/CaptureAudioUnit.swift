@@ -1,77 +1,23 @@
-// ROLE: adapter -- the AudioToolbox edge, and this small hexagon's composition
-// root.
-//
-// A speech synthesis provider audio unit. macOS hands one of these every
-// utterance ANY client asks a voice of ours to speak -- VoiceOver included -- as
-// SSML, before any audio exists. That feed is the premise of the whole VoiceOver
-// route, and it is confirmed on macOS 15.0: complete, ordered, faithful, and
-// carrying prosody a polled `last phrase` discards (spec 0041, A2).
-//
-// WHAT IS LEFT IN THIS FILE, now that the four layers the spike ran together are
-// separate: bus and format negotiation, the request and cancel entry points, and
-// the render block. Everything it is asked to DECIDE it delegates to
-// CaptureController, which is testable; what stays here is what cannot be tested
-// without an audio device and a screen reader.
-//
-// AND IT WIRES THE HEXAGON, top to bottom, in `init`: the two sinks behind a
-// fan-out, the marker-file mode source, the AVFoundation catalogue and
-// synthesizer, the ring, the controller. Read that block to answer "who connects
-// what" here.
-//
-// TWO OF THE SIX LIVE-ROUND FIXES ARE HERE, because both are about a THREAD:
-//
-//  * THE PRIO_DARWIN_BG ESCAPE. runningboardd starts this extension in the
-//    background CPU band, which throttles CPU and I/O process-wide -- a dispatch
-//    queue's QoS does not undo it. Re-synthesis ran at about 1x realtime under it
-//    and 24x after `setpriority`, and 1x leaves no margin at all to feed an audio
-//    thread.
-//  * THE BOUNDED WAIT INSIDE THE RENDER BLOCK. See the comment at the wait.
-//
-// The render block's only collaborator is the CONCRETE AudioRing, captured
-// outside the closure, so its call is statically dispatched and allocates
-// nothing. That is the single binding decision the realtime constraint makes.
-//
-// NOTHING HERE PRINTS. Observations go through the controller to UtteranceSink;
-// os_log is asynchronous, a console write is not, and this is the thread that has
-// to start synthesis promptly inside somebody's screen reader.
+// ROLE: adapter at the AudioToolbox edge, and this module's composition root: `init` wires the hexagon.
+// macOS 15 hands this unit every utterance any client asks our voice to speak, VoiceOver included,
+// as SSML before any audio exists.
+// Nothing in this module prints: this thread must start synthesis promptly, and only os_log is asynchronous.
 
 import AVFoundation
 import AudioToolbox
 import Foundation
 
-/// The subsystem every log line and every queue in this module is named after.
 public let captureSubsystem = "org.screen-readers-mcp.voiceover"
 
-/// THE IDENTIFIER THIS PROVIDER PUBLISHES, and the one VoiceChoice excludes.
-///
-/// The system does NOT publish it as declared: it prefixes the extension's bundle
-/// id, so what appears in `speechVoices()` is
-/// `<extension bundle id>.<this>`. Anything resolving our voice must therefore
-/// match by SUFFIX, never by equality with what the unit declared.
-///
-/// It still says `spike` because the whole bundle identity is deliberately frozen
-/// at what the maintainer's VoiceOver is currently pointed at -- see README.md,
-/// "The bundle identity is frozen on purpose".
+/// The system publishes it prefixed with the extension's bundle id, so anything resolving our voice
+/// must match by suffix. It is frozen: see README.md, "The bundle identity is frozen on purpose".
 public let ourVoiceIdentifier = "org.screen-readers-mcp.spike.capture"
 
-/// Where the container-file sink appends. Under the sandbox this resolves inside
-/// the extension's own container, which is the only door out (spec 0041, B1/B2).
 public let captureLogPath: String =
 	ProcessInfo.processInfo.environment["VOCAPTURE_LOG"]
 	?? NSHomeDirectory() + "/voiceover-capture.jsonl"
 
-/// THE BRIDGE'S CHANNEL INTO THIS EXTENSION: one small JSON file, refreshed
-/// while a session lives, saying whether to render silence and in whose voice to
-/// speak when not. OPT-IN, so the default cannot be the setting that mutes a
-/// screen reader -- and a LEASE, so a bridge that died leaves the machine
-/// talking without any code of ours having to run. See
-/// MarkerFileCaptureModeSource for both halves.
-///
-/// The override exists for the same reason `VOCAPTURE_LOG`'s does, and is read
-/// the same way: a developer can point both halves at one temporary directory
-/// and exercise capture mode with no reader at all. Under the sandbox, where the
-/// system launches this extension, neither variable is set and both fall back to
-/// the container.
+/// The bridge's channel into this extension; see MarkerFileCaptureModeSource.
 public let silentModeMarkerPath: String =
 	ProcessInfo.processInfo.environment["VOCAPTURE_MARKER"]
 	?? NSHomeDirectory() + "/voiceover-capture-silent"
@@ -85,8 +31,7 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 	private let synthesizer: AVFoundationSynthesizer
 	private let controller: CaptureController
 
-	/// Scratch the render block hands back when the host supplies no buffer of
-	/// its own. Allocated once, because the render block may not allocate.
+	/// Allocated once, because the render block may not allocate.
 	private let scratch: UnsafeMutablePointer<Float>
 	private let scratchCapacity = 4096
 
@@ -99,16 +44,12 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		}
 		self.format = format
 		self.outputBus = try AUAudioUnitBus(format: format)
-		// 30 seconds. VoiceOver utterances are short; the headroom is for the case
-		// where the render block is not being called at all, which is a failure we
-		// want to survive rather than crash on.
+		// 30 seconds, so a render block that is not being called at all is survived rather than crashed on.
 		let ring = AudioRing(capacity: Int(format.sampleRate) * 30)
 		let synthesizer = AVFoundationSynthesizer(outputFormat: format)
 		self.ring = ring
 		self.synthesizer = synthesizer
-		// The wiring. Two sinks because the spike emits two ways on purpose: the
-		// container file is what the bridge reads, and os_log works when a sandbox
-		// denial makes the file write fail.
+		// The container file is what the bridge reads; os_log still works when a sandbox denial fails the file write.
 		let modeSource = MarkerFileCaptureModeSource(path: silentModeMarkerPath)
 		self.controller = CaptureController(
 			sink: FanOutUtteranceSink([
@@ -123,13 +64,13 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		)
 		self.scratch = UnsafeMutablePointer<Float>.allocate(capacity: scratchCapacity)
 		self.scratch.initialize(repeating: 0, count: scratchCapacity)
-		// Leave the background band, deliberately. See the header.
+		// runningboardd starts this extension in the background band, which throttles it whatever a queue's QoS:
+		// on macOS 15 re-synthesis ran at about 1x realtime under it and 24x after `setpriority`.
 		let clearedBackground = setpriority(PRIO_DARWIN_PROCESS, 0, 0)
 
 		try super.init(componentDescription: componentDescription, options: options)
 		self.busses = AUAudioUnitBusArray(audioUnit: self, busType: .output, busses: [outputBus])
-		// Off the critical path on purpose: this is construction, and the 150 ms it
-		// spends is 150 ms the first utterance will not.
+		// Off the critical path; see CaptureController.warmUp.
 		let controller = self.controller
 		DispatchQueue.global(qos: .utility).async { controller.warmUp() }
 		controller.report(
@@ -139,10 +80,7 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 					"cleared_darwin_bg": .flag(clearedBackground == 0),
 					"log_path": .text(captureLogPath),
 					"marker_path": .text(silentModeMarkerPath),
-					// Asked of the mode source rather than of the filesystem, so this
-					// line reports what the next utterance will actually do -- a marker
-					// left behind by a dead bridge reads as pass-through here exactly
-					// as it does there.
+					// Asked of the mode source, so a stale marker reads as pass-through here exactly as it does there.
 					"silent": .flag(modeSource.directive.silent),
 				]))
 	}
@@ -151,9 +89,6 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 
 	public override var outputBusses: AUAudioUnitBusArray { busses }
 
-	/// The host settles the real format here, and it is not necessarily the one
-	/// declared at init. Reported, because a wrong assumption about sample rate is
-	/// heard as glitching rather than raised as an error.
 	public override func allocateRenderResources() throws {
 		try super.allocateRenderResources()
 		let format = outputBus.format
@@ -169,21 +104,10 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 				]))
 	}
 
-	/// The voice this extension registers system-wide. VoiceOver lists it in
-	/// VoiceOver Utility -> Speech alongside Apple's own, which is what makes the
-	/// whole route a question about VoiceOver rather than about
-	/// AVSpeechSynthesizer.
-	///
-	/// pt-BR leads the primary languages because a reader only offers voices for
-	/// the language it is speaking, and this machine's VoiceOver speaks Portuguese
-	/// -- an en-US-only voice would never appear in its list at all.
+	/// pt-BR leads because a reader offers only voices for the language it speaks, and this machine's
+	/// VoiceOver speaks Portuguese.
 	public override var speechVoices: [AVSpeechSynthesisProviderVoice] {
 		get {
-			// IT CARRIED NO FIELDS AT ALL UNTIL 13.11, which made it an event that
-			// recorded only that something happened. When a live run needed to know
-			// what this extension had published -- and under which identity -- the
-			// log could not say, and the answer had to be inferred from a later
-			// event. An event worth emitting is worth saying something.
 			controller.report(
 				CaptureEvent(
 					kind: .speechVoicesRead,
@@ -203,13 +127,11 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 		set {}
 	}
 
-	/// ONE UTTERANCE IN. Called once per utterance, before any audio is rendered.
 	public override func synthesizeSpeechRequest(_ request: AVSpeechSynthesisProviderRequest) {
 		controller.capture(ssml: request.ssmlRepresentation, requestedBy: request.voice.identifier)
 	}
 
-	/// Interruption, which is the NORMAL path: VoiceOver cancels before every new
-	/// utterance, so a bridge must not treat "cancelled" as "something went wrong".
+	/// VoiceOver cancels before every new utterance, so a cancel is the normal path, not a failure.
 	public override func cancelSpeechRequest() {
 		controller.cancel()
 	}
@@ -223,9 +145,7 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 			let buffers = UnsafeMutableAudioBufferListPointer(outputData)
 			guard buffers.count > 0 else { return noErr }
 
-			// Fill the host's ENTIRE request. Capping this at the scratch size left
-			// the tail of every large block untouched -- audible as glitching, and
-			// invisible in any log.
+			// Fill the host's entire request: an untouched tail is audible as glitching and invisible in any log.
 			let frames = Int(frameCount)
 			let usingScratch = buffers[0].mData == nil
 			let renderFrames = usingScratch ? min(frames, scratchCapacity) : frames
@@ -239,20 +159,9 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 				buffers[0].mDataByteSize = UInt32(renderFrames * MemoryLayout<Float>.size)
 			}
 
-			// "Answer nothing" is not in the protocol: the render block must return
-			// exactly the frames it was asked for, and its only other channel is an
-			// OSStatus that means the utterance FAILED. So when the audio is not
-			// ready yet there are two honest choices -- hand back silence, which
-			// bakes holes into the sentence, or WAIT here for it.
-			//
-			// Waiting inside a render block is normally forbidden, because a render
-			// block runs on the audio thread against a hard deadline. Measured on
-			// macOS 15.0, this host does not pull in realtime: it renders the
-			// utterance offline, as fast as it can ask -- 242,688 frames produced,
-			// 242,688 delivered, none dropped, and 923 render calls that still came
-			// up short. There is no deadline to miss, so waiting is safe -- and it
-			// is BOUNDED anyway, so a host that DOES pull in realtime degrades to
-			// the old behaviour rather than stalling.
+			// The render block must return every frame asked for, and its only other answer means the utterance failed.
+			// VoiceOver on macOS 15 renders offline rather than in realtime (242,688 frames delivered, none dropped,
+			// 923 render calls still short), so waiting here is safe; the wait is bounded for a host that is realtime.
 			var (filled, done) = ring.drain(into: destination, count: renderFrames)
 			if filled < renderFrames, !done {
 				let waitUntil = Date().addingTimeInterval(0.25)
@@ -268,8 +177,6 @@ public final class CaptureAudioUnit: AVSpeechSynthesisProviderAudioUnit {
 				destination.advanced(by: filled).update(repeating: 0, count: renderFrames - filled)
 			}
 
-			// A host asking for more than one channel gets the same mono signal in
-			// each, rather than one channel of speech and one of silence.
 			if buffers.count > 1 {
 				for index in 1..<buffers.count {
 					if let other = buffers[index].mData {

@@ -26,8 +26,6 @@ struct HelloTests {
 
 	@Test("a handshake without a version is refused rather than defaulted")
 	func versionIsRequired() {
-		// Defaulting it would let a mismatched pair connect and fail later, which
-		// is the failure the handshake exists to prevent.
 		#expect(throws: (any Error).self) {
 			try WireJSON.decode(HelloParams.self, #"{"mode":"silent"}"#)
 		}
