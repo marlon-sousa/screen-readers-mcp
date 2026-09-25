@@ -1,10 +1,4 @@
-// A hand-written stateful fake for the Transport seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/Transport.swift.
-//
-// Scripted bytes in, recorded bytes out. It is what makes JsonLinesChannel's
-// framing testable in the shape that actually goes wrong: a frame split across
-// two chunks, two frames in one chunk, a chunk that ends mid-frame -- none of
-// which a real socket can be asked to produce on demand.
+// Hand-written stateful fake for the Transport seam: scripted bytes in, recorded bytes out.
 
 import Foundation
 import VoiceOverBridgeAdapters
@@ -24,7 +18,6 @@ public final class FakeTransport: Transport {
 		self.script = script
 	}
 
-	/// The common case: some text arrives in one piece.
 	public static func delivering(_ text: String) -> FakeTransport {
 		FakeTransport([.chunk(Data(text.utf8)), .endOfStream])
 	}
@@ -46,7 +39,6 @@ public final class FakeTransport: Transport {
 		isClosed = true
 	}
 
-	/// What was written, as the lines it was framed into.
 	public var sentLines: [String] {
 		String(decoding: sent, as: UTF8.self)
 			.split(separator: "\n", omittingEmptySubsequences: true)

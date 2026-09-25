@@ -1,17 +1,9 @@
 # nvdaMcpBridge adapters -- IniBridgeConfig: the BridgeConfig port backed by a
 # profile-independent config.ini.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: adapter (implements the BridgeConfig domain port). Holds every decision
-#       (defaults, validation, configparser vocabulary) and delegates raw file IO
-#       to a ConfigFile seam -- so it is fully unit-testable against a fake.
-# IMPLEMENTS: domain/ports/bridge_config.py BridgeConfig.
-# BUILT BY: plugin.py (the composition root), handing it a TextConfigFile.
-# USED BY: plugin.py (reads mode on load, reads auto_start; exposes start_server),
-#          views/bridge_dialog.py (via the port, injected by plugin.py).
-#
-# Does NOT import NVDA -- the config path comes from the TextConfigFile leaf
-# built by plugin.py. Strict-checked by pyright.
+# ROLE: adapter implementing BridgeConfig; holds every configparser decision, file IO goes to ConfigFile.
+# BUILT BY: plugin.py.
+# USED BY: plugin.py and views/bridge_dialog.py.
 
 from __future__ import annotations
 
@@ -24,32 +16,19 @@ from ..domain.ports.bridge_config import BridgeConfig
 from ..domain.ports.log import Log
 from .ports.config_file import ConfigFile
 
-#: The section name in config.ini.
 _SECTION = "nvdaMcpBridge"
 
-#: Key names in config.ini for the persisted values.
 _KEY_MODE = "connectionMode"
 _KEY_AUTO_START = "autoStart"
-#: The silence cap (spec 0032). Three keys, all machine-wide like the two above.
 _KEY_UNATTENDED = "unattended"
 _KEY_WARN_SECONDS = "silenceWarnSeconds"
 _KEY_LIFT_SECONDS = "silenceLiftSeconds"
 
 
 class IniBridgeConfig(BridgeConfig):
-	"""Bridge preferences backed by a profile-independent config.ini.
-
-	Reads return sensible defaults (``DEFAULT`` / ``False``) when no file
-	exists yet or a key is missing; writes create the file on first save.
-	Raw IO is delegated to the injected ConfigFile seam so the configparser
-	decisions here are unit-testable.
-	"""
-
 	def __init__(self, file: ConfigFile, log: Log) -> None:
 		self._file = file
 		self._log = log
-
-	# -- BridgeConfig implementation --------------------------------------------
 
 	def get_connection_mode(self) -> ConnectionMode:
 		parser = self._read()
@@ -75,23 +54,14 @@ class IniBridgeConfig(BridgeConfig):
 	def set_auto_start(self, value: bool) -> None:
 		self._put(_KEY_AUTO_START, "true" if value else "false")
 
-	# -- the silence cap (spec 0032) --------------------------------------------
-	#
-	# Every read here falls to the SAFE side of the setting it is reading: absent,
-	# unparseable or nonsensical all mean "assume somebody is sitting there, on the
-	# shipped thresholds". That is the same posture the corrupt-file path above
-	# already takes, and it matters more here than anywhere else in this file --
-	# the failure mode of getting it wrong is a blind person unable to hear their
-	# own computer, with nothing to stop it.
+	# Every silence-cap read falls to the attended side when a value is absent or unusable: getting it
+	# wrong leaves a blind user unable to hear their own computer.
 
 	def get_unattended(self) -> bool:
 		parser = self._read()
 		try:
 			return parser.getboolean(_SECTION, _KEY_UNATTENDED, fallback=False)
 		except ValueError:
-			# A value configparser cannot read as a boolean. "Attended" is the safe
-			# answer, and it is worth a line in the log because the human who typed
-			# it believes they turned the cap off.
 			self._log.warning(
 				f"nvdaMcpBridge: unreadable {_KEY_UNATTENDED} in config.ini; "
 				f"assuming this machine is attended"
@@ -114,11 +84,7 @@ class IniBridgeConfig(BridgeConfig):
 		self._put(_KEY_LIFT_SECONDS, f"{value:g}")
 
 	def _positive_float(self, key: str, default: float) -> float:
-		"""Read one threshold, falling back on the default for anything unusable.
-
-		The PAIR still has to be ordered, which two independent reads cannot check;
-		SilenceCapPolicy.from_settings does that, and falls back the same way.
-		"""
+		"""The ordering of the pair is checked by SilenceCapPolicy.from_settings, not here."""
 		parser = self._read()
 		raw = parser.get(_SECTION, key, fallback=None)
 		if raw is None:
@@ -132,8 +98,6 @@ class IniBridgeConfig(BridgeConfig):
 			return default
 		return value
 
-	# -- internals --------------------------------------------------------------
-
 	def _read(self) -> configparser.ConfigParser:
 		parser = configparser.ConfigParser()
 		raw = self._file.read()
@@ -145,7 +109,6 @@ class IniBridgeConfig(BridgeConfig):
 		return parser
 
 	def _put(self, key: str, value: str) -> None:
-		"""Write one key into the section, creating file and section as needed."""
 		parser = self._read()
 		self._ensure_section(parser)
 		parser.set(_SECTION, key, value)

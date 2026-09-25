@@ -1,15 +1,5 @@
 // screenreader-mcp adapters -- the MCP server's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// These drive a real SDK client against a real SDK server over the SDK's
-// in-memory transports, with a SYNTHETIC tool registry -- one ungated tool and
-// one gated one -- rather than the production list.
-//
-// Synthetic on purpose: what is under test is the adapter's own behaviour
-// (schema validation, the constant tool list, capability enforcement), and a
-// registry stated in the test makes the gate's before-and-after visible in one
-// screen. The production tools are exercised end to end by the integration tier,
-// which is where they belong.
 package mcp_test
 
 import (
@@ -30,15 +20,11 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// stubTool is a tool with a stated name, gate and behaviour.
 type stubTool struct {
 	name       string
 	capability entities.Capability
 	schema     string
-	// output is the declared OUTPUT schema, empty for the plain object one.
-	// Separate from schema above rather than a second field nobody sets,
-	// because the pair being independently wrong is what tool_binding_test.go
-	// is about.
+	// output is the declared output schema, empty for the plain object one.
 	output string
 	run    func(ctx tools.ToolContext, params json.RawMessage) (any, error)
 }
@@ -68,7 +54,6 @@ func (s *stubTool) Execute(ctx tools.ToolContext, params json.RawMessage) (any, 
 	return map[string]any{"ok": true}, nil
 }
 
-// harness is a bound server with a client attached.
 type harness struct {
 	server  *mcpadapter.Server
 	session *sdk.ClientSession
@@ -90,10 +75,6 @@ func newHarness(t *testing.T, list ...tools.Tool) *harness {
 	server.Bind(
 		tools.NewDispatcher(registry, control, fakes.NewFakeClock(), log, nil),
 		control,
-		// The reader-guidance controller reads the same connection source, so a
-		// harness whose subject is tool publication gets the real one rather
-		// than a fifth double: with nothing connected it answers ErrNoSession
-		// and the resource renders the "connect first" document.
 		controllers.NewReaderGuidance(control),
 	)
 
@@ -155,9 +136,6 @@ func text(result *sdk.CallToolResult) string {
 
 func ungatedStub() *stubTool { return &stubTool{name: "ungated_tool"} }
 
-// gatedStub asks its ToolContext for the capability it is gated on, exactly as
-// every real gated tool does -- which is what makes the structured capability
-// error the tool's own answer rather than something the adapter invents.
 func gatedStub() *stubTool {
 	return &stubTool{
 		name:       "gated_tool",
@@ -171,10 +149,6 @@ func gatedStub() *stubTool {
 	}
 }
 
-// Binding advertises EVERY tool, gated or not (spec 0022, option (c)).
-//
-// A freshly started server with nothing connected offers the whole surface, and
-// what an agent cannot yet DO is answered per call rather than by an absence.
 func TestBindingAdvertisesEveryTool(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
@@ -183,13 +157,6 @@ func TestBindingAdvertisesEveryTool(t *testing.T) {
 	}
 }
 
-// THE PROPERTY 11.6 TURNS ON: the advertised list is a constant.
-//
-// A session beginning and ending changes nothing about it, so a client that
-// listed once and cached the answer forever is holding a CORRECT answer. That is
-// what closes both failures wearing entry 11.6's symptom -- our own redeploy
-// freezing a client's list, and an external client that never re-listed -- and
-// it is why no `tools/list_changed` is emitted at all any more.
 func TestTheAdvertisedListNeverChanges(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
@@ -206,9 +173,6 @@ func TestTheAdvertisedListNeverChanges(t *testing.T) {
 		t.Errorf("tools/list = %v after disconnecting, want %v -- unchanged", names, atStartup)
 	}
 
-	// And nothing was ANNOUNCED either. A client with no notification handling
-	// at all must be no worse off, which is the half of entry 11.6 that no
-	// client-side remedy could reach.
 	select {
 	case <-h.changed:
 		t.Error("the server emitted tools/list_changed; nothing changed, so nothing should be announced")
@@ -216,8 +180,6 @@ func TestTheAdvertisedListNeverChanges(t *testing.T) {
 	}
 }
 
-// The hand-written schema reaches the client as authored: it is the agent-facing
-// contract, so the adapter must not be quietly rewriting it.
 func TestTheHandWrittenSchemaReachesTheClient(t *testing.T) {
 	h := newHarness(t, &stubTool{
 		name: "ungated_tool",
@@ -240,9 +202,6 @@ func TestTheHandWrittenSchemaReachesTheClient(t *testing.T) {
 	}
 }
 
-// A malformed schema is a STARTUP error naming the tool. The SDK panics on one,
-// at the moment the tool is added -- which for a gated tool is mid-session, in a
-// goroutine serving an agent.
 func TestAMalformedSchemaFailsAtStartupRatherThanMidSession(t *testing.T) {
 	log := fakes.NewFakeLog()
 
@@ -264,8 +223,6 @@ func TestAMalformedSchemaFailsAtStartupRatherThanMidSession(t *testing.T) {
 	}
 }
 
-// A tool failure is a RESULT with IsError, not a JSON-RPC error: an agent can
-// read the content of an errored result and self-correct within the turn.
 func TestAToolFailureIsAReadableResult(t *testing.T) {
 	h := newHarness(t, &stubTool{
 		name: "ungated_tool",
@@ -286,8 +243,6 @@ func TestAToolFailureIsAReadableResult(t *testing.T) {
 	}
 }
 
-// A successful result is carried BOTH ways: structured for a client that can use
-// it, and the same JSON as text for the many that read content only.
 func TestASuccessfulResultIsCarriedAsTextAndStructuredContent(t *testing.T) {
 	h := newHarness(t, &stubTool{
 		name: "ungated_tool",
@@ -308,10 +263,6 @@ func TestASuccessfulResultIsCarriedAsTextAndStructuredContent(t *testing.T) {
 	}
 }
 
-// A tool that takes no parameters must survive being called with none. What
-// arrives is either an empty raw message or `{}`, depending on how the client
-// spelled the call, and the domain's decodeParams tolerates both -- which is why
-// no tool may assume it was handed a JSON object.
 func TestAToolWithNoArgumentsIsCallable(t *testing.T) {
 	var seen json.RawMessage
 	h := newHarness(t, &stubTool{
@@ -334,18 +285,8 @@ func TestAToolWithNoArgumentsIsCallable(t *testing.T) {
 	}
 }
 
-// ENFORCEMENT, now that advertisement does none of it. The tool is listed; the
-// reader cannot serve it; the call gets the structured capability error.
-//
-// This is the test that shows what the list was never doing. It passed before
-// through the capability backstop, which answered for tools that were HAD but
-// not published -- and it passes now through the ordinary path, unchanged in
-// what it asserts, because the backstop only ever delegated to the same
-// dispatcher and the error always came from the tool's own ToolContext.
 func TestCallingAToolTheReaderCannotServeGivesTheStructuredCapabilityError(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
-	// A reader that announced speech only: the braille-gated tool is listed,
-	// and the connection has no BrailleReader to hand over.
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	h.control.SetConnection(built.Connection)
 
@@ -368,8 +309,6 @@ func TestCallingAToolTheReaderCannotServeGivesTheStructuredCapabilityError(t *te
 	}
 }
 
-// With nothing connected at all the answer is the other one -- "connect first" --
-// because the two situations have entirely different remedies.
 func TestCallingAGatedToolWithNoSessionSaysToConnectFirst(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
@@ -382,8 +321,6 @@ func TestCallingAGatedToolWithNoSessionSaysToConnectFirst(t *testing.T) {
 	}
 }
 
-// A name that was never a tool still gets the SDK's own error. Advertising
-// everything widens the list to every tool this server HAS, and not one further.
 func TestAGenuinelyUnknownToolStillGetsTheSDKsError(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 
@@ -392,7 +329,6 @@ func TestAGenuinelyUnknownToolStillGetsTheSDKsError(t *testing.T) {
 	}
 }
 
-// And a reader that DOES announce the capability runs the tool for real.
 func TestAToolTheReaderCanServeRuns(t *testing.T) {
 	h := newHarness(t, ungatedStub(), gatedStub())
 	built := testsupport.NewConnection("nvda", entities.CapabilityBraille)
@@ -410,7 +346,4 @@ func TestAToolTheReaderCanServeRuns(t *testing.T) {
 	}
 }
 
-// errFailed is a plain tool failure, distinct from any of the domain's own error
-// types -- so the assertions above are about the adapter's mapping and not about
-// which error it happened to be handed.
 var errFailed = errors.New("the reader refused: unknown gesture id")

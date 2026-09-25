@@ -1,12 +1,5 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Entities/LocalSocketPath.swift.
-//
-// THESE ARE CONTRACT ASSERTIONS, NOT UNIT ASSERTIONS. Every expectation below is
-// the rule published in specs/wire/v1/protocol.md §1 and implemented a second
-// time in the server's local_socket.go: the two halves must derive the same path
-// from the same name or they never meet, and the failure mode is a refused
-// connection on a machine where the bridge is plainly running. So the values are
-// spelled out literally rather than computed -- a test that derived them the way
-// the code does would agree with any drift.
+// Expected paths are literal and must match the server's local_socket.go derivation, or the two halves never meet.
 
 import Testing
 
@@ -66,9 +59,7 @@ struct LocalSocketPathTests {
 
 	@Test("the limit counts BYTES, not characters")
 	func theLimitCountsBytes() throws {
-		// Each of these costs two bytes in UTF-8, so a name that fits as characters
-		// does not fit as a path. The kernel counts bytes and answers `invalid
-		// argument`, naming neither the limit nor the path.
+		// Each of these is two bytes in UTF-8; the kernel counts bytes and answers `invalid argument`, naming neither the limit nor the path.
 		let home = "/Users/" + String(repeating: "é", count: 45)
 		let dirs = LocalSocketDirs(runtimeDir: "", home: home)
 		#expect(home.count < LocalSocketPath.maxBytes)

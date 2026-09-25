@@ -1,13 +1,6 @@
 #!/usr/bin/env python3
 # Copy the canonical shared wire module into the addon package.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# The bridge imports the wire protocol as a LOCAL module (``from . import
-# protocol``) so the addon never carries a third-party dependency. The single
-# source of truth lives in ``../../shared/screenreader_wire/protocol.py``; this script
-# copies it verbatim into the addon package. Run it (or scons, which invokes
-# the same copy) before type-checking or building the addon. The copied file is
-# gitignored -- it is a build artifact, never edited in place.
 
 from __future__ import annotations
 

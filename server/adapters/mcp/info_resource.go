@@ -1,20 +1,8 @@
 // screenreader-mcp adapters -- the screenreader://info resource.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. Serves `screenreader://info` from the current session.
-// BUILT BY: sdk_server.go's Bind. DEPENDS ON: a SessionSource, satisfied by
-// domain/controllers/connection.go.
-//
-// This is spec 0013's second capability mechanism, and spec 0005's principle 2:
-// SURFACE THE READER. The agent already knows NVDA's browse and focus modes and
-// JAWS's forms mode from its training -- so hand it the reader's name and
-// version and let it apply what it knows, rather than teaching this server to
-// have opinions about particular readers.
-//
-// A RESOURCE rather than `initialize.instructions`, which was considered and
-// rejected: instructions are frozen at handshake time, and the bridge usually
-// connects long afterwards. A resource is read when the agent wants it and
-// always describes the session that exists now.
+// ROLE: adapter serving `screenreader://info` from the current session.
+// BUILT BY: sdk_server.go's Bind.
 package mcp
 
 import (
@@ -27,22 +15,14 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// InfoURI is the resource's address.
 const InfoURI = "screenreader://info"
 
-// SessionSource is what the resource reads.
-//
-// Declared here, in the consumer, and narrow: this adapter may look at the
-// current session and the connection state, and at nothing else. Satisfied by
-// the connection controller.
+// SessionSource is satisfied by the connection controller.
 type SessionSource interface {
 	Current() *ports.ReaderConnection
 	Status() entities.ConnectionStatus
 }
 
-// info is the resource's document. Its own shape, because it is agent-facing
-// text and should change when we mean it to rather than when a domain field is
-// renamed.
 type info struct {
 	State  string `json:"state"`
 	Reason string `json:"reason,omitempty"`
@@ -52,48 +32,19 @@ type info struct {
 	Endpoint      string   `json:"endpoint,omitempty"`
 	Capabilities  []string `json:"capabilities,omitempty"`
 	Mode          string   `json:"mode,omitempty"`
-	// Persona is what this session declared it stands for (spec 0029). Here for
-	// the same reason the reader's name is: an agent that reads this document to
-	// find out what it is driving also needs to know what it is standing in for,
-	// and the two together are what make a finding interpretable afterwards.
-	Persona string `json:"persona,omitempty"`
-	Synth   string `json:"synth,omitempty"`
+	Persona       string   `json:"persona,omitempty"`
+	Synth         string   `json:"synth,omitempty"`
 
-	// Attendance is whether a human is expected at the reader's machine, in the
-	// same sentence `connect_reader` returns -- rendered by the same
-	// SilenceCap.Sentence, so the two cannot say different things (spec 0038).
-	//
-	// A SESSION CONSTANT, republished because the AGENT'S MEMORY of it is not
-	// constant (entry 11.30). Spec 0035 made attendance connect-only for a good
-	// reason and that stands: it cannot change while a session lives, so there is
-	// nothing to re-read in the reader. What changes is who is holding the fact --
-	// a compacted context, a sub-agent handed a live session, a session picked up
-	// after a restart. Before this, the only route back was to disconnect and
-	// reconnect, throwing the session away to ask a question about it.
-	//
-	// It is THIS fact rather than any other in the connect result because losing
-	// it fails towards silence at an occupied machine: an agent that cannot
-	// remember whether anyone is listening reasons, defensibly and wrongly, that
-	// narrating to an empty room is waste. Every other field fails towards an
-	// ordinary mistake that shows up as an error.
 	Attendance string `json:"attendance,omitempty"`
 
-	// LogPath is the READER-SIDE transcript, as a path, and deliberately not as
-	// a resource. That conversation happened (spec 0021) and came out against
-	// transmitting it: the file is written for the human at the reader, with
-	// capture-time stamps only the bridge can produce, and for a remote bridge
-	// it names a file the agent cannot open at all. The agent's own record is
-	// screenreader://session-record, which this server keeps from its own
-	// traffic; the agent's own copy of what was said is get_speech from index 0.
+	// LogPath is the reader-side transcript, which for a remote bridge names a file the agent cannot open.
 	LogPath       string `json:"logPath,omitempty"`
 	BridgeVersion string `json:"bridgeVersion,omitempty"`
 
 	ProtocolVersion int `json:"protocolVersion,omitempty"`
 }
 
-// addInfoResource registers the resource. It is always present, whether or not a
-// session is: an agent asking "what am I connected to?" deserves the answer
-// "nothing, and here is why" rather than a missing resource.
+// addInfoResource registers the resource even with no session, so the agent learns why nothing is connected.
 func (s *Server) addInfoResource(sessions SessionSource) {
 	s.sdk.AddResource(
 		&sdk.Resource{
@@ -123,7 +74,6 @@ func (s *Server) addInfoResource(sessions SessionSource) {
 	)
 }
 
-// describe builds the document from whatever is currently true.
 func describe(sessions SessionSource) info {
 	status := sessions.Status()
 	document := info{State: status.State.String(), Reason: status.Reason}
@@ -141,12 +91,8 @@ func describe(sessions SessionSource) info {
 	document.Mode = session.Mode.String()
 	document.Persona = session.Persona.String()
 	document.Synth = session.Synth
-	// The same call connect_reader makes, on state the session has held all
-	// along -- so re-publishing it asks nothing of the bridge and adds no traffic.
 	document.Attendance = session.SilenceCap.Sentence(session.Attended)
 	document.LogPath = session.LogPath
-	// There is no reader-log PATH to report: spec 0020 replaced 0009's capture
-	// file with the in-memory journal, read through the get_log tool instead.
 	document.BridgeVersion = session.BridgeVersion
 	document.ProtocolVersion = session.ProtocolVersion
 	return document

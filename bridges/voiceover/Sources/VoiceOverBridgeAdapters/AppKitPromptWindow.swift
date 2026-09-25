@@ -1,32 +1,9 @@
-// ROLE: LEAF adapter -- IMPLEMENTS the PromptWindow seam over AppKit. It puts a
-// window on the screen and reports what the human did with it; it decides
-// nothing else.
-//
-// BUILT BY: Wiring, once per process. USED BY: AppKitUserPrompter, which holds
-// the ticket, the table of answers and every rule about them.
-//
-// NO TEST FILE, AND HERE THAT IS A HARD RULE RATHER THAN THE USUAL LEAF
-// ARGUMENT: a real window needs an NSApplication, takes focus from whatever the
-// developer is doing, and announces itself out loud on a machine with a screen
-// reader running. The seam above is what lets the prompter's behaviour be tested
-// without any of that.
-//
-// IT MARSHALS TO THE MAIN THREAD ITSELF, in both directions. Every caller here is
-// the SESSION thread -- `askUser` runs on it, and so does teardown -- and AppKit
-// may only be touched on the main one. Nothing waits: the session thread asks for
-// a window and carries on, which is the rule this bridge's UI element lives
-// under (spec 0046, part 3, element 5) and the reason `present` can promise not
-// to block.
-//
-// THE WINDOWS DICTIONARY IS TOUCHED ONLY ON THE MAIN THREAD, so it needs no lock
-// -- and it needs to exist at all because an NSWindow with nothing holding it is
-// deallocated out from under the person reading it.
-//
-// IT IS DELIBERATELY PLAIN. A label, a text field, two buttons, and the field is
-// first responder so a human who cannot see the screen can type and press return
-// without hunting for anything. The prompt is also the field's accessibility
-// label, so a reader that lands on the field alone still says what is being
-// asked.
+// ROLE: leaf adapter that implements the PromptWindow seam over AppKit.
+// BUILT BY: Wiring, once per process.
+// USED BY: AppKitUserPrompter, which holds the ticket and every rule about answers.
+// Never build it in a test: a real window takes focus and announces itself on a machine running a reader.
+// Callers are on the session thread; it marshals to the main thread in both directions and never waits.
+// `panels` is touched only on the main thread, and it keeps each window alive while a person reads it.
 
 import AppKit
 import VoiceOverBridgeDomain
@@ -54,9 +31,7 @@ public final class AppKitPromptWindow: PromptWindow {
 		}
 	}
 
-	/// Run on the main thread, from whichever thread called. `async` even when we
-	/// are already on it would be correct too; running inline is what keeps a
-	/// close issued from the main thread's own teardown immediate.
+	/// Inline when already on the main thread, so a close from the main thread's own teardown is immediate.
 	private func onMain(_ work: @escaping () -> Void) {
 		if Thread.isMainThread {
 			work()
@@ -66,9 +41,6 @@ public final class AppKitPromptWindow: PromptWindow {
 	}
 }
 
-/// One question on the screen: the window, its field, and the one report it
-/// makes. Private to this file, per the repo's rule that a small helper may
-/// share its owner's file.
 private final class PromptPanel: NSObject, NSWindowDelegate {
 	private let window: NSWindow
 	private let field: NSTextField
@@ -117,8 +89,7 @@ private final class PromptPanel: NSObject, NSWindowDelegate {
 		window.makeFirstResponder(field)
 	}
 
-	/// Take the window away without reporting: the bridge asked for this, so the
-	/// human did nothing that anybody is waiting to hear about.
+	/// No report: the bridge asked for this, so nobody is waiting on the human.
 	func dismissWithoutReporting() {
 		report = nil
 		window.close()
@@ -133,8 +104,7 @@ private final class PromptPanel: NSObject, NSWindowDelegate {
 	}
 
 	func windowWillClose(_ notification: Notification) {
-		// The red button, or a close the bridge did not ask for. Whatever has not
-		// been reported yet is a dismissal.
+		// Whatever has not been reported yet is a dismissal.
 		finish(.dismissed)
 	}
 

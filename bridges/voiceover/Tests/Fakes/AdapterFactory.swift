@@ -1,78 +1,24 @@
-// A hand-written stateful fake for the AdapterFactory port, mirroring
-// Sources/VoiceOverBridgeDomain/Ports/AdapterFactory.swift.
-//
-// It records the mode it was asked for -- which is what proves the handshake
-// passed the CLIENT's mode through rather than a default -- and can be told to
-// refuse, because refusing a mode is part of this port's contract and the hello
-// handler has to turn that refusal into an error the agent can read.
-//
-// THE SPEECH SOURCE IT BUILDS IS EXPOSED, because half of what the handshake has
-// to get right is invisible in the AdapterSet: that capture was STARTED, against
-// the buffer the context ended up holding, and after the set was installed so
-// teardown can stop it.
-
 import ScreenReaderWire
 import VoiceOverBridgeDomain
 
 public final class FakeAdapterFactory: AdapterFactory {
 	public private(set) var builtFor: [CaptureMode] = []
-	/// The source every set this factory builds carries, so a test can ask it
-	/// what the handshake did to it.
 	public let speechSource = FakeSpeechSource()
-	/// The same, for the two collaborators 13.6 added: the handshake opens the
-	/// marker channel and points the reader at the capture voice, and both of
-	/// those are invisible in the AdapterSet itself.
 	public let silenceControl = FakeSilenceControl()
 	public let providerLifecycle: FakeProviderLifecycle
-	/// And 13.7's `readerLiveness`. Its `gestureSender` was exposed beside it until
-	/// 13.31, which deleted the command-name route and the port with it.
 	public let readerLiveness = FakeReaderLiveness()
-	/// And 13.8's two, for the same reason -- plus one this file cannot leave
-	/// implicit: the broker records whether the Accessibility grant was ever
-	/// REQUESTED, and a session test asserting that a HANDSHAKE never asked for it
-	/// is asserting what survives of that entry's claim.
 	public let textTyper = FakeTextTyper()
 	public let permissions = FakePermissionBroker()
-	/// And 13.17's one, which since 13.31 is the ONLY way a gesture leaves this
-	/// bridge. Exposed because what was pressed is invisible in the AdapterSet the
-	/// handshake hands back.
 	public let keyPresser = FakeKeyPresser()
-	/// And 13.25's one, exposed so a session test can put this machine on a
-	/// different VoiceOver modifier -- Caps Lock, or one that cannot be read --
-	/// and assert that `vo+m` is refused over a real wire with nothing pressed.
 	public let readerModifier = FakeReaderModifierSetting()
-	/// The one collaborator that takes somebody's screen reader away. Exposed
-	/// because the assertion worth making about it is usually that it was NOT
-	/// called: an ordinary handshake restarts nothing.
 	public let readerRestart = FakeReaderRestart()
-	/// What this session changed and put back. Exposed so a session test can
-	/// assert the thing the journal exists for -- that nothing is left OPEN.
 	public let changeJournal = FakeChangeJournal()
-	/// And 13.9's one. Exposed like the rest so a session-level test can assert
-	/// what a `getFocusInfo` off the wire actually read -- and, beside
-	/// `permissions` above, that answering focus asked the broker nothing.
 	public let focusInspector = FakeFocusInspector()
-	/// And 13.10's two, exposed for the sharpest reason of the lot: what the human
-	/// at the machine was TOLD, and what they were ASKED, are the two things a
-	/// session test has to be able to assert about a silent run -- and neither is
-	/// visible anywhere else, because both go out of this process rather than into
-	/// a result.
 	public let announcer = FakeAnnouncer()
 	public let userPrompter = FakeUserPrompter()
-	/// When set, `build` throws it instead of answering.
 	public var refusal: AdapterFactoryError?
 
-	/// THE MACHINE THIS FACTORY STANDS FOR IS HEALTHY BY DEFAULT, AND SINCE 13.20
-	/// THAT INCLUDES A READER THAT SPEAKS. The handshake's last rung presses the
-	/// capture probe and requires the utterance to arrive, so a factory whose
-	/// reader was mute would be a machine no `hello` could complete on -- and
-	/// every test in HelloTests would fail for a reason none of them is about.
-	/// `captureProbeSpeaks: false` is how a test asks for the machine where
-	/// nothing comes back, which is the failure 13.20 exists to report.
-	///
-	/// The wiring itself is `Support/ReaderEdge.swift`'s, called rather than
-	/// copied: `fakeAdapterSet` needs the same behaviour, and two definitions of
-	/// "a working reader" would differ the first time the probe changed.
+	/// Healthy by default, including a reader that answers the capture probe; `captureProbeSpeaks: false` gives the machine where nothing comes back.
 	public init(
 		refusal: AdapterFactoryError? = nil,
 		providerLifecycle: FakeProviderLifecycle = FakeProviderLifecycle(),

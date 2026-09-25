@@ -2,16 +2,7 @@
 
 // screenreader-mcp tests -- connecting to a bridge over a real named pipe.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: integration scenario, Windows only -- the real-transport tier for the
-// LOCAL endpoint as Windows spells it, which is what the NVDA bridge ships
-// listening on. Its POSIX sibling is connect_over_unix_socket_test.go: the same
-// scenarios against the same seam, over the mechanism that host has.
-//
-// This is the only place the pipe leaf and the pipe scan are exercised against a
-// real namespace, and it is worth having separately from the TCP scenario
-// because they fail differently: a pipe is a filesystem-shaped object with its
-// own naming and its own liveness story.
+// ROLE: integration scenario, Windows only, exercising the pipe leaf and pipe scan against the real namespace.
 package integration_test
 
 import (
@@ -28,12 +19,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// listenPipe starts the fake bridge on a real named pipe and returns the bare
-// name, as a configured endpoint would spell it.
-//
-// The name carries the test's own suffix so a run cannot collide with a real
-// bridge installed on the machine -- and, just as importantly, so this test can
-// never be satisfied by one.
+// The name is the test's own, so a real bridge installed on the machine can never satisfy the test.
 func listenPipe(t *testing.T, fake *testsupport.FakeBridge, name string) string {
 	t.Helper()
 	listener, err := winio.ListenPipe(`\\.\pipe\`+name, nil)
@@ -72,25 +58,11 @@ func TestASessionIsEstablishedOverARealNamedPipe(t *testing.T) {
 	}
 }
 
-// A command that takes LONGER THAN ONE POLL INTERVAL still succeeds over a real
-// pipe.
-//
-// Regression, found by 10c's conformance run against the real bridge. The
-// Transport seam's contract is that an idle read reports os.ErrDeadlineExceeded;
-// go-winio reports its own winio.ErrTimeout instead, and the client reads any
-// other error as "the connection died". Untranslated, every command slower than
-// the 50ms poll -- every wait, and any gesture that makes the reader speak --
-// failed with "bridge connection lost" over the transport the NVDA bridge ships
-// listening on. Nothing caught it, because a fake bridge answers instantly and
-// the in-memory transports report the deadline the way net does.
-//
-// It belongs at THIS tier, not only in conformance: the subject is one leaf
-// against the real OS, and this run is minutes cheaper.
+// go-winio reports an idle read as winio.ErrTimeout, not os.ErrDeadlineExceeded, which the client would
+// otherwise read as a dead connection.
 func TestACommandSlowerThanThePollIntervalSurvivesOverARealPipe(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	fake.Handle(wire.CommandGetSpeech, func(json.RawMessage) (any, error) {
-		// Comfortably past the poll window, and still far inside the client's
-		// call budget: the only thing that can fail this is the seam.
 		time.Sleep(6 * adapterports.PollInterval)
 		return wire.SpeechResult{
 			Entries:   []wire.SpeechEntry{{Text: "spoken slowly", Index: 1, LogPosition: 12}},
@@ -118,9 +90,6 @@ func TestACommandSlowerThanThePollIntervalSurvivesOverARealPipe(t *testing.T) {
 	}
 }
 
-// The probe against the real namespace: a configured pipe that is listening is
-// reported live, and one that is not is not. This is acceptance criterion 4
-// against the actual OS rather than a scripted listing.
 func TestTheProbeSeesARealListeningPipe(t *testing.T) {
 	fake := testsupport.NewFakeBridge(testsupport.BridgeOptions{})
 	name := listenPipe(t, fake, "screenreaderMcpProbeTestBridge")

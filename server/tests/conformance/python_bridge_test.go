@@ -2,27 +2,9 @@
 
 // screenreader-mcp tests -- starting the REAL Python bridge, and the real server.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: scaffolding for the conformance tier. It launches the two processes the
-// scenarios need -- the real NVDA bridge (Python) and the real MCP server (the
-// built Go binary) -- and hands back the seam between them.
-// USED BY: the scenarios beside it. It lives in a _test.go file rather than in
-// testsupport/ because nothing outside this tier may have it: testsupport/ is
-// where the FAKE bridge lives, and these two must never be alternatives to each
-// other.
-//
-// WHY THIS TIER EXISTS, and the one rule that matters here. Every other test of
-// this server drives a Go fake bridge that ENCODES with the same generated
-// binding the server DECODES with, so a bug in the binding itself is invisible
-// to them: both sides would be wrong together, in agreement. Only the real
-// Python bridge can catch that, which makes this the successor to the same-bytes
-// guarantee the two halves had while both were Python.
-//
-// Therefore: FAILING TO REACH THE REAL BRIDGE IS A HARD FAILURE, never a skip
-// and never a fall-back. A conformance run that quietly used the Go fake would
-// be worse than no conformance run at all -- it would assert the guarantee
-// without providing it. Every path below that cannot reach Python calls
-// t.Fatalf, and no code here can construct a fake.
+// ROLE: scaffolding for the conformance tier, launching the real NVDA bridge and the real server binary.
+// USED BY: the scenarios beside it; it stays out of testsupport/ so it can never stand in for the fake bridge.
+// Failing to reach the real bridge must be a hard failure, never a skip or a fall-back to the fake.
 package conformance_test
 
 import (
@@ -45,16 +27,9 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// bridgeStartTimeout bounds how long the Python bridge may take to report the
-// endpoint it is listening on. Generous, because a cold CI runner pays for
-// interpreter startup on the first run; bounded, because a hang here would
-// otherwise burn the whole job's time budget before saying anything useful.
 const bridgeStartTimeout = 60 * time.Second
 
-// pythonBridge is one running real bridge.
 type pythonBridge struct {
-	// Endpoint is what the bridge is listening on, spelled the way the
-	// server's --reader flag wants it (`tcp:127.0.0.1:53422`, `local:name`).
 	Endpoint string
 
 	command *exec.Cmd
@@ -62,12 +37,6 @@ type pythonBridge struct {
 	stderr  *syncBuffer
 }
 
-// startPythonBridge launches bridges/nvda/tests/support/conformance_bridge.py on
-// one transport and waits for it to report its endpoint.
-//
-// The protocol with the harness is deliberately one line of JSON on stdout, and
-// stdin EOF to stop: the driver is in another language, so anything richer would
-// be a second protocol to keep in sync with the one this tier exists to test.
 func startPythonBridge(t *testing.T, transport string) *pythonBridge {
 	t.Helper()
 
@@ -76,8 +45,7 @@ func startPythonBridge(t *testing.T, transport string) *pythonBridge {
 
 	arguments := append(append([]string{}, interpreter[1:]...), script, "--transport", transport)
 	command := exec.Command(interpreter[0], arguments...)
-	// Run from the bridge directory so the harness's own relative paths (the
-	// shared-module sync it performs) resolve the way they do under pytest.
+	// The harness resolves its relative paths from the bridge directory.
 	command.Dir = repoPath(t, "bridges", "nvda")
 
 	stdout, err := command.StdoutPipe()
@@ -103,7 +71,6 @@ func startPythonBridge(t *testing.T, transport string) *pythonBridge {
 	return bridge
 }
 
-// awaitEndpoint reads the harness's one announcement line.
 func awaitEndpoint(t *testing.T, bridge *pythonBridge, stdout io.Reader) string {
 	t.Helper()
 
@@ -142,7 +109,6 @@ func awaitEndpoint(t *testing.T, bridge *pythonBridge, stdout io.Reader) string 
 	}
 }
 
-// stop closes the harness's stdin, which is its stop signal, and waits for it.
 func (b *pythonBridge) stop(t *testing.T) {
 	t.Helper()
 	_ = b.stdin.Close()
@@ -158,19 +124,8 @@ func (b *pythonBridge) stop(t *testing.T) {
 	}
 }
 
-// Stderr is what the bridge has written to stderr so far, for a failing test to
-// print. A conformance failure is usually about the far side, so the far side's
-// own account of it is the first thing worth having.
 func (b *pythonBridge) Stderr() string { return b.stderr.String() }
 
-// pythonInterpreter finds a Python 3.13 to run the bridge with, and FAILS THE
-// TEST if there is none.
-//
-// The candidates differ per machine -- CI puts `python` on PATH via
-// setup-python; a Windows developer box may only have the `py` launcher, and
-// this project's own AGENTS.md records a machine whose bare `python` is broken --
-// so each candidate is PROBED by running it rather than assumed from its name.
-// CONFORMANCE_PYTHON overrides the list entirely, as a space-separated command.
 func pythonInterpreter(t *testing.T) []string {
 	t.Helper()
 
@@ -202,9 +157,6 @@ func pythonInterpreter(t *testing.T) []string {
 	return nil
 }
 
-// probePython checks one candidate by making it report its own version. The
-// bridge is stdlib-only, so a bare interpreter of the right version is the whole
-// requirement -- there is nothing to install.
 func probePython(candidate []string) error {
 	arguments := append(append([]string{}, candidate[1:]...),
 		"-c", "import sys; sys.exit(0 if sys.version_info >= (3, 13) else 1)")
@@ -215,25 +167,11 @@ func probePython(candidate []string) error {
 	return nil
 }
 
-// startServer builds the server BINARY and drives it over stdio, exactly as an
-// MCP host would.
-//
-// The binary rather than an in-process composition, because this tier is the one
-// place where "does the thing we ship interoperate?" is the question: the stdio
-// adapter, the flag parsing and the artifact itself are all part of the answer,
-// and a stray write to stdout would corrupt the frames and fail here rather than
-// in somebody's editor.
 func startServer(t *testing.T, endpoint string) *testsupport.MCPHarness {
 	t.Helper()
 	return startServerForReader(t, "nvda", endpoint)
 }
 
-// startServerForReader is the same, for whichever bridge a scenario reached.
-//
-// PARAMETERISED BY READER SINCE 13.11, when the Swift bridge joined this tier.
-// The reader NAME is not decoration here: it is what `connect_reader` is called
-// with, so a scenario that named the wrong one would be gated away from its own
-// bridge by the server's configuration rather than by anything about the wire.
 func startServerForReader(t *testing.T, reader, endpoint string) *testsupport.MCPHarness {
 	t.Helper()
 
@@ -250,13 +188,6 @@ func startServerForReader(t *testing.T, reader, endpoint string) *testsupport.MC
 	return testsupport.AttachMCP(t, &sdk.CommandTransport{Command: command})
 }
 
-// buildServer compiles the released binary into the test's own temporary
-// directory.
-//
-// Built per test rather than once into a package-level variable: there is no
-// package-level mutable state anywhere in server/ (spec 0013, acceptance
-// criterion 11), and the build cache makes the repeat cost a link, not a
-// compile.
 func buildServer(t *testing.T) string {
 	t.Helper()
 
@@ -273,8 +204,6 @@ func buildServer(t *testing.T) string {
 	return binary
 }
 
-// repoPath resolves a path from the repository root, which is three levels above
-// this package.
 func repoPath(t *testing.T, elements ...string) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
@@ -288,8 +217,6 @@ func repoPath(t *testing.T, elements ...string) string {
 	return path
 }
 
-// syncBuffer collects a child process's stderr while the test reads it from
-// another goroutine.
 type syncBuffer struct {
 	mutex  sync.Mutex
 	buffer bytes.Buffer

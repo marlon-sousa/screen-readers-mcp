@@ -1,14 +1,6 @@
 // screenreader-mcp domain -- the five speech tools' tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ONE TEST FILE FOR FIVE TOOLS, deliberately, and it is the one place this
-// package departs from "one test module per source module" (the root AGENTS.md). The
-// reason is that these five are a single capability GROUP over a single port,
-// and the properties worth asserting are properties of the group: the half-open
-// index window that makes toIndex the next since_index, and the fact that "not
-// found" is an answer rather than a failure. Splitting them five ways would
-// scatter one argument across five files and make the shared index arithmetic
-// look like five unrelated details.
+// One test file for five tools, because they are one capability group over one port.
 package tools_test
 
 import (
@@ -21,8 +13,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// speechCall wires one speech tool against a reader that announced `speech`,
-// and returns the call plus the fake speech log behind it.
 func speechCall(t *testing.T, tool tools.Tool) (*testsupport.ToolCall, *testsupport.Connection) {
 	t.Helper()
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
@@ -40,9 +30,6 @@ func decode(t *testing.T, value any, into any) {
 	}
 }
 
-// capturedWindow is what get_speech and get_braille return: one entry per
-// utterance since spec 0021, each with its own index and journal coordinate,
-// plus the half-open range the read covers.
 type capturedWindow struct {
 	Entries []struct {
 		Text        string `json:"text"`
@@ -62,8 +49,6 @@ func (w capturedWindow) texts() []string {
 	return said
 }
 
-// The half-open window: [fromIndex, toIndex), so toIndex is exactly the
-// since_index to pass next, with no overlap and no gap (protocol.md §7).
 func TestGetSpeechReturnsAHalfOpenWindowThatChainsCleanly(t *testing.T) {
 	call, built := speechCall(t, &tools.GetSpeech{})
 	built.Speech.Speak("Edit  blank", "Documents  list")
@@ -100,9 +85,7 @@ func TestGetSpeechReturnsAHalfOpenWindowThatChainsCleanly(t *testing.T) {
 	}
 }
 
-// Each utterance carries the index it actually occupies, not its place in the
-// answer -- empty renders are dropped bridge-side, so entry i is NOT at index
-// fromIndex + i and a caller cannot derive one from the other (spec 0021).
+// Empty renders are dropped bridge-side, so entry i is not at index fromIndex + i.
 func TestEachSpokenEntryCarriesItsOwnIndexAndJournalPosition(t *testing.T) {
 	call, built := speechCall(t, &tools.GetSpeech{})
 	built.Speech.Speak("Edit  blank")
@@ -124,16 +107,12 @@ func TestEachSpokenEntryCarriesItsOwnIndexAndJournalPosition(t *testing.T) {
 		t.Errorf("indices = %d,%d, want each entry's own place in the ring",
 			window.Entries[0].Index, window.Entries[1].Index)
 	}
-	// The coordinates must MOVE with the journal; a tool that stamped both from
-	// one read would place two utterances at the same point on the timeline.
 	if window.Entries[0].LogPosition >= window.Entries[1].LogPosition {
 		t.Errorf("logPositions = %d,%d, want the second to be later",
 			window.Entries[0].LogPosition, window.Entries[1].LogPosition)
 	}
 }
 
-// The bookmark pattern the whole speech group is built around: note "now", act,
-// read only what the action produced.
 func TestGetNextSpeechIndexBookmarksNow(t *testing.T) {
 	call, built := speechCall(t, &tools.GetNextSpeechIndex{})
 	built.Speech.Speak("before one", "before two")
@@ -191,9 +170,6 @@ func TestWaitForSpeechReportsAMatch(t *testing.T) {
 	}
 }
 
-// NOT finding it is an ANSWER. This is also how an agent asserts that something
-// was never announced, so an error here would make the negative case
-// indistinguishable from a broken connection.
 func TestWaitForSpeechReportsANonMatchWithoutFailing(t *testing.T) {
 	call, built := speechCall(t, &tools.WaitForSpeech{})
 	built.Speech.Speak("Edit  blank")
@@ -212,9 +188,6 @@ func TestWaitForSpeechReportsANonMatchWithoutFailing(t *testing.T) {
 	}
 }
 
-// after_index is a POINTER on the wire: "anywhere in what has been captured" is
-// a different request from "at or after index 0", and this tool must not decide
-// that on the agent's behalf.
 func TestWaitForSpeechPassesAfterIndexThroughOnlyWhenGiven(t *testing.T) {
 	call, built := speechCall(t, &tools.WaitForSpeech{})
 	built.Speech.Speak("Edit  blank")
@@ -235,8 +208,6 @@ func TestWaitForSpeechPassesAfterIndexThroughOnlyWhenGiven(t *testing.T) {
 	}
 }
 
-// Waiting for the empty string matches the first thing said, which is never what
-// anyone meant and would look like a working assertion.
 func TestWaitForSpeechRefusesAnEmptyText(t *testing.T) {
 	call, _ := speechCall(t, &tools.WaitForSpeech{})
 
@@ -248,8 +219,6 @@ func TestWaitForSpeechRefusesAnEmptyText(t *testing.T) {
 	}
 }
 
-// A timeout is seconds on the wire and a Duration in the domain; omitting it
-// means the reader's own default, which the contract owns.
 func TestWaitTimeoutsAreSecondsAndOptional(t *testing.T) {
 	call, built := speechCall(t, &tools.WaitForSpeech{})
 	built.Speech.Speak("Edit")
@@ -297,8 +266,6 @@ func TestWaitForSpeechToFinishReportsWhetherSpeechSettled(t *testing.T) {
 	}
 }
 
-// The gate, for all five: a reader that announced no speech hands over no
-// SpeechReader, so every one of them refuses with the structured error.
 func TestEverySpeechToolRefusesAReaderWithoutSpeech(t *testing.T) {
 	built := testsupport.NewConnection("jaws", entities.CapabilityBraille)
 
@@ -325,8 +292,6 @@ func TestEverySpeechToolRefusesAReaderWithoutSpeech(t *testing.T) {
 	}
 }
 
-// Spec 0028. The strongest ask of the first external run: without this, a timing
-// assertion could only be made by reading the bridge's transcript off disk.
 func TestGetSpeechCarriesTheInstantEachUtteranceWasEmitted(t *testing.T) {
 	call, built := speechCall(t, &tools.GetSpeech{})
 	built.Speech.Speak("Edit  blank", "Documents  list")
@@ -345,10 +310,6 @@ func TestGetSpeechCarriesTheInstantEachUtteranceWasEmitted(t *testing.T) {
 	}
 }
 
-// The field is optional on the wire, so a bridge older than 0028 sends nothing
-// and the adapter maps a nil pointer to "". The tool must render that as an
-// absent field rather than as an instant, and must not fail: an old add-on with
-// a new server is the ordinary state of a machine mid-upgrade.
 func TestAnEntryWithoutAStampIsRenderedWithoutOne(t *testing.T) {
 	call, built := speechCall(t, &tools.GetSpeech{})
 	built.Speech.SpeakWithoutStamp("no stamp here")

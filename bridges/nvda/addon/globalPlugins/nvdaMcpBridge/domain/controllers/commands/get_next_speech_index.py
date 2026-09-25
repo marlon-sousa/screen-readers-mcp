@@ -1,8 +1,6 @@
 # nvdaMcpBridge domain -- GetNextSpeechIndexHandler: the next bookmark.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `getNextSpeechIndex`. The index an agent bookmarks
-# before an action, so a later read/wait is race-free against background speech.
+# ROLE: command handler for `getNextSpeechIndex`.
 
 from __future__ import annotations
 

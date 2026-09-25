@@ -1,19 +1,9 @@
 # nvdaMcpBridge adapters -- NvdaLiveSpeechSource: live-mode speech capture.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: adapter. IMPLEMENTS the SpeechSource port for LIVE mode -- the real synth
-#       keeps talking while we observe what it was asked to say.
-# BUILT BY: adapters/nvda_adapter_factory.py when hello asks for live mode.
-# COLLABORATORS: speech.extensions.pre_speechQueued -- the fully processed
-#                sequence about to be synthesised (the pattern NVDA's own
-#                _remoteClient uses). Live mode has no exact finish signal, so the
-#                SpeechBuffer's elapsed-time heuristic decides "finished".
-#
-# suspend/resume are no-ops in live mode because nothing was ever suppressed.
-#
-# On pyright's ignore list (imports NVDA). NVDA holds handlers weakly, so this
-# instance must outlive its registration -- the AdapterSet keeps it for the
-# session; stop() unregisters at teardown.
+# ROLE: adapter implementing SpeechSource for live mode from pre_speechQueued; the real synth keeps talking.
+# BUILT BY: adapters/nvda_adapter_factory.py.
+# Live mode has no exact finish signal, so the SpeechBuffer's elapsed-time heuristic decides "finished".
+# NVDA holds handlers weakly, so this instance must outlive its registration.
 
 from __future__ import annotations
 
@@ -29,8 +19,6 @@ if TYPE_CHECKING:
 
 
 class NvdaLiveSpeechSource(SpeechSource):
-	"""Feeds the SpeechBuffer from the pre_speechQueued hook (live mode)."""
-
 	def __init__(self) -> None:
 		self._buffer: SpeechBuffer | None = None
 		self._log_position: Callable[[], int] = lambda: 0
@@ -61,7 +49,6 @@ class NvdaLiveSpeechSource(SpeechSource):
 		"""No-op in live mode: nothing was ever suppressed."""
 
 	def is_suppressing(self) -> bool:
-		"""Always False: the human hears their machine throughout a live session."""
 		return False
 
 	def _on_speech_queued(self, speechSequence: Any = None, **kwargs: Any) -> None:

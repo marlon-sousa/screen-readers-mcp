@@ -1,9 +1,5 @@
 // screenreader-mcp domain -- tests for endpoint.go.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The spelling tested here is the one that appears in defaults.json, in a
-// --config file and in a --reader flag, so these cases are the contract with
-// whoever writes a configuration by hand.
 package entities_test
 
 import (
@@ -35,8 +31,6 @@ func TestParseEndpointAcceptsTheTwoTransports(t *testing.T) {
 	}
 }
 
-// A TCP address carries its own colon, so only the FIRST separates the kind. If
-// this regressed, `tcp:127.0.0.1:8765` would silently lose its port.
 func TestParseEndpointKeepsTheAddressColon(t *testing.T) {
 	got, err := entities.ParseEndpoint("tcp:127.0.0.1:8765")
 	if err != nil {
@@ -57,7 +51,6 @@ func TestParseEndpointRejectsMalformedSpecs(t *testing.T) {
 	}
 }
 
-// What an agent is shown must be writable straight back into a --reader flag.
 func TestEndpointStringRoundTrips(t *testing.T) {
 	for _, spec := range []string{"local:nvdaMcpBridge", "tcp:127.0.0.1:8765"} {
 		t.Run(spec, func(t *testing.T) {
@@ -72,11 +65,6 @@ func TestEndpointStringRoundTrips(t *testing.T) {
 	}
 }
 
-// `pipe:` is what `local:` was spelled until spec 0044. It parses forever --
-// shipped defaults, --reader help text, the published contract and config files
-// people already have all carry it -- and it is NEVER printed: String() emits
-// the canonical spelling, so list_readers cannot answer in a vocabulary a
-// --reader flag does not use.
 func TestParseEndpointAcceptsThePipeAliasAndNormalisesIt(t *testing.T) {
 	got, err := entities.ParseEndpoint("pipe:nvdaMcpBridge")
 	if err != nil {
@@ -91,10 +79,6 @@ func TestParseEndpointAcceptsThePipeAliasAndNormalisesIt(t *testing.T) {
 	}
 }
 
-// The predicate two rules read: which addresses are derived into this host's
-// spelling, and which can be looked up in a namespace listing at all. The answer
-// must not change with the host asking, because the same config file is read on
-// both.
 func TestIsBareName(t *testing.T) {
 	for _, c := range []struct {
 		address string

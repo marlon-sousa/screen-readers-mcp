@@ -1,19 +1,7 @@
-// ROLE: entity -- `getFocusInfo`'s result. The command has no params.
-//
-// Pure. Built by the GetFocusInfo handler (entry 13.9).
-//
-// TWO FIELDS ARE REQUIRED AND NULLABLE, WHICH IS A THIRD STATE THE SYNTHESIZED
-// DECODER WOULD ERASE. `value` and `appModule` must be PRESENT and may be null:
-// "the element has no value" is an answer, and "the frame forgot the field" is a
-// fault. Swift's synthesized `init(from:)` decodes an Optional with
-// decodeIfPresent, which folds those two into nil -- so this file decodes them
-// by hand. The Go binding draws the same line with a pointer and no `omitempty`.
-//
-// THIS BRIDGE ANSWERS DIFFERENTLY DEPENDING ON A PERMISSION (spec 0046's honest
-// limits): richer with Accessibility granted, thinner without, and the shape has
-// nowhere to say which route answered. An agent reading empty `role` and
-// `states` cannot tell "no grant" from "the element has none" -- which is why
-// the guidance document and the control dialog carry that, not this struct.
+// ROLE: entity, `getFocusInfo`'s result; the command has no params.
+// `value` and `appModule` must be present and may be null, so they are decoded by hand: synthesized
+// decoding would fold a missing key into nil.
+// Without the Accessibility grant `role` and `states` come back empty, indistinguishable from an element with none.
 
 public struct FocusInfoResult: Codable, Equatable, Sendable {
 	public var name: String
@@ -30,8 +18,6 @@ public struct FocusInfoResult: Codable, Equatable, Sendable {
 		self.appModule = appModule
 	}
 
-	// Spelled out rather than synthesized: a type that writes BOTH halves of
-	// Codable gets no synthesized keys, and the names are the wire's own.
 	enum CodingKeys: String, CodingKey {
 		case name, role, states, value, appModule
 	}

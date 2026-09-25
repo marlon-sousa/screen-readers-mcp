@@ -1,18 +1,8 @@
 # nvdaMcpBridge adapters -- NvdaAdapterFactory: builds the real AdapterSet.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: adapter. IMPLEMENTS the AdapterFactory port -- the one place that picks
-#       the mode-specific speech source and assembles the NVDA-backed collaborators.
-# BUILT BY: wiring.build_session (via the hello handler) in production (9c).
-# USED BY: the hello handler, which calls build(mode) once the client reveals it.
-#
-# On pyright's ignore list only because it imports the nvda_*.py adapters (which
-# import NVDA); it makes no NVDA calls itself. The mode branch is the whole point
-# of the factory: silent mode captures via the speak() FILTER and suppresses the
-# audio while leaving the real synth loaded (NvdaSilentSpeechSource); live mode
-# observes the pre_speechQueued hook and lets the real synth talk. Neither mode
-# swaps the synth -- there is no synth swapper. Braille, gestures, typing,
-# focus, state and config are mode-independent.
+# ROLE: adapter implementing AdapterFactory, picking the speech source for the capture mode.
+# BUILT BY: wiring.build_session.
+# USED BY: the hello handler.
 
 from __future__ import annotations
 
@@ -32,8 +22,6 @@ from .nvda_text_typer import NvdaTextTyper
 
 
 class NvdaAdapterFactory(AdapterFactory):
-	"""Assembles the real NVDA-backed AdapterSet for the negotiated capture mode."""
-
 	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
 		silent = mode is protocol.CaptureMode.SILENT
 		speech_source = NvdaSilentSpeechSource() if silent else NvdaLiveSpeechSource()

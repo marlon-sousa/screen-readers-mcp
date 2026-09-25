@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/ValidationError.swift.
-//
-// The property under test throughout is that ONE LINE is enough to diagnose a
-// wire fault: Swift's own DecodingError describes the failure but renders the
-// coding path nowhere in its message.
 
 import Testing
 

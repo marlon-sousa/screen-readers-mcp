@@ -1,28 +1,11 @@
-# Integration scenario: a whole session over a REAL named pipe, headless.
+# Integration scenario: a whole session over a real named pipe, headless.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# Spec 0010's proof: the same 9a connection stack (BridgeServer + a
-# FakeAdapterFactory) proven over TCP in test_socket_session_roundtrip.py,
-# this time behind a real NamedPipeListener on a unique per-test pipe name (the
-# pipe analogue of TCP's ephemeral port 0) -- everything below the NVDA edge is
-# real, so this is what proves NamedPipeListener/NamedPipeTransport are truly
-# interchangeable with TcpListener/SocketTransport behind the Listener/
-# Transport seams, not just similar. Runs on CI (windows-latest); no NVDA
-# needed -- a named pipe is plain OS-level IPC.
-#
-# Deliberately a near-line-for-line mirror of test_socket_session_roundtrip.py:
-# where the two differ is exactly where the leaf differs (listener + dial), and
-# nowhere else -- that symmetry *is* the proof.
 
 from __future__ import annotations
 
 from support.platforms import skip_module_unless_windows
 
-# BEFORE every import below, and that ordering is the whole point: the
-# named_pipe_* adapters call ctypes.WinDLL in their module bodies, so on a
-# non-Windows host collection DIES here instead of skipping. `pytestmark` cannot
-# help -- a marker deselects a test only after its module has been imported.
-# Spec 0042, decision 6; E402 for this file is ignored in pyproject.toml.
+# Must precede every import below; see tests/support/platforms.py.
 skip_module_unless_windows("a whole session over a REAL named pipe, which is a Win32 facility")
 
 import time
@@ -48,9 +31,7 @@ from support.roundtrip import read_reply, request, wait_until
 
 
 def _unique_pipe_name() -> str:
-	# The pipe analogue of TCP's port 0: a fresh name per test so parallel runs
-	# (and a stray live bridge on the real DEFAULT_PIPE_NAME, if one happens to
-	# be running on this machine) never collide.
+	# A fresh name per test, so parallel runs and a live bridge on DEFAULT_PIPE_NAME never collide.
 	return rf"\\.\pipe\nvdaMcpBridge-test-{uuid.uuid4()}"
 
 
@@ -62,8 +43,6 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 	factories: list[FakeAdapterFactory] = []
 
 	def session_factory(transport: Any) -> Session:
-		# A fresh fake NVDA per session; kept so the test can assert capture was
-		# stopped (the filter unregistered) on each teardown.
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
@@ -86,7 +65,6 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 		assert server.status.state is ServerState.LISTENING
 		assert server.status.endpoint == pipe_name
 
-		# -- first session ---------------------------------------------------
 		agent = _dial(pipe_name)
 		try:
 			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
@@ -101,10 +79,6 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 
 			agent.write(request(3, "pressGesture", gestures=["NVDA+f7"]))
 			pressed = read_reply(agent, awaiting="pressGesture (id 3)")["result"]
-			# Spec 0025: the gesture reply already carries what it caused, so the
-			# act/settle/listen loop is one round trip here rather than three. The
-			# settle and the read below still run because both commands still
-			# exist -- they are just no longer how you learn what a key said.
 			assert [p["gesture"] for p in pressed["pressed"]] == ["NVDA+f7"]
 			assert any("Elements list dialog" in e["text"] for e in pressed["speech"])
 			assert pressed["speechTo"] > pressed["speechFrom"]
@@ -115,7 +89,6 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 				is True
 			)
 			agent.write(request(5, "getSpeech", sinceIndex=0))
-			# One entry per utterance since spec 0021, not a joined blob.
 			entries = read_reply(agent, awaiting="getSpeech (id 5)")["result"]["entries"]
 			assert any("Elements list dialog" in entry["text"] for entry in entries)
 
@@ -124,14 +97,12 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 		finally:
 			agent.close()
 
-		# The session ended (bye) and the server is accepting again, no restart.
 		wait_until(
 			lambda: server.status.state is ServerState.LISTENING,
 			awaiting="the server to accept again",
 		)
 		assert factories[0].speech_source.stopped == 1
 
-		# -- second session, same server -------------------------------------
 		agent = _dial(pipe_name)
 		try:
 			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
@@ -154,8 +125,6 @@ def test_a_whole_session_over_a_real_named_pipe(tmp_path: Path) -> None:
 
 
 def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
-	# A server that never sees a connection still stops cleanly and promptly --
-	# the accept poll window, not a client, is what bounds stop().
 	def session_factory(transport: Any) -> Session:
 		return build_session(
 			transport,
@@ -178,10 +147,6 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 
 
 def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> None:
-	# Regression, the pipe analogue of the TCP scenario's RST test: a client
-	# that vanishes mid-session without `bye` must not take the accept loop
-	# down -- the next read reports EOF (ERROR_BROKEN_PIPE), same as a reset
-	# socket reporting b"".
 	def session_factory(transport: Any) -> Session:
 		return build_session(
 			transport,
@@ -204,7 +169,6 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 		read_reply(agent, awaiting="hello")
 		agent.close()  # no `bye` -- just vanish
 
-		# The server survives: back to LISTENING, and a fresh session still works.
 		wait_until(
 			lambda: server.status.state is ServerState.LISTENING,
 			awaiting="the server to accept again",
@@ -223,17 +187,7 @@ def test_an_abruptly_closed_client_does_not_kill_the_server(tmp_path: Path) -> N
 
 
 def test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on(tmp_path: Path) -> None:
-	# Checklist item 8, automated as far as it can be without NVDA: the invariant
-	# the whole askUser design is arranged around. An open interaction window is
-	# the one state in which suppression is deliberately OFF, so a client that
-	# dies inside it must not leave the filter reinstalled -- a blind tester whose
-	# agent crashed mid-question would be sitting at a mute machine with no way to
-	# find out why.
-	#
-	# The abrupt-close test above proves the SERVER survives; this proves the
-	# TESTER does. Both are needed, and this one has to be here rather than in a
-	# unit test: it takes a real transport dropping mid-window and a real session
-	# thread noticing, which is the sequence a FakeChannel cannot stage.
+	# A client dying with a prompt open must not leave the filter reinstalled, or the tester is left mute.
 	factories: list[FakeAdapterFactory] = []
 	prompters: list[FakeUserPrompter] = []
 
@@ -264,7 +218,6 @@ def test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on(tmp_path: Pa
 
 		agent.write(request(2, "askUser", prompt="unplug the display and tell me"))
 		ticket = read_reply(agent, awaiting="askUser (id 2)")["result"]["ticket"]
-		# The window is open, so suppression is off: this is the dangerous moment.
 		assert factories[0].speech_source.suspended == 1
 		assert factories[0].speech_source.stopped == 0
 
@@ -278,22 +231,13 @@ def test_a_client_that_vanishes_with_a_prompt_open_leaves_speech_on(tmp_path: Pa
 	finally:
 		server.stop()
 
-	# Teardown stopped capture, which unregisters the filter for good...
 	assert factories[0].speech_source.stopped == 1
-	# ...and never re-suppressed on the way out. A resume() here would reinstall
-	# the filter, and a stop() that then failed (it is guarded) would strand the
-	# tester mute.
+	# A resume() here would reinstall the filter and could strand the tester mute.
 	assert factories[0].speech_source.resumed == 0
-	# The prompt the human is still looking at is withdrawn, too.
 	assert prompters[0].cancelled == [ticket]
 
 
 def test_accept_and_recv_report_timeout_when_idle() -> None:
-	# The poll-timeout contract every Listener/Transport leaf must honour
-	# (Listener.accept, Transport.recv): sockets get it for free from
-	# settimeout: the named-pipe leaf earns it from overlapped I/O, so it is
-	# worth asserting directly rather than only inferring it from the scenarios
-	# above completing in reasonable time.
 	pipe_name = _unique_pipe_name()
 	listener = NamedPipeListener(pipe_name, accept_timeout=0.2)
 	listener.open()

@@ -1,11 +1,5 @@
 # Unit tests for domain/controllers/commands/set_log_level.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# setLogLevel is the one command in 0020 that changes the user's machine, so what
-# is tested here is mostly what it REFUSES and what it restores: the level moves,
-# the tester hears about it, `warning`/`error` are rejected as unsettable, and the
-# level teardown restores is the one the session started from -- not whatever the
-# last setLogLevel asked for.
 
 from __future__ import annotations
 
@@ -39,8 +33,6 @@ def test_set_log_level_changes_the_level_and_reports_the_previous(clock: FakeClo
 
 
 def test_set_log_level_is_announced_to_the_tester(clock: FakeClock) -> None:
-	# The human at the machine is the one whose reader just got slower; they hear
-	# it rather than discovering it.
 	announcer = FakeAnnouncer()
 	capture = FakeLogCapture()
 	capture.start(p.LogLevel.INFO)
@@ -52,16 +44,12 @@ def test_set_log_level_is_announced_to_the_tester(clock: FakeClock) -> None:
 
 
 def test_set_log_level_mutates_the_reader() -> None:
-	# Consistent with setConfig: a temporary but real change to the user's machine,
-	# so an observe-only session (spec 0017) can refuse it structurally.
 	assert SetLogLevelHandler.mutates_reader is True
 
 
 @pytest.mark.parametrize("level", ["warning", "error"])
 def test_filter_only_levels_cannot_be_set(clock: FakeClock, level: str) -> None:
-	# They joined the LogLevel enum in 0020 to serve as getLog minLevel filters.
-	# Setting NVDA's own floor to either would silence warnings in the human's
-	# nvda.log for the rest of the session.
+	# Setting NVDA's own floor to either would silence warnings in the human's nvda.log.
 	capture = FakeLogCapture()
 	capture.start(p.LogLevel.INFO)
 	ctx = make_context(clock, log_capture=capture)
@@ -83,8 +71,6 @@ def test_every_settable_level_is_accepted(clock: FakeClock, level: str) -> None:
 
 
 def test_teardown_restores_the_level_the_session_started_from(clock: FakeClock) -> None:
-	# Live-checklist item 7, headlessly: after a setLogLevel, stop() must put back
-	# what the user's NVDA had before hello -- not the level setLogLevel asked for.
 	capture = FakeLogCapture()
 	capture.start(p.LogLevel.INFO)
 	ctx = make_context(clock, log_capture=capture)

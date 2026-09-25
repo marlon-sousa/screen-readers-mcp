@@ -1,23 +1,8 @@
 // screenreader-mcp adapters -- JSONLinesClient: the bridge client.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: adapter. IMPLEMENTS all six capability ports (domain/ports/{speech,
-// braille,gesture,focus,state,config}_*.go) plus ports.SessionLifecycle, over
-// one bridge connection.
-// DEPENDS ON: the Transport seam (adapters/ports) -- never a concrete transport,
-// which is what keeps every decision here testable against scripted bytes while
-// the socket and the pipe stay dumb leaves. Also the Clock port (deadlines are
-// never read from the wall clock) and the Log port.
-// BUILT BY: adapters/bridge/handshake.go, which dials, hands the transport over,
-// and then hands the finished client out as the capability ports the reader
-// announced.
-//
-// This file is where ALL the decisions live: correlation ids, request/response
-// matching, JSON-lines framing, deadlines, and the wire<->domain mapping. That
-// last one is the load-bearing part -- it is the only place in the server where
-// a generated wire type meets a domain type, which is what lets the domain stay
-// ignorant of the contract's shape (spec 0013, "the domain never speaks wire
-// types").
+// ROLE: adapter implementing every capability port plus SessionLifecycle over one bridge connection.
+// BUILT BY: adapters/bridge/handshake.go, which hands it out as the capability ports the reader announced.
 package bridge
 
 import (
@@ -35,67 +20,22 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// DefaultCallTimeout is how long an ordinary command may take before the client
-// gives up on the connection.
-//
-// Generous, because the bridge answers on NVDA's main thread and a gesture
-// blocks until the reader has processed it; short enough that a bridge that
-// died mid-command does not hang the agent indefinitely.
+// DefaultCallTimeout is generous because the bridge answers only after NVDA's main thread has processed the command.
 const DefaultCallTimeout = 15 * time.Second
 
-// contractWaitDefault mirrors the wire contract's own default timeout for the
-// speech-waiting commands (protocol.py's 5.0 seconds).
-//
-// It is used ONLY to size the local deadline when the caller did not ask for a
-// specific timeout -- the request still omits the field, so the bridge applies
-// its own default and stays the single authority on the value. Duplicating it
-// here to compute a budget is safe in a way that sending it would not be: if
-// the contract's default changed, the worst outcome is a budget that is too
-// generous or too tight by seconds, not two peers disagreeing about when to
-// stop waiting.
-//
-// That tolerance only holds while every waiting command shares one default, and
-// `waitForUserReply` does not -- hence contractUserReplyWaitDefault below.
+// contractWaitDefault mirrors protocol.py's default for the speech waits; it only sizes the local deadline, the request still omits the field.
 const contractWaitDefault = 5 * time.Second
 
-// contractUserReplyWaitDefault mirrors protocol.py's own default for
-// `waitForUserReply.timeout`, which is 30 s rather than the 5 s the
-// speech-waiting commands share.
-//
-// It exists because the budget must always outlast the wait the BRIDGE will
-// actually perform. Sizing an omitted user-reply timeout from the 5 s default
-// gave a 10 s budget against a 30 s wait: the client gave up first, returned a
-// timeout instead of `answered: false`, and left the bridge's late reply unread
-// in the stream -- where the next call read it, saw a mismatched id, and declared
-// the connection lost, one command after the mistake.
-//
-// The request still OMITS the field either way, so the bridge remains the single
-// authority on the value; this only sizes the local deadline. Callers are
-// expected to send a timeout explicitly (tools.defaultPollTimeout does), and
-// this is what keeps the port safe for one that does not.
+// contractUserReplyWaitDefault must match protocol.py's `waitForUserReply` default, or the client gives up first and desynchronises the response stream.
 const contractUserReplyWaitDefault = 30 * time.Second
 
-// waitSlack is added to a waiting command's own timeout before the client gives
-// up, so that the BRIDGE's timeout always fires first and the agent gets
-// `found: false` rather than a lost connection.
+// waitSlack lets the bridge's own timeout fire first, so the agent gets `found: false` rather than a lost connection.
 const waitSlack = 5 * time.Second
 
-// ErrConnectionLost is the connection ending underneath a call: EOF, a reset, or
-// a close.
-//
-// An ALIAS of the domain's sentinel, not a second one (spec 0013's 10b delivery
-// amendment 2): the party that must recognise a loss is the connection
-// controller, which retracts the gated tools and records why, and the domain
-// cannot import this package. Declaring it here and re-declaring it there would
-// give the two halves of one event two identities.
+// ErrConnectionLost aliases the domain's sentinel so both halves recognise one event.
 var ErrConnectionLost = ports.ErrConnectionLost
 
-// BridgeError is the bridge answering a command with an error.
-//
-// Distinct from a transport failure on purpose: protocol.md §3 says an
-// established session is TOLERANT -- a failing command yields an error response
-// and the session keeps running -- so this must never be mistaken for a
-// connection loss and must never tear anything down.
+// BridgeError is the bridge refusing one command; the session survives it, so it must never tear anything down.
 type BridgeError struct {
 	Command wire.Command
 	Message string
@@ -105,8 +45,7 @@ func (e *BridgeError) Error() string {
 	return fmt.Sprintf("bridge refused %s: %s", e.Command, e.Message)
 }
 
-// TimeoutError is the client giving up on a command that the bridge never
-// answered.
+// TimeoutError is the client giving up on a command the bridge never answered.
 type TimeoutError struct {
 	Command wire.Command
 	Waited  time.Duration
@@ -116,14 +55,7 @@ func (e *TimeoutError) Error() string {
 	return fmt.Sprintf("bridge did not answer %s within %s", e.Command, e.Waited)
 }
 
-// JSONLinesClient speaks the wire contract over one transport.
-//
-// Safe for concurrent use, and it has to be: 10b's connection controller sends
-// a heartbeat while a tool call may be in flight. A single mutex serialises
-// whole round trips rather than multiplexing by id, which is the right trade
-// for a protocol that answers one request at a time over one connection -- it
-// makes an unmatched id a genuine fault rather than an ordinary occurrence to
-// be tolerated.
+// JSONLinesClient is safe for concurrent use: a heartbeat may run while a tool call is in flight.
 type JSONLinesClient struct {
 	transport adapterports.Transport
 	clock     ports.Clock
@@ -135,9 +67,6 @@ type JSONLinesClient struct {
 	lost   bool
 }
 
-// The compile-time proof that this one adapter really does satisfy the whole
-// capability port set. Required, not optional (spec 0013): an adapter that falls
-// behind its port fails the build rather than a test.
 var (
 	_ ports.SpeechReader     = (*JSONLinesClient)(nil)
 	_ ports.BrailleReader    = (*JSONLinesClient)(nil)
@@ -152,17 +81,10 @@ var (
 	_ ports.SessionLifecycle = (*JSONLinesClient)(nil)
 )
 
-// NewJSONLinesClient wraps one already-connected transport.
 func NewJSONLinesClient(transport adapterports.Transport, clock ports.Clock, log ports.Log) *JSONLinesClient {
 	return &JSONLinesClient{transport: transport, clock: clock, log: log, nextID: 1}
 }
 
-// --- wire -> domain mapping helpers -------------------------------------------
-
-// speechEntries maps captured utterances into domain vocabulary, coordinate and
-// all. The wire carries one entry per utterance since spec 0021, each with the
-// journal position it was captured at, so the mapping is one to one -- there is
-// nothing to join and nothing to drop.
 func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
 	mapped := make([]ports.SpeechEntry, 0, len(entries))
 	for _, e := range entries {
@@ -170,26 +92,20 @@ func speechEntries(entries []wire.SpeechEntry) []ports.SpeechEntry {
 			Text:        e.Text,
 			Index:       e.Index,
 			LogPosition: e.LogPosition,
-			// Optional on the wire, so a bridge older than spec 0028 simply
-			// sends nothing and the field reads empty rather than failing.
+			// Optional on the wire, so an older bridge's field reads empty.
 			EmittedAt: derefString(e.EmittedAt),
 		})
 	}
 	return mapped
 }
 
-// observation maps the half of a mutating result that pressGesture and typeText
-// answer identically (spec 0025). One mapping, because the two shapes agreeing
-// is the point: an agent reads the same window and the same resume coordinate
-// from both tools.
 func observation(entries []wire.SpeechEntry, from, to int, state *wire.StateResult) ports.Observation {
 	observed := ports.Observation{
 		Speech:    speechEntries(entries),
 		FromIndex: from,
 		ToIndex:   to,
 	}
-	// Absent stays absent: a reader serving no `state` capability reports no
-	// snapshot, which is a different answer from "browse mode is empty string".
+	// Absent stays absent: a reader without the `state` capability reports no snapshot.
 	if state != nil {
 		observed.State = &ports.ReaderState{
 			BrowseMode: string(state.BrowseMode),
@@ -201,10 +117,7 @@ func observation(entries []wire.SpeechEntry, from, to int, state *wire.StateResu
 	return observed
 }
 
-// callTimeoutFor stretches the standard call timeout by the grace the BRIDGE is
-// about to spend, once per gesture in the batch. Without this a 20-key batch at
-// the default 100 ms would spend 2 s inside a window the caller asked for and
-// then be reported as a timed-out bridge.
+// callTimeoutFor adds the grace the bridge spends per gesture, so a long batch is not reported as a timeout.
 func callTimeoutFor(graceMs int, presses int) time.Duration {
 	if graceMs <= 0 || presses <= 0 {
 		return DefaultCallTimeout
@@ -212,7 +125,6 @@ func callTimeoutFor(graceMs int, presses int) time.Duration {
 	return DefaultCallTimeout + time.Duration(graceMs*presses)*time.Millisecond
 }
 
-// brailleEntries is speechEntries for braille updates.
 func brailleEntries(entries []wire.BrailleEntry) []ports.BrailleEntry {
 	mapped := make([]ports.BrailleEntry, 0, len(entries))
 	for _, e := range entries {
@@ -226,9 +138,7 @@ func brailleEntries(entries []wire.BrailleEntry) []ports.BrailleEntry {
 	return mapped
 }
 
-// copyInt copies a nullable wire int, so the domain never aliases wire memory.
-// Absent stays absent: a getLog anchored by position or time is attributable to
-// no command, and command id 0 is a real id, so nil and 0 are different answers.
+// copyInt keeps nil distinct from 0, because command id 0 is a real id.
 func copyInt(v *int) *int {
 	if v == nil {
 		return nil
@@ -237,10 +147,7 @@ func copyInt(v *int) *int {
 	return &copied
 }
 
-// derefInt reads a wire field that is nullable only because it carries a DEFAULT
-// -- logPosition on the single-entry speech results, whose default is the same 0
-// the domain uses for "no coordinate". Distinct from copyInt above, where absent
-// is a meaningful answer the domain has to keep.
+// derefInt reads a field nullable only because its default equals the domain's 0.
 func derefInt(v *int) int {
 	if v == nil {
 		return 0
@@ -248,15 +155,12 @@ func derefInt(v *int) int {
 	return *v
 }
 
-// derefString is derefInt for a defaulted string field.
 func derefString(v *string) string {
 	if v == nil {
 		return ""
 	}
 	return *v
 }
-
-// --- the capability ports, in domain vocabulary -------------------------------
 
 func (c *JSONLinesClient) SpeechSince(sinceIndex int) (ports.SpeechRange, error) {
 	var result wire.SpeechResult
@@ -342,13 +246,8 @@ func (c *JSONLinesClient) BrailleSince(sinceIndex int) (ports.BrailleRange, erro
 }
 
 func (c *JSONLinesClient) PressGestures(ids []string, graceMs int, announce string) (ports.GestureOutcome, error) {
-	// The ids pass through untouched: gesture syntax is the reader's, and the
-	// server routes it without interpreting it.
 	var result wire.GestureResult
 	params := wire.PressGestureParams{Gestures: ids, GraceMs: &graceMs, Announce: &announce}
-	// The grace is spent INSIDE the bridge, so the reply cannot arrive before it
-	// elapses: a call timeout that ignored it would turn a long deliberate
-	// window into a transport failure.
 	if err := c.call(wire.CommandPressGesture, params, &result, callTimeoutFor(graceMs, len(ids))); err != nil {
 		return ports.GestureOutcome{}, err
 	}
@@ -367,8 +266,6 @@ func (c *JSONLinesClient) PressGestures(ids []string, graceMs int, announce stri
 }
 
 func (c *JSONLinesClient) TypeText(text string, graceMs int, announce string) (ports.TypeOutcome, error) {
-	// The text passes through untouched: it is opaque content, routed exactly
-	// as a gesture id is.
 	var result wire.TypeResult
 	params := wire.TypeParams{Text: text, GraceMs: &graceMs, Announce: &announce}
 	if err := c.call(wire.CommandTypeText, params, &result, callTimeoutFor(graceMs, 1)); err != nil {
@@ -381,8 +278,7 @@ func (c *JSONLinesClient) TypeText(text string, graceMs int, announce string) (p
 }
 
 func (c *JSONLinesClient) Announce(text string) error {
-	// The result is an acknowledgement, so it is discarded: the bridge cannot
-	// report whether a human listened, only that it spoke.
+	// The bridge can report only that it spoke, not that a human listened.
 	return c.call(wire.CommandAnnounce, wire.AnnounceParams{Text: text}, nil, DefaultCallTimeout)
 }
 
@@ -439,10 +335,7 @@ func (c *JSONLinesClient) State() (ports.ReaderState, error) {
 	}, nil
 }
 
-// SetState mirrors State: same struct, the fields present get set. The bridge
-// owns the set-domain (spec 0033) -- "none" and the modes that are readable but
-// not settable are refused there, where the reader's own limits are known,
-// rather than second-guessed here.
+// SetState forwards the fields present; the bridge refuses what the reader cannot set.
 func (c *JSONLinesClient) SetState(request ports.StateWrite) (ports.StateWriteResult, error) {
 	params := wire.SetStateParams{}
 	if request.BrowseMode != nil {
@@ -482,13 +375,9 @@ func (c *JSONLinesClient) SetConfig(keyPath []string, value json.RawMessage) (js
 	return result.Value, nil
 }
 
-// --- the log capability port --------------------------------------------------
-
 func (c *JSONLinesClient) GetLog(params ports.GetLogParams) (ports.LogSliceResult, error) {
 	wireParams := wire.GetLogParams{}
-	// The three anchors are mutually exclusive; the bridge refuses more than one,
-	// so they are forwarded as given rather than reconciled into a precedence
-	// rule here -- two places deciding that would be one too many.
+	// The anchors are mutually exclusive and forwarded as given; the bridge refuses more than one.
 	wireParams.SincePosition = copyInt(params.SincePosition)
 	if params.LastSeconds != nil {
 		seconds := *params.LastSeconds
@@ -546,9 +435,6 @@ func (c *JSONLinesClient) WaitForLog(wait ports.LogWait) (ports.LogMatch, error)
 		level := wire.LogLevel(*wait.MinLevel)
 		params.MinLevel = &level
 	}
-	// waitBudget, like waitForSpeech: the call timeout has to outlast the wait the
-	// caller asked for, or the transport gives up on a bridge that is doing
-	// exactly what it was told.
 	var result wire.WaitForLogResult
 	if err := c.call(wire.CommandWaitForLog, params, &result, waitBudget(wait.Timeout)); err != nil {
 		return ports.LogMatch{}, err
@@ -569,15 +455,7 @@ func (c *JSONLinesClient) SetLogLevel(level string) (ports.LogLevelResult, error
 	}, nil
 }
 
-// --- the guidance capability port ----------------------------------------------
-
-// Guidance asks the bridge what it says about this session's persona.
-//
-// No parameters go out: the persona was fixed at `hello` and the bridge answers
-// for that one (protocol.md §5). The text comes back OPAQUE and is not touched
-// here -- not parsed, not trimmed, not checked -- because the whole point of the
-// arrangement is that a bridge author writes for their own reader without
-// agreeing a shape with this server.
+// Guidance returns the bridge's text for the persona fixed at `hello`, untouched.
 func (c *JSONLinesClient) Guidance() (ports.ReaderGuidance, error) {
 	var result wire.GetGuidanceResult
 	if err := c.call(wire.CommandGetGuidance, nil, &result, DefaultCallTimeout); err != nil {
@@ -590,20 +468,7 @@ func (c *JSONLinesClient) Guidance() (ports.ReaderGuidance, error) {
 	}, nil
 }
 
-// --- the document port --------------------------------------------------------
-
-// Snapshot asks the bridge for the reader's flat document, whole by default.
-//
-// The three bounds are sent only when the agent set them: the wire's zero means
-// "no limit", so omitting them and sending zero mean the same thing, and sending
-// nothing keeps the request honest about what was asked for.
-//
-// DefaultCallTimeout is deliberately NOT special-cased upwards here even though
-// this is the one read whose cost scales with the document. If a very large page
-// cannot be rendered inside the ordinary budget, that is a fact the live
-// checklist is supposed to surface (spec 0026, item 9), and hiding it behind a
-// longer timeout would hide it from the measurement that decides whether the
-// unbounded default stands.
+// Snapshot sends a bound only when the agent set it; the wire's zero means no limit.
 func (c *JSONLinesClient) Snapshot(bounds ports.DocumentBounds) (ports.DocumentSnapshot, error) {
 	params := wire.DocumentSnapshotParams{}
 	if bounds.FromLine != 0 {
@@ -628,9 +493,7 @@ func (c *JSONLinesClient) Snapshot(bounds ports.DocumentBounds) (ports.DocumentS
 	for _, line := range result.Lines {
 		lines = append(lines, ports.SnapshotLine{Line: line.Line, Text: line.Text})
 	}
-	// A bridge that omits `truncatedBy` means the read was not cut off. The
-	// domain's value set has no empty member, so the absence is mapped to the
-	// member that says so rather than passed through as "".
+	// An omitted `truncatedBy` means the read was not cut off.
 	truncatedBy := string(wire.TruncatedByNone)
 	if result.TruncatedBy != nil {
 		truncatedBy = string(*result.TruncatedBy)
@@ -646,23 +509,16 @@ func (c *JSONLinesClient) Snapshot(bounds ports.DocumentBounds) (ports.DocumentS
 	}, nil
 }
 
-// --- the lifecycle port -------------------------------------------------------
-
 func (c *JSONLinesClient) Ping() (ports.PingReport, error) {
 	var result wire.PingResult
 	if err := c.call(wire.CommandPing, nil, &result, DefaultCallTimeout); err != nil {
 		return ports.PingReport{}, err
 	}
-	// Carried as a POINTER, so "this bridge does not say" survives as itself
-	// rather than collapsing into false (spec 0032).
+	// A pointer, so "this bridge does not say" survives rather than collapsing into false.
 	return ports.PingReport{Suppressing: result.Suppressing}, nil
 }
 
-// Bye asks the bridge to end the session and waits for its acknowledgement.
-//
-// A connection that is already gone is NOT an error here: the goal of Bye is
-// "this session is over", and a peer that vanished has achieved it. Reporting a
-// loss would make an ordinary disconnect look like a failure to the agent.
+// Bye treats a connection already gone as success, since the session is over either way.
 func (c *JSONLinesClient) Bye() error {
 	err := c.call(wire.CommandBye, nil, nil, DefaultCallTimeout)
 	if errors.Is(err, ErrConnectionLost) {
@@ -671,8 +527,7 @@ func (c *JSONLinesClient) Bye() error {
 	return err
 }
 
-// Close drops the connection. Idempotent, so every teardown path may call it
-// without first working out whether some other path already did.
+// Close is idempotent, so every teardown path may call it.
 func (c *JSONLinesClient) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -683,18 +538,11 @@ func (c *JSONLinesClient) Close() error {
 	return c.transport.Close()
 }
 
-// --- framing, correlation and deadlines ---------------------------------------
-
-// waitBudget sizes the local deadline for a waiting command so that the
-// BRIDGE's own timeout is always the one that fires.
+// waitBudget sizes the local deadline so the bridge's own timeout always fires first.
 func waitBudget(requested time.Duration) time.Duration {
 	return waitBudgetFrom(requested, contractWaitDefault)
 }
 
-// waitBudgetFrom is waitBudget for a command whose contract default is not the
-// shared one. The fallback must be the default the BRIDGE will apply to an
-// omitted timeout, or the client gives up mid-wait and desynchronises the
-// response stream (see contractUserReplyWaitDefault).
 func waitBudgetFrom(requested, contractDefault time.Duration) time.Duration {
 	if requested <= 0 {
 		requested = contractDefault
@@ -702,12 +550,7 @@ func waitBudgetFrom(requested, contractDefault time.Duration) time.Duration {
 	return requested + waitSlack
 }
 
-// call performs one request/response round trip.
-//
-// Serialised end to end: the id counter, the write and the read of the matching
-// response all happen under one lock, so ids are consumed in the same order the
-// requests are written and a response can only belong to the request that is
-// waiting for it.
+// call holds one lock across id allocation, write and read, so a response can belong only to the waiting request.
 func (c *JSONLinesClient) call(cmd wire.Command, params any, result any, budget time.Duration) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -731,9 +574,6 @@ func (c *JSONLinesClient) call(cmd wire.Command, params any, result any, budget 
 	if err != nil {
 		return fmt.Errorf("encoding %s: %w", cmd, err)
 	}
-	// One JSON object per line, terminated by exactly one newline
-	// (protocol.md §1). json.Marshal never emits an embedded newline, so the
-	// framing needs nothing beyond the append.
 	if err := c.writeAll(append(line, '\n')); err != nil {
 		return err
 	}
@@ -747,9 +587,7 @@ func (c *JSONLinesClient) call(cmd wire.Command, params any, result any, budget 
 		return err
 	}
 	if response.ID != id {
-		// Impossible while calls are serialised, so it means the peer is not
-		// speaking this contract. Treat it as fatal to the connection rather
-		// than skipping the frame and hoping.
+		// Impossible while calls are serialised, so the peer is not speaking this contract.
 		c.markLost()
 		return fmt.Errorf("bridge answered id %d while waiting for %d (%s)", response.ID, id, cmd)
 	}
@@ -765,12 +603,8 @@ func (c *JSONLinesClient) call(cmd wire.Command, params any, result any, budget 
 	return nil
 }
 
-// errDeadline is the internal signal that the caller's budget ran out; call
-// turns it into a TimeoutError naming the command.
 var errDeadline = errors.New("deadline exceeded")
 
-// readResponse reads frames until one decodes, the deadline passes, or the
-// connection ends.
 func (c *JSONLinesClient) readResponse(deadline time.Time) (wire.Response, error) {
 	line, err := c.readLine(deadline)
 	if err != nil {
@@ -778,20 +612,14 @@ func (c *JSONLinesClient) readResponse(deadline time.Time) (wire.Response, error
 	}
 	var response wire.Response
 	if err := json.Unmarshal(line, &response); err != nil {
-		// A line that is not a JSON object is a protocol fault, not a command
-		// failure (protocol.md §2), so the connection does not survive it.
+		// A line that is not a JSON object is a protocol fault, fatal to the connection.
 		c.markLost()
 		return wire.Response{}, fmt.Errorf("bridge sent an unreadable line: %w", err)
 	}
 	return response, nil
 }
 
-// readLine returns the next complete frame.
-//
-// It drains what is already buffered BEFORE touching the transport, so a
-// message that has already arrived is never lost to a poll timeout -- the same
-// rule the bridge's own channel follows, and the reason both sides can use a
-// short poll without dropping traffic.
+// readLine drains buffered frames before reading the transport, so a poll timeout never loses an arrived message.
 func (c *JSONLinesClient) readLine(deadline time.Time) ([]byte, error) {
 	for {
 		if line, ok := c.lines.next(); ok {
@@ -805,17 +633,14 @@ func (c *JSONLinesClient) readLine(deadline time.Time) ([]byte, error) {
 		}
 		switch {
 		case err == nil:
-			// A zero-length read with no error tells us nothing; fall
-			// through to the deadline check rather than spinning on it.
+			// Nothing read; fall through to the deadline check.
 		case errors.Is(err, os.ErrDeadlineExceeded):
 			// The seam's poll contract: idle, not broken.
 		case errors.Is(err, io.EOF):
 			c.markLost()
 			return nil, ErrConnectionLost
 		default:
-			// Any other transport error is an abrupt end of connection. A
-			// client that dies mid-session resets rather than closing
-			// cleanly, and the two are the same event to us.
+			// A reset and a clean close are the same event here.
 			c.markLost()
 			return nil, fmt.Errorf("%w: %v", ErrConnectionLost, err)
 		}
@@ -838,8 +663,7 @@ func (c *JSONLinesClient) writeAll(data []byte) error {
 	return nil
 }
 
-// markLost records that this connection is finished. The caller already holds
-// the lock.
+// markLost requires the caller to hold the lock.
 func (c *JSONLinesClient) markLost() {
 	if c.lost {
 		return
@@ -849,9 +673,7 @@ func (c *JSONLinesClient) markLost() {
 	_ = c.transport.Close()
 }
 
-// lineReader reassembles transport chunks into newline-delimited frames. Its
-// own type inside this file rather than a file of its own: it is a private
-// helper of this adapter, exactly as the bridge's _LineReader is of its channel.
+// lineReader reassembles transport chunks into newline-delimited frames.
 type lineReader struct {
 	buffer []byte
 }
@@ -860,7 +682,6 @@ func (r *lineReader) feed(chunk []byte) {
 	r.buffer = append(r.buffer, chunk...)
 }
 
-// next pops one complete line, without its newline.
 func (r *lineReader) next() ([]byte, bool) {
 	index := bytes.IndexByte(r.buffer, '\n')
 	if index < 0 {

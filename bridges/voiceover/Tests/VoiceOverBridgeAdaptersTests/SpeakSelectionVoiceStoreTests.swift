@@ -1,15 +1,5 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/SpeakSelectionVoiceStore.swift.
-//
-// THE TYPE TRAP IS THE TEST, and it is the reason this class is not three lines
-// of `defaults write`. A record whose reals arrive as strings is SILENTLY
-// REJECTED by VoiceOver, which then rewrites the key with its own choice -- so
-// the evidence of the write is gone before anyone looks, and it presents as
-// "writing the preference does nothing". That wrong conclusion is spec 0047's
-// finding 2, and it stood for an evening.
-//
-// The runner is faked, so none of this touches the machine's own preferences.
-// A test here that ran `defaults` for real would change the voice the developer's
-// screen reader speaks with.
+// The runner is faked: running `defaults` for real would change the voice the developer's screen reader uses.
 
 import Foundation
 import Fakes
@@ -19,8 +9,6 @@ import Testing
 
 @Suite("SpeakSelectionVoiceStore")
 struct SpeakSelectionVoiceStoreTests {
-	/// The domain as it actually looks on a machine with one language configured:
-	/// a flat array alternating a language tag with a record.
 	private func domain(voice: String = "com.apple.eloquence.pt-BR.Reed") -> Data {
 		let record: [String: Any] = [
 			"_type": "Speech.VoiceSelection",
@@ -47,8 +35,6 @@ struct SpeakSelectionVoiceStoreTests {
 	func readsTheVoice() {
 		let (subject, runner) = store(exporting: domain())
 		#expect(subject.selectedVoice() == "com.apple.eloquence.pt-BR.Reed")
-		// The domain matters as much as the value: reading VoiceOver's own would
-		// answer nil forever, which is where an evening went.
 		#expect(runner.invocations.first?.arguments == ["export", "com.apple.SpeakSelection", "-"])
 	}
 
@@ -63,7 +49,6 @@ struct SpeakSelectionVoiceStoreTests {
 		let entries = try #require(root["VoiceOverDefaultVoiceSelections"] as? [Any])
 		let record = try #require(entries.compactMap { $0 as? [String: Any] }.first)
 		#expect(record["voiceId"] as? String == "org.example.voice")
-		// The assertion the whole class exists for.
 		#expect(record["pitch"] is NSNumber)
 		#expect(record["pitch"] as? String == nil)
 		#expect(record["rate"] is NSNumber)
@@ -82,8 +67,6 @@ struct SpeakSelectionVoiceStoreTests {
 		#expect(record["_type"] as? String == "Speech.VoiceSelection")
 		#expect(record["pitch"] as? Double == 0.4)
 		#expect(record["rate"] as? Double == 0.6)
-		// The language tag beside the record is still there: the array is not a
-		// list of records, and rebuilding it would drop the half we do not own.
 		#expect(entries.compactMap { $0 as? String } == ["pt"])
 	}
 
@@ -103,9 +86,6 @@ struct SpeakSelectionVoiceStoreTests {
 
 	@Test("a domain with no selection record REFUSES rather than inventing one")
 	func noRecordRefuses() {
-		// The record's shape is user data -- a language, a pitch, a rate, a volume
-		// -- and inventing one would be guessing at values a person chose. A
-		// machine that has never had a voice chosen says so.
 		let empty = try! PropertyListSerialization.data(
 			fromPropertyList: ["VoiceOverDefaultVoiceSelections": ["pt"]], format: .xml, options: 0)
 		let (subject, _) = store(exporting: empty)

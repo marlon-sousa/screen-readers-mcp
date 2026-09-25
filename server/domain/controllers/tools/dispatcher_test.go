@@ -1,10 +1,5 @@
 // screenreader-mcp domain -- the Dispatcher's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// The dispatcher's own behaviour is small, and one part of it carries weight: a
-// tool call is usually how a dead connection is discovered FIRST, long before the
-// next heartbeat, so the loss has to reach the controller from here or the gated
-// tools stay advertised for a reader that is gone.
 package tools_test
 
 import (
@@ -21,12 +16,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// scriptedTool is a tool that fails however a test tells it to.
-//
-// A stand-in rather than a real gated tool on purpose: what is under test is
-// what the DISPATCHER does with a failure, so the failure should be stated
-// outright instead of arranged through whichever real tool happens to reach the
-// path.
 type scriptedTool struct {
 	err error
 }
@@ -68,8 +57,6 @@ func TestDispatchRunsTheNamedTool(t *testing.T) {
 	}
 }
 
-// Unreachable through the MCP adapter, which only dispatches names it took from
-// the registry -- so reaching it means the wiring is wrong, not the agent.
 func TestAnUnknownToolNameIsRejected(t *testing.T) {
 	dispatch := dispatcherOver(fakes.NewFakeConnectionControl())
 
@@ -79,8 +66,6 @@ func TestAnUnknownToolNameIsRejected(t *testing.T) {
 	}
 }
 
-// The context is built FRESH per call from the controller's current connection,
-// so a tool can never be handed a session that ended between tools/list and now.
 func TestTheContextCarriesTheControllersCurrentConnection(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -91,8 +76,7 @@ func TestTheContextCarriesTheControllersCurrentConnection(t *testing.T) {
 		t.Fatalf("Execute: %v", err)
 	}
 
-	// With the connection dropped, the very same dispatcher must build a
-	// context with no session -- proving the context is not captured once.
+	// With the connection dropped, the same dispatcher must build a context with no session.
 	if err := control.Disconnect(); err != nil {
 		t.Fatalf("Disconnect: %v", err)
 	}
@@ -102,7 +86,6 @@ func TestTheContextCarriesTheControllersCurrentConnection(t *testing.T) {
 	}
 }
 
-// The rule this controller exists for.
 func TestALostConnectionSeenByAToolIsReportedToTheController(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -121,8 +104,6 @@ func TestALostConnectionSeenByAToolIsReportedToTheController(t *testing.T) {
 	}
 }
 
-// An ordinary refusal by a HEALTHY bridge must tear nothing down: protocol.md §3
-// says an established session survives a failing command.
 func TestAnOrdinaryToolFailureDoesNotReCheckTheConnection(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -138,13 +119,6 @@ func TestAnOrdinaryToolFailureDoesNotReCheckTheConnection(t *testing.T) {
 			"connection should trigger one")
 	}
 }
-
-// -- the server's own session record (spec 0021) -------------------------------
-//
-// The dispatcher is the SINGLE route from an MCP request to a tool, which is
-// exactly why the record is written here: it sees every call by construction,
-// rather than by fifteen tools each remembering to report themselves. Nothing is
-// asked of the bridge to build it -- the traffic already passes through here.
 
 func recordingDispatcher(control tools.ConnectionControl, list ...tools.Tool) *tools.Dispatcher {
 	return tools.NewDispatcher(
@@ -177,8 +151,6 @@ func TestEveryDispatchedCallLandsInTheSessionRecord(t *testing.T) {
 	}
 }
 
-// What the agent asked and what it was told is the whole point: a record of bare
-// tool names would not let anyone reconstruct a debugging session.
 func TestTheRecordKeepsTheParametersAndTheAnswer(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -199,8 +171,6 @@ func TestTheRecordKeepsTheParametersAndTheAnswer(t *testing.T) {
 	}
 }
 
-// A failed call is frequently the most interesting line in the record, and one
-// that vanished would leave an unexplained gap between two successes.
 func TestAFailedCallIsRecordedWithItsError(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -221,8 +191,6 @@ func TestAFailedCallIsRecordedWithItsError(t *testing.T) {
 	}
 }
 
-// A whole session, end to end, from traffic alone: connect, work, disconnect --
-// with no call added to the bridge to keep the record, which is the deliverable.
 func TestTheRecordCoversAWholeSessionFromTrafficAlone(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	built := testsupport.NewConnection("nvda", entities.CapabilityGestures)
@@ -256,8 +224,6 @@ func TestTheRecordCoversAWholeSessionFromTrafficAlone(t *testing.T) {
 	}
 }
 
-// An unknown tool never runs, so it never happened as far as the session goes --
-// recording it would put a line in the history for something the reader never saw.
 func TestAnUnknownToolIsNotRecordedAsACall(t *testing.T) {
 	control := fakes.NewFakeConnectionControl()
 	dispatch := recordingDispatcher(control)

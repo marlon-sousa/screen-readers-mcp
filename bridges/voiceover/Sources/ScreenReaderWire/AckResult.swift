@@ -1,11 +1,5 @@
-// ROLE: entity -- the shape a command with nothing to report answers with.
-//
-// Pure. It is `announce`'s result and `bye`'s -- two commands in two files,
-// which is why it is a file of its own rather than living with either.
-//
-// `ok` DEFAULTS TO TRUE, which is not a Swift convenience but the contract's
-// own default: a peer that sends `{}` has said "it worked". A failure is not an
-// AckResult with ok=false, it is an error frame (see Envelope).
+// ROLE: entity, the result of a command with nothing to report.
+// `ok` defaults to true, so `{}` means it worked; a failure is an error frame, never `ok: false`.
 
 public struct AckResult: Codable, Equatable, Sendable {
 	public var ok: Bool = true

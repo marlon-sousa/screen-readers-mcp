@@ -1,18 +1,8 @@
 # nvdaMcpBridge domain -- the Transcript port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: the human-readable record of everything a session did.
-# USED BY: the Session controller (it reports each event as it happens).
-# IMPLEMENTED BY: adapters/file_transcript.py (timestamped lines on disk);
-#                 tests/fakes/transcript.py FakeTranscript (records in memory).
-#
-# Silent-mode runs are an audio blackout: nobody hears what NVDA "said", so the
-# transcript is how a tester reconstructs the run afterwards. It is written
-# bridge-side -- complete even if the agent never fetched some speech -- and
-# ``path`` is handed to the agent at ``hello`` so the server can surface it.
-#
-# The domain says WHAT happened; how it is rendered and where it lands are the
-# adapter's business.
+# ROLE: domain port; the human-readable record of everything a session did.
+# USED BY: the Session controller.
+# IMPLEMENTED BY: adapters/file_transcript.py and tests/fakes/transcript.py.
 
 from __future__ import annotations
 
@@ -20,37 +10,24 @@ from abc import ABC, abstractmethod
 
 
 class Transcript(ABC):
-	"""A per-session record of session events, in order."""
-
 	@property
 	@abstractmethod
 	def path(self) -> str:
-		"""Where the record can be read; returned to the agent at ``hello``."""
+		pass
 
 	@abstractmethod
 	def open(self) -> None: ...
 
 	@abstractmethod
 	def session_opened(self, mode: str, synth: str, persona: str) -> None:
-		"""Record that a session began, and what it is standing in for.
-
-		``persona`` is spec 0029's declaration, written down here because this
-		file is read *afterwards* to work out what a run meant: the same
-		observation is a pass from one stance and a finding from another. Empty
-		when the server declared none.
-		"""
+		"""persona is empty when the server declared none."""
 
 	@abstractmethod
 	def gesture(self, gesture_id: str) -> None: ...
 
 	@abstractmethod
 	def typed(self, length: int) -> None:
-		"""Record that ``length`` characters were typed -- never the text itself.
-
-		``typeText`` is exactly how a secret would be entered (spec 0016), and
-		logging it verbatim would write the secret to disk. The length is all
-		the record carries.
-		"""
+		"""Record only the length: the typed text may be a secret and must never reach disk."""
 
 	@abstractmethod
 	def speech(self, text: str) -> None: ...

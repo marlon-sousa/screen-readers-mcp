@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Commands/GetBraille.swift.
-//
-// This bridge does not implement the command -- VoiceOver exposes no braille
-// contents at all -- and the shape is bound anyway, because the binding renders
-// the contract. These tests are what "bound" means.
 
 import Testing
 

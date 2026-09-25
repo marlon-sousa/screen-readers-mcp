@@ -1,19 +1,9 @@
 // screenreader-mcp domain -- the wait_for_log tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `log`.
+// ROLE: controller, gated on log.
 // USES: ports.LogReader, through ToolContext.ReaderLog().
 // LISTED BY: registry.go.
-//
-// The journal's answer to wait_for_speech, and PULL, not push: the agent asks
-// and waits, so nothing in this protocol tails or streams unasked (spec 0021).
-// For "watch me, a bug is about to happen", block at minLevel error and get the
-// moment it happens, instead of picking a poll cadence and hoping.
-//
-// NOT FINDING A RECORD IS AN ANSWER, NOT A FAILURE -- wait_for_speech's
-// established manners, for the same reason: "nothing went wrong in those thirty
-// seconds" is frequently exactly what was being checked, and an error would make
-// that indistinguishable from a broken connection.
+// Not finding a record is an answer, not a failure.
 
 package tools
 
@@ -26,7 +16,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// WaitForLog blocks until a matching log record is journalled.
 type WaitForLog struct{}
 
 var _ Tool = (*WaitForLog)(nil)
@@ -102,9 +91,7 @@ type waitForLogRequest struct {
 
 type waitForLogResult struct {
 	Found bool `json:"found"`
-	// Position is one past the match, so it is directly usable as get_log's
-	// since_position. On a miss it is the journal's current position, which is
-	// still a usable "from here" mark.
+	// Position is one past the match, usable as get_log's since_position; on a miss it is the journal's current position.
 	Position int    `json:"position"`
 	Text     string `json:"text"`
 }
@@ -119,21 +106,14 @@ func (t *WaitForLog) Execute(ctx ToolContext, params json.RawMessage) (any, erro
 		return nil, err
 	}
 	if request.MinLevel == nil && len(request.Contains) == 0 {
-		// Refused here rather than at the bridge, for the same reason
-		// wait_for_speech refuses the empty string: an unfiltered wait returns on
-		// the very next thing the reader logs, which looks like a working
-		// assertion while asserting nothing.
+		// An unfiltered wait would return on the next thing logged, asserting nothing.
 		return nil, errors.New("at least one of min_level or contains is required")
 	}
 
 	wait := ports.LogWait{MinLevel: request.MinLevel, Contains: request.Contains}
 	if request.Timeout > 0 {
 		wait.Timeout = time.Duration(request.Timeout * float64(time.Second))
-		// The same cap wait_for_user_reply applies, and for the same reason: a
-		// blocking command may not outlast the session's command-inactivity
-		// watchdog, or the reader answers and then tears the session down under
-		// the agent. Said out loud here, and in the schema, so an agent never has
-		// to discover it by losing a session.
+		// A blocking command may not outlast the session's inactivity watchdog; see maxPollTimeout.
 		if wait.Timeout > maxPollTimeout {
 			wait.Timeout = maxPollTimeout
 		}

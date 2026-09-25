@@ -1,18 +1,11 @@
-// Mirrors Sources/CaptureVoice/Domain/Entities/SsmlDocument.swift.
-//
-// The first suite here is the one that matters most, and it is a NEGATIVE: no
-// xml:lang is the normal case on this reader. Every measured utterance from a
-// live VoiceOver on macOS 15.0 lacked one, and reading that absence as licence to
-// pick a default is how this route read Portuguese aloud in Arabic.
-
+// VoiceOver on macOS 15.0 sends no xml:lang; treating that absence as licence to pick a default read Portuguese aloud in Arabic.
 import Testing
 
 @testable import CaptureVoice
 
 @Suite("SsmlDocument")
 struct SsmlDocumentTests {
-	/// Verbatim from spec 0041's A2 findings -- a real VoiceOver utterance, with
-	/// the user's speech rate outside and the column-header pitch drop inside.
+	/// A real VoiceOver utterance: the user's speech rate outside, the column-header pitch drop inside.
 	static let realUtterance =
 		"<speak><prosody rate=\"160.00002%\"><prosody pitch=\"-40.0%\">Data de Modificação</prosody></prosody></speak>"
 

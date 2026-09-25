@@ -1,11 +1,5 @@
 # Unit tests for domain/controllers/commands/get_speech.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# The result is a LIST of entries, not a joined blob (spec 0021): each utterance
-# crosses the wire once, carrying its own index and the journal position it was
-# captured at, so a caller can place it on the log's timeline. The blob could not
-# do that -- three Down presses make three utterances and one string, so whichever
-# utterance's position you stored, the other two had none.
 
 from __future__ import annotations
 
@@ -26,8 +20,7 @@ def test_get_speech_reads_since_index(clock: FakeClock) -> None:
 
 
 def test_each_entry_carries_its_own_index(clock: FakeClock) -> None:
-	# The index is the entry's own place in the ring, not its place in the answer:
-	# empty renders are dropped, so position i in the list is NOT fromIndex + i.
+	# Empty renders are dropped, so position i in the list is not fromIndex + i.
 	ctx = make_context(clock, speech=speech_with(clock, "one", "two"))
 	result = GetSpeechHandler().execute(ctx, request("getSpeech", sinceIndex=0))
 	assert isinstance(result, p.SpeechResult)
@@ -51,9 +44,6 @@ def test_a_bookmark_past_the_end_returns_nothing(clock: FakeClock) -> None:
 
 
 def test_each_entry_carries_the_wall_clock_it_was_emitted_at(clock: FakeClock) -> None:
-	# Ask 1 of spec 0027, answered by 0028: the run that asked for this could
-	# state "the stop woke a sleeping script in 63 ms" only by reading the
-	# bridge's transcript off disk and diffing by hand. Two of these subtract.
 	buffer = SpeechBuffer(clock)
 	clock.advance(1_755_000_000)
 	buffer.append(["one"])

@@ -1,8 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Capability.swift.
-//
-// The suite that matters most here is the FORWARD-COMPATIBILITY one: protocol.md
-// requires a consumer to ignore a capability it does not know, and an enum would
-// have turned a newer peer's added capability into a rejected handshake.
 
 import Testing
 
@@ -36,8 +32,6 @@ struct CapabilityTests {
 
 	@Test("this bridge's six are all known ones")
 	func voiceOverSetIsWithinTheVocabulary() {
-		// Spec 0046: speech, gestures, typing, focus, interact, guidance -- named
-		// here so a seventh added by a later entry is a deliberate edit.
 		let voiceOver: Set<Capability> = [.speech, .gestures, .typing, .focus, .interact, .guidance]
 		#expect(voiceOver.isSubset(of: Capability.known))
 	}

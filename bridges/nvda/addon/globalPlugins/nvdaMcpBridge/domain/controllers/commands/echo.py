@@ -1,10 +1,6 @@
 # nvdaMcpBridge domain -- EchoHandler: diagnostic payload round-trip.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `echo`. Returns the request's payload unchanged. It
-# needs nothing from the SessionContext -- its whole value is proving the full
-# wire stack (encode -> frame -> decode -> validate -> dispatch -> re-encode)
-# survives an arbitrary payload, which no fake and no speech command can isolate.
+# ROLE: command handler for `echo`.
 
 from __future__ import annotations
 

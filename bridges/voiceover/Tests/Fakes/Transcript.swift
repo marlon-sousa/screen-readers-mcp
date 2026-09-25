@@ -1,9 +1,4 @@
-// A hand-written stateful fake for the Transcript port, mirroring
-// Sources/VoiceOverBridgeDomain/Ports/Transcript.swift.
-//
-// It records the same lines FileTranscript would render, in the same order, so a
-// session test can assert what the record SAYS without a filesystem -- and
-// without duplicating the format, which is FileTranscript's own test's business.
+// Hand-written stateful fake for the Transcript port.
 
 import VoiceOverBridgeDomain
 
@@ -17,24 +12,9 @@ public final class FakeTranscript: Transcript {
 	public var logPath: String
 	public private(set) var isOpen = false
 	public private(set) var opened: [Opened] = []
-	/// Every captured utterance the session recorded, in order. The buffer's
-	/// observer is wired to this by `hello`, so an empty list after speech was
-	/// captured means the wiring is missing, not the transcript.
 	public private(set) var speeches: [String] = []
-	/// Every command dispatched to the reader, in order -- recorded BEFORE it was
-	/// sent, so a command that failed or hung is in this list too. That is the
-	/// property a session test asserts on, and the reason the port records it
-	/// first rather than on success.
 	public private(set) var gestures: [String] = []
-	/// Every typed LENGTH, in order -- never the text, because the port never
-	/// receives it. A test asserting on this list is asserting the obligation
-	/// protocol.md §5 puts on the transcript: the record says how much was typed
-	/// and can never say what.
 	public private(set) var typedLengths: [Int] = []
-	/// What was said to the human, in order. Separate from `notes` because the
-	/// entry that produced it is separate: this is the record that a person was
-	/// TOLD something, and it is the one line a silent run's transcript is read
-	/// for afterwards.
 	public private(set) var announcements: [String] = []
 	public private(set) var notes: [String] = []
 	public private(set) var closedReasons: [String] = []

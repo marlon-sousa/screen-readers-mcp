@@ -1,14 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeAdapters/SynthesizerAnnouncer.swift.
-//
-// ONE DECISION, AND IT IS THE ONE THAT COULD FAIL SILENTLY: which voice. If the
-// announcer ever picked OUR capture voice, the announcement would go into the
-// extension that is rendering silence and the call would return `ok` while the
-// room stayed quiet -- in the one mode where `announce` is the human's only
-// channel. So the exclusion is asserted first, and asserted as a SUFFIX match,
-// because the system publishes our voice as the extension's bundle id followed
-// by the one the audio unit declared (spec 0041 A1).
-//
-// NO TEST HERE SPEAKS: FakeSpeechOut stands in for the synthesizer.
 
 import Fakes
 import Testing
@@ -18,8 +8,7 @@ import VoiceOverBridgeDomain
 
 @Suite("SynthesizerAnnouncer")
 struct SynthesizerAnnouncerTests {
-	/// What the system actually publishes for us, from spec 0047's finding 17: the
-	/// extension's bundle id, then ours.
+	/// The identifier the system publishes for the capture voice: the extension's bundle id, then the audio unit's.
 	private let ours = "org.screen-readers-mcp.spike.capture.voice.org.screen-readers-mcp.spike.capture"
 
 	private func announcer(
@@ -45,8 +34,6 @@ struct SynthesizerAnnouncerTests {
 
 	@Test("even when ours is the only thing published, it is not chosen")
 	func itNeverFallsBackToOurs() throws {
-		// Nil hands the choice to the system, which is the only remaining option --
-		// and still not our voice unless a human has made it their system default.
 		let out = FakeSpeechOut()
 		try announcer(voices: [ours], out: out).announce("hello")
 		#expect(out.spoken.first?.voice == nil)
@@ -66,9 +53,6 @@ struct SynthesizerAnnouncerTests {
 
 	@Test("a base-language match is second best, and any voice is better than none")
 	func itDegradesRatherThanFailing() {
-		// A PREFERENCE, NEVER A REQUIREMENT: identifiers are opaque strings that
-		// happen to carry a locale, so matching them is a heuristic and it must
-		// never be worth failing over.
 		#expect(
 			SynthesizerAnnouncer.choose(
 				from: ["com.apple.voice.compact.pt-PT.Joana"], excluding: "x", preferring: "pt-BR")
@@ -88,10 +72,6 @@ struct SynthesizerAnnouncerTests {
 			preferredLanguage: "pt-BR")
 		try subject.announce("one")
 		try subject.announce("two")
-		// The machine's list is a property of the machine, so asking it twice would
-		// pay a framework enumeration for an answer that cannot have changed -- and
-		// an announcement in a different voice each time is worse to listen to than
-		// one in the wrong voice.
 		#expect(voices.enumerations == 1)
 		#expect(out.spoken.map(\.text) == ["one", "two"])
 	}

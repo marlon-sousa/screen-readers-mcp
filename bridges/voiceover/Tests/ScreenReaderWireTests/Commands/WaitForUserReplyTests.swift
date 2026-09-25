@@ -8,7 +8,6 @@ import Testing
 struct WaitForUserReplyTests {
 	@Test("the wait for a human defaults to thirty seconds, not five")
 	func timeoutDefaults() throws {
-		// The thing being waited for is a person reading and deciding.
 		let params = try WireJSON.decode(WaitForUserReplyParams.self, #"{"ticket":"q-1"}"#)
 		#expect(params.timeout == 30.0)
 		#expect(WaitToFinishParams().timeout == 5.0)

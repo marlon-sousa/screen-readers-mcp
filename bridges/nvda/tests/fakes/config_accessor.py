@@ -1,12 +1,5 @@
 # nvdaMcpBridge tests -- FakeConfigAccessor, standing in for the ConfigAccessor port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/config_accessor.py
-#
-# A real store that really restores, not just call-counting: so the teardown
-# config-restore test asserts behaviour rather than a call record (spec 0015).
-# The store is seedable before a session runs (via seed()) and is queriable
-# after teardown to prove a value was restored.
 
 from __future__ import annotations
 
@@ -16,13 +9,8 @@ from nvdaMcpBridge.domain.ports.config_accessor import ConfigAccessor, ConfigErr
 
 
 class FakeConfigAccessor(ConfigAccessor):
-	"""Stores and restores config values; records calls for assertions."""
-
 	def __init__(self) -> None:
-		# Seeded with NVDA's own default for the one key spec 0024 admits, so
-		# every silent-mode test exercises the real normalisation path instead of
-		# tripping over a key the reader would certainly have had. A test that
-		# wants the other case seeds or removes it explicitly.
+		# Seeded with NVDA's default for the one admitted key, so silent-mode tests exercise normalisation.
 		self._store: dict[tuple[str, ...], Any] = {
 			("virtualBuffers", "passThroughAudioIndication"): True,
 		}
@@ -59,18 +47,11 @@ class FakeConfigAccessor(ConfigAccessor):
 			self._store[key] = prior_value
 
 	def seed(self, key_path: list[str], value: Any) -> None:
-		"""Seed a key so a test can read it without first writing it."""
 		self._store[tuple(key_path)] = value
 
 	def forget(self, key_path: list[str]) -> None:
-		"""Drop a key entirely, so the fake refuses it the way a reader would.
-
-		The counterpart to seed(): it is how a test stands in for a reader whose
-		configuration does not define a key at all.
-		"""
 		self._store.pop(tuple(key_path), None)
 
 	@property
 	def store(self) -> dict[tuple[str, ...], Any]:
-		"""Direct read access so a test can verify values after teardown."""
 		return dict(self._store)

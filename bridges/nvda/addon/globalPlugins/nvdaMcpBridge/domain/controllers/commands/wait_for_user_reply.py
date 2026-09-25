@@ -1,19 +1,8 @@
 # nvdaMcpBridge domain -- WaitForUserReplyHandler: poll for the human's answer.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `waitForUserReply`. Looks up the ticket, waits on the
-# UserPrompt entity, and on a real answer resumes speech suppression and clears
-# the outstanding prompt. A poll miss (timeout, no answer yet) leaves the window
-# open. An expired or cancelled prompt resumes, clears, and returns
-# answered=false.
-#
-# A single poll is CLAMPED to MAX_POLL_TIMEOUT. The command-inactivity watchdog
-# is measured from the moment a command is dispatched and is deliberately not
-# refreshed when a handler returns (spec 0016: inactivity answers "has the agent
-# abandoned this session?", so a blocking handler must not extend it). A poll
-# allowed to block longer than that window would therefore answer the agent and
-# have the session torn down under it, one line later. Clamping here protects
-# every client, not just the one whose tool schema says 110.
+# ROLE: command handler for `waitForUserReply`, polling the outstanding UserPrompt for the human's answer.
+# A poll is clamped to MAX_POLL_TIMEOUT because the inactivity watchdog is not refreshed when a handler
+# returns; a longer poll would answer the agent and have the session torn down under it.
 
 from __future__ import annotations
 
@@ -25,10 +14,6 @@ from .command_handler import MAX_POLL_TIMEOUT, CommandError, CommandHandler
 
 if TYPE_CHECKING:
 	from .session_context import SessionContext
-
-# MAX_POLL_TIMEOUT is the shared cap on any blocking command (command_handler.py).
-# The prompt window's own 300 s lifetime is unaffected by it: a clamped poll
-# simply means the agent polls again.
 
 
 class WaitForUserReplyHandler(CommandHandler):
@@ -63,5 +48,4 @@ class WaitForUserReplyHandler(CommandHandler):
 			ctx.transcript.note(f"askUser: prompt {prompt.ticket!r} answered")
 			return protocol.WaitForUserReplyResult(answered=True, text=prompt.text)
 
-		# Poll miss: the window is still open but nothing yet.
 		return protocol.WaitForUserReplyResult(answered=False)

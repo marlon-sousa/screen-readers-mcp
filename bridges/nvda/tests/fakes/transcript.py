@@ -1,12 +1,5 @@
 # nvdaMcpBridge tests -- FakeTranscript, standing in for the Transcript port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/transcript.py
-#
-# Records each event as a tuple so a test asserts the exact vocabulary the
-# Session emitted, in order, without a filesystem. ``fail_on`` makes a named
-# event raise -- the tool that proves teardown finishes (and the synth still
-# restores) even when the transcript throws mid-teardown.
 
 from __future__ import annotations
 
@@ -16,8 +9,6 @@ from nvdaMcpBridge.domain.ports.transcript import Transcript
 
 
 class FakeTranscript(Transcript):
-	"""An in-memory :class:`Transcript` that records every event."""
-
 	def __init__(self, path: str = "session.log", *, fail_on: set[str] | None = None) -> None:
 		self._path = path
 		self._fail_on = fail_on or set()

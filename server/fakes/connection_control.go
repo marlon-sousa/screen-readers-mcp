@@ -1,16 +1,8 @@
 // screenreader-mcp fakes -- FakeConnectionControl: the ConnectionControl double.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: test double. MIRRORS the ConnectionControl interface declared in
-// domain/controllers/tools/tool_context.go -- an interface declared by its
-// consumer rather than a port in domain/ports/, but a collaborator the domain
-// depends on all the same, so its double belongs here with the others.
-// USED BY: the four ungated tool controllers' tests, which exercise a tool with
-// no real controller, no dialer and no connection.
-//
-// It records connects and disconnects, which is legitimate here for the same
-// reason FakeSessionDialer records dials: "no connection attempt is ever made
-// that the agent did not ask for" is a requirement ABOUT the interaction.
+// ROLE: test double for the ConnectionControl interface in domain/controllers/tools/tool_context.go.
+// USED BY: the four ungated tool controllers' tests.
 package fakes
 
 import (
@@ -22,13 +14,11 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// ConnectRequest is one recorded Connect.
 type ConnectRequest struct {
 	Reader  string
 	Options ports.SessionOptions
 }
 
-// FakeConnectionControl is a scripted connection lifecycle.
 type FakeConnectionControl struct {
 	mu sync.Mutex
 
@@ -38,8 +28,7 @@ type FakeConnectionControl struct {
 	connectErr error
 	disconnErr error
 	verifyErr  error
-	// suppressing is what a successful Verify reports (spec 0032); nil means
-	// the bridge did not say, which is a third answer and not a default.
+	// suppressing nil means the bridge did not say.
 	suppressing *bool
 
 	connects    []ConnectRequest
@@ -49,29 +38,24 @@ type FakeConnectionControl struct {
 
 var _ tools.ConnectionControl = (*FakeConnectionControl)(nil)
 
-// NewFakeConnectionControl builds a control that is disconnected and knows no
-// readers, so a test states everything it relies on.
 func NewFakeConnectionControl() *FakeConnectionControl {
 	return &FakeConnectionControl{
 		status: entities.ConnectionStatus{State: entities.Disconnected},
 	}
 }
 
-// SetListing is what List will answer.
 func (f *FakeConnectionControl) SetListing(listing entities.ReaderListing) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.listing = listing
 }
 
-// SetStatus is what Status will answer.
 func (f *FakeConnectionControl) SetStatus(status entities.ConnectionStatus) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.status = status
 }
 
-// SetConnection makes this the live connection, as a successful connect would.
 func (f *FakeConnectionControl) SetConnection(connection *ports.ReaderConnection) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -79,37 +63,30 @@ func (f *FakeConnectionControl) SetConnection(connection *ports.ReaderConnection
 	f.connectErr = nil
 }
 
-// FailConnectWith makes Connect report err and leaves nothing connected.
 func (f *FakeConnectionControl) FailConnectWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.connectErr = err
 }
 
-// FailDisconnectWith makes Disconnect report err.
 func (f *FakeConnectionControl) FailDisconnectWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.disconnErr = err
 }
 
-// ReportSuppressing makes a successful Verify report whether the reader is
-// withholding speech from its human right now (spec 0032).
 func (f *FakeConnectionControl) ReportSuppressing(suppressing bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.suppressing = &suppressing
 }
 
-// FailVerifyWith makes Verify report err -- the round trip finding a dead
-// connection, which is what `status` must surface rather than swallow.
 func (f *FakeConnectionControl) FailVerifyWith(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.verifyErr = err
 }
 
-// Connects, Disconnects and Verifies are the recorded interactions.
 func (f *FakeConnectionControl) Connects() []ConnectRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -144,11 +121,7 @@ func (f *FakeConnectionControl) Connect(readerName string, opts ports.SessionOpt
 	if f.connection == nil {
 		return nil, errNothingScripted
 	}
-	// The persona is recorded on the session by the real dialer, copied from
-	// the options rather than read out of `hello` -- the bridge is told it and
-	// does not confirm it (spec 0029). Mirrored here so a scripted connection
-	// describes the session that was actually asked for; a fake that dropped
-	// this would make every caller reading it back look broken.
+	// The real dialer copies the persona from the options, so the fake does too.
 	f.connection.Session.Persona = opts.Persona
 	f.status = entities.ConnectionStatus{State: entities.Connected}
 	return f.connection, nil
@@ -178,11 +151,8 @@ func (f *FakeConnectionControl) Current() *ports.ReaderConnection {
 	return f.connection
 }
 
-// Verify mirrors the real controller's contract where it matters: a LOST
-// connection is recorded -- the session goes and the state says why -- while any
-// other failure leaves the session standing, because a bridge that answered with
-// a refusal is still there (protocol.md §3). A fake that dropped the session on
-// every error would let a tool get away with treating a refusal as a death.
+// Verify drops the session only on a lost connection, as the real controller does;
+// any other failure leaves it standing.
 func (f *FakeConnectionControl) Verify() (ports.PingReport, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

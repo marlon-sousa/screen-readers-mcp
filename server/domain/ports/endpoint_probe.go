@@ -1,32 +1,18 @@
 // screenreader-mcp domain -- the EndpointProbe port.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
 //
-// ROLE: domain port. Liveness of endpoints we already know about.
+// ROLE: domain port, liveness of endpoints already configured.
 // IMPLEMENTED BY: adapters/discovery/local_probe.go.
-// USED BY: 10b's connection controller, which joins the answer with the
-// configured readers via entities.BuildListing.
+// USED BY: the connection controller, via entities.BuildListing.
 //
-// Note the direction, which is the whole point: this port is handed the
-// endpoints to ask about and answers which of THOSE are live. It is not a
-// discovery mechanism and cannot return an endpoint nobody configured. Spec
-// 0013 is explicit about why -- inferring a reader from a name found in the
-// host's namespace would make the server's reader set depend on whatever happens
-// to be running, on a string any same-user process can choose, and would build
-// exactly the zero-configuration path that the planned shared-secret model has
-// to take away again.
+// It must never return an endpoint nobody configured.
 package ports
 
 import "github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 
-// EndpointProbe answers what can be known about an endpoint without dialing it.
-//
-// Without dialing, deliberately: the bridge serves one session at a time, so a
-// probing connection would occupy the slot the agent is about to want.
+// EndpointProbe must never dial: the bridge's single session slot would be taken.
 type EndpointProbe interface {
-	// Live returns the subset of candidates that have a bridge listening.
-	//
-	// An endpoint absent from the answer is either not listening or not
-	// knowable -- the caller distinguishes them by kind, since only a local
-	// endpoint addressed by NAME can be answered for.
+	// Live omits an endpoint that is either not listening or not knowable; only
+	// a local endpoint addressed by name is knowable.
 	Live(candidates []entities.Endpoint) []entities.Endpoint
 }

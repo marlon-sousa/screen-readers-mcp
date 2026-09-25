@@ -1,18 +1,9 @@
-// ROLE: entity -- `waitForSpeech`'s params and result.
-//
-// Pure. Built by the WaitForSpeech handler (entry 13.5), which waits on the
-// buffer through the Clock port -- injected, never patched, so a five-second
-// timeout costs microseconds in a test.
-//
-// `found == false` IS A NORMAL ANSWER, NOT AN ERROR. A timeout means the reader
-// did not say the thing, which is frequently what a test is asserting; making it
-// an error frame would force every caller to catch to learn a fact.
+// ROLE: entity, `waitForSpeech`'s params and result.
+// `found == false` is a normal answer, not an error.
 
 public struct WaitForSpeechParams: Codable, Equatable, Sendable {
 	public var text: String
-	/// Only utterances after this index count. nil means "from wherever the
-	/// buffer is now", which is the honest default for a session that has not
-	/// marked its place.
+	/// nil means from wherever the buffer is now.
 	public var afterIndex: Int?
 	public var timeout: Double = 5.0
 

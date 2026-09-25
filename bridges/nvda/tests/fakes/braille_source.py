@@ -1,10 +1,5 @@
 # nvdaMcpBridge tests -- FakeBrailleSource, standing in for the BrailleSource port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/braille_source.py
-#
-# The braille counterpart of FakeSpeechSource: records start/stop and lets a test
-# inject braille updates directly into the buffer it was started with.
 
 from __future__ import annotations
 
@@ -18,15 +13,12 @@ if TYPE_CHECKING:
 
 
 class FakeBrailleSource(BrailleSource):
-	"""Records start/stop and lets a test inject braille updates."""
-
 	def __init__(self) -> None:
 		self.buffer: BrailleBuffer | None = None
 		self.log_position: Callable[[], int] = lambda: 0
 		self.started = 0
 		self.stopped = 0
 		#: Braille already on the display when capture starts; emitted at start().
-		#: A test seeds this to exercise getBraille without a live NVDA.
 		self.initial: list[str] = []
 
 	def start(self, buffer: BrailleBuffer, log_position: Callable[[], int]) -> None:
@@ -40,7 +32,6 @@ class FakeBrailleSource(BrailleSource):
 		self.stopped += 1
 
 	def emit(self, cells: str) -> None:
-		"""Inject a braille update."""
 		assert self.buffer is not None, "emit before the source was started"
-		# Reads the position AT CAPTURE, mirroring NvdaBrailleSource (spec 0021).
+		# Reads the position at capture, as NvdaBrailleSource does.
 		self.buffer.append(cells, self.log_position())

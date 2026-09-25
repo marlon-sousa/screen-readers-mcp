@@ -1,10 +1,4 @@
-// A hand-written stateful fake for the Listener seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/Listener.swift.
-//
-// It scripts the three things an accept loop has to survive -- a connection, an
-// idle poll, and a fault -- and it goes on timing out once the script is spent,
-// so a server under test keeps accepting until the test stops it rather than
-// falling out of its loop on its own.
+// Hand-written stateful fake for the Listener seam, scripted with connections, idle polls and faults.
 
 import Foundation
 import VoiceOverBridgeAdapters

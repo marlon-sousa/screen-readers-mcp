@@ -458,21 +458,34 @@ ignore_fail = false
 
 [tool.screen-readers-mcp.comments.server]
 paths = ["server"]
-enforced = false
-ceiling = 1.0
+enforced = true
+ceiling = 0.10
 pending = []
 
 [tool.screen-readers-mcp.comments.nvda]
 paths = ["bridges/nvda", "shared"]
-enforced = false
-ceiling = 1.0
+enforced = true
+ceiling = 0.15
 pending = []
 
 [tool.screen-readers-mcp.comments.voiceover]
 paths = ["bridges/voiceover"]
-enforced = false
-ceiling = 1.0
-pending = []
+enforced = true
+ceiling = 0.10
+# Open PR #101 (13.24, 13.32, 13.33) touches these; strip them once it merges.
+pending = [
+	"bridges/voiceover/Sources/BridgeListener/main.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeAdapters/PluginKitProviderLifecycle.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Controllers/ReaderEdgeSetup.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Controllers/Session.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Entities/ReaderCondition.swift",
+	"bridges/voiceover/Sources/VoiceOverBridgeDomain/Ports/ProviderLifecycle.swift",
+	"bridges/voiceover/Tests/Fakes/ProviderLifecycle.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeAdaptersTests/PluginKitProviderLifecycleTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Controllers/ReaderEdgeSetupTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Controllers/SessionTests.swift",
+	"bridges/voiceover/Tests/VoiceOverBridgeDomainTests/Entities/ReaderConditionTests.swift",
+]
 
 [tool.screen-readers-mcp.comments.scripts]
 paths = ["scripts"]

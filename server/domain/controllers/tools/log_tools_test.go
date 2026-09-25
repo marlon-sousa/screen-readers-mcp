@@ -1,15 +1,6 @@
 // screenreader-mcp domain -- the get_log / set_log_level tools' tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Spec 0020's test plan, item 13: gating, parameter pass-through, and bounds.
-//
-// The pass-through tests earn their keep because of one non-obvious coupling:
-// the DEFAULTS for `windows` and `maxEntries` live in the BRIDGE, not here. Go
-// decodes an omitted integer as 0, and ports.GetLogParams tags both `omitempty`,
-// so the zero is dropped from the wire object and the bridge applies 1 and 200.
-// Drop the `omitempty` and every agent that omitted the field silently starts
-// asking for zero windows and zero entries -- which is why it is asserted below
-// rather than left to be discovered live.
+// The bridge owns the windows and maxEntries defaults, so ports.GetLogParams must keep omitempty on them or an omitted field is sent as zero.
 package tools_test
 
 import (
@@ -24,8 +15,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
-
-// -- get_log ------------------------------------------------------------------
 
 func TestGetLogPassesEveryFilterThrough(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
@@ -68,8 +57,6 @@ func TestGetLogPassesEveryFilterThrough(t *testing.T) {
 	}
 }
 
-// The anchor is OPTIONAL: omitted means "the most recently marked command", and
-// that has to reach the bridge as an absent field rather than as command id 0.
 func TestGetLogOmitsTheAnchorWhenTheAgentDidNot(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.GetLog{}).WithConnection(built.Connection)
@@ -84,17 +71,13 @@ func TestGetLogOmitsTheAnchorWhenTheAgentDidNot(t *testing.T) {
 	}
 }
 
-// The coupling this file's header is about, asserted on the actual wire bytes.
 func TestOmittedBoundsAreAbsentOnTheWireSoTheBridgeDefaultsApply(t *testing.T) {
 	encoded, err := json.Marshal(ports.GetLogParams{})
 	if err != nil {
 		t.Fatalf("marshaling: %v", err)
 	}
 
-	// sincePosition and lastSeconds join the list for a sharper reason than the
-	// bounds: they are ANCHORS, and the bridge refuses more than one. A zero sent
-	// explicitly would not merely override a default -- it would collide with the
-	// command anchor and get every unanchored get_log refused (spec 0021).
+	// A zero anchor sent explicitly would collide with the command anchor and get every unanchored get_log refused.
 	for _, field := range []string{
 		"windows", "maxEntries", "commandId", "minLevel", "sincePosition", "lastSeconds",
 	} {
@@ -122,9 +105,6 @@ func TestGetLogPassesThePositionAnchorThrough(t *testing.T) {
 	}
 }
 
-// Position 0 is the start of a session, not "unset". If the tool collapsed it to
-// the zero value the very first tail an agent takes -- from a mark of 0 -- would
-// silently become a command-anchored read of something else.
 func TestGetLogTreatsPositionZeroAsARealAnchor(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.GetLog{}).WithConnection(built.Connection)
@@ -153,9 +133,6 @@ func TestGetLogPassesTheTimeAnchorThrough(t *testing.T) {
 	}
 }
 
-// Two anchors are refused by the BRIDGE, which owns the rule. The tool's job is
-// to forward both so that refusal actually reaches the agent, rather than
-// silently picking one and answering a question nobody asked.
 func TestGetLogForwardsTwoAnchorsSoTheReaderCanRefuseThem(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.GetLog{}).WithConnection(built.Connection)
@@ -202,14 +179,10 @@ func TestGetLogReturnsTheSliceTheReaderGave(t *testing.T) {
 	}
 	decode(t, result, &slice)
 
-	// matched >> entries with truncated set is the shape that tells an agent to
-	// filter harder rather than to page blindly, so every part of it must survive.
 	if slice.Entries != 1 || slice.Matched != 4000 || !slice.Truncated {
 		t.Errorf("entries/matched/truncated = %d/%d/%v, want 1/4000/true",
 			slice.Entries, slice.Matched, slice.Truncated)
 	}
-	// Without nextPosition a tail is unwritable: the agent would have to guess
-	// where the slice ended, and guess wrong at every truncation.
 	if slice.NextPosition != 412 {
 		t.Errorf("nextPosition = %d, want 412", slice.NextPosition)
 	}
@@ -225,9 +198,6 @@ func TestGetLogReturnsTheSliceTheReaderGave(t *testing.T) {
 	}
 }
 
-// A position- or time-anchored read spans whatever commands fall in it and is
-// attributable to none, so the reader sends no command range. It must reach the
-// agent as ABSENT rather than as command id 0, which is a real id.
 func TestAPositionAnchoredSliceReportsNoCommandRange(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	built.LogReader.SliceResult = ports.LogSliceResult{
@@ -270,8 +240,6 @@ func TestGetLogIsRefusedWhenTheReaderDidNotAnnounceLog(t *testing.T) {
 	}
 }
 
-// The bridge refuses an unknown field name rather than quietly omitting a
-// column; that refusal is the agent's answer, so it must not be swallowed here.
 func TestGetLogSurfacesABridgeRefusal(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	built.LogReader.Err = errors.New("unknown log field(s) levl: want any of ...")
@@ -281,8 +249,6 @@ func TestGetLogSurfacesABridgeRefusal(t *testing.T) {
 		t.Error("a rejected projection was reported as success")
 	}
 }
-
-// -- get_log_position ---------------------------------------------------------
 
 func TestGetLogPositionReturnsTheMarkTheReaderGave(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
@@ -302,15 +268,11 @@ func TestGetLogPositionReturnsTheMarkTheReaderGave(t *testing.T) {
 	if mark.Position != 412 {
 		t.Errorf("position = %d, want 412", mark.Position)
 	}
-	// The wall clock is what lines the mark up against a session transcript and
-	// against a human's account of when something happened.
 	if mark.Time != "2026-07-31 09:17:40.724" {
 		t.Errorf("time = %q, want the reader's own stamp", mark.Time)
 	}
 }
 
-// The whole point of a separate tool: paying for a slice to learn one integer
-// defeats the purpose of marking the moment you start observing.
 func TestGetLogPositionFetchesNoRecords(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.GetLogPosition{}).WithConnection(built.Connection)
@@ -348,8 +310,6 @@ func TestGetLogPositionIsRefusedWhenTheReaderDidNotAnnounceLog(t *testing.T) {
 	}
 }
 
-// -- wait_for_log -------------------------------------------------------------
-
 func TestWaitForLogPassesTheFilterAndTimeoutThrough(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.WaitForLog{}).WithConnection(built.Connection)
@@ -370,9 +330,6 @@ func TestWaitForLogPassesTheFilterAndTimeoutThrough(t *testing.T) {
 	}
 }
 
-// Not matching is an ANSWER, not a failure -- the same manners wait_for_speech
-// established, and the reason this is also how "nothing went wrong during that
-// interval" gets asserted.
 func TestWaitForLogReportsAMissAsAnAnswer(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	built.LogReader.MatchResult = ports.LogMatch{Found: false, Position: 88}
@@ -392,8 +349,6 @@ func TestWaitForLogReportsAMissAsAnAnswer(t *testing.T) {
 	if match.Found {
 		t.Error("found = true for a miss")
 	}
-	// Even on a miss the position is usable, so a caller carries straight on with
-	// since_position rather than taking a fresh mark after every failed wait.
 	if match.Position != 88 {
 		t.Errorf("position = %d, want the journal's current 88", match.Position)
 	}
@@ -427,8 +382,6 @@ func TestWaitForLogReturnsTheMatchAndAPositionPastIt(t *testing.T) {
 	}
 }
 
-// An unfiltered wait returns on the very next thing the reader logs, which looks
-// like a working assertion while asserting nothing at all.
 func TestWaitForLogRefusesAWaitWithNoFilter(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.WaitForLog{}).WithConnection(built.Connection)
@@ -441,8 +394,6 @@ func TestWaitForLogRefusesAWaitWithNoFilter(t *testing.T) {
 	}
 }
 
-// A blocking command may not outlast the reader's command-inactivity watchdog,
-// or it answers the agent and then has the session torn down under it.
 func TestWaitForLogClampsATimeoutThatWouldOutliveTheSession(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.WaitForLog{}).WithConnection(built.Connection)
@@ -457,8 +408,6 @@ func TestWaitForLogClampsATimeoutThatWouldOutliveTheSession(t *testing.T) {
 	}
 }
 
-// Omitted means "the reader's own default", which has to reach it as an absent
-// field rather than as a zero the reader would read as "do not wait at all".
 func TestWaitForLogLeavesAnOmittedTimeoutToTheReader(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	call := testsupport.NewToolCall(&tools.WaitForLog{}).WithConnection(built.Connection)
@@ -488,8 +437,6 @@ func TestWaitForLogIsRefusedWhenTheReaderDidNotAnnounceLog(t *testing.T) {
 	}
 }
 
-// -- set_log_level ------------------------------------------------------------
-
 func TestSetLogLevelPassesTheLevelThrough(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityLog)
 	built.LogReader.LevelResult = ports.LogLevelResult{Level: "debug", Previous: "info"}
@@ -508,8 +455,6 @@ func TestSetLogLevelPassesTheLevelThrough(t *testing.T) {
 		Previous string `json:"previous"`
 	}
 	decode(t, result, &level)
-	// `previous` is what makes the change reversible by hand and auditable in the
-	// transcript, so it is part of the contract rather than a nicety.
 	if level.Level != "debug" || level.Previous != "info" {
 		t.Errorf("level/previous = %q/%q, want debug/info", level.Level, level.Previous)
 	}
@@ -530,9 +475,7 @@ func TestSetLogLevelIsRefusedWhenTheReaderDidNotAnnounceLog(t *testing.T) {
 	}
 }
 
-// warning/error are get_log minLevel filters. Setting the reader's own floor to
-// either would silence warnings in the USER's log for the rest of the session,
-// so the schema must not offer them -- an agent picks from the enum it is shown.
+// Setting the reader's own floor to warning or error would silence warnings in the user's log for the rest of the session.
 func TestSetLogLevelSchemaOffersOnlySettableLevels(t *testing.T) {
 	var schema struct {
 		Properties struct {
@@ -557,8 +500,6 @@ func TestSetLogLevelSchemaOffersOnlySettableLevels(t *testing.T) {
 	}
 }
 
-// get_log's minLevel is the opposite case: warning and error are exactly what an
-// agent filters on most, so they must stay offered there.
 func TestGetLogSchemaOffersEveryFilterLevel(t *testing.T) {
 	var schema struct {
 		Properties struct {

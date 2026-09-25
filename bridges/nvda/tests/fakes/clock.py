@@ -1,7 +1,5 @@
 # nvdaMcpBridge tests -- FakeClock, standing in for the Clock port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/clock.py
 
 from __future__ import annotations
 
@@ -9,13 +7,7 @@ from nvdaMcpBridge.domain.ports.clock import Clock
 
 
 class FakeClock(Clock):
-	"""A :class:`Clock` whose time only moves on demand.
-
-	``sleep`` is an instant advance, which is what lets the domain's wait loops
-	run to their deadline in microseconds. (It is also why freezegun /
-	time-machine would not help here: they patch the global clock but leave
-	``time.sleep`` real, so a 5-second timeout would take 5 real seconds.)
-	"""
+	"""Time moves only on demand; sleep is an instant advance."""
 
 	def __init__(self, start: float = 0.0) -> None:
 		self._now = start
@@ -32,7 +24,5 @@ class FakeClock(Clock):
 		self._now += seconds
 
 	def time(self) -> float:
-		# Shares the same counter as monotonic(): tests only ever compare
-		# DIFFERENCES between the two clocks (e.g. a record's `created` against
-		# `lastSeconds`), never their absolute values against a real epoch.
+		# Shares monotonic()'s counter: tests compare only differences between the two clocks.
 		return self._now

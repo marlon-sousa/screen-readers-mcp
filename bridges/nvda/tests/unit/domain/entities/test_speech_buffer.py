@@ -1,14 +1,5 @@
 # Unit tests for domain/entities/speech_buffer.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# Only what SpeechBuffer adds on top of IndexedBuffer: rendering a speech
-# sequence, the search/wait predicates, the two "speech has finished"
-# semantics, and the observer. The base's index bookkeeping is tested in
-# test_indexed_buffer.py.
-#
-# The `clock` fixture (conftest) is the same object these buffers were built
-# on, so a test that advances time is advancing the buffer's own clock by
-# construction. See the root AGENTS.md ("Testing").
 
 from __future__ import annotations
 
@@ -35,9 +26,6 @@ def silent_speech(clock: FakeClock) -> SpeechBuffer:
 	return SpeechBuffer(clock, exact_finish=True)
 
 
-# -- the grace window (spec 0025) ---------------------------------------------
-
-
 def test_collect_since_returns_at_once_when_words_are_already_there(
 	clock: FakeClock, speech: SpeechBuffer
 ) -> None:
@@ -47,7 +35,6 @@ def test_collect_since_returns_at_once_when_words_are_already_there(
 
 	assert [text for text, _index, _pos, _at in entries] == ["already said"]
 	assert (from_index, to_index) == (1, 2)
-	# It never slept: the words were there when it looked.
 	assert clock.sleeps == []
 
 
@@ -56,16 +43,12 @@ def test_collect_since_waits_out_the_grace_when_nothing_arrives(
 ) -> None:
 	entries, from_index, to_index = speech.collect_since(1, grace=0.1)
 
-	# An EMPTY result, not a blocked call and not a claim: "nothing had arrived
-	# by then" is a fact about an instant the caller chose (spec 0025 Part 2).
 	assert entries == []
 	assert (from_index, to_index) == (1, 1)
 	assert sum(clock.sleeps) >= 0.1 - 1e-9
 
 
 def test_collect_since_ignores_speech_before_the_bookmark(speech: SpeechBuffer) -> None:
-	# Background chatter that arrived before the key went out must not be read
-	# as the key's answer -- the whole reason the bookmark is taken first.
 	speech.append(["chatter from before"])
 
 	entries, from_index, _to_index = speech.collect_since(speech.next_index(), grace=0.05)
@@ -84,64 +67,47 @@ def test_a_zero_grace_reads_the_buffer_without_sleeping(clock: FakeClock, speech
 
 
 def test_collect_since_is_not_the_settle(clock: FakeClock, speech: SpeechBuffer) -> None:
-	# The distinction the whole spec turns on. wait_to_finish asks "has speech
-	# STOPPED?" and answers from a stale timestamp -- here it says yes about a
-	# buffer that has never held a word. collect_since asks "has speech
-	# STARTED?" and reports the same silence as an empty observation instead.
+	# wait_to_finish answers from a stale timestamp; collect_since reports the same silence as empty.
 	clock.advance(SPEECH_FINISHED_SECONDS + 1)
 
 	assert speech.wait_to_finish(timeout=0.0) is True
 	assert speech.collect_since(1, grace=0.05)[0] == []
 
 
-# -- rendering ----------------------------------------------------------------
-
-
-# -- search / wait ------------------------------------------------------------
-
-
 def test_index_of_treats_after_index_as_an_inclusive_left_edge(speech: SpeechBuffer) -> None:
-	speech.append(["alpha"])  # index 1
-	speech.append(["beta"])  # index 2
-	speech.append(["alpha again"])  # index 3
+	speech.append(["alpha"])
+	speech.append(["beta"])
+	speech.append(["alpha again"])
 	assert speech.index_of("alpha") == 1
-	# THE ENTRY AT THE EDGE MATCHES. This is entry 11.29's live measurement in
-	# miniature: the bookmark names index 1, and index 1 is what must be found.
-	# It answered 3 until spec 0037 -- silently skipping the very utterance the
-	# caller was waiting for.
+	# The entry at the edge matches: the bookmark names index 1, and index 1 is what must be found.
 	assert speech.index_of("alpha", after_index=1) == 1
 	assert speech.index_of("missing") == -1
 
 
 def test_index_of_excludes_everything_left_of_the_edge(speech: SpeechBuffer) -> None:
-	"""The other side of the boundary: inclusive must not become "from zero"."""
-	speech.append(["alpha"])  # index 1
-	speech.append(["beta"])  # index 2
-	speech.append(["alpha again"])  # index 3
+	speech.append(["alpha"])
+	speech.append(["beta"])
+	speech.append(["alpha again"])
 	assert speech.index_of("alpha", after_index=2) == 3
 	assert speech.index_of("alpha", after_index=4) == -1
 
 
 def test_index_of_clamps_a_negative_edge(speech: SpeechBuffer) -> None:
-	"""Without the clamp an inclusive edge would slice from the END of the list."""
-	speech.append(["alpha"])  # index 1
+	"""Without the clamp an inclusive edge would slice from the end of the list."""
+	speech.append(["alpha"])
 	assert speech.index_of("alpha", after_index=-5) == 1
 
 
 def test_index_of_no_constraint_and_zero_agree(speech: SpeechBuffer) -> None:
-	"""Index 0 is the empty sentinel, so the two requests coincide harmlessly.
-
-	They stay distinct on the wire on purpose (see ``wait_for_speech.go``); what
-	is asserted here is only that neither can miss a real capture.
-	"""
-	speech.append(["alpha"])  # index 1
+	"""Index 0 is the empty sentinel, so the two requests coincide harmlessly."""
+	speech.append(["alpha"])
 	assert speech.index_of("alpha", after_index=0) == speech.index_of("alpha") == 1
 
 
 def test_wait_for_returns_immediately_when_already_present(clock: FakeClock, speech: SpeechBuffer) -> None:
 	speech.append(["found it"])
 	assert speech.wait_for("found", after_index=None, timeout=5.0) == (True, 1, "found it")
-	assert clock.sleeps == []  # never had to wait
+	assert clock.sleeps == []
 
 
 def test_wait_for_times_out_and_hands_back_a_fresh_bookmark(speech: SpeechBuffer) -> None:
@@ -151,12 +117,8 @@ def test_wait_for_times_out_and_hands_back_a_fresh_bookmark(speech: SpeechBuffer
 	assert text == ""
 
 
-# -- finish semantics ---------------------------------------------------------
-
-
 def test_live_mode_finish_uses_the_elapsed_heuristic(clock: FakeClock, speech: SpeechBuffer) -> None:
 	speech.append(["talking"])
-	# Immediately after speech it is not finished...
 	assert speech._has_finished() is False  # type: ignore[attr-defined]
 	clock.advance(SPEECH_FINISHED_SECONDS + 0.01)
 	assert speech._has_finished() is True  # type: ignore[attr-defined]
@@ -171,29 +133,19 @@ def test_silent_mode_finish_waits_for_the_synth_done_signal(
 	clock: FakeClock, silent_speech: SpeechBuffer
 ) -> None:
 	silent_speech.append(["talking"])
-	# Elapsed time is irrelevant in exact mode; only the done signal finishes.
 	clock.advance(60.0)
 	assert silent_speech.wait_to_finish(timeout=0.0) is False
 	silent_speech.notify_finished()
 	assert silent_speech.wait_to_finish(timeout=0.0) is True
 
 
-# -- a continuous read in progress (entry 11.21) -------------------------------
-
-
 def test_a_gap_longer_than_the_heuristic_is_not_the_end_of_a_read(clock: FakeClock) -> None:
-	# The state the heuristic alone gets WRONG, and the reason this port exists.
-	# NVDA hands the synth one chunk of a say all and asks for the next only when
-	# the synth reports reaching it -- so between chunks nothing arrives, for as
-	# long as a chunk takes to speak. To the elapsed-time rule that is
-	# indistinguishable from a read that ended, and it used to answer "finished"
-	# to a user who could plainly hear the reading continue.
+	# NVDA asks for the next say-all chunk only when the synth reaches the current one, so nothing
+	# arrives between chunks for as long as a chunk takes to speak.
 	read = FakeContinuousRead(running=True)
 	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
 	speech.append(["the first chunk of the document"])
-	# 2.0s is the inter-chunk gap MEASURED live on 2026-08-18 under ibmeci, for
-	# every one of thirty lines -- so the old rule misfired on EVERY gap, not just
-	# the first, which is how a whole document could be reported finished at line 1.
+	# NVDA 2026.1 with ibmeci leaves a 2.0 s gap between say-all chunks.
 	clock.advance(2.0)
 
 	assert speech.wait_to_finish(timeout=0.0) is False, "a say all between chunks was reported finished"
@@ -212,9 +164,7 @@ def test_the_settle_finishes_once_the_continuous_read_ends(clock: FakeClock) -> 
 
 
 def test_the_read_is_asked_again_on_every_poll(clock: FakeClock) -> None:
-	# It has to be asked repeatedly or the wait could never end: a settle that
-	# cached the first answer would block for its whole timeout on any say all,
-	# which is a worse failure than the one being fixed.
+	# A settle that cached the first answer would block for its whole timeout on any say all.
 	read = FakeContinuousRead(running=True)
 	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
 
@@ -226,8 +176,6 @@ def test_the_read_is_asked_again_on_every_poll(clock: FakeClock) -> None:
 def test_without_the_port_the_buffer_behaves_exactly_as_before(
 	clock: FakeClock, speech: SpeechBuffer
 ) -> None:
-	# A bridge for a reader with no such notion passes nothing, and nothing about
-	# the old answer changes -- the correction is additive.
 	speech.append(["talking"])
 	clock.advance(SPEECH_FINISHED_SECONDS + 0.01)
 
@@ -235,10 +183,7 @@ def test_without_the_port_the_buffer_behaves_exactly_as_before(
 
 
 def test_a_claimed_read_cannot_hold_the_settle_open_for_ever(clock: FakeClock) -> None:
-	# The ceiling, and it is here because we have already shipped a ContinuousRead
-	# that was wrong in the direction that never clears. A wrong answer that
-	# expires is an imprecision; a wrong answer that does not is a hang, and the
-	# port speaks for a reader we do not control.
+	# The port speaks for a reader we do not control, so a stuck in-progress answer must expire.
 	read = FakeContinuousRead(running=True)
 	speech = SpeechBuffer(clock, exact_finish=False, continuous_read=read)
 	speech.append(["a chunk"])
@@ -253,14 +198,11 @@ def test_a_claimed_read_cannot_hold_the_settle_open_for_ever(clock: FakeClock) -
 	)
 
 
-# -- observer -----------------------------------------------------------------
-
-
 def test_observer_fires_for_nonempty_appends_only(speech: SpeechBuffer) -> None:
 	seen: list[str] = []
 	speech.set_observer(seen.append)
 	speech.append(["spoken"])
-	speech.append([""])  # empty -> no observer call
+	speech.append([""])
 	assert seen == ["spoken"]
 
 

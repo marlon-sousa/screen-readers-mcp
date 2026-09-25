@@ -1,11 +1,5 @@
-// ROLE: entity -- `ping`'s result. The command has no params.
-//
-// Pure. Built by the Ping handler (entry 13.4), which is the ONLY handler that
-// does not reset the inactivity watchdog: a heartbeat that kept the session
-// alive would defeat the watchdog it is reporting to.
-//
-// `suppressing` is nil when the bridge cannot tell whether speech is currently
-// being suppressed -- a third answer, not a false one.
+// ROLE: entity, `ping`'s result; the command has no params.
+// `suppressing` is nil when the bridge cannot tell whether speech is being suppressed.
 
 public struct PingResult: Codable, Equatable, Sendable {
 	public var ok: Bool = true

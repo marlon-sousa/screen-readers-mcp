@@ -4206,18 +4206,23 @@ gate on for that area in the root `pyproject.toml`, with the ratio it reached as
 the ceiling, so the area cannot drift back. Counts are from
 `python scripts/comments.py`, before any entry: comment lines, code lines.
 
-14.1. **The NVDA bridge and the wire contract** (lane 4). Spec: none, see the
+14.1. **Done** -- **The NVDA bridge and the wire contract** (lane 4). Spec: none, see the
     lane rule. Files: every Go, Python and Swift file under `bridges/nvda/` and
     `shared/`; the addon's copy of `protocol.py` regenerates from `shared/`.
-    Before: 7,569 comment, 12,901 code, 0.59.
+    Before: 7,569 comment, 12,901 code, 0.59. After: 1,621 comment, 12,906
+    code, 0.13; its ceiling is 0.15. The five new code lines are `pass` bodies
+    where a docstring was an abstract method's only statement.
 
-14.2. **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
+14.2. **Done** -- **The VoiceOver bridge** (lane 4). Spec: none, see the lane rule. Files:
     every Swift file under `bridges/voiceover/`, except those an open PR
     touches, which go in `pending`. Before: 12,941 comment, 18,436 code, 0.70.
+    After, without the 11 files PR #101 touches: 1,429 comment, 16,388 code,
+    0.09; its ceiling is 0.10. Those 11 files wait in `pending` for #101.
 
-14.3. **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
+14.3. **Done** -- **The server** (lane 4). Spec: none, see the lane rule. Files: every Go
     file under `server/` except the generated `wire.gen.go`. Before: 7,734
-    comment, 18,166 code, 0.43.
+    comment, 18,166 code, 0.43. After: 1,395 comment, 18,166 code, 0.08; its ceiling is
+    0.10.
 
 14.4. **Done** -- **The dev scripts** (lane 4). Spec: none, see the lane rule.
     Files: every Python and Swift file under `scripts/` except

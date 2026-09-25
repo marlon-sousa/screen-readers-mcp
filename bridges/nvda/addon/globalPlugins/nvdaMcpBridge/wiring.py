@@ -1,16 +1,8 @@
 # nvdaMcpBridge -- wiring.py: the composition root.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: the composition root -- read top to bottom, it IS the answer to "who
-# connects what". It stacks the pure adapters and hands the Session its ports;
-# it stays PURE (no NVDA import) so pyright type-checks the whole graph.
-# BUILT BY: session C's accept loop, once per accepted connection.
-#
-# The two NVDA-facing pieces are PARAMETERS, not built here, precisely because
-# they are session C's edge: `transport` (a real SocketTransport there; a
-# LoopbackTransport in tests) and `factory` (the real AdapterFactory there; a
-# fake in tests). Everything else -- the transcript stack, the JSON-lines
-# channel, the clock, the command registry -- is assembled from pure parts.
+# ROLE: the composition root; stacks the pure adapters and hands the Session its ports, and must not import
+# NVDA, so pyright type-checks the whole graph.
+# USED BY: plugin.py, once per accepted connection.
 
 from __future__ import annotations
 
@@ -52,25 +44,6 @@ def build_session(
 	silence_cap: SilenceCapPolicy | None = None,
 	attended: bool = True,
 ) -> Session:
-	"""Assemble a Session for one connection over ``transport``.
-
-	Opens a fresh session transcript under ``logs_dir``, wraps ``transport`` in
-	the JSON-lines channel, builds the command registry (whose hello handler
-	holds ``factory``), and hands the Session its ports -- including the session
-	``signals`` (start/end beeps), the ``announcer`` (the bridge's line to the
-	real synth, for the hello synth name and the announce hint channel),
-	``log_capture`` (the NVDA-log tee the hello handler starts, spec 0009), and
-	``user_prompter`` (presents prompts to the human during silent mode).
-	``gesture_resolver`` (reports which gestures the reader has bound right now,
-	for the persona guidance document), ``silence_cap`` (whether this machine
-	bounds how long a silent session may keep its human unable to hear) and
-	``attended`` (whether a human is expected at it at all -- spec 0035, read from
-	the same setting at the same moment, so the two cannot drift).
-	``log_capture``/``user_prompter``/``gesture_resolver`` are NVDA-facing like
-	``signals``/``announcer``,
-	so they are parameters built at the edge (plugin.py), not constructed here --
-	wiring.py stays pure.
-	"""
 	transcript = create_session_log(logs_dir)
 	channel = JsonLinesChannel(transport)
 	clock = RealClock()
@@ -79,16 +52,8 @@ def build_session(
 		nvda_version=nvda_version,
 		heartbeat_timeout=heartbeat_timeout,
 		inactivity_timeout=inactivity_timeout,
-		# The MACHINE's silence-cap setting (spec 0032), read off config.ini by
-		# plugin.py because only the edge knows where that file is. Omitted means
-		# capped on the shipped thresholds, which is the safe direction: a machine
-		# nobody has configured is not one we may assume is empty.
+		# None means capped on the shipped thresholds: an unconfigured machine is not assumed empty.
 		silence_cap=silence_cap if silence_cap is not None else ATTENDED_DEFAULT,
-		# The MACHINE's other fact (spec 0035), and a separate parameter for the
-		# reason the whole entry exists: it is what the cap policy above is derived
-		# FROM, not something to be read back out of it. Defaults ATTENDED, the
-		# same safe direction ATTENDED_DEFAULT takes -- a machine nobody has
-		# configured is not one we may assume is empty.
 		attended=attended,
 	)
 	return Session(

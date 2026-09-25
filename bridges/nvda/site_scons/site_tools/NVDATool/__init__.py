@@ -1,25 +1,6 @@
-"""
-This tool generates NVDA extensions.
+"""Builders for NVDA add-ons: NVDAAddon, NVDAManifest, NVDATranslatedManifest and md2html.
 
-Builders:
-
-- NVDAAddon: Creates a .nvda-addon zip file. Requires the `excludePatterns` environment variable.
-- NVDAManifest: Creates the manifest.ini file.
-- NVDATranslatedManifest: Creates the manifest.ini file with only translated information.
-- md2html: Build HTML from Markdown
-
-The following environment variables are required to create the manifest:
-
-- addon_info: .typing.AddonInfo
-- brailleTables: .typings.BrailleTables
-- symbolDictionaries: .typings.SymbolDictionaries
-
-The following environment variables are required to build the HTML:
-
-- moFile: str | pathlib.Path | None
-- mdExtensions: list[str]
-- addon_info: .typings.AddonInfo
-
+The manifest needs addon_info, brailleTables and symbolDictionaries; the HTML needs moFile and mdExtensions.
 """
 
 from SCons.Script import Environment, Builder

@@ -1,10 +1,5 @@
 # Unit tests for domain/entities/indexed_buffer.py.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# The base's own contract -- index bookkeeping, the half-open range reads and
-# the wait loop -- exercised through a minimal concrete subclass, so it is
-# tested once here rather than incidentally through whichever subclass happened
-# to be handy. SpeechBuffer / BrailleBuffer then test only what they add.
 
 from __future__ import annotations
 
@@ -28,12 +23,7 @@ class _StubBuffer(IndexedBuffer):
 		self._record(text, log_position)
 
 	def heuristic_mark(self) -> float:
-		"""The base's monotonic mark, exposed so a test can assert it advances.
-
-		Reaching for ``_last_time`` from a test function would be private access;
-		reading it from a subclass is not, and the two clocks staying separate is
-		worth pinning (spec 0028).
-		"""
+		"""The base's monotonic mark, exposed so a test can assert it advances."""
 		return self._last_time
 
 
@@ -42,13 +32,9 @@ def buffer(clock: FakeClock) -> _StubBuffer:
 	return _StubBuffer(clock)
 
 
-# -- index bookkeeping --------------------------------------------------------
-
-
 def test_starts_at_sentinel_index_zero(buffer: _StubBuffer) -> None:
 	assert buffer.last_index() == 0
 	assert buffer.next_index() == 1
-	# The sentinel renders empty, so the last entry reads as "".
 	assert buffer.get_last() == ("", 0)
 
 
@@ -61,13 +47,10 @@ def test_append_advances_indices_and_next_index_is_the_bookmark(buffer: _StubBuf
 	assert buffer.get_last() == ("one", 1)
 
 
-# -- range reads --------------------------------------------------------------
-
-
 def test_entries_since_returns_half_open_range_and_drops_empties(buffer: _StubBuffer) -> None:
 	start = buffer.next_index()
 	buffer.append("one")
-	buffer.append("")  # empty entry is skipped
+	buffer.append("")
 	buffer.append("two")
 	entries, from_index, to_index = buffer.entries_since(start)
 	assert [e[0] for e in entries] == ["one", "two"]
@@ -75,10 +58,6 @@ def test_entries_since_returns_half_open_range_and_drops_empties(buffer: _StubBu
 
 
 def test_each_entry_carries_the_index_it_actually_occupies(buffer: _StubBuffer) -> None:
-	# Why the entry has to carry its own index (spec 0021): the empty entry at 2 is
-	# dropped, so "two" is the SECOND item in the list but index 3. A caller could
-	# not have derived that from fromIndex, which is what made a parallel list of
-	# positions -- or a single position on a joined blob -- unusable.
 	buffer.append("one")
 	buffer.append("")
 	buffer.append("two")
@@ -95,31 +74,25 @@ def test_each_entry_carries_the_log_position_it_was_captured_at(buffer: _StubBuf
 
 def test_an_entry_appended_without_a_position_reports_zero(buffer: _StubBuffer) -> None:
 	# The position is a plain default, not a required argument: a capture path that
-	# has no journal to ask (or a test that does not care) still appends.
 	buffer.append("one")
 	assert buffer.entries_since(1)[0][0][2] == 0
 
 
 def test_entries_since_clamps_a_stale_or_negative_bookmark(buffer: _StubBuffer) -> None:
 	buffer.append("a")
-	# A bookmark from a previous session must not raise.
 	assert buffer.entries_since(-5)[1] == 0
 	assert buffer.entries_since(999) == ([], 999, 2)
 
 
-# -- the wait loop ------------------------------------------------------------
-
-
 def test_wait_returns_immediately_when_already_true(clock: FakeClock, buffer: _StubBuffer) -> None:
 	assert buffer._wait(lambda: True, timeout=5.0) is True  # type: ignore[attr-defined]
-	assert clock.sleeps == []  # never had to wait
+	assert clock.sleeps == []
 
 
 def test_wait_gives_up_at_the_deadline_without_sleeping_for_real(
 	clock: FakeClock, buffer: _StubBuffer
 ) -> None:
 	assert buffer._wait(lambda: False, timeout=5.0) is False  # type: ignore[attr-defined]
-	# The fake clock advanced past the deadline via instant sleeps.
 	assert clock.monotonic() >= 5.0
 
 
@@ -134,13 +107,7 @@ def test_wait_evaluates_once_even_with_a_zero_timeout(buffer: _StubBuffer) -> No
 	assert len(calls) == 1
 
 
-# -- the wall-clock stamp (spec 0028) -----------------------------------------
-
-
 def test_each_entry_carries_the_wall_clock_it_was_captured_at(clock: FakeClock) -> None:
-	# The stamp is per entry, not one scalar for the buffer: `_last_time` already
-	# existed and was overwritten by every append, which is exactly why the run
-	# that asked for this had to read timestamps off disk instead.
 	buffer = _StubBuffer(clock)
 	clock.advance(10)
 	buffer.append("one")
@@ -151,8 +118,6 @@ def test_each_entry_carries_the_wall_clock_it_was_captured_at(clock: FakeClock) 
 
 
 def test_time_at_reads_one_entrys_stamp_by_index(clock: FakeClock) -> None:
-	# The single-entry reads (getLastSpeech, waitForSpeech) already know the index
-	# they matched, so they take this route rather than scanning the tuples.
 	buffer = _StubBuffer(clock)
 	clock.advance(7)
 	buffer.append("one")
@@ -160,14 +125,11 @@ def test_time_at_reads_one_entrys_stamp_by_index(clock: FakeClock) -> None:
 
 
 def test_the_sentinel_has_no_stamp(clock: FakeClock) -> None:
-	# Index 0 was never captured, so it must not claim an instant. 0.0 renders as
-	# the empty string rather than as 1970.
+	# Index 0 was never captured, so it claims no instant.
 	assert _StubBuffer(clock).time_at(0) == 0.0
 
 
 def test_a_stale_bookmark_reads_zero_rather_than_raising(clock: FakeClock) -> None:
-	# Same contract log_position_at already keeps: an out-of-range index is an
-	# ordinary stale bookmark, not an error.
 	buffer = _StubBuffer(clock)
 	buffer.append("one")
 	assert buffer.time_at(99) == 0.0
@@ -175,9 +137,8 @@ def test_a_stale_bookmark_reads_zero_rather_than_raising(clock: FakeClock) -> No
 
 
 def test_the_two_clocks_stay_separate(clock: FakeClock) -> None:
-	# The reported stamp comes from time(); the still-speaking heuristic keeps
-	# using monotonic(). The fake shares one counter, so this asserts the wiring
-	# rather than the values: appending must advance the heuristic's mark too.
+	# The stamp comes from time() and the still-speaking heuristic from monotonic(); the fake shares one
+	# counter, so this checks that appending advances both.
 	buffer = _StubBuffer(clock)
 	clock.advance(3)
 	buffer.append("one")

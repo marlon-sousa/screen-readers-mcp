@@ -1,14 +1,5 @@
-# Integration scenario: a whole session over a REAL socket, headless.
+# Integration scenario: a whole session over a real socket, headless.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# The 9a connection stack proven end to end: a real TcpListener on an ephemeral
-# loopback port + BridgeServer + a FakeAdapterFactory, with a client socket
-# dialling in and speaking raw protocol over its own SocketTransport +
-# JsonLinesChannel. Everything below the NVDA edge is real -- the accept loop,
-# the framing, the dispatch, the teardown -- so this runs in CI exactly like the
-# loopback roundtrip, just over TCP instead of a queue. It is what proves the
-# server the plugin will build in 9c actually works, and that sessions run
-# sequentially against one server.
 
 from __future__ import annotations
 
@@ -46,8 +37,6 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 	factories: list[FakeAdapterFactory] = []
 
 	def session_factory(transport: Any) -> Session:
-		# A fresh fake NVDA per session; kept so the test can assert capture was
-		# stopped (the filter unregistered) on each teardown.
 		factory = FakeAdapterFactory(speech={"NVDA+f7": ["Elements list dialog"]})
 		factories.append(factory)
 		return build_session(
@@ -69,7 +58,6 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 		assert server.status.state is ServerState.LISTENING
 		endpoint = server.status.endpoint
 
-		# -- first session ---------------------------------------------------
 		agent = _dial(endpoint)
 		try:
 			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
@@ -84,10 +72,6 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 
 			agent.write(request(3, "pressGesture", gestures=["NVDA+f7"]))
 			pressed = read_reply(agent, awaiting="pressGesture (id 3)")["result"]
-			# Spec 0025: the gesture reply already carries what it caused, so the
-			# act/settle/listen loop is one round trip here rather than three. The
-			# settle and the read below still run because both commands still
-			# exist -- they are just no longer how you learn what a key said.
 			assert [p["gesture"] for p in pressed["pressed"]] == ["NVDA+f7"]
 			assert any("Elements list dialog" in e["text"] for e in pressed["speech"])
 			assert pressed["speechTo"] > pressed["speechFrom"]
@@ -98,7 +82,6 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 				is True
 			)
 			agent.write(request(5, "getSpeech", sinceIndex=0))
-			# One entry per utterance since spec 0021, not a joined blob.
 			entries = read_reply(agent, awaiting="getSpeech (id 5)")["result"]["entries"]
 			assert any("Elements list dialog" in entry["text"] for entry in entries)
 
@@ -107,14 +90,12 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 		finally:
 			agent.close()
 
-		# The session ended (bye) and the server is accepting again, no restart.
 		wait_until(
 			lambda: server.status.state is ServerState.LISTENING,
 			awaiting="the server to accept again",
 		)
 		assert factories[0].speech_source.stopped == 1
 
-		# -- second session, same server -------------------------------------
 		agent = _dial(endpoint)
 		try:
 			agent.write(request(1, "hello", mode="silent", protocolVersion=p.PROTOCOL_VERSION))
@@ -137,8 +118,6 @@ def test_a_whole_session_over_a_real_socket(tmp_path: Path) -> None:
 
 
 def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
-	# A server that never sees a connection still stops cleanly and promptly --
-	# the accept poll window, not a client, is what bounds stop().
 	def session_factory(transport: Any) -> Session:
 		return build_session(
 			transport,
@@ -161,9 +140,7 @@ def test_stop_ends_an_idle_server_promptly(tmp_path: Path) -> None:
 
 
 def test_an_abruptly_reset_client_does_not_kill_the_server(tmp_path: Path) -> None:
-	# Regression: a client that crashes mid-session resets the connection (RST /
-	# WinError 10054). The server must treat that as EOF, end the session, and
-	# keep serving -- not let the exception take the accept loop down.
+	# A client reset (RST, WinError 10054) must read as EOF, not take the accept loop down.
 	def session_factory(transport: Any) -> Session:
 		return build_session(
 			transport,
@@ -192,7 +169,6 @@ def test_an_abruptly_reset_client_does_not_kill_the_server(tmp_path: Path) -> No
 		raw.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
 		raw.close()  # -> RST to the bridge
 
-		# The server survives: back to LISTENING, and a fresh session still works.
 		wait_until(
 			lambda: server.status.state is ServerState.LISTENING,
 			awaiting="the server to accept again",

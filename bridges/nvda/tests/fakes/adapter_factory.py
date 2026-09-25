@@ -1,17 +1,6 @@
 # nvdaMcpBridge tests -- FakeAdapterFactory, standing in for the AdapterFactory port.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: domain/ports/adapter_factory.py
-#
-# Assembles the fake NVDA from the individual fakes and hands the SAME instances
-# to both the Session (via the AdapterSet it returns) and the test (via its
-# attributes), so a test can, e.g., assert the swapper's call order or make a
-# gesture speak. It also records the mode it was asked to build for -- the check
-# that the Session deferred construction until hello and passed the right mode.
-#
-# The gesture sender is wired to the speech source here, at construction, exactly
-# as the real factory will bind the spy synth to the buffer -- that link is what
-# lets a scripted gesture's speech reach the session's buffer.
+# Hands the same fake instances to the Session and to the test's attributes.
 
 from __future__ import annotations
 
@@ -37,8 +26,6 @@ if TYPE_CHECKING:
 
 
 class FakeAdapterFactory(AdapterFactory):
-	"""Builds a fake AdapterSet and remembers the mode it was built for."""
-
 	def __init__(
 		self,
 		*,
@@ -60,8 +47,7 @@ class FakeAdapterFactory(AdapterFactory):
 
 	def build(self, mode: protocol.CaptureMode) -> AdapterSet:
 		self.built_mode = mode
-		# As production does: only a silent session suppresses anything, so only a
-		# silent one can have that suppression lifted (spec 0032).
+		# As in production, only a silent session suppresses, so only it can have suppression lifted.
 		self.speech_source.suppressing = mode is _p.CaptureMode.SILENT
 		return AdapterSet(
 			speech_source=self.speech_source,

@@ -3,17 +3,10 @@
 # This file is covered by the GNU General Public License.
 # See the file COPYING.txt for more details.
 #
-# ROLE: supporting construct -- a PURE builder that emits the published JSON
-# Schema for the wire contract, DERIVED from ``protocol.py``'s dataclasses and
-# ``COMMAND_SHAPES``. It walks the same ``typing`` hints ``from_dict`` validates
-# with, run the other direction, so a non-Python bridge author can generate
-# their own types from the schema instead of reading Python.
+# ROLE: supporting construct, a pure builder that emits the wire contract's JSON Schema from
+# ``protocol.py``'s dataclasses and ``COMMAND_SHAPES``.
 #
-# Stdlib-only like its sibling, and it is NEVER synced into the addon
-# (``sync_shared.py`` copies ``protocol.py`` only -- the addon never needs to
-# emit a schema). The committed artifact ``specs/wire/v1/schema.json`` is this
-# module's stdout (``python -m screenreader_wire.schema``); the ``shared`` CI job
-# regenerates and diffs it, so the schema can never drift from the code.
+# Stdlib-only and never synced into the addon; its stdout is the committed ``specs/wire/v1/schema.json``.
 
 from __future__ import annotations
 
@@ -33,20 +26,14 @@ from .protocol import (
 
 _NONE_TYPE = type(None)
 
-#: Sentinel for "this field has no default at all", distinct from ``None``,
-#: which is itself a default several fields declare.
+#: Sentinel for "no default at all", distinct from ``None``, which several fields declare as a default.
 _NO_DEFAULT: Any = object()
 
-#: JSON Schema dialect the emitted document declares.
 _DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
 
 def _union_args(tp: object) -> tuple[Any, ...] | None:
-	"""Return the members of ``tp`` if it is a Union / ``X | Y``, else None.
-
-	Mirrors the same helper in ``protocol.py`` so the schema understands exactly
-	the constructs the validator does.
-	"""
+	"""Return the members of ``tp`` if it is a Union / ``X | Y``, else None; mirrors ``protocol.py``."""
 	origin = get_origin(tp)
 	if origin is Union:
 		return get_args(tp)
@@ -58,12 +45,7 @@ def _union_args(tp: object) -> tuple[Any, ...] | None:
 
 
 def _schema_for(tp: Any, defs: dict[str, Any]) -> dict[str, Any]:
-	"""Return the JSON Schema fragment for one Python type.
-
-	Nested dataclasses are collected into ``defs`` and referenced with ``$ref``,
-	so each shape is defined once. Unknown constructs map to ``{}`` (accept
-	anything) exactly as the validator's fall-through does.
-	"""
+	"""Return the JSON Schema fragment for one type; unknown constructs map to ``{}``, as in the validator."""
 	if tp is Any or tp is object:
 		return {}
 
@@ -113,14 +95,7 @@ def _schema_for(tp: Any, defs: dict[str, Any]) -> dict[str, Any]:
 
 
 def _default_of(f: dataclasses.Field[Any]) -> Any:
-	"""Return ``f``'s default rendered as JSON, or :data:`_NO_DEFAULT`.
-
-	Enum defaults become their wire string, and a ``default_factory`` is CALLED
-	-- every factory in this contract exists to hand out a fresh empty container,
-	and the empty container is the thing a binding author has to reproduce.
-	Anything else raises: a default this cannot render is one the schema would
-	silently omit, which is the failure this whole function exists to remove.
-	"""
+	"""Return ``f``'s default rendered as JSON, or :data:`_NO_DEFAULT`; raise on one it cannot render."""
 	if f.default is not dataclasses.MISSING:
 		value: Any = f.default
 	elif f.default_factory is not dataclasses.MISSING:
@@ -137,22 +112,7 @@ def _default_of(f: dataclasses.Field[Any]) -> Any:
 
 
 def _object_schema(tp: type[Any], defs: dict[str, Any]) -> dict[str, Any]:
-	"""Build the object schema for a dataclass type.
-
-	A field is ``required`` when it has no default (mirrors ``from_dict``), and
-	when it HAS one the value is published as ``default``;
-	``additionalProperties`` is ``true`` because the validator ignores extra
-	keys for forward compatibility.
-
-	Why the defaults are published, given that ``default`` is an annotation JSON
-	Schema validators ignore: this document's whole purpose is that a non-Python
-	bridge author binds the contract WITHOUT reading Python (see this module's
-	header), and a default is part of the shape they must reproduce -- ``graceMs``
-	is 100 ms and ``timeout`` is 5 s whether or not the caller sends the key.
-	``protocol.md`` §7.2 already told them "defaults live in schema.json"; until
-	board entry 13.3 they did not, and the Swift binding was the first reader to
-	need them.
-	"""
+	"""Build a dataclass's object schema; a field with a default publishes it, one without is required."""
 	if not dataclasses.is_dataclass(tp):
 		return {}
 	hints = get_type_hints(tp)
@@ -173,12 +133,7 @@ def _object_schema(tp: type[Any], defs: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_wire_schema() -> dict[str, Any]:
-	"""Assemble the whole published wire schema as a plain dict.
-
-	Deterministic: ``$defs`` keys are sorted, properties follow field-definition
-	order, and commands follow :class:`Command` declaration order, so the
-	committed ``schema.json`` diffs cleanly.
-	"""
+	"""Assemble the published wire schema, deterministically so ``schema.json`` diffs cleanly."""
 	defs: dict[str, Any] = {}
 	envelope = {
 		"request": _schema_for(Request, defs),
@@ -209,7 +164,5 @@ def to_json(schema: Mapping[str, Any]) -> str:
 if __name__ == "__main__":
 	import sys
 
-	# Write bytes with explicit LF: on Windows a text-mode stdout would translate
-	# "\n" to "\r\n", making the committed artifact platform-dependent and the
-	# drift gate flaky.
+	# Explicit LF bytes: a Windows text-mode stdout would write CRLF.
 	sys.stdout.buffer.write(to_json(build_wire_schema()).encode("utf-8"))

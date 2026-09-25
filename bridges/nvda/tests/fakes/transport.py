@@ -1,13 +1,5 @@
 # nvdaMcpBridge tests -- FakeTransport, standing in for the Transport seam.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# FAKES: adapters/ports/transport.py
-#
-# The only fake that deals in bytes. It exists so JsonLinesChannel's framing can
-# be driven precisely -- split a frame across chunks, pack two into one, go
-# quiet, hang up -- without a socket. Everything above the channel scripts whole
-# messages instead. Script entries come from fakes/script.py; import them from
-# there (no re-export facades here either).
 
 from __future__ import annotations
 
@@ -23,13 +15,7 @@ if TYPE_CHECKING:
 
 
 class FakeTransport(Transport):
-	"""Replays a scripted byte stream.
-
-	Script entries: ``bytes`` (one ``recv`` returns them), ``TIMEOUT_EVENT``
-	(advances the clock and raises ``TimeoutError``, as a real idle socket does)
-	and ``CLOSED_EVENT`` (``recv`` returns ``b""``). Everything written back is
-	recorded, decodable via :meth:`responses`.
-	"""
+	"""Script entries: bytes are one recv, TIMEOUT_EVENT raises TimeoutError, CLOSED_EVENT returns b""."""
 
 	def __init__(
 		self,
@@ -60,6 +46,5 @@ class FakeTransport(Transport):
 		self.closed = True
 
 	def responses(self) -> list[dict[str, Any]]:
-		"""Decode every frame written back, in order."""
 		lines = bytes(self.outbox).splitlines()
 		return [p.decode_message(line) for line in lines if line]

@@ -1,11 +1,4 @@
 // Mirrors Sources/VoiceOverBridgeDomain/Entities/SetupRung.swift.
-//
-// The property under test is that a stopped climb always produces ONE sentence
-// carrying three things: which rung, what is wrong, and what the AGENT must do.
-// The repo's other named-failure types (ReaderCondition, Precondition,
-// Permission) each keep a diagnosis with its recovery for the same reason, and
-// the failure mode this guards against is the one where a fifth rung added later
-// answers in a different voice from the other four.
 
 import Testing
 
@@ -41,15 +34,6 @@ struct SetupRungTests {
 
 	@Test("the order of the cases is the order of the climb")
 	func theOrderIsTheClimb() {
-		// Load-bearing to read it that way: permissions before anything is
-		// touched, a reader before anything is asked of one, registration before
-		// selection, and the proof last because it is the only rung that is EVIDENCE
-		// rather than inference.
-		//
-		// 13.26 BRIEFLY ADDED A SIXTH between `voiceSelection` and `captureProof` --
-		// a rung that borrowed the VoiceOver modifier on a Caps-Lock machine -- and a
-		// live run removed it: writing that preference under a running reader makes
-		// VoiceOver put a modal question on screen.
 		#expect(
 			SetupRung.allCases == [
 				.permissions, .readerRunning, .registration, .voiceSelection, .captureProof,

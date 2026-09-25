@@ -2,30 +2,9 @@
 
 // screenreader-mcp tests -- a whole session against the REAL Python bridge.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: conformance scenario, named after the use case, behind
-// //go:build conformance so `go test ./...` stays fast and the Windows-only run
-// opts in explicitly. Deliverable 19 of spec 0013.
-// DRIVES: the built server binary over stdio (python_bridge_test.go), which
-// dials the real NVDA bridge over a real transport.
-//
-// WHAT THIS TIER PROVES THAT NO OTHER TIER CAN. Two INDEPENDENT implementations
-// of specs/wire/v1/ -- a generated Go binding and a hand-written Python module --
-// agree about actual bytes. Every other tier's bridge is a Go fake that encodes
-// with the same binding the server decodes with, so a bug in the binding is
-// invisible there; both sides would be wrong together, in agreement. That is the
-// same argument AGENTS.md makes about unit fakes never proving a real adapter
-// behaves like its fake, one level up, and it is what replaced the same-bytes
-// drift guarantee when the server stopped being Python.
-//
-// So the assertions below are deliberately about VALUES CROSSING THE WIRE --
-// field names, enum spellings, index arithmetic, the shape of a result -- rather
-// than about server behaviour, which the headless tier already covers with far
-// better failure messages.
-//
-// Everything except the reader itself is real: NVDA is faked at the bridge's own
-// AdapterFactory port, because what is under test here is the wire, not NVDA
-// (that is entry 11's live run).
+// ROLE: conformance scenario: the built server binary drives a whole session against the real NVDA bridge over
+// a real transport.
+// Everything but NVDA is real; the harness fakes NVDA at the bridge's AdapterFactory port.
 package conformance_test
 
 import (
@@ -39,10 +18,7 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/testsupport"
 )
 
-// What the harness on the far side announces and scripts. These are literals
-// from bridges/nvda/tests/support/conformance_bridge.py: this tier is the seam
-// between two languages, so the agreement is spelled out on both sides rather
-// than shared through a constant neither could import.
+// Literals shared with bridges/nvda/tests/support/conformance_bridge.py; keep both sides in step.
 const (
 	readerName    = "nvda"
 	readerVersion = "2026.1.0-conformance"
@@ -53,32 +29,9 @@ const (
 	fakeSynth     = "espeak"
 	announcedHint = "Taking over: I need a password."
 	askedPrompt   = "Plug the braille display in, then acknowledge."
-	// Punctuation and an accented character, deliberately: this is what
-	// KeyboardInputGesture.fromName cannot reach on every keyboard layout, and
-	// exactly the case spec 0019 exists for.
-	typedText = "café — 50%"
+	typedText     = "café — 50%"
 )
 
-// ungatedTools and gatedTools together are the WHOLE advertised surface, which
-// spec 0022 (option (c)) made a constant: both lists are expected before
-// connecting, while connected, and after disconnecting.
-//
-// The split between them is still meaningful and still checked -- it is what
-// `screenreader://tools` reports as each tool's gate, and what decides whether a
-// CALL is refused -- but it no longer decides what is LISTED.
-//
-// `announce` joined this list in entry 11a. focus/state/config joined in entry
-// 11.1 (spec 0015), which served the four introspection commands and widened
-// NVDA_CAPABILITIES to all eight -- and did so with ZERO changes to the
-// server's production code. These expectations moving from unannounced to
-// gated, with nothing under server/ changing but this test, is what proves the
-// capability gate is structural rather than hand-maintained.
-//
-// unannouncedTools is consequently empty: this bridge now serves every group
-// the wire defines. Kept (rather than deleted) as the slot for the next
-// capability the wire defines before a bridge serves it -- that is what
-// exercises the "ignore what you do not know" clause of protocol.md §4 against
-// a real announcement.
 var (
 	ungatedTools = []string{"connect_reader", "disconnect_reader", "list_readers", "status"}
 
@@ -110,9 +63,6 @@ var (
 	unannouncedTools = []string{}
 )
 
-// capturedWindow is get_speech's and get_braille's answer since spec 0021: one
-// entry per utterance or display update, each with its own ring index and the
-// log journal position it was captured at, plus the half-open range covered.
 type capturedWindow struct {
 	Entries []struct {
 		Text        string `json:"text"`
@@ -132,24 +82,16 @@ func (w capturedWindow) texts() []string {
 	return said
 }
 
-// TestAWholeSessionOverLoopbackTCP is the conformance run over TCP. Its named
-// pipe twin lives beside it, behind an additional `windows` tag.
 func TestAWholeSessionOverLoopbackTCP(t *testing.T) {
 	runWholeSession(t, "tcp")
 }
 
-// runWholeSession is the scenario spec 0013 deliverable 19 describes: handshake,
-// a capability-gated tool list, one command per capability group, and a clean
-// teardown -- repeated over each transport.
 func runWholeSession(t *testing.T, transport string) {
 	t.Helper()
 
 	bridge := startPythonBridge(t, transport)
 	harness := startServer(t, bridge.Endpoint)
 
-	// THE WHOLE SURFACE, BEFORE ANYTHING IS CONNECTED (spec 0022, option (c)).
-	// Asserted across the real transport because that is where entry 11.6 was
-	// found: a client's cached list is correct here only if the list never moves.
 	wholeSurface := append(slices.Clone(ungatedTools), gatedTools...)
 	assertAdvertises(t, harness, wholeSurface, unannouncedTools)
 
@@ -170,20 +112,13 @@ func runWholeSession(t *testing.T, transport string) {
 	assertInfoDescribesTheSession(t, harness, session)
 
 	disconnect(t, harness)
-	// Unchanged by the session ending, exactly as by its beginning. What a
-	// disconnect changes is what a CALL does, which exerciseGuidance and the
-	// integration tier both assert on.
 	assertAdvertises(t, harness, wholeSurface, unannouncedTools)
 
-	// A second session on the same bridge process: `bye` really did tear the
-	// first one down, and the bridge went back to accepting. A teardown that
-	// only looked clean from this side would fail here.
+	// A second session proves `bye` really tore the first one down and the bridge accepts again.
 	connect(t, harness, bridge)
 	disconnect(t, harness)
 }
 
-// connectedSession is connect_reader's answer -- everything `hello` established,
-// after it has crossed the binding.
 type connectedSession struct {
 	Reader        string   `json:"reader"`
 	ReaderVersion string   `json:"readerVersion"`
@@ -195,24 +130,12 @@ type connectedSession struct {
 	Synth         string   `json:"synth"`
 	LogPath       string   `json:"logPath"`
 
-	// The reader's own guidance, both as a pointer and in full (spec 0022 A.5).
 	ReaderGuidance     string `json:"readerGuidance"`
 	ReaderGuidanceText string `json:"readerGuidanceText"`
 
-	// What this machine does about a silence, and who is at it (specs 0032,
-	// 0035) -- one sentence composed from two facts the real Python bridge
-	// declared independently.
 	SilenceCap string `json:"silenceCap"`
 }
 
-// connect performs the handshake and checks that every field the real bridge
-// sent survived the crossing -- including, since spec 0022 A.5, the reader's own
-// guidance document, which now rides back in `hello` rather than being fetched.
-//
-// This is the single densest assertion in the tier: `hello` carries a nested
-// object, a string enum, a string array and an integer, so a binding that got
-// any field NAME wrong -- `logPath` rather than `transcriptPath`, `reader` as
-// a string rather than an object -- fails here and nowhere else.
 func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge) connectedSession {
 	t.Helper()
 
@@ -233,31 +156,21 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("endpoint = %q, want the one the bridge is listening on, %q",
 			session.Endpoint, bridge.Endpoint)
 	}
-	// The capture mode is a wire ENUM on both sides, spelled independently.
 	if session.Mode != "silent" {
 		t.Errorf("mode = %q, want the silent mode hello established", session.Mode)
 	}
 	if session.Synth != fakeSynth {
 		t.Errorf("synth = %q, want %q", session.Synth, fakeSynth)
 	}
-	// The session transcript path is always reported.
 	if session.LogPath == "" {
 		t.Errorf("log path = %q, want it reported", session.LogPath)
 	}
-	// The persona (spec 0029) crossed the wire as a plain string, was accepted
-	// by the real Python validator, and came back with its stance attached.
 	if session.Persona != "user" {
 		t.Errorf("persona = %q, want the declared one back", session.Persona)
 	}
 	if session.Stance != entities.PersonaUser.Stance() {
 		t.Errorf("stance = %q, want the persona's stance in full", session.Stance)
 	}
-	// THE GUIDANCE DOCUMENT CROSSED IN THE HANDSHAKE (spec 0022 A.5), composed
-	// by the real Python bridge for the persona this very call declared. Proved
-	// here rather than only in the integration tier because this is the seam
-	// where a new optional wire field can silently fail to decode: the fake
-	// bridge is built from the same Go binding the server reads with, so it
-	// cannot disagree about the field, and the Python one can.
 	if session.ReaderGuidanceText == "" {
 		t.Error("readerGuidanceText is empty; the handshake document did not survive " +
 			"the crossing, or the bridge did not send one")
@@ -266,20 +179,12 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("an unsubstituted gesture marker reached the agent in connect's result:\n%s",
 			session.ReaderGuidanceText)
 	}
-	// The pointer survives beside the payload, for a re-read mid-session.
 	if session.ReaderGuidance == "" {
 		t.Error("readerGuidance is empty; the resource must still be named")
 	}
 
-	// ATTENDANCE CROSSED AS ITSELF (spec 0035). The harness declares the one
-	// pair that tells the two implementations apart: a human IS at that machine
-	// and the machine bounds NOTHING. A server that reconstructed attendance by
-	// inverting `silenceCap.enabled` -- which is what this repo did before entry
-	// 11.27, and what any bridge-agnostic client might still be tempted to do --
-	// would announce this session as an empty room and tell a well-behaved agent
-	// to stop narrating. This is the only tier that can catch it: the fake bridge
-	// encodes with the very binding the server decodes with, so it cannot
-	// disagree about an optional boolean, and the real Python one can.
+	// The harness declares a human present with no silence cap, the one pair a server that inverts
+	// `silenceCap.enabled` to guess attendance gets wrong.
 	if strings.Contains(session.SilenceCap, "UNATTENDED") {
 		t.Errorf("the real bridge declared a human and the server reported an empty room:\n%s",
 			session.SilenceCap)
@@ -288,11 +193,6 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 		t.Errorf("declared attendance did not survive the crossing:\n%s", session.SilenceCap)
 	}
 
-	// `guidance` joined in entry 11.20 (spec 0029). It is the only member here
-	// that gates no tool, which is why gatedTools above is unchanged -- and
-	// asserting the exact set is what makes that visible rather than assumed.
-	// `document` joined in entry 11.13 (spec 0026) and does gate one,
-	// get_document_snapshot.
 	want := []string{
 		"braille", "config", "document", "focus", "gestures", "guidance",
 		"interact", "log", "speech", "state", "typing",
@@ -305,8 +205,6 @@ func connect(t *testing.T, harness *testsupport.MCPHarness, bridge *pythonBridge
 	return session
 }
 
-// disconnect ends the session politely and insists the bridge accepted the
-// `bye`.
 func disconnect(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 	if result := harness.Call(t, "disconnect_reader", nil); result.IsError {
@@ -314,22 +212,6 @@ func disconnect(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseLog is the `log` capability group (spec 0020): both commands, the full
-// filter set, and one piece of real cross-language STATE.
-//
-// The bridge under conformance has no NVDA behind it, so the slice's text is
-// empty -- and that is fine, because what this tier exists to catch is a binding
-// bug, not NVDA's behaviour (see the harness header). Two things here are still
-// genuinely end-to-end rather than shape checks:
-//
-//   - Every filter is populated. GetLogParams marshals seven fields of four
-//     different shapes (optional int, int, optional string, three arrays); the
-//     bridge validates the field names and REFUSES unknown ones, so a binding
-//     that spelled `maxEntries` or `minLevel` wrong comes back as an error here.
-//   - set_log_level then a marked command then get_log: `capturedAtLevel` has to
-//     come back as the level just set. That only holds if setLogLevel really
-//     moved the bridge's own state and the Session recorded it on the NEXT
-//     command's window -- neither of which a same-language fake could prove.
 func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -345,9 +227,7 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Error("previous level is empty; it is what makes the change reversible")
 	}
 
-	// A command AFTER the level change, so its window records the new floor. This
-	// is also the command get_log will anchor on, since get_log does not mark
-	// itself.
+	// get_log does not mark itself, so this press is the command it anchors on.
 	harness.Call(t, "press_gesture", map[string]any{"gestures": []string{scriptedKey}})
 
 	var slice logSlice
@@ -369,10 +249,6 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 			"the level did not reach the bridge, or the window did not record it",
 			slice.CapturedAtLevel)
 	}
-	// Real request ids the bridge assigned, in order -- not zero-valued fields a
-	// binding forgot to populate. Pointers since spec 0021, because a read
-	// anchored by position or time is attributable to NO command and says so with
-	// an absent field rather than with id 0, which is a real id.
 	if slice.FromCommandID == nil || slice.ToCommandID == nil {
 		t.Fatalf("command range = %v..%v, want the ids the bridge actually marked",
 			slice.FromCommandID, slice.ToCommandID)
@@ -385,17 +261,11 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("command range = %d..%d, want it ordered oldest-first",
 			*slice.FromCommandID, *slice.ToCommandID)
 	}
-	// No NVDA behind this bridge, so nothing was logged; the counts must be
-	// honest about that rather than inventing entries.
 	if slice.Entries != 0 || slice.Matched != 0 || slice.Text != "" {
 		t.Errorf("slice = %d/%d %q, want an honest empty answer from a bridge with no NVDA",
 			slice.Entries, slice.Matched, slice.Text)
 	}
 
-	// Widening to two windows reaches back PAST the set_log_level, and the answer
-	// changes to the level in force for the oldest window in the range. That is
-	// the conservative direction on purpose: a multi-window slice never claims to
-	// have captured more than its earliest window did.
 	var widened logSlice
 	harness.Call(t, "get_log", map[string]any{"windows": 2}).Decode(t, &widened)
 	if widened.CapturedAtLevel != "info" {
@@ -407,16 +277,12 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 			widened.FromCommandID, *slice.FromCommandID)
 	}
 
-	// An unknown field name is the agent's mistake and comes back as an error,
-	// not as a slice quietly missing a column.
 	if refused := harness.Call(t, "get_log", map[string]any{
 		"fields": []string{"levl"},
 	}); !refused.IsError {
 		t.Error("get_log accepted an unknown field name instead of refusing it")
 	}
 
-	// warning/error are minLevel filters, never settable: the bridge refuses even
-	// though the enum contains them.
 	if refused := harness.Call(t, "set_log_level", map[string]any{
 		"level": "error",
 	}); !refused.IsError {
@@ -424,7 +290,6 @@ func exerciseLog(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// logSlice is get_log's answer as it reaches an agent.
 type logSlice struct {
 	Text            string `json:"text"`
 	Entries         int    `json:"entries"`
@@ -436,22 +301,6 @@ type logSlice struct {
 	CapturedAtLevel string `json:"capturedAtLevel"`
 }
 
-// exerciseLogObservation is spec 0021's half of the `log` group: the cursor
-// anchor, the two new commands, and the refusal that keeps the anchors apart.
-//
-// The bridge under conformance has no NVDA behind it, so nothing is journalled
-// and every slice comes back empty -- which is fine, because this tier catches
-// BINDING bugs, not NVDA's behaviour. What is genuinely end to end here:
-//
-//   - The mutual-exclusion refusal. Two anchors on one call must come back as an
-//     error, and that rule lives in the BRIDGE. A server that quietly dropped one
-//     anchor would pass every Go-side test and fail here.
-//   - sincePosition survives as a real integer. Position 0 is a legitimate anchor
-//     and Go's zero value; a binding that tagged it `omitempty` would silently
-//     turn "from the very start" into a command-anchored read of something else,
-//     which nothing on either side alone can detect.
-//   - waitForLog's miss path. `found: false` after a real timeout at the bridge,
-//     rather than an error -- the manners waitForSpeech established.
 func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -467,14 +316,10 @@ func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 	if mark.Position < 0 {
 		t.Errorf("position = %d, want a real journal mark", mark.Position)
 	}
-	// The wall clock is what lets a mark be lined up against the session
-	// transcript, so an empty string here makes the whole field useless.
 	if _, err := time.Parse("2006-01-02 15:04:05.000", mark.Time); err != nil {
 		t.Errorf("time = %q, want the transcript's own stamp format: %v", mark.Time, err)
 	}
 
-	// Something for the interval to contain, and something for the span model to
-	// attribute it to.
 	harness.Call(t, "press_gesture", map[string]any{"gestures": []string{scriptedKey}})
 
 	var tail logSlice
@@ -487,22 +332,18 @@ func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("nextPosition = %d, went BACKWARDS from the mark at %d",
 			tail.NextPosition, mark.Position)
 	}
-	// Attributable to no command, and it has to say so with an absent field.
 	if tail.FromCommandID != nil || tail.ToCommandID != nil {
 		t.Errorf("a position-anchored read reported command range %v..%v, want none",
 			tail.FromCommandID, tail.ToCommandID)
 	}
 
-	// Position 0 is the start of the session, not "unset" -- the case an
-	// `omitempty` on the anchor would silently break.
+	// Position 0 is the start of the session, not unset.
 	if refused := harness.Call(t, "get_log", map[string]any{
 		"sincePosition": 0,
 	}); refused.IsError {
 		t.Errorf("get_log from position 0 was refused: %s", refused.Text)
 	}
 
-	// The rule the BRIDGE owns: more than one anchor is an error rather than a
-	// precedence puzzle.
 	if refused := harness.Call(t, "get_log", map[string]any{
 		"sincePosition": mark.Position,
 		"lastSeconds":   10,
@@ -510,16 +351,12 @@ func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Error("get_log accepted two anchors at once instead of refusing them")
 	}
 
-	// The time anchor on its own is accepted.
 	if timed := harness.Call(t, "get_log", map[string]any{
 		"lastSeconds": 30,
 	}); timed.IsError {
 		t.Errorf("get_log with lastSeconds alone: %s", timed.Text)
 	}
 
-	// Nothing is journalled behind this bridge, so the wait runs to its timeout --
-	// which is exactly the path worth crossing a real binding for: a miss is an
-	// ANSWER, and the position it carries stays usable.
 	var waited struct {
 		Found    bool   `json:"found"`
 		Position int    `json:"position"`
@@ -541,14 +378,6 @@ func exerciseLogObservation(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseGestures is the `gestures` capability group: opaque reader ids over
-// the wire, and the speech they caused back in the SAME result (spec 0025).
-//
-// This tier is the only one where both implementations of the grace window are
-// real -- a Go server asking for a window and a Python bridge actually waiting
-// it out -- so it is the only place where the two could disagree about what
-// arrives inside one. A test that only checked the ids would have been blind to
-// exactly the thing this entry adds.
 func exerciseGestures(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -580,8 +409,6 @@ func exerciseGestures(t *testing.T, harness *testsupport.MCPHarness) {
 	if !slices.Equal(ids, []string{scriptedKey}) {
 		t.Errorf("pressed = %v, want the id passed through untouched", ids)
 	}
-	// The bridge scripts this key to speak, so the window must have caught it --
-	// which is the whole collapse, proved across the language boundary.
 	if len(pressed.Speech) == 0 {
 		t.Fatalf("press_gesture returned no speech for %q; the grace window caught nothing", scriptedKey)
 	}
@@ -589,8 +416,6 @@ func exerciseGestures(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("window = [%d,%d), want a non-empty range around what was said",
 			pressed.SpeechFrom, pressed.SpeechTo)
 	}
-	// Per-key spans and the aggregate window are the same coordinate space, in
-	// both implementations, or a batch's attribution means nothing.
 	if pressed.Pressed[0].SpeechFrom != pressed.SpeechFrom || pressed.Pressed[0].SpeechTo != pressed.SpeechTo {
 		t.Errorf("the single key's span [%d,%d) does not match the call's window [%d,%d)",
 			pressed.Pressed[0].SpeechFrom, pressed.Pressed[0].SpeechTo, pressed.SpeechFrom, pressed.SpeechTo)
@@ -604,15 +429,6 @@ func exerciseGestures(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseSpeech is the `speech` capability group, and the one place index
-// arithmetic crosses the language boundary.
-//
-// The order matters and is the pattern the tools' own descriptions teach: take
-// the next index BEFORE acting, act, then read from that index -- so what comes
-// back is exactly what the action produced. If the two implementations disagreed
-// about whether an index is inclusive, this would return the wrong lines rather
-// than an error, which is precisely the class of bug a shared binding could
-// never surface.
 func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -641,13 +457,7 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 			waited.Index, before.Index)
 	}
 
-	// THE LEFT EDGE ITSELF (spec 0037, entry 11.29). The wait above cannot see
-	// it: secondLine lands one PAST the bookmark, so `>` and `>=` agree about it
-	// and the assertion holds under either. firstLine is the discriminating case
-	// -- it is the FIRST utterance the gesture caused, so it sits exactly AT the
-	// bookmark, and an exclusive edge skips it and times out. That is what the
-	// bridge did until 0037 while this file's own header claimed to be "the one
-	// place index arithmetic crosses the language boundary".
+	// firstLine sits exactly at the bookmark, so only it tells an inclusive left edge from an exclusive one.
 	var atEdge struct {
 		Found bool `json:"found"`
 		Index int  `json:"index"`
@@ -691,10 +501,6 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 			captured.FromIndex, captured.ToIndex)
 	}
 
-	// Spec 0028, and this is the tier that matters for it: the stamp is
-	// produced by the real Python bridge, crosses a real pipe, and is parsed by
-	// the generated Go binding. A field that a Go fake encodes with the same
-	// binding it is decoded by would prove nothing about either.
 	for _, entry := range captured.Entries {
 		if entry.EmittedAt == "" {
 			t.Errorf("entry %q crossed the wire without emittedAt", entry.Text)
@@ -704,10 +510,6 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 			t.Errorf("emittedAt %q is not the documented format: %v", entry.EmittedAt, err)
 		}
 	}
-	// Spec 0021's list shape, proven across the language boundary: two utterances
-	// arrive as two entries rather than one welded string, and each keeps the ring
-	// index it occupies. A binding that mapped `entries` wrong -- or reintroduced
-	// the join -- fails here and nowhere else.
 	if len(captured.Entries) < 2 {
 		t.Errorf("entries = %v, want one per utterance rather than a joined blob",
 			captured.texts())
@@ -729,8 +531,6 @@ func exerciseSpeech(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseBraille is the `braille` capability group. Braille has its own index
-// space, so it is a separate crossing and not a variation on speech.
 func exerciseBraille(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -744,20 +544,11 @@ func exerciseBraille(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("braille range [%d, %d) covers nothing, but the display had content",
 			captured.FromIndex, captured.ToIndex)
 	}
-	// Braille takes the same entry shape as speech, and this is the only fetch it
-	// has -- so a binding that got `entries` right for speech and wrong here would
-	// leave braille with no coordinate at all (spec 0021).
 	if len(captured.Entries) == 0 {
 		t.Error("entries is empty, but the display had content")
 	}
 }
 
-// exerciseAnnounce is the `announce` capability group -- the one command that
-// addresses a human rather than the reader.
-//
-// This tier is the only place it crosses a real binding into a real
-// AnnounceHandler: every other Go-side test puts a fake bridge behind it, and a
-// fake encoding with the same generated binding cannot disagree with itself.
 func exerciseAnnounce(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -771,27 +562,7 @@ func exerciseAnnounce(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseAskUser is the rest of the `interact` group: ask_user, a poll nobody
-// answers, and then PROOF THAT THE SESSION IS STILL USABLE.
-//
-// That last call is what this tier adds. A poll miss is the one ordinary outcome
-// that leaves a reply in flight, and the two unit tiers cannot see what that does
-// to a real connection: the bridge-side roundtrip has no Go client, and the
-// Go-side tool tests have a fake port, so neither ever puts a real client's
-// deadline arithmetic against a real bridge's wait. When those two disagreed
-// (they did -- `waitForUserReply` is the first waiting command whose contract
-// default is not the shared 5 s), the symptom landed on the call AFTER the poll,
-// as a lost connection. Hence the announce at the end.
-//
-// The timeout is short and EXPLICIT on purpose. An omitted one makes the bridge
-// wait out its own 30 s default, which is 30 s of wall clock in a gate that
-// otherwise runs in eight -- and the budget arithmetic it would exercise is
-// pinned for free, on a fake clock, in adapters/bridge's
-// TestWaitForUserReplyOutlivesTheBridgesOwnDefault. Nothing answers the prompt
-// here (the acknowledgement is an NVDA gesture and there is no NVDA in a headless
-// run), so `answered: false` is the expected outcome; the answered path is driven
-// where a test can reach the entity, in
-// tests/integration/test_wire_session_roundtrip.py.
+// The poll's timeout is explicit because the bridge's own default is 30 s.
 func exerciseAskUser(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -815,9 +586,7 @@ func exerciseAskUser(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("answered = true, but nothing acknowledged the prompt in a headless run")
 	}
 
-	// The claim this exercise exists for: a poll miss leaves the connection in a
-	// state the next command can use. If the response stream had desynchronised,
-	// this is where it would surface -- as a lost connection, not as a bad answer.
+	// A poll miss leaves a reply in flight; a desynchronised stream surfaces here as a lost connection.
 	var spoken struct {
 		Announced string `json:"announced"`
 	}
@@ -828,13 +597,6 @@ func exerciseAskUser(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseTyping is the `typing` capability group. There is no fake focus
-// state on the far side to read the text back through (this harness does not
-// announce `focus`), so what crosses this tier is what every other exercise
-// here proves: that TypeParams.text -- punctuation and a non-ASCII character
-// included -- reaches the real Python bridge's typeText handler intact and
-// comes back acknowledged, not mangled or rejected by either binding's JSON
-// encoding.
 func exerciseTyping(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -849,20 +611,6 @@ func exerciseTyping(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseStateWrite: the one command whose whole value is a DISTINCTION, driven
-// across the language boundary (spec 0033).
-//
-// Two calls, and the second is the point. The first moves the mode and reports
-// `changed: ["browseMode"]`; the second asks for the mode the reader is now in
-// and reports `changed: []` -- a success that changed nothing. A binding that
-// dropped `changed`, or sent it as null, or let an empty list arrive as a missing
-// field, makes those two answers identical, which is exactly the ambiguity the
-// command exists to remove. Nothing below the wire can catch that: the Go fake
-// and the Go server cannot disagree about a field name.
-//
-// It also proves the refusal crosses: "none" is reportable and not settable, and
-// the bridge's specific reason has to arrive as a specific error rather than a
-// bare failure.
 func exerciseStateWrite(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -889,9 +637,6 @@ func exerciseStateWrite(t *testing.T, harness *testsupport.MCPHarness) {
 		t.Errorf("changed = %v, want empty -- the reader was already in focus mode", written.Changed)
 	}
 
-	// The set-domain is narrower than the get-domain, and the narrowing has to
-	// survive the crossing: "none" is a thing get_state REPORTS and set_state
-	// must refuse.
 	refused := harness.Call(t, "set_state", map[string]any{"browse_mode": "none"})
 	if !refused.IsError {
 		t.Errorf(`set_state browse_mode:"none" was accepted (%s); it is reportable and not settable`, refused.Text)
@@ -900,19 +645,7 @@ func exerciseStateWrite(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// exerciseGuidance: the real Python bridge's own persona document, read through
-// the resource the agent actually uses (spec 0029 Part 4).
-//
-// This is the ONLY tier where the text is genuinely the bridge's: everywhere
-// else it comes from a Go fake that could not disagree with the Go server about
-// the field names. `getGuidance` is also the one command with no params at all,
-// so a binding that got `recognised` or `text` wrong -- or dropped the whole
-// result because there was nothing to send -- shows up here and nowhere else.
-//
-// The phrases asserted on are headings from the ADD-ON's own markdown
-// (bridges/nvda/addon/.../documents/), which the harness ships and reads at run
-// time. That makes this a packaging check too: a document missing from the tree
-// fails here rather than at a live NVDA.
+// The phrases are headings in the add-on's own documents, so this also catches a document missing from the tree.
 func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -923,22 +656,12 @@ func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 
 	for _, want := range []string{
-		// The server's frame, with the live session substituted into it.
 		"nvda's guidance for the `user` stance",
 		"the stance wins",
-		// The bridge's common section -- the ordinary vocabulary, which no
-		// server-owned document could state.
 		"The ordinary vocabulary on this reader",
-		// A RESOLVED gesture table. The conformance harness stands in for NVDA
-		// with a fake resolver whose bindings are deliberately synthetic, so
-		// this string could only have arrived by the document asking the reader
-		// what is bound -- which is the whole point of the design, and would
-		// still pass if the document had hard-coded NVDA's real defaults.
+		// The harness's resolver has synthetic bindings, so this can only come from the document asking the reader.
 		"`fake+next`",
-		// A marker that survived substitution would reach the agent as an
-		// unfilled placeholder read as instruction.
 		"| What it does | Command | Press |",
-		// And the section for the persona this session actually declared.
 		"Holding the `user` stance on NVDA",
 	} {
 		if !strings.Contains(document, want) {
@@ -947,9 +670,6 @@ func exerciseGuidance(t *testing.T, harness *testsupport.MCPHarness) {
 	}
 }
 
-// assertStatusIsProvenOnTheWire: `status` makes a real `ping` round trip while a
-// session is live, so a true answer here is the real bridge answering, not this
-// server remembering.
 func assertStatusIsProvenOnTheWire(t *testing.T, harness *testsupport.MCPHarness) {
 	t.Helper()
 
@@ -967,8 +687,6 @@ func assertStatusIsProvenOnTheWire(t *testing.T, harness *testsupport.MCPHarness
 	}
 }
 
-// assertInfoDescribesTheSession reads screenreader://info, the other surface the
-// handshake's values reach an agent through.
 func assertInfoDescribesTheSession(t *testing.T, harness *testsupport.MCPHarness, session connectedSession) {
 	t.Helper()
 
@@ -979,15 +697,11 @@ func assertInfoDescribesTheSession(t *testing.T, harness *testsupport.MCPHarness
 	if info["readerVersion"] != session.ReaderVersion {
 		t.Errorf("info readerVersion = %v, want %q", info["readerVersion"], session.ReaderVersion)
 	}
-	// The protocol version the BRIDGE reported, which is the one field whose
-	// disagreement would have failed the handshake outright.
 	if version, ok := info["protocolVersion"].(float64); !ok || version <= 0 {
 		t.Errorf("info protocolVersion = %v, want the version the bridge reported", info["protocolVersion"])
 	}
 }
 
-// assertAdvertises checks tools/list holds everything in `want` and nothing in
-// `absent`.
 func assertAdvertises(t *testing.T, harness *testsupport.MCPHarness, want, absent []string) {
 	t.Helper()
 

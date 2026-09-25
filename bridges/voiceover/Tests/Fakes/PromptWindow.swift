@@ -1,10 +1,4 @@
-// A hand-written stateful fake for the PromptWindow adapter seam, mirroring
-// Sources/VoiceOverBridgeAdapters/Ports/PromptWindow.swift.
-//
-// NO TEST MAY OPEN A WINDOW. This is what AppKitUserPrompter is exercised
-// against, and it keeps each id's callback so a test can be the human: report an
-// answer, report a dismissal, or report twice -- which is the sequence the
-// prompter's "first outcome wins" rule exists for.
+// Hand-written stateful fake for the PromptWindow adapter seam; no test may open a real window.
 
 import VoiceOverBridgeAdapters
 import VoiceOverBridgeDomain
@@ -25,9 +19,6 @@ public final class FakePromptWindow: PromptWindow {
 		closed.append(id)
 	}
 
-	/// Stand in for the person, from whichever thread the test likes -- which is
-	/// the point: the real one calls back on AppKit's main thread, at a moment
-	/// nothing in the bridge controls.
 	public func report(_ id: PromptId, _ outcome: PromptOutcome) {
 		callbacks[id]?(outcome)
 	}

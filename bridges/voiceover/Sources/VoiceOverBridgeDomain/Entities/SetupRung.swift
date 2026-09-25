@@ -1,71 +1,20 @@
-// ROLE: entity -- the five rungs a handshake climbs, and the ONE place a rung's
-// failure sentence is composed. Pure.
-//
-// USED BY: ReaderEdgeSetup, which is the controller that climbs them. BUILT BY:
-// nobody -- it is an enumeration.
-//
-// WHY IT IS A TYPE AND NOT FIVE STRINGS IN A CONTROLLER. Until 13.20 `hello`
-// only ever REPORTED where `ProviderState` had stopped; now it climbs, and a
-// climb that can stop in five places is a climb that can grow five different
-// shapes of apology. One of them would say what is wrong and not what to do
-// about it, and that is the shape this repo has decided against everywhere else
-// it makes a named failure: `ReaderCondition`, `Precondition` and `Permission`
-// each pair a diagnosis with its recovery in one `described` rendering, and this
-// is the same rule applied to a SEQUENCE rather than to a condition.
-//
-// THE AUDIENCE IS THE AGENT, WHICH IS WHY `agentMustDo` IS SPELLED THAT WAY.
-// `Permission.recovery` and `ReaderCondition.recovery` are written for the human
-// at the machine -- which System Settings pane, which command to run. Nobody is
-// necessarily at this machine. What reads a failed `hello` is an agent, and the
-// only actions an agent has are: tell the human something, and connect again. So
-// the rung's sentence carries the human-facing recovery INSIDE an instruction
-// the agent can actually carry out, rather than handing an agent a sentence
-// addressed to somebody who may not be in the room.
-//
-// THE ORDER OF THE CASES IS THE ORDER OF THE CLIMB, and it is load-bearing to
-// read it that way: permissions before anything is touched, a reader before
-// anything is asked of one, registration before selection, and the proof last,
-// because it is the only rung that is EVIDENCE rather than inference.
-//
-// AND SINCE 13.26 THE RUNGS ARE THINGS MADE TRUE RATHER THAN CHECKS THAT MAY
-// FAIL. 13.20 turned reporting into climbing; spec 0053 §3.1 turns climbing into
-// PREPARING -- the reader is started, the extension registered, the voice
-// selected, and only then is capture proved. What teardown reverses is the
-// SESSION state and only that: the voice. The registration stays, which is
-// 13.20's rule unchanged.
-//
-// A SIXTH RUNG EXISTED FOR AN AFTERNOON AND WAS REMOVED BY A LIVE RUN. 13.26 also
-// BORROWED the VoiceOver modifier on a machine bound to Caps Lock, so that such a
-// machine could be driven by keys at all. Writing that preference under a running
-// reader turns out to make VoiceOver put a modal question on screen -- which
-// blocks the reader from quitting and changes a setting nobody chose. Measured
-// 2026-09-02 on the maintainer's machine. It is its own board entry now, to be
-// specified around a launch argument rather than a write.
+// ROLE: entity -- the five rungs a handshake climbs, and the one place a rung's failure sentence is composed.
+// USED BY: ReaderEdgeSetup, the controller that climbs them.
 
 public enum SetupRung: String, Equatable, Sendable, CaseIterable {
-	/// This process is allowed to drive the machine at all. READ, never asked
-	/// for -- see ReaderEdgeSetup, and PermissionBroker's header for why a
-	/// handshake that raised a consent dialog would be a handshake that hangs.
+	/// Read, never requested: a handshake that raised a consent dialog would hang.
 	case permissions
 
-	/// VoiceOver's process is running. The bridge ACTIVATES it to get there --
-	/// and, since 13.26, may RESTART it later for a named reason (spec 0053 §3.2),
-	/// which reverses a rule 13.20 marked Decided. Not here, though: this rung only
-	/// ever starts.
 	case readerRunning
 
-	/// The capture voice's extension is registered with the system. MACHINE
-	/// state: made once, and never undone at teardown.
+	/// Machine state: made once, and never undone at teardown.
 	case registration
 
-	/// VoiceOver is set to speak with the capture voice. SESSION state: put back
-	/// on every teardown path.
+	/// Session state: put back on every teardown path.
 	case voiceSelection
 
-	/// An utterance actually arrived. The only rung that is evidence.
 	case captureProof
 
-	/// What this rung establishes, in the sentence that reads after "could not".
 	public var summary: String {
 		switch self {
 		case .permissions:
@@ -81,11 +30,6 @@ public enum SetupRung: String, Equatable, Sendable, CaseIterable {
 		}
 	}
 
-	/// The one rendering of a stopped climb: which rung, what is wrong, and what
-	/// the AGENT must do about it.
-	///
-	/// One function so the three halves cannot travel apart, and so a rung added
-	/// later cannot quietly answer in a different voice.
 	public func failed(_ because: String, agentMustDo action: String) -> String {
 		"this bridge could not establish a session on this machine -- it could not \(summary). "
 			+ "Setup step '\(rawValue)': \(because) WHAT YOU MUST DO: \(action)"

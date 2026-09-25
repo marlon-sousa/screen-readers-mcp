@@ -1,13 +1,6 @@
 # nvdaMcpBridge domain -- AskUserHandler: present a prompt to the human.
 # Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-#
-# ROLE: command handler for `askUser`. Mints a ticket, stores a UserPrompt on the
-# context, suspends speech suppression, asks the prompter to present it audibly,
-# and returns the ticket immediately -- so the handler never blocks past the
-# heartbeat window. The agent then polls with `waitForUserReply`.
-#
-# Only one outstanding prompt at a time: a second `askUser` is a CommandError.
-# mutates_reader is True because this command changes what the human hears.
+# ROLE: command handler for `askUser`; returns the ticket at once, and the agent polls waitForUserReply.
 
 from __future__ import annotations
 
@@ -35,9 +28,7 @@ class AskUserHandler(CommandHandler):
 
 		ctx.suspend_speech()
 		ctx.user_prompter.present(params.prompt, prompt.ticket)
-		# A question is one of the three sounds that reach the human past the
-		# suppression, so it resets the silence cap exactly as `announce` does --
-		# after the prompt is presented, not before (spec 0032).
+		# Reset the silence cap after the prompt is presented, not before.
 		ctx.note_audible()
 
 		ctx.transcript.note(f"askUser: prompt presented (ticket {prompt.ticket})")

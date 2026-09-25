@@ -1,10 +1,4 @@
 // Mirrors Sources/ScreenReaderWire/Decoding.swift.
-//
-// The whole file exists to keep two absences apart, so these tests are about the
-// difference between them -- and about agreeing with the OTHER binding: Python's
-// from_dict defaults a missing key and raises on a null in a field that is not
-// nullable, and a Swift binding that quietly defaulted both would accept frames
-// the NVDA bridge rejects.
 
 import Testing
 
@@ -37,18 +31,13 @@ struct DecodingTests {
 
 	@Test("a genuinely nullable field takes both absences as the same answer")
 	func nullableFieldsTreatBothAlike() throws {
-		// `afterIndex` defaults to null, so "not sent" and "sent as null" say the
-		// same thing and decodeIfPresent is the right reading there.
 		#expect(try WireJSON.decode(WaitForSpeechParams.self, #"{"text":"a"}"#).afterIndex == nil)
 		#expect(try WireJSON.decode(WaitForSpeechParams.self, #"{"text":"a","afterIndex":null}"#).afterIndex == nil)
 	}
 
 	@Test("a shape's two defaults agree: the one a caller gets and the one a peer gets")
 	func constructedAndDecodedDefaultsAgree() throws {
-		// The drift gate reads the PROPERTY declaration, so a contract number that
-		// drifted only in the public initialiser would pass it. This is what
-		// catches that, and it is why the numbers are spelled twice at all: the
-		// initialiser cannot reference the property's own default expression.
+		// The drift gate reads only the property declaration, so this is what catches a default that drifted in the public initialiser.
 		#expect(try PressGestureParams(gestures: []).graceMs
 			== WireJSON.decode(PressGestureParams.self, #"{"gestures":[]}"#).graceMs)
 		#expect(try TypeParams(text: "").graceMs

@@ -1,14 +1,9 @@
 // screenreader-mcp domain -- the wait_for_speech tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `speech`.
+// ROLE: controller, gated on speech.
 // USES: ports.SpeechReader, through ToolContext.Speech().
 // LISTED BY: registry.go.
-//
-// NOT FINDING THE TEXT IS AN ANSWER, NOT A FAILURE. The result carries `found`,
-// and a timeout returns `found: false` rather than an error -- because "the
-// reader never said that" is frequently exactly what a test is checking, and an
-// error would make the negative case indistinguishable from a broken connection.
+// A timeout returns found false rather than an error: not finding the text is an answer, not a failure.
 package tools
 
 import (
@@ -20,7 +15,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/ports"
 )
 
-// WaitForSpeech blocks until matching speech appears.
 type WaitForSpeech struct{}
 
 var _ Tool = (*WaitForSpeech)(nil)
@@ -81,9 +75,7 @@ func (t *WaitForSpeech) OutputSchema() json.RawMessage {
 type waitForSpeechParams struct {
 	Text string `json:"text"`
 
-	// A POINTER, because the wire distinguishes "anywhere in what has been
-	// captured" from "at or after index 0" -- and collapsing them here would
-	// decide, on the agent's behalf, a question the contract keeps open.
+	// A pointer, because the wire distinguishes anywhere in the capture from at or after index 0.
 	AfterIndex *int `json:"after_index"`
 
 	Timeout float64 `json:"timeout"`
@@ -93,13 +85,9 @@ type waitForSpeechResult struct {
 	Found bool   `json:"found"`
 	Index int    `json:"index"`
 	Text  string `json:"text"`
-	// LogPosition is where the match sits on the log journal's timeline. On a
-	// miss it is the journal's current position, so it is still a usable "from
-	// here" mark for get_log -- the same convention index already follows.
+	// LogPosition on a miss is the journal's current position, still usable as a from-here mark.
 	LogPosition int `json:"logPosition"`
-	// EmittedAt is when the match was emitted. Empty on a miss: index and
-	// logPosition stay usable as a "from here" mark, but nothing was emitted, so
-	// reporting an instant would read as a match that happened (spec 0028).
+	// EmittedAt is empty on a miss.
 	EmittedAt string `json:"emittedAt,omitempty"`
 }
 
@@ -113,9 +101,7 @@ func (t *WaitForSpeech) Execute(ctx ToolContext, params json.RawMessage) (any, e
 		return nil, err
 	}
 	if request.Text == "" {
-		// Refused here rather than at the bridge: waiting for the empty
-		// string matches the first thing said, which is never what anyone
-		// meant and would look like a working assertion.
+		// Waiting for the empty string matches the first thing said, which would look like a working assertion.
 		return nil, errors.New("text is required, and must not be empty")
 	}
 

@@ -1,11 +1,5 @@
-// ROLE: entity -- `waitForUserReply`'s params and result.
-//
-// Pure. The other half of `askUser`: it waits on a ticket, through the Clock
-// port like every other wait in this contract.
-//
-// THE TIMEOUT IS 30 SECONDS RATHER THAN 5, because the thing being waited for is
-// a human reading a prompt and deciding, not a machine emitting an utterance.
-// `answered == false` is a normal answer -- the human did not reply in time.
+// ROLE: entity, `waitForUserReply`'s params and result.
+// `answered == false` means the human did not reply in time.
 
 public struct WaitForUserReplyParams: Codable, Equatable, Sendable {
 	public var ticket: String

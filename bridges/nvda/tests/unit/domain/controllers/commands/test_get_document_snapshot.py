@@ -22,8 +22,6 @@ def _factory(**kwargs: object) -> FakeAdapterFactory:
 
 
 def test_a_bare_call_returns_the_whole_document(clock: FakeClock) -> None:
-	# No parameters is the ordinary call, and it is unbounded: a snapshot
-	# bounded by default would be incomplete by default (spec 0026).
 	ctx = make_context(clock, adapters=adapters_from(_factory()))
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot"))
 	assert isinstance(result, p.DocumentSnapshotResult)
@@ -35,8 +33,6 @@ def test_a_bare_call_returns_the_whole_document(clock: FakeClock) -> None:
 
 
 def test_the_roles_survive_into_the_result(clock: FakeClock) -> None:
-	# What the maintainer asked for: the buffer as rendered, headings and radio
-	# buttons and all. The handler must not strip or reshape any of it.
 	ctx = make_context(clock, adapters=adapters_from(_factory()))
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot"))
 	assert "heading level 1" in result.lines[0].text
@@ -44,8 +40,7 @@ def test_the_roles_survive_into_the_result(clock: FakeClock) -> None:
 
 
 def test_no_document_is_a_false_and_not_an_error(clock: FakeClock) -> None:
-	# A dialog, the desktop, a native app. Everything empty EXCEPT the stamp:
-	# the bridge did look, at a time, and found nothing.
+	# No document: everything is empty except capturedAt.
 	clock.advance(1000.0)
 	ctx = make_context(clock, adapters=adapters_from(_factory(has_document=False)))
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot"))
@@ -58,9 +53,6 @@ def test_no_document_is_a_false_and_not_an_error(clock: FakeClock) -> None:
 
 
 def test_captured_at_comes_from_the_injected_clock(clock: FakeClock) -> None:
-	# The one field that stops this result reading as a description of the page
-	# rather than of the page at an instant, so it is asserted rather than
-	# assumed.
 	clock.advance(1000.0)
 	ctx = make_context(clock, adapters=adapters_from(_factory()))
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot"))
@@ -75,7 +67,6 @@ def test_bounds_reach_the_snapshot_and_the_cause_is_reported(clock: FakeClock) -
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot", maxLines=2))
 	assert [line.text for line in result.lines] == PAGE[:2]
 	assert result.truncatedBy is p.TruncatedBy.MAX_LINES
-	# And the walk stopped: a bound the reader honours saves the render.
 	assert factory.document_reader.offered == 3
 
 
@@ -87,8 +78,6 @@ def test_from_line_reaches_the_snapshot_with_absolute_ordinals(clock: FakeClock)
 
 
 def test_an_empty_document_is_not_a_missing_one(clock: FakeClock) -> None:
-	# A page with nothing on it still HAS a document, and an agent must be able
-	# to tell that from "you are not in a document at all".
 	ctx = make_context(clock, adapters=adapters_from(_factory(lines=[])))
 	result = GetDocumentSnapshotHandler().execute(ctx, request("getDocumentSnapshot"))
 	assert result.hasDocument is True
@@ -96,6 +85,4 @@ def test_an_empty_document_is_not_a_missing_one(clock: FakeClock) -> None:
 
 
 def test_the_snapshot_observes_and_does_not_mutate() -> None:
-	# Spec 0017: an observe-only session may read the page, because rendering
-	# speaks nothing and moves no caret.
 	assert GetDocumentSnapshotHandler.mutates_reader is False

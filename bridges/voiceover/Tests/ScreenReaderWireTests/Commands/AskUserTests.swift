@@ -8,8 +8,6 @@ import Testing
 struct AskUserTests {
 	@Test("asking answers with a ticket rather than with a reply")
 	func ticketNotReply() throws {
-		// The session must keep answering pings while a human thinks, which is
-		// why the reply is collected later against this ticket.
 		let result = try WireJSON.decode(AskUserResult.self, #"{"ticket":"q-1"}"#)
 		#expect(result.ticket == "q-1")
 	}

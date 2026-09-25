@@ -1,10 +1,3 @@
-// Mirrors Sources/CaptureVoice/Adapters/MarkerFileCaptureModeSource.swift.
-//
-// This adapter used to be a leaf -- one `fileExists`, no decision, no test. It
-// makes a decision now (is the lease still good?), and the decision is the one
-// that keeps a blind user from being left mute by a crashed bridge, so it is the
-// last file in this package that should go untested.
-
 import Foundation
 import Testing
 
@@ -72,9 +65,6 @@ struct MarkerFileCaptureModeSourceTests {
 
 	@Test("a fresh marker that says NOT silent is a live session's channel, not silence")
 	func freshAndNotSilentSpeaks() throws {
-		// A live session keeps a marker too, because the preferred voice has to
-		// reach this side in both modes. Presence alone must therefore not mean
-		// silence -- if it did, every live session would mute the machine.
 		let (path, now) = try marker(agedBy: 1, saying: #"{"silent":false,"voice":"com.apple.Reed"}"#)
 		defer { try? FileManager.default.removeItem(atPath: path) }
 		let source = MarkerFileCaptureModeSource(path: path, lease: 30, now: { now })
@@ -87,8 +77,6 @@ struct MarkerFileCaptureModeSourceTests {
 		let (path, now) = try marker(agedBy: 31, saying: #"{"silent":true,"voice":"com.apple.Reed"}"#)
 		defer { try? FileManager.default.removeItem(atPath: path) }
 		let source = MarkerFileCaptureModeSource(path: path, lease: 30, now: { now })
-		// The lease governs the WHOLE directive: a dead bridge's idea of the
-		// user's voice is as expired as its idea of silence.
 		#expect(source.directive == .passThrough)
 	}
 

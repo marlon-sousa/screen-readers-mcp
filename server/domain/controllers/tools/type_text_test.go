@@ -1,10 +1,5 @@
 // screenreader-mcp domain -- the type_text tool's tests.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// Its own file rather than a line in reader_tools_test.go's opaque-passthrough
-// group: the property worth protecting here is different -- text_typer.go is
-// exactly how a secret would be entered (spec 0019), so the one thing that must
-// never happen is the text landing in the tool's own result.
 package tools_test
 
 import (
@@ -41,9 +36,6 @@ func TestTypeTextSendsTheTextUnchanged(t *testing.T) {
 	}
 }
 
-// The result must never carry the literal text back -- type_text is exactly
-// how a secret would be entered, and the tool result is not the place to leak
-// it. Only a count is reported.
 func TestTypeTextResultNeverEchoesTheText(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
@@ -52,9 +44,7 @@ func TestTypeTextResultNeverEchoesTheText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("type_text: %v", err)
 	}
-	// The result must not contain the text in any field, under any name --
-	// checked against its serialized JSON so a future field could not smuggle
-	// it back in unnoticed.
+	// Checked against the serialized JSON, so no future field can carry the text back.
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		t.Fatalf("marshaling the result: %v", err)
@@ -71,13 +61,6 @@ func TestTypeTextResultNeverEchoesTheText(t *testing.T) {
 	}
 }
 
-// A multi-byte character is one TYPED character, not however many UTF-8 bytes
-// it took -- the count is meant to read like a length a human would recognise.
-//
-// Since spec 0025 the count is the READER's answer, passed through rather than
-// recomputed here: the side that injected the characters is the one authority on
-// how many there were, and two independent counts of one string is exactly how
-// they come to disagree.
 func TestTypeTextCountsRunesNotBytes(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
@@ -97,10 +80,6 @@ func TestTypeTextCountsRunesNotBytes(t *testing.T) {
 	}
 }
 
-// Spec 0025: typing defaults to NO grace, unlike press_gesture. With "speak
-// typed characters" on, typing emits one utterance per character and none of
-// them is worth a round trip's wait -- but the agent can still ask for one when
-// it expects the field itself to announce something.
 func TestTypeTextDefaultsToNoGraceAndCarriesOneWhenAsked(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
@@ -120,8 +99,6 @@ func TestTypeTextDefaultsToNoGraceAndCarriesOneWhenAsked(t *testing.T) {
 	}
 }
 
-// The same observation shape press_gesture reports, for the same reason: an
-// agent should not have to learn two ways to read one answer.
 func TestTypeTextReportsTheWindowItObserved(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	built.Text.AnswerWith(ports.TypeOutcome{
@@ -175,8 +152,6 @@ func TestTypeTextRequiresText(t *testing.T) {
 	}
 }
 
-// The gate, structurally: a reader that cannot type never announces the
-// capability, so the port was never handed over.
 func TestTypeTextIsRefusedWhenTheReaderDidNotAnnounceIt(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilitySpeech)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)
@@ -195,9 +170,6 @@ func TestTypeTextIsRefusedWhenTheReaderDidNotAnnounceIt(t *testing.T) {
 	}
 }
 
-// A bridge that could not complete the injection (SendInput blocked by another
-// thread holding the input desktop) fails the call; the session survives it
-// (protocol.md §3), so the tool must surface the error rather than swallow it.
 func TestTypeTextSurfacesABridgeFailure(t *testing.T) {
 	built := testsupport.NewConnection("nvda", entities.CapabilityTyping)
 	call := testsupport.NewToolCall(&tools.TypeText{}).WithConnection(built.Connection)

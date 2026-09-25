@@ -32,33 +32,14 @@ The add-on is inert until a session connects: it never swaps your synthesizer or
 )
 
 
-# RECURSIVE on purpose: this addon is a hexagonal PACKAGE (adapters/, domain/,
-# ...), not the usual flat globalPlugins/<name>.py. sconstruct turns each of
-# these into a build dependency of the .nvda-addon, so the non-recursive "*.py"
-# the template ships with would track only the top-level files -- editing an
-# adapter would leave the build "up to date" and ship stale code. "**/*.py"
-# matches every module at any depth (including the top level).
+# Recursive: sconstruct makes each match a build dependency, so a flat "*.py" would ship stale adapters.
 pythonSources: list[str] = [
 	"addon/globalPlugins/nvdaMcpBridge/**/*.py",
 ]
 i18nSources: list[str] = [*pythonSources, "buildVars.py"]
 
-# NON-PYTHON FILES THE ADDON SHIPS AND READS AT RUN TIME -- today, the persona
-# guidance documents `getGuidance` serves (spec 0029). The bundler rglobs the
-# whole addon tree, so these are packaged whether or not they are named here;
-# what this list buys is that scons treats an EDITED one as a reason to rebuild.
-#
-# Without it the failure is silent and total: reword a document, run
-# `poe build-bridge`, get "is up to date", install an addon carrying the previous
-# text, and read it back believing it is what the file says. That is this
-# platform's version of the trap //go:embed has on the server side -- there the
-# bytes are copied at compile time and a stale binary serves old prose; here they
-# are read at run time and a stale BUNDLE ships old prose. Same class, opposite
-# mechanism, and neither is caught by anything else.
-#
-# Kept OUT of i18nSources, deliberately: that list is fed to xgettext, which
-# parses its inputs as Python. These documents are for the agent, not the human
-# at the reader, and are not translated.
+# Named so scons rebuilds when a document is edited; kept out of i18nSources because xgettext parses
+# its inputs as Python.
 bundledDataSources: list[str] = [
 	"addon/globalPlugins/nvdaMcpBridge/**/documents/*.md",
 ]
@@ -67,13 +48,7 @@ bundledDataSources: list[str] = [
 excludedFiles: list[str] = [
 	"doc/*/contributing*.*",
 	"doc/*/*.tpl.md",
-	# The bundler rglobs the whole addon tree, so a developer's compiled bytecode
-	# was being shipped to users -- 90-odd entries, INCLUDING ORPHANS from modules
-	# deleted long ago (framing, session, speech_buffer and transcript, back when
-	# they lived at the top level rather than under domain/). Inert, because
-	# Python will not import a .pyc with no source beside it, but it is dead
-	# weight from a layout that no longer exists, and the contents of a release
-	# then depend on whose machine built it.
+	# Otherwise the bundler ships the building machine's bytecode.
 	"**/__pycache__/*",
 	"**/__pycache__",
 ]

@@ -10,8 +10,6 @@ import pytest
 
 from screenreader_wire import protocol as p
 
-# --- from_dict: happy paths --------------------------------------------------
-
 
 def test_from_dict_simple_scalars() -> None:
 	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1})
@@ -65,20 +63,11 @@ def test_hello_carries_the_persona() -> None:
 
 
 def test_hello_without_a_persona_still_validates() -> None:
-	"""An older SERVER declares none, and must still be able to handshake."""
 	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1})
 	assert hp.persona == ""
 
 
 def test_an_unrecognised_persona_validates_rather_than_raising() -> None:
-	"""Spec 0029, and the reason ``persona`` is a plain ``str``.
-
-	If this field were a closed enum, an unrecognised value would raise here --
-	and this is inside ``hello``, so the rejection would fail the HANDSHAKE. The
-	day a fourth persona is added upstream, a newer server could not connect to
-	any bridge already in the field. A bridge degrades instead (protocol.md §4),
-	which it can only do if the value reaches it.
-	"""
 	hp = p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": 1, "persona": "archaeologist"})
 	assert hp.persona == "archaeologist"
 
@@ -93,17 +82,13 @@ def test_from_dict_request_default_params() -> None:
 	assert req.params == {}
 
 
-# --- from_dict: failure paths ------------------------------------------------
-
-
 def test_missing_required_field_raises_with_name() -> None:
 	with pytest.raises(p.ValidationError, match="protocolVersion"):
 		p.from_dict(p.HelloParams, {"mode": "silent"})
 
 
 def test_wrong_scalar_type_raises_with_path() -> None:
-	# Escaped: the dot is meant literally, and `match=` is a regex -- unescaped it
-	# would also pass for "HelloParamsXprotocolVersion".
+	# `match=` is a regex, so the dot is escaped.
 	with pytest.raises(p.ValidationError, match=r"HelloParams\.protocolVersion"):
 		p.from_dict(p.HelloParams, {"mode": "silent", "protocolVersion": "one"})
 
@@ -139,16 +124,12 @@ def test_from_dict_on_non_dataclass_raises() -> None:
 
 
 def test_nested_non_mapping_raises() -> None:
-	# The real defensive path: a nested dataclass field fed a non-object.
 	@dataclass
 	class Outer:
 		info: p.ErrorInfo
 
 	with pytest.raises(p.ValidationError, match="expected an object"):
 		p.from_dict(Outer, {"info": [1, 2, 3]})
-
-
-# --- to_dict / round trips ---------------------------------------------------
 
 
 def test_to_dict_round_trips_params() -> None:
@@ -174,9 +155,6 @@ def test_response_optional_dataclass_from_dict() -> None:
 	assert resp2.error == p.ErrorInfo(message="x")
 
 
-# --- JSON-lines framing ------------------------------------------------------
-
-
 def test_encode_message_is_single_newline_terminated_line() -> None:
 	raw = p.encode_message(p.Request(id=1, cmd="ping"))
 	assert raw.endswith(b"\n")
@@ -200,7 +178,6 @@ def test_encode_decode_round_trip() -> None:
 	],
 )
 def test_echo_payload_survives_the_full_stack(payload: Any) -> None:
-	# encode -> frame -> decode -> validate -> back to the dataclass, byte-exact.
 	raw = p.encode_message(p.EchoResult(payload=payload))
 	restored = p.from_dict(p.EchoResult, p.decode_message(raw))
 	assert restored.payload == payload
@@ -230,9 +207,6 @@ def test_decode_non_object_raises() -> None:
 def test_decode_accepts_str_and_bytes() -> None:
 	assert p.decode_message('{"a": 1}') == {"a": 1}
 	assert p.decode_message(b'{"a": 1}') == {"a": 1}
-
-
-# --- constants / contract ----------------------------------------------------
 
 
 def test_protocol_version_is_one() -> None:
@@ -317,11 +291,8 @@ def test_hello_result_serializes_all_fields() -> None:
 		"attended",
 		"normalized",
 	}
-	# The nested ReaderInfo serializes to a plain dict; StrEnum members to strings.
 	assert d["reader"] == {"name": "nvda", "version": "2026.1.0"}
 	assert d["capabilities"] == ["speech", "gestures"]
-	# reader.version is the READER's; bridgeVersion is the ADD-ON's, and defaults
-	# to "unknown" rather than to the reader's, so the two can never be confused.
 	assert d["bridgeVersion"] == "unknown"
 
 
@@ -351,18 +322,12 @@ def test_capabilities_cover_one_per_command_group() -> None:
 		"interact",
 		"typing",
 		"log",
-		# The one member that names a group of ONE, and the only one that gates a
-		# resource rather than a set of tools (spec 0029).
 		"guidance",
-		# Also a group of one: the reader can hand over its flat document
-		# rendering whole, instead of a line per keystroke (spec 0026).
 		"document",
 	}
 
 
 def test_document_snapshot_params_default_to_the_whole_document() -> None:
-	# The ordinary call carries NO parameters: a snapshot bounded by default is
-	# incomplete by default, which is the defect spec 0026 removed.
 	params = p.from_dict(p.DocumentSnapshotParams, {})
 	assert (params.fromLine, params.maxLines, params.maxChars) == (0, 0, 0)
 
@@ -384,8 +349,6 @@ def test_document_snapshot_result_round_trips_with_its_lines() -> None:
 
 
 def test_no_document_is_a_false_and_not_an_absence() -> None:
-	# A dialog, the desktop, a native app: hasDocument False with everything else
-	# empty. `capturedAt` is still stamped -- the bridge looked, at a time.
 	result = p.DocumentSnapshotResult(hasDocument=False, capturedAt="2026-08-22 14:31:07.412")
 	d = p.to_dict(result)
 	assert d["hasDocument"] is False
@@ -394,8 +357,6 @@ def test_no_document_is_a_false_and_not_an_absence() -> None:
 
 
 def test_truncated_by_has_no_null() -> None:
-	# `if not result.truncatedBy` must not be how an agent asks whether the read
-	# was capped -- spec 0015's doctrine, applied here.
 	assert {m.value for m in p.TruncatedBy} == {"none", "maxLines", "maxChars"}
 
 
@@ -412,9 +373,6 @@ def test_from_dict_rejects_unknown_capability() -> None:
 				"logPath": "/x",
 			},
 		)
-
-
-# --- LogLevel / hello logLevel ------------------------------------------------
 
 
 def test_log_levels_match_nvdas_own_valid_values() -> None:
@@ -437,12 +395,9 @@ def test_hello_params_rejects_an_unknown_log_level() -> None:
 
 
 def test_command_shapes_cover_every_command() -> None:
-	# The whole point of COMMAND_SHAPES: no command can exist without declared
-	# param/result types, so the generated schema can never miss one.
 	assert set(p.COMMAND_SHAPES) == set(p.Command)
 	for command, shape in p.COMMAND_SHAPES.items():
 		assert shape.result is not None, command
-		# A declared params type is always a dataclass; None means "no params".
 		if shape.params is not None:
 			assert isinstance(shape.params, type)
 
@@ -462,25 +417,18 @@ def test_command_shapes_cover_every_command() -> None:
 			p.StateResult,
 			{"browseMode": "focus", "speechMode": "talk", "sleepMode": False, "inputHelp": False},
 		),
-		# "none" is a STRING, not null -- "there is no browse document here" is a
-		# real answer in the closed set, not a missing one (spec 0015).
+		# "none" is a string in the closed set, not null.
 		(p.StateResult, {"browseMode": "none", "speechMode": "beeps", "sleepMode": True, "inputHelp": False}),
 	],
 )
 def test_representative_payloads_validate(cls: type[Any], payload: dict[str, Any]) -> None:
 	obj = p.from_dict(cls, payload)
-	# Everything that validated must round-trip back to a superset of its input.
 	out = p.to_dict(obj)
 	for k, v in payload.items():
 		assert out[k] == v
 
 
 def test_hello_result_carries_the_guidance_document() -> None:
-	"""Spec 0022 A.5: the reader's own guidance rides back in the handshake.
-
-	The SAME type ``getGuidance`` answers with, so the two routes cannot describe
-	one document differently.
-	"""
 	hr = p.HelloResult(
 		protocolVersion=1,
 		reader=p.ReaderInfo(name="nvda", version="2026.1.0"),
@@ -500,13 +448,6 @@ def test_hello_result_carries_the_guidance_document() -> None:
 
 
 def test_a_hello_result_without_guidance_still_decodes() -> None:
-	"""An older BRIDGE simply omits the field, and a newer server must cope.
-
-	This is the half that forward compatibility does not give for free: §2's
-	"unknown fields are ignored" covers a newer bridge talking to an older
-	server, and this covers the other direction -- the server falls back to
-	calling ``getGuidance``, which is only possible if the payload decodes.
-	"""
 	back = p.from_dict(
 		p.HelloResult,
 		{
@@ -520,9 +461,6 @@ def test_a_hello_result_without_guidance_still_decodes() -> None:
 	)
 
 	assert back.guidance is None
-
-
-# -- the silence cap (spec 0032) ----------------------------------------------
 
 
 def test_silence_cap_rides_in_the_handshake() -> None:
@@ -545,8 +483,6 @@ def test_silence_cap_rides_in_the_handshake() -> None:
 
 
 def test_a_bridge_that_does_not_say_is_not_a_protocol_error() -> None:
-	# An older bridge sends no silenceCap at all. None means "this bridge does not
-	# say", which a server reports as unknown rather than as either answer.
 	d: dict[str, Any] = {
 		"protocolVersion": 1,
 		"reader": {"name": "nvda", "version": "2026.1.0"},

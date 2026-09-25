@@ -1,15 +1,8 @@
 // screenreader-mcp domain -- the disconnect_reader tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. UNGATED -- it survives the disconnect it
-// performs, along with the other three.
+// ROLE: controller, ungated.
 // USES: ConnectionControl.Disconnect, via ToolContext.
 // LISTED BY: registry.go.
-//
-// This is the only path that sends `bye`, which is why `bye` is not a tool of
-// its own (spec 0013): a second route to the same effect would let an agent end
-// a session without this server updating its own state, leaving the gated tools
-// advertised for a reader that has already been told the session is over.
 package tools
 
 import (
@@ -18,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// DisconnectReader ends the one session.
 type DisconnectReader struct{}
 
 var _ Tool = (*DisconnectReader)(nil)
@@ -58,9 +50,6 @@ func (t *DisconnectReader) OutputSchema() json.RawMessage {
 }`)
 }
 
-// disconnectResult tells the agent what the call actually did, since "there was
-// nothing to disconnect" is a different fact from "a live session was ended"
-// even though neither is a failure.
 type disconnectResult struct {
 	Disconnected bool   `json:"disconnected"`
 	Reader       string `json:"reader,omitempty"`

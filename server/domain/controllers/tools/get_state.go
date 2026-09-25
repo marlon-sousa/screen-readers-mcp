@@ -1,15 +1,8 @@
 // screenreader-mcp domain -- the get_state tool.
 // Copyright (C) 2026 Marlon Brandao de Sousa. GPL-2. See COPYING.txt.
-//
-// ROLE: controller, one per tool. GATED on `state`.
+// ROLE: controller, gated on state.
 // USES: ports.StateInspector, through ToolContext.State().
 // LISTED BY: registry.go.
-//
-// WHY THIS CAPABILITY EXISTS, from the bridge's hard-won gotcha: a reader
-// answers some actions with an earcon rather than words -- NVDA+space toggling
-// browse and focus mode is the standing example -- so a speech assertion has
-// nothing to match. Two state snapshots either side of a gesture assert the
-// toggle instead. That is the use case this tool's description has to teach.
 package tools
 
 import (
@@ -18,7 +11,6 @@ import (
 	"github.com/marlon-sousa/screen-readers-mcp/server/domain/entities"
 )
 
-// GetState reads queryable reader state.
 type GetState struct{}
 
 var _ Tool = (*GetState)(nil)
@@ -56,11 +48,7 @@ func (t *GetState) OutputSchema() json.RawMessage {
 }`)
 }
 
-// stateResult reports BrowseMode as one of "browse" / "focus" / "none" (spec
-// 0015). A reader with no browsable document says "none" rather than null: the
-// absence IS one of the three answers, so an agent never has to special-case a
-// missing field, and `if not state.browseMode` cannot silently conflate "focus
-// mode" with "no such concept".
+// stateResult reports BrowseMode as browse, focus or none, never null.
 type stateResult struct {
 	BrowseMode string `json:"browseMode"`
 	SpeechMode string `json:"speechMode"`

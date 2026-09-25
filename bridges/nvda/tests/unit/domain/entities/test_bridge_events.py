@@ -14,9 +14,6 @@ def test_event_type_members() -> None:
 
 def test_bridge_event_is_frozen() -> None:
 	evt = BridgeEvent(type=BridgeEventType.SERVER_STATUS, payload="test")
-	# Frozen dataclasses raise dataclasses.FrozenInstanceError, which subclasses
-	# AttributeError -- naming it proves the freeze, where bare Exception would
-	# also pass if the attribute simply did not exist.
 	with pytest.raises(AttributeError):
 		evt.type = BridgeEventType.SERVER_STATUS  # type: ignore[misc]
 
